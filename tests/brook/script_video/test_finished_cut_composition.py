@@ -329,6 +329,71 @@ def test_long_registration_requires_canonical_sections(tmp_path: Path) -> None:
         authority.register(replace(_registration(), sections=()))
 
 
+def test_transition_title_may_not_carry_a_speaker_attribution_prefix(tmp_path: Path) -> None:
+    """滿版轉場卡是那一節的總結，不是「誰說的」。
+
+    2026-09-01 蘇予昕那一集交出「修修：她不是你爸」「修修：設備花了一百萬」——
+    `修修：` 是分鏡註記漏到觀眾畫面上，整條 pipeline 沒有任何一關擋。
+    """
+    authority = ApprovedCutAuthority(
+        tmp_path / "authority",
+        master_verifier=_MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0)),
+    )
+    sections = (
+        CanonicalSection("section-1", "第一章", 0.0),
+        CanonicalSection(
+            "section-2",
+            "第二章",
+            60.0,
+            transition_before=True,
+            transition_title="修修：設備花了一百萬",
+        ),
+    )
+
+    with pytest.raises(ApprovedCutRegistrationError, match="speaker attribution prefix"):
+        authority.register(replace(_registration(), sections=sections))
+
+
+def test_transition_title_may_not_open_with_a_third_person_pronoun(tmp_path: Path) -> None:
+    """卡片上的「她」在畫面上沒有先行詞，觀眾不知道是誰。"""
+    authority = ApprovedCutAuthority(
+        tmp_path / "authority",
+        master_verifier=_MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0)),
+    )
+    sections = (
+        CanonicalSection("section-1", "第一章", 0.0),
+        CanonicalSection(
+            "section-2",
+            "第二章",
+            60.0,
+            transition_before=True,
+            transition_title="她不是你爸",
+        ),
+    )
+
+    with pytest.raises(ApprovedCutRegistrationError, match="third-person pronoun"):
+        authority.register(replace(_registration(), sections=sections))
+
+
+def test_transition_title_that_summarises_the_section_registers(tmp_path: Path) -> None:
+    authority = ApprovedCutAuthority(
+        tmp_path / "authority",
+        master_verifier=_MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0)),
+    )
+    sections = (
+        CanonicalSection("section-1", "第一章", 0.0),
+        CanonicalSection(
+            "section-2",
+            "第二章",
+            60.0,
+            transition_before=True,
+            transition_title="準備到完美，就永遠不用開始",
+        ),
+    )
+
+    assert authority.register(replace(_registration(), sections=sections))
+
+
 def test_registration_requires_valid_tight_subtitle_cues(tmp_path: Path) -> None:
     authority = ApprovedCutAuthority(
         tmp_path / "authority",
@@ -1190,3 +1255,83 @@ def test_accepted_stage_lookup_survives_a_retired_projection_in_history(tmp_path
 
     assert store.accepted_stages() == ()
     assert store.load_accepted("acceptance-does-not-exist") is None
+
+
+def test_context_resolution_prefers_the_most_recent_registration(tmp_path: Path) -> None:
+    """同一支 cut 重跑幾十次就有幾十筆 identity 相同的註冊，要拿最後核准那筆。
+
+    取「第一筆」等於永遠鎖在最初那一版。2026-09-08 蘇予昕 punch-L04 累積 38 筆，
+    改完 canonical 章節標題重新註冊之後，run 拿到的仍是前一天那份舊標題——註冊確實
+    寫進去了，但一次都沒有到達產線，而且完全無聲。
+    """
+    authority = ApprovedCutAuthority(
+        tmp_path / "authority",
+        master_verifier=_MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0)),
+    )
+    base = _registration()
+    authority.register(
+        replace(
+            base,
+            approved_at="2026-09-07T13:11:15+00:00",
+            sections=(CanonicalSection("section-1", "舊標題", 0.0),),
+        )
+    )
+    authority.register(
+        replace(
+            base,
+            approved_at="2026-09-08T09:58:41+00:00",
+            sections=(CanonicalSection("section-1", "新標題", 0.0),),
+        )
+    )
+
+    context = authority.resolve_context(
+        episode_id=base.episode_id,
+        cut_id=base.cut_id,
+        editorial_master_id=base.editorial_master_id,
+        tight_cut_id=base.tight_cut_id,
+    )
+
+    assert context is not None
+    assert context.sections[0].chapter_title == "新標題"
+
+
+def test_intentional_aroll_must_agree_with_its_semantic_kind(tmp_path: Path) -> None:
+    """`intentional_aroll` 與 `semantic_kind` 互相矛盾時，要在 Director 這關就擋。
+
+    DP 那關硬性要求「intentional_aroll 的事件其 semantic_kind 也是
+    intentional_aroll」。所以 Director 交出 hero_title + intentional_aroll=true
+    時，DP 無論回什麼都會被拒——錯在 Director，卻由 DP 反覆撞牆。2026-09-08 蘇予昕
+    punch-L04 就是這樣連退 11 次，而且沒有任何訊息說得出原因。
+    """
+    semantic = InMemorySemanticAdapter()
+    application = FinishedCutProductionApplication.open(
+        ProductionPaths(tmp_path / "runtime", tmp_path / "episodes"),
+        episode_id="episode-1",
+        master_verifier=_MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0)),
+        dependencies=ProductionDependencies(
+            asset_resolver=InMemoryAssetResolver(()),
+            semantic_adapter=semantic,
+        ),
+    )
+    command_id = application.register_approved_cut(_registration())
+    application.advance(command_id)
+    director = semantic.current_request(command_id)
+
+    semantic.respond(
+        director,
+        events=(
+            DirectorEventProposal(
+                event_id="event-1",
+                master_cue_ids=("cue-1",),
+                intent="保留完整論述",
+                display="完整主詞與命題",
+                semantic_kind="hero_title",
+                intentional_aroll=True,
+            ),
+        ),
+    )
+    application.advance(command_id)
+
+    checkpoint = application.inspect_run(command_id)
+    assert checkpoint.outstanding_stage == "director"
+    assert not checkpoint.current_stages

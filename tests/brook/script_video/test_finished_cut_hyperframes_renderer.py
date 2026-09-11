@@ -21,6 +21,9 @@ from agents.brook.script_video.finished_cut_production._long_visual_renderer imp
     LongVisualRenderError,
     LongVisualRenderRequest,
 )
+from agents.brook.script_video.finished_cut_production._projection import (
+    layout_identity,
+)
 from agents.brook.script_video.finished_cut_production._visual_assets import (
     FaceSafePlacement,
     FfmpegPersonInsetCompositor,
@@ -240,7 +243,7 @@ def test_alpha_hero_renders_as_prores_4444_mov_with_exact_process_contract(
             duration_sec=3.0,
             target_width=1920,
             target_height=1080,
-            layout_identity="hero_title:v1",
+            layout_identity=layout_identity("hero_title"),
         )
     )
 
@@ -308,7 +311,8 @@ def test_alpha_hero_renders_as_prores_4444_mov_with_exact_process_contract(
         str(hyperframes[1] / "encoded.mov"),
     )
     assert (hyperframes[2], ffmpeg[2], ffprobe[2]) == (90.0, 60.0, 30.0)
-    assert 'data-composition-id="long_visual"' in runner.html_documents[0]
+    # Hero 走定版 punch_card_wide，不是 ADR-066 自創的泛用 long_visual 版位。
+    assert 'data-composition-id="punch_card_wide"' in runner.html_documents[0]
     assert 'data-width="1920"' in runner.html_documents[0]
     assert 'data-height="1080"' in runner.html_documents[0]
     assert 'data-duration="3.000000"' in runner.html_documents[0]
@@ -407,7 +411,7 @@ def test_full_frame_chapter_uses_h264_mp4_without_alpha(tmp_path: Path) -> None:
             duration_sec=3.0,
             target_width=1920,
             target_height=1080,
-            layout_identity="fullscreen_transition:v4",
+            layout_identity=layout_identity("fullscreen_transition"),
         )
     )
 
@@ -459,7 +463,7 @@ def test_renderer_failures_publish_nothing_and_cleanup_unique_workspace(
                 duration_sec=3.0,
                 target_width=1920,
                 target_height=1080,
-                layout_identity="hero_title:v1",
+                layout_identity=layout_identity("hero_title"),
             )
         )
 
@@ -481,10 +485,10 @@ def test_every_generated_long_visual_role_uses_the_resolve_media_contract(
         )
     )
     roles = (
-        ("chapter", "fullscreen_transition:v4"),
-        ("hero_title", "hero_title:v1"),
-        ("identity_card", "identity_card:v1"),
-        ("visual_effect", "visual_effect:v1"),
+        ("chapter", layout_identity("fullscreen_transition")),
+        ("hero_title", layout_identity("hero_title")),
+        ("identity_card", layout_identity("identity_card")),
+        ("visual_effect", layout_identity("visual_effect")),
     )
 
     outputs = tuple(
@@ -542,7 +546,7 @@ def test_private_factory_wires_title_and_person_inset_to_one_probed_process_seam
             duration_sec=3.0,
             target_width=1920,
             target_height=1080,
-            layout_identity="hero_title:v1",
+            layout_identity=layout_identity("hero_title"),
         )
     )
     portrait = tmp_path / "portrait.png"
@@ -604,7 +608,7 @@ def test_real_pinned_hyperframes_and_ffmpeg_render_probe_in_temp_workspace(
             duration_sec=3.0,
             target_width=1920,
             target_height=1080,
-            layout_identity="fullscreen_transition:v4",
+            layout_identity=layout_identity("fullscreen_transition"),
         )
     )
 
@@ -648,7 +652,7 @@ def test_real_pinned_hyperframes_renders_prores_4444_alpha_hero(
             duration_sec=0.5,
             target_width=1920,
             target_height=1080,
-            layout_identity="hero_title:v1",
+            layout_identity=layout_identity("hero_title"),
         )
     )
 

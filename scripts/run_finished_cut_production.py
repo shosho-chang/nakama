@@ -188,6 +188,8 @@ def _registration(value: object) -> ApprovedCutRegistration:
                 _number(item, "t0"),
                 _boolean(item, "transition_before"),
                 _optional_string(item, "transition_title"),
+                # 「這一段完成的論點」——轉場卡的冷讀回收測試拿它當對照組。
+                _optional_string(item, "summary") or "",
             )
             for item in sections
             if _exact_fields(
@@ -200,6 +202,7 @@ def _registration(value: object) -> ApprovedCutRegistration:
                     "transition_title",
                 },
                 "canonical section",
+                optional={"summary"},
             )
         ),
         human_approved=_boolean(row, "human_approved"),
@@ -300,8 +303,20 @@ def _object_rows(value: object, label: str) -> tuple[dict[str, Any], ...]:
     return tuple(cast(dict[str, Any], item) for item in value)
 
 
-def _exact_fields(row: Mapping[str, object], expected: set[str], label: str) -> bool:
-    if set(row) != expected:
+def _exact_fields(
+    row: Mapping[str, object],
+    expected: set[str],
+    label: str,
+    optional: set[str] | None = None,
+) -> bool:
+    """欄位精確比對；`optional` 裡的欄位可有可無。
+
+    新增欄位不能讓既有的註冊輸入一律失效——它們都是人手工維護的 JSON。
+    """
+    present = set(row)
+    if optional:
+        present -= optional
+    if present != expected:
         raise ValueError(f"{label} fields are invalid")
     return True
 

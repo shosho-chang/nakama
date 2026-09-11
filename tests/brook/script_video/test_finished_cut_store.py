@@ -2473,3 +2473,38 @@ def test_old_schema_proposal_cannot_enter_the_current_chain(tmp_path) -> None:
     assert rejected.status == "needs_review"
     assert authority.accepted_stages == ()
     assert authority.outstanding_request == director_request
+
+
+def test_canonical_section_summary_survives_the_run_store_round_trip() -> None:
+    """`summary` 要讀得回來，冷讀回收測試才能對已註冊的 cut 跑。
+
+    序列化漏欄位是無聲的：寫進去的東西讀出來變空字串，呼叫端看到的是「上游沒寫」，
+    不是「我弄丟了」。
+    """
+    from agents.brook.script_video.finished_cut_production._store import (
+        _context_from_dict,
+        _context_to_dict,
+    )
+
+    context = EditorialCutContext(
+        episode_id="episode-1",
+        cut_id="long-1",
+        format="long",
+        editorial_master_id="master-1",
+        tight_cut_id="tight-1",
+        duration_sec=600.0,
+        source_ranges=(CutSourceRange(0.0, 600.0),),
+        cues=(CueAnchor("cue-001", "第一句", 0.0, 2.0, "section-01"),),
+        sections=(
+            CanonicalSection(
+                "section-01",
+                "第一章",
+                0.0,
+                summary="這一段完成的論點",
+            ),
+        ),
+    )
+
+    restored = _context_from_dict(_context_to_dict(context))
+
+    assert restored.sections[0].summary == "這一段完成的論點"

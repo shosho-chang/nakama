@@ -202,9 +202,46 @@ long candidate 的 `source_ranges` 依原片時間排序、不可重疊；`t_sta
 long candidate 的 `sections` 要完整覆蓋論述結構，通常 4–6 段，最多 8 段；worker 應填唯一
 `section_id`、所屬 `source_range_index`、summary 與 explicit `transition_before`，並以首尾 cue 的完整 raw
 text 作錨點。short 固定為 `[]`。`transition_before=true` 僅用於一個觀眾可獨立命名、會寫進 YouTube
-description 的新 chapter；同章內的列舉、方向一／二、例子、證據、方法步驟保持 false。title 是 6–14
-個中文字的 YouTube chapter／全螢幕 TR 候選文案；第一段不得有 transition。這份 section map 是
-editorial 建議，Director 可因 tight cut 微調精確時間與否決不必要的 TR，但不得新增另一套章節結構。
+description 的新 chapter；同章內的列舉、方向一／二、例子、證據、方法步驟保持 false。第一段不得有
+transition。`transition_title` 的寫法見下節。這份 section map 是 editorial 建議，Director 可因 tight cut
+微調精確時間與否決不必要的 TR，但**文字必須逐字沿用，不得改寫**——它同時是 YouTube chapter、
+全螢幕轉場卡與 description timestamp 的同一份字。
+
+### `transition_title` — 這一節的總結，不是節裡撈出來的半句話
+
+**唯一驗收標準：只看這張卡，就知道這一小節在講什麼。** 卡片會滿版蓋掉畫面，觀眾當下沒有其他
+資訊可以補；卡上讀不完整的句子，在片子裡就是讀不完整。
+
+- **主詞必須在卡片上。** 「不是牽拖，是線索」缺了「原生家庭」，冷讀者不知道什麼不是牽拖。
+- **要有「所以呢」。** 只給比喻或現象不算完成論述：「情緒像粽子」少了「要一顆一顆鬆開」。
+- **先寫完整論述，再壓到 6–14 字。** 壓不下去就換說法，**不准砍主詞或砍結論**——字數上限造成的
+  截斷，正是這一整類失敗的成因。
+- **禁止直接抄節內原話當標題。** 對話中間的半句話天生沒頭沒尾。
+- **禁止分鏡註記上畫面**（`修修：`／`來賓：` 這類說話人前綴），**禁止裸第三人稱開頭**（他／她／它）。
+  這兩條由 `_approved_cut._validate_transition_title` 在註冊時擋下，違反會直接 fail closed。
+- `summary`（這一段完成的論點）先寫好，`transition_title` 是它壓縮後的版本；兩者對不上就是還沒想清楚。
+
+實例（2026-09-01 蘇予昕〈拖延不是懶〉，六張卡只有零張及格）：
+
+| 交出來的 | 為什麼不及格 | 應該長這樣 |
+|---|---|---|
+| 不是牽拖，是線索 | 主詞不見，什麼不是牽拖？ | 原生家庭不是牽拖，是第一個線索 |
+| 情緒像粽子，主管底下是一整串 | 有比喻沒結論 | 情緒像粽子，要一顆一顆鬆開 |
+| 修修：她不是你爸 | 分鏡註記＋「她」無先行詞；是節內原話不是總結 | 光是看懂，情緒就開始鬆綁 |
+| 修修：設備花了一百萬 | 只有一個細節，看不出整節在講完美主義拖延 | 準備到完美，就永遠不用開始 |
+| 拖延症不是懶，是想法太勤勞 | 本身合格；但 Director 改寫成「不是懶，是勤勞」砍掉下文 | 維持原文，下游逐字沿用 |
+| 不想做，就先不要做 | 合格 | 維持 |
+
+交出 candidate 之前**必須跑冷讀 gate**，這是「只看卡就知道在講什麼」的可執行版本：
+
+```bash
+python scripts/cold_read_transition_titles.py --sections <candidates.json>
+```
+
+它派兩個互不知情的隔離 worker：第一個只拿到卡片文字（不給逐字稿、不給時間、不給
+`summary`），回答每張卡「這一節在講什麼」；第二個只拿到（那個答案, canonical `summary`）
+配對、看不到卡片，判斷兩者是不是同一件事。任何一張回收失敗或指涉找不到就 exit 1，
+改卡片重跑——這時候修最便宜，一個 worker round 都不用。
 
 每個 candidate 必須滿足：`t_start < t_end`；long 目標 8–12 分鐘、**硬下限 8 分鐘**、上限 18 分鐘；short 目標
 60–120 秒、容忍 40–180 且硬上限 180；hook 必須是時間範圍內 raw transcript substring。內容邊界

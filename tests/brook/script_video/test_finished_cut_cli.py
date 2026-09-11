@@ -621,3 +621,19 @@ def test_cli_rejects_stage_rows_in_approved_cut_registration(
             application_factory=lambda _paths, _episode_id: application,
         )
     assert application.registered is None
+
+
+def test_cli_accepts_a_canonical_section_that_carries_its_summary(tmp_path: Path) -> None:
+    """`summary` 是可選欄位——加欄位不能讓既有的手維護註冊輸入一律失效。"""
+    from scripts.run_finished_cut_production import _exact_fields
+
+    expected = {"section_id", "chapter_title", "t0", "transition_before", "transition_title"}
+    without = dict.fromkeys(expected, "x")
+    with_summary = {**without, "summary": "這一段完成的論點"}
+
+    assert _exact_fields(without, expected, "canonical section", optional={"summary"})
+    assert _exact_fields(with_summary, expected, "canonical section", optional={"summary"})
+    with pytest.raises(ValueError, match="fields are invalid"):
+        _exact_fields(
+            {**without, "unexpected": 1}, expected, "canonical section", optional={"summary"}
+        )

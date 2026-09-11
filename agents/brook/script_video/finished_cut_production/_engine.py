@@ -46,6 +46,7 @@ from ._derived_assets import (
     DerivedAssetBuildResult,
     DerivedAssetGeometry,
     DerivedAssetInstruction,
+    readable_floor_sec,
 )
 from ._policy import (
     CutPolicyInput,
@@ -58,6 +59,7 @@ from ._projection import (
     _WORKER_PROJECTION_COMBINATIONS,
     _event_has_active_projection,
     _is_active_semantic_kind,
+    layout_identity,
 )
 from ._records import (
     STAGE_RESPONSE_SCHEMA,
@@ -1369,11 +1371,10 @@ def _derived_asset_request(
         if event.visual_placement is None:
             raise RuntimeError("accepted DP event has no Visual Placement authority")
         placement = event.visual_placement
-        layout_version = "v4" if event.implementation_kind == "fullscreen_transition" else "v1"
         geometry = DerivedAssetGeometry(
             target_width=width,
             target_height=height,
-            layout_identity=f"{event.implementation_kind}:{layout_version}",
+            layout_identity=layout_identity(event.implementation_kind),
         )
         recipe_identity = None
         if event.implementation_kind not in _NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS:
@@ -1600,6 +1601,14 @@ def _visual_retry_context(
     return None, 1, None, correction
 
 
+# 每個字卡實作的版面版本。改設計就要 bump，否則新舊兩版會共用同一個 recipe
+# 快取鍵，畫面改了卻拿到舊的渲染檔。
+# - fullscreen_transition v4：滿版紙紋轉場（B2 定版）
+# - hero_title v2：2026-09-08 從 ADR-066 自創的 compact_paper 單行藥丸，改回頻道
+#   定版的 punch_card_wide tier1 + style:paper（錯位雙行紙卡、96px、手繪橘底線、
+#   落在說話者負空間）。手冊：.claude/skills/longform-cut/SKILL.md「Hero 大字卡」
+# 版位版本住在 _projection.LAYOUT_VERSIONS（唯一真相來源），這裡不再自己維護一份。
+
 def _leave_in_review_from_build(run: _RunState) -> _ProductionRun:
     run.view = replace(
         run.view,
@@ -1659,6 +1668,9 @@ def _advance_visual_checkpoint(
         visual_acceptance_id=visual.acceptance_id,
         events=visual.events,
         components=projected_components,
+        duration_sec=(
+            run.editorial_context.duration_sec if run.editorial_context is not None else 0.0
+        ),
     )
     run.view = replace(
         run.view,
@@ -1781,6 +1793,13 @@ def _events_for_acceptance(
                     or not event.intent.strip()
                     or not event.display.strip()
                     or not _is_active_semantic_kind(event.semantic_kind)
+                    # `intentional_aroll` 與 semantic_kind 必須互相同意。DP 那一關
+                    # 硬性要求「intentional_aroll 的事件其 semantic_kind 也是
+                    # intentional_aroll」，所以 Director 交出 hero_title +
+                    # intentional_aroll=true 這種組合時，DP 無論回什麼都會被拒——
+                    # 錯在 Director，卻由 DP 反覆撞牆，而且沒有任何訊息說得出原因。
+                    # 2026-09-08 蘇予昕 punch-L04 就是這樣連退 11 次。
+                    or event.intentional_aroll != (event.semantic_kind == "intentional_aroll")
                 ):
                     return None
                 try:
@@ -1878,6 +1897,9 @@ def _events_for_acceptance(
                         semantic_cue_ids=base.master_cue_ids,
                         placement_cue_ids=event.placement_cue_ids,
                         semantic_kind=base.semantic_kind,
+                        min_show_sec=readable_floor_sec(
+                            event.implementation_kind, base.display
+                        ),
                     )
                 except ValueError:
                     return None

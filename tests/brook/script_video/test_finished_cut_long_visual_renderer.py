@@ -21,6 +21,9 @@ from agents.brook.script_video.finished_cut_production._long_visual_renderer imp
     LongVisualRenderError,
     LongVisualRenderRequest,
 )
+from agents.brook.script_video.finished_cut_production._projection import (
+    layout_identity,
+)
 
 
 class _Browser:
@@ -70,9 +73,9 @@ def test_chapter_restores_approved_paper_hand_recipe(tmp_path: Path) -> None:
             (
                 "chapter",
                 "第二章｜工作與家庭的雙重壓力",
-                "fullscreen_transition:v4",
+                layout_identity("fullscreen_transition"),
             ),
-            ("hero_title", "真正的選擇不是二選一", "hero_title:v1"),
+            ("hero_title", "真正的選擇不是二選一", layout_identity("hero_title")),
         )
     )
 
@@ -83,16 +86,28 @@ def test_chapter_restores_approved_paper_hand_recipe(tmp_path: Path) -> None:
     assert 'data-composition-id="transition_title_wide"' in chapter.html_document
     assert 'data-style="paper_hand"' in chapter.html_document
     assert "paper-grain" in chapter.html_document
-    assert '<div class="kicker">章節</div>' in chapter.html_document
+    # 修修 2026-09-08 人眼驗過後把「章節」拿掉了——卡片上只留章節標題本身。
+    # 這一條反過來鎖住那個決定，避免下次改配方又把它加回來。
+    assert "章節" not in chapter.html_document
+    # kicker 還在，但它是手繪短槓（svg），不是「章節」兩個字。
+    assert '<div class="kicker-row">' in chapter.html_document
+    assert '<svg class="kbar"' in chapter.html_document
     assert 'class="kbar"' in chapter.html_document
     assert 'class="uline"' in chapter.html_document
-    assert "font-size: 128px" in chapter.html_document
+    # 章節標題字級是「照字數降級」的規則（>12 字 104px、>9 字 128px、其餘 168px），
+    # 不是配方裡那個固定值——CJK 一字約 1em，14 字 ×128px 會換行成孤字。
+    # 這一條測的是規則本身：這個 14 字標題必須降到 104px。
+    assert "font-size: 104px" in chapter.html_document
     assert "translateY(108%)" in chapter.html_document
     assert hero.full_frame is False
-    assert hero.style_name == "compact_paper"
-    assert hero.font_size_px <= 64
-    assert hero.content_width_ratio <= 0.60
+    # Hero 是定版 punch_card_wide tier1 + style:paper。ADR-066 原本自創的
+    # compact_paper（64px 單行藥丸置中、壓在臉上）2026-09-08 被修修退掉，
+    # 手冊寫的是「每行字級上限 96px、紙卡放在說話者負空間」。
+    assert hero.style_name == "paper"
+    assert hero.font_size_px == 96
+    assert hero.content_width_ratio == 0.72
     assert hero.safe_region == "lower"
+    assert 'data-composition-id="punch_card_wide"' in hero.html_document
     assert chapter.style_name != hero.style_name
 
 
@@ -109,7 +124,7 @@ def test_long_visual_recipe_is_self_contained_and_escapes_display_text(tmp_path:
             duration_sec=2.5,
             target_width=1920,
             target_height=1080,
-            layout_identity="hero_title:v1",
+            layout_identity=layout_identity("hero_title"),
         )
     )
 
@@ -165,7 +180,7 @@ def test_browser_duration_allows_one_frame_of_container_rounding(tmp_path: Path)
             duration_sec=2.0,
             target_width=1920,
             target_height=1080,
-            layout_identity="hero_title:v1",
+            layout_identity=layout_identity("hero_title"),
         )
     )
 
@@ -185,6 +200,6 @@ def test_browser_process_failure_is_normalized_at_the_adapter_seam() -> None:
                 duration_sec=2.0,
                 target_width=1920,
                 target_height=1080,
-                layout_identity="hero_title:v1",
+                layout_identity=layout_identity("hero_title"),
             )
         )

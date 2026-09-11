@@ -34,6 +34,10 @@ class CanonicalSection:
     t0: float
     transition_before: bool = False
     transition_title: str | None = None
+    # 上游 miner 每一節都會寫「這一段完成的論點」，但 ADR-066 之前一路被丟在註冊
+    # 門口。轉場卡的驗收標準是「只看卡就知道這節在講什麼」——沒有這個欄位，就沒有
+    # 東西可以拿來對照卡片。見 `agents/brook/script_video/transition_cold_read.py`。
+    summary: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,6 +140,7 @@ class EditorialCutContext:
         semantic_cue_ids: tuple[str, ...],
         placement_cue_ids: tuple[str, ...],
         semantic_kind: str,
+        min_show_sec: float | None = None,
     ) -> VisualPlacement:
         """Mint DP temporal authority from exact current cue and section facts."""
 
@@ -167,15 +172,40 @@ class EditorialCutContext:
                 section_id=semantic.section_id,
             )
 
+        if semantic_kind == "hero_title" and placement_cue_ids != semantic_cue_ids:
+            # Hero 的「說什麼」是 Director 決定、「什麼時候說」原本是 DP 決定，而 DP 只
+            # 被要求落在 Director 證據的**子集**內。Director 的證據跨度可以橫跨一分多鐘，
+            # DP 挑最前面那幾句就合法——於是卡片可以在講者說出那個主張之前就先講完。
+            #
+            # 2026-09-09 蘇予昕 punch-L04：Hero「原來這一切的源頭是我爸」落在 3:50.29
+            # （「他就會突然幫我連結到／喔我爸就是這樣」），但講者說出「因此他看到原來
+            # 源頭」是 5:13.96——早了 84 秒把結論講完。修修 review 時直接刪掉。
+            #
+            # 章節卡本來就是這樣鎖的（見上面 chapter 分支）：落點必須逐字回應它的語意
+            # 證據。Hero 比照辦理——主張與落點是同一個事實，錯了只會錯在一個地方。
+            raise ValueError("hero placement cue IDs must echo its semantic proof")
+
         placement = self.derive_anchor(placement_cue_ids)
         if not set(placement.master_cue_ids).issubset(semantic.master_cue_ids):
             raise ValueError("visual placement must be a subset of Director semantic evidence")
         if placement.section_id != semantic.section_id:
             raise ValueError("visual placement must remain in the Director canonical section")
+        t1 = placement.t1
+        if min_show_sec is not None and t1 - placement.t0 < min_show_sec:
+            # 字卡要停留到讀得完。cue 證據完全不動——延長的只是卡片在畫面上多待
+            # 一會兒，跨過下一句的開頭，這在剪輯上是正常的。
+            #
+            # 2026-09-08 蘇予昕 punch-L04：「花了快一百萬」六個字只給 1.07 秒，含
+            # 進退場動畫根本讀不完。秒數從來不是設計出來的，是 DP 挑的
+            # placement_cue_ids 決定的，而整條 pipeline 只有上限沒有下限。
+            #
+            # 這裡選擇「自動延長」而不是「擋下來重來」：DP 未必有更多 cue 可挑，
+            # 擋下來會製造無解狀態——跟素材庫不夠時逼 DP 重試是同一種錯。
+            t1 = min(placement.t0 + min_show_sec, self.duration_sec)
         return _mint_visual_placement(
             placement_cue_ids=placement.master_cue_ids,
             t0=placement.t0,
-            t1=placement.t1,
+            t1=t1,
             section_id=placement.section_id,
         )
 

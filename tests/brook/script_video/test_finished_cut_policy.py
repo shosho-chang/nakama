@@ -657,6 +657,12 @@ def test_title_cards_cannot_mask_an_asset_backed_broll_cadence_gap() -> None:
 
 
 def test_sixty_second_semantic_anchor_with_four_second_title_cannot_mask_broll_gap() -> None:
+    """語意證據 60 秒、卡片只停 4 秒時，policy 要算卡片實際佔的 4 秒，不是 60 秒。
+
+    2026-09-09 起 hero_title 的落點必須逐字回應它的語意證據（見 `_context`），所以這個
+    「證據長、落點短」的情境對 Hero 已經不可能發生；改用 identity_card 驗同一條不變量
+    ——它仍然允許落點是證據的子集，而且跟 hero 一樣不算 B-roll 覆蓋。
+    """
     context = replace(
         _long_context(),
         cues=(
@@ -671,10 +677,12 @@ def test_sixty_second_semantic_anchor_with_four_second_title_cannot_mask_broll_g
     placement = context.derive_visual_placement(
         semantic_cue_ids=semantic_cue_ids,
         placement_cue_ids=("cue-placement",),
-        semantic_kind="hero_title",
+        semantic_kind="identity_card",
     )
     hero = replace(
-        _title_component("semantic-long-placement-short", placement.t0),
+        _title_component(
+            "semantic-long-placement-short", placement.t0, semantic_kind="identity_card"
+        ),
         t1=placement.t1,
     )
     gap_components = tuple(
