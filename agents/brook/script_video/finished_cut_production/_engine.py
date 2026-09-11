@@ -833,13 +833,30 @@ def _retry_with_live_catalog(
     只在 DP 這一站換。Director 與 visual_review 的請求本來就不帶素材目錄，硬塞會讓
     `_worker_packet` 的 `worker_catalog_items` / `worker_asset_refs` 一致性檢查失效。
     """
+    bumped = replace(request, request_id=request_id, attempt=request.attempt + 1)
+    return _with_live_catalog(bumped, catalog)
+
+
+def _with_live_catalog(request: StageRequest, catalog: WorkerSelectionCatalog) -> StageRequest:
+    """把一個 DP 請求換上**現在**的素材目錄；其他站原樣回傳。
+
+    請求一旦鑄好就把目錄凍在裡面，而 DP 的請求是在 `register_approved_cut` 那一刻
+    鑄的——那時候 Director 還沒跑，沒有人知道要買什麼，目錄必然是空的。之後補買的
+    素材再多，送出去的還是那份空快照。
+
+    20260721 value-L02：素材庫已經有 52 支，packet 的 `catalog` 仍然是 `[]`。
+    `retry-failed-dispatch` 那條路先前已經修過（見 `_retry_with_live_catalog`），
+    但**第一次派發**走的是 `_advance_existing`，直接把儲存的請求原樣丟出去，同一個
+    缺口在那裡還開著。
+
+    只換 DP。Director 與 visual_review 的請求本來就不帶目錄，硬塞會讓
+    `_worker_packet` 的 `worker_catalog_items` / `worker_asset_refs` 一致性檢查失效。
+    """
     if request.stage != "dp":
-        return replace(request, request_id=request_id, attempt=request.attempt + 1)
+        return request
     items = catalog.items()
     return replace(
         request,
-        request_id=request_id,
-        attempt=request.attempt + 1,
         worker_asset_refs=tuple(item.reference for item in items),
         worker_catalog_items=items,
     )
@@ -1144,6 +1161,8 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
         return _advance_visual_checkpoint(run, aggregate)
     if request is None:
         return run.view
+    # 送出去之前換上現在的素材目錄——請求是登錄那一刻鑄的，那時候櫃子必然是空的。
+    request = _with_live_catalog(request, run.worker_catalog)
     if not _request_base_is_current(run, request, aggregate):
         return _leave_in_review(run, request)
     outcome = aggregate.dispatch(request)

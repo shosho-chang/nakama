@@ -10,6 +10,7 @@ from agents.brook.script_video.finished_cut_production._engine import (  # noqa:
     _derived_build_failed,
     _live_catalog,
     _retry_with_live_catalog,
+    _with_live_catalog,
 )
 
 
@@ -161,3 +162,37 @@ def test_no_build_request_at_all_is_not_a_failure():
     view = _View(derived_asset_request=None, status="needs_review")
 
     assert not _derived_build_failed(view)  # type: ignore[arg-type]
+
+
+def test_first_dispatch_also_carries_the_live_catalog():
+    """第一次派發也要換目錄——DP 的請求是登錄那一刻鑄的，那時候櫃子必然是空的。
+
+    20260721 value-L02：素材庫已經 52 支，packet 的 catalog 仍是 []。重試那條路先前
+    修過了，但第一次派發走 `_advance_existing`，直接把儲存的請求原樣丟出去。
+    """
+    stored = _Request(
+        stage="dp",
+        request_id="request-minted-at-registration",
+        attempt=1,
+        worker_asset_refs=(),
+        worker_catalog_items=(),
+    )
+    live = _Catalog((_Item("asset-sha256:bought-after-registration"),))
+
+    sent = _with_live_catalog(stored, live)  # type: ignore[arg-type]
+
+    assert sent.request_id == "request-minted-at-registration"  # 身分不動
+    assert sent.attempt == 1
+    assert sent.worker_asset_refs == ("asset-sha256:bought-after-registration",)
+
+
+def test_non_dp_request_is_returned_untouched():
+    stored = _Request(
+        stage="visual_review",
+        request_id="request-x",
+        attempt=1,
+        worker_asset_refs=(),
+        worker_catalog_items=(),
+    )
+
+    assert _with_live_catalog(stored, _Catalog((_Item("a"),))) is stored  # type: ignore[arg-type]
