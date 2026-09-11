@@ -147,17 +147,12 @@ body.sho .pj-empty { padding: 18px 16px; font-size: 12.5px; }
 
 
 /* ══ Project dashboard (修修 2026-09-10) ══════════════════════════════════════
-   Detail page is a dashboard: 還剩多少 / 還差多久 readouts, a template stage rail,
-   and three views over the same tasks (列表 / 看板 / 時程).
+   Detail page is a dashboard: 還剩多少 / 還差多久 readouts + three views over the
+   same tasks (列表 / 看板 / 時程). Template projects group their list by stage;
+   there is no progress rail — 修修 never asked for one (2026-09-11).
 
-   The rail's state is derived ENTIRELY from task completion — there is no stage
-   anyone can tick by hand. ADR-031's seven manually-ticked stages drifted from
-   reality until nobody trusted them; a derived rail cannot drift.
-
-   Accent discipline: orange marks exactly one thing per page — the stage you are
-   on. Finished stages take the green success tick and recede to muted, so the eye
-   lands on what is left. amber is reserved for 未排時間, the one condition that
-   makes the ETA a lie. */
+   Accent discipline: amber is reserved for 未排時間, the one condition that makes
+   the ETA a lie; orange marks the kanban's 進行中 column and nothing else. */
 body.sho .pjd-main { padding: 0 28px 56px; }
 .pjd-screen { max-width: 940px; margin: 0 auto; }
 
@@ -205,40 +200,6 @@ body.sho .pjd-bar {
 }
 body.sho .pjd-bar i { display: block; height: 100%; background: var(--sho-text-2); }
 
-/* ── stage rail (only for templated projects) ── */
-body.sho .pjd-rail {
-  display: flex; list-style: none; margin: 10px 0 0; padding: 0;
-  border: 1px solid var(--sho-line); border-radius: var(--sho-r-2); overflow: hidden;
-}
-body.sho .pjd-stage {
-  flex: 1; min-width: 0; padding: 11px 15px;
-  display: flex; flex-direction: column; gap: 2px;
-  border-left: 1px solid var(--sho-line);
-}
-body.sho .pjd-stage:first-child { border-left: 0; }
-body.sho .pjd-stage-top {
-  display: flex; align-items: center; gap: 7px;
-  font-size: 13px; font-weight: 600; color: var(--sho-text-2);
-}
-body.sho .pjd-dot {
-  flex: 0 0 auto; width: 15px; height: 15px; border-radius: 50%;
-  border: 1px solid var(--sho-line-2); display: inline-flex;
-  align-items: center; justify-content: center; font-size: 9px;
-  line-height: 1; color: var(--sho-muted);
-}
-body.sho .pjd-stage-meta {
-  font-size: 10.5px; padding-left: 22px; color: var(--sho-muted);
-  font-variant-numeric: tabular-nums;
-}
-body.sho .pjd-stage.is-done .pjd-dot {
-  border-color: color-mix(in oklch, var(--sho-success) 55%, transparent);
-  color: var(--sho-success);
-}
-body.sho .pjd-stage.is-done .pjd-stage-top { color: var(--sho-muted); }
-body.sho .pjd-stage.is-now { background: var(--sho-accent-soft); box-shadow: inset 0 2px 0 var(--sho-accent); }
-body.sho .pjd-stage.is-now .pjd-dot { border-color: var(--sho-accent); color: var(--sho-accent); }
-body.sho .pjd-stage.is-now .pjd-stage-top { color: var(--sho-ink); }
-
 /* ── view switcher (same idiom as Weekly's 今日/整週/全部) ── */
 body.sho .pjd-secbar {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -262,45 +223,52 @@ body.sho .pjd-view.is-on {
 .pjd-pane { display: none; }
 .pjd-pane.is-on { display: block; }
 
-/* ── list view ── */
-body.sho .pjd-group-t {
-  font-family: var(--sho-font-mono); font-size: 10.5px; letter-spacing: 0.06em;
-  color: var(--sho-muted); padding: 14px 2px 5px; display: block;
-}
+/* ── list view — one flat, ungrouped list (修修 2026-09-11) ── */
+/* The row is a real aligned table (same trick as Weekly's .wk-task, N541
+   「隱形表格」): ONE grid template per row so the 🍅 and date columns line up
+   down the list instead of drifting with each name's length — flex + gap cannot
+   do that (修修 2026-09-10). The tick box is the shared .sho-box from bridge.css. */
 body.sho .pjd-task {
-  display: flex; align-items: center; gap: 11px; padding: 9px 10px;
+  display: grid;
+  grid-template-columns:
+    auto               /* ☐ tick box       */
+    minmax(6rem, 1fr)  /* name             */
+    4.5rem             /* 實際 / 預估 🍅    */
+    10.5rem;           /* date / time      */
+  align-items: center;
+  column-gap: 12px;
+  padding: 9px 10px;
   border-bottom: 1px solid var(--sho-line);
   transition: background var(--sho-t-fast) var(--sho-ease);
 }
 body.sho .pjd-task:hover { background: var(--sho-bg-2); }
-/* the row's link fills what's left of the row so the whole strip stays clickable
-   — the tick box is a sibling form, never nested inside the anchor */
+/* the link spans the three cells to the right of the box, keeping its own grid so
+   the columns stay shared across rows — it is a sibling of the box's form, never
+   its parent (a <button> inside an <a> is invalid and would navigate instead) */
 body.sho .pjd-task-link {
-  flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 11px;
+  display: grid;
+  grid-column: 2 / -1;
+  grid-template-columns: subgrid;
+  align-items: center;
   color: var(--sho-text); text-decoration: none;
 }
 body.sho .pjd-task-link:focus-visible { outline: none; box-shadow: var(--sho-focus); }
-body.sho .pjd-task-n { flex: 1; min-width: 0; font-size: 14px; }
-
-/* ── tick box: same 14px square as the Weekly dashboard's .wk-box ── */
-body.sho .pjd-box-form { display: flex; flex: 0 0 auto; }
-body.sho .pjd-box {
-  width: 14px; height: 14px; padding: 0; cursor: pointer;
-  border: 1.5px solid var(--sho-line-2); border-radius: 3px;
-  background: none; flex-shrink: 0;
-  transition: background var(--sho-t-fast) var(--sho-ease),
-              border-color var(--sho-t-fast) var(--sho-ease);
+body.sho .pjd-task-n {
+  min-width: 0; font-size: 14px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-body.sho .pjd-box:hover { border-color: var(--sho-accent); }
-body.sho .pjd-box:focus-visible { outline: none; box-shadow: var(--sho-focus); }
-body.sho .pjd-box.done { background: var(--sho-text); border-color: var(--sho-text); }
-body.sho .pjd-task-meta {
-  display: inline-flex; gap: 14px; font-size: 11.5px; white-space: nowrap;
+/* each meta value is its own grid cell so it holds the column even when empty */
+body.sho .pjd-task-pom,
+body.sho .pjd-task-when {
+  font-size: 11.5px; white-space: nowrap;
   font-variant-numeric: tabular-nums; color: var(--sho-muted);
 }
-body.sho .pjd-task-meta .when { min-width: 92px; text-align: right; }
-body.sho .pjd-task-meta .none { color: var(--sho-warning); }
-body.sho .pjd-task.is-done .pjd-task-n {
+body.sho .pjd-task-when.none { color: var(--sho-warning); }
+/* a finished row recedes AS A WHOLE — name and meta both struck + muted, so the
+   date column doesn't stay bright next to a crossed-out task (修修 2026-09-10) */
+body.sho .pjd-task.is-done .pjd-task-n,
+body.sho .pjd-task.is-done .pjd-task-pom,
+body.sho .pjd-task.is-done .pjd-task-when {
   color: var(--sho-muted); text-decoration: line-through; text-decoration-color: var(--sho-line-2);
 }
 /* 進行中 keeps its accent cue now that the ✓/◐/○ glyph column is gone */
@@ -331,7 +299,7 @@ body.sho .pjd-card {
   padding: 9px 12px; border-bottom: 1px solid var(--sho-line);
   transition: background var(--sho-t-fast) var(--sho-ease);
 }
-body.sho .pjd-card .pjd-box-form { padding-top: 2px; }
+body.sho .pjd-card .sho-box-form { padding-top: 2px; }
 body.sho .pjd-card-link {
   flex: 1; min-width: 0; text-decoration: none; color: var(--sho-text);
 }
@@ -344,7 +312,8 @@ body.sho .pjd-card-m {
   display: flex; gap: 10px; font-variant-numeric: tabular-nums;
 }
 body.sho .pjd-card-m .none { color: var(--sho-warning); }
-body.sho .pjd-card.is-done .pjd-card-n {
+body.sho .pjd-card.is-done .pjd-card-n,
+body.sho .pjd-card.is-done .pjd-card-m {
   color: var(--sho-muted); text-decoration: line-through; text-decoration-color: var(--sho-line-2);
 }
 body.sho .pjd-col-empty { padding: 14px 12px; font-size: 11.5px; color: var(--sho-muted); }
@@ -442,9 +411,8 @@ body.sho .pj-row-kind {
 
 @media (max-width: 760px) {
   body.sho .pjd-main { padding: 0 14px 40px; }
-  body.sho .pjd-stats, body.sho .pjd-rail, body.sho .pjd-kan { flex-direction: column; }
-  body.sho .pjd-stat, body.sho .pjd-stage { border-left: 0; border-top: 1px solid var(--sho-line); }
-  body.sho .pjd-stat:first-child, body.sho .pjd-stage:first-child { border-top: 0; }
-  body.sho .pjd-stage.is-now { box-shadow: inset 2px 0 0 var(--sho-accent); }
+  body.sho .pjd-stats, body.sho .pjd-kan { flex-direction: column; }
+  body.sho .pjd-stat { border-left: 0; border-top: 1px solid var(--sho-line); }
+  body.sho .pjd-stat:first-child { border-top: 0; }
   body.sho .pjd-day { flex-direction: column; gap: 6px; }
 }

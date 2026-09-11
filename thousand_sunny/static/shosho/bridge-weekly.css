@@ -142,9 +142,10 @@ body.sho .wk-task {
   border-bottom: 1px solid var(--sho-line);
 }
 body.sho .wk-task:last-child { border-bottom: 0; }
-body.sho .wk-box { width: 14px; height: 14px; border: 1.5px solid var(--sho-line-2); border-radius: 3px; flex-shrink: 0; }
-body.sho .wk-box.done { background: var(--sho-text); border-color: var(--sho-text); }
-body.sho .wk-task.done .wk-tname { color: var(--sho-muted); text-decoration: line-through; }
+/* the tick box + struck styling now live in bridge.css as .sho-box / .sho-struck
+   — one component for Weekly and the Project dashboard (修修 2026-09-10). */
+body.sho .wk-task.done .wk-tname,
+body.sho .wk-task.done .wk-cell { color: var(--sho-muted); text-decoration: line-through; }
 /* name shares its grid cell with ✎ and the (hidden) rename form; min-width:0 lets a
    long name ellipsis instead of pushing the table columns out of alignment. */
 body.sho .wk-namecell { display: inline-flex; align-items: center; gap: 6px; min-width: 0; width: 100%; }
@@ -701,17 +702,8 @@ body.sho .wk-bl-locked-note { margin: 0; font-size: 12px; }
 body.sho .wk-bl-locked-note a { color: var(--sho-accent); }
 body.sho .wk-all-hint { margin: 4px 6px 10px; }
 
-/* #2 — the completion checkbox is now a real <form> submit button. Reset the
-   native button chrome so .wk-box / .wk-ci-box keep their hairline-box look,
-   and give it a pointer + focus ring (it's interactive now, not decorative). */
-body.sho .wk-box-form { display: inline-flex; margin: 0; padding: 0; flex-shrink: 0; }
-body.sho button.wk-box {
-  padding: 0; background: var(--sho-bg); cursor: pointer; appearance: none;
-  transition: border-color var(--sho-t-fast) var(--sho-ease), background var(--sho-t-fast) var(--sho-ease);
-}
-body.sho button.wk-box:hover { border-color: var(--sho-accent); }
-body.sho button.wk-box.done { background: var(--sho-text); border-color: var(--sho-text); }
-body.sho button.wk-box:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+/* #2 — the ✕ / 🍅 inline buttons keep their bare look; the completion tick box
+   itself is the shared .sho-box in bridge.css. */
 body.sho button.wk-ci-box {
   appearance: none; border: 0; background: none; padding: 0; cursor: pointer;
   font: inherit; line-height: 1; color: var(--sho-text-2); flex-shrink: 0;

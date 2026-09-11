@@ -1483,7 +1483,10 @@ class TestUnifiedTaskViewsAndDone:
     def test_done_checkbox_is_a_form_button(self, client, monkeypatch):
         self._pin(monkeypatch)
         body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
-        assert "wk-box-form" in body
+        # the box is bridge.css's shared .sho-box — the Project dashboard renders
+        # the same component (修修 2026-09-10「為什麼要重新發明一個？」)
+        assert "sho-box-form" in body
+        assert "wk-box" not in body
         assert "/done" in body  # the toggle route action
 
     def test_unified_row_has_merged_plan_form(self, client, monkeypatch):
@@ -2169,3 +2172,65 @@ def test_group_by_project_unit():
     # first-appearance order for named threads; standalone last; in-group order kept
     assert [name for name, _ in groups] == ["B", "A", ""]
     assert [t.slug for t in dict(groups)["A"]] == ["A - 1", "A - 2"]
+
+
+class TestAllTabUsesLifetimePomodoros:
+    """修修 2026-09-11：「我剛剛手動在這一個任務加了 4 個番茄，但 weekly dashboard
+    的任務列表番茄並沒有如實地顯示」——「全部」分頁列的是本週以外的任務，用本週口徑
+    的分子永遠是 0，分母卻 fallback 到全期預估，同一個分數兩種基準。"""
+
+    def _pin(self, monkeypatch):
+        """WEEK_KEY must be the CURRENT week, else the page renders review mode
+        instead of the three task tabs."""
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+
+    def _task_worked_in_a_past_week(self, tmp_path):
+        (tmp_path / "TaskNotes" / "Tasks" / "舊週做過的.md").write_text(
+            "---\ntitle: 舊週做過的\nstatus: to-do\ncategory: work\n預估🍅: 4\n"
+            "plan:\n- {date: 2026-05-06, pomodoros: 4}\n"
+            "timeEntries:\n"
+            "- {startTime: '2026-05-06T09:00:00+08:00', endTime: '2026-05-06T10:40:00+08:00'}\n"
+            "---\n",
+            encoding="utf-8",
+        )
+
+    def test_lifetime_actual_is_exposed_on_the_view(self, client, tmp_path):
+        from shared.weekly_indexer import WeeklyIndexer, week_from_key
+
+        self._task_worked_in_a_past_week(tmp_path)
+        view = WeeklyIndexer(tmp_path).view(week_from_key(WEEK_KEY))
+        # 100 min // 25 = 4, logged in a week that is NOT the rendered one
+        assert view.actual_all_time.get("舊週做過的") == 4
+        assert view.actual.by_task.get("舊週做過的", 0) == 0
+
+    def test_all_tab_shows_the_lifetime_figure(self, client, tmp_path, monkeypatch):
+        self._pin(monkeypatch)
+        self._task_worked_in_a_past_week(tmp_path)
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        all_pane = body.split('data-pane="all"', 1)[1]
+        row = all_pane.split("舊週做過的", 1)[1].split("</div>", 1)[0]
+        assert "4 / 4🍅" in row  # NOT "0 / 4🍅"
+        assert "全期實際" in row
+
+    def test_week_tabs_keep_the_weekly_figure(self, client, tmp_path, monkeypatch):
+        """今日／整週 ask "how much this week", so they must NOT switch."""
+        self._pin(monkeypatch)
+        # a work task planned INSIDE the rendered week, worked partly before it
+        (tmp_path / "TaskNotes" / "Tasks" / "本週的工作.md").write_text(
+            "---\ntitle: 本週的工作\nstatus: to-do\ncategory: work\n預估🍅: 8\n"
+            "plan:\n- {date: 2026-06-03, pomodoros: 2}\n"
+            "timeEntries:\n"
+            "- {startTime: '2026-06-03T09:00:00+08:00', endTime: '2026-06-03T09:25:00+08:00'}\n"
+            "- {startTime: '2026-05-06T09:00:00+08:00', endTime: '2026-05-06T10:40:00+08:00'}\n"
+            "---\n",
+            encoding="utf-8",
+        )
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        week_pane = body.split('data-pane="week"', 1)[1].split('data-pane="all"', 1)[0]
+        row = week_pane.split("本週的工作", 1)[1].split("</details>", 1)[0]
+        assert "本週實際" in row
+        assert "全期實際" not in row
+        # 1 🍅 this week over the 2 planned for it — NOT the 5 lifetime / 8 estimate
+        assert "1 / 2🍅" in row

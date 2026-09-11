@@ -1,4 +1,4 @@
-"""Tests for shared.project_templates — 建立時套樣板 + 由任務推導的進度軌。
+"""Tests for shared.project_templates — 建立時套樣板 + 任務列表的階段順序。
 
 修修 2026-09-10：「建立 project 的時候可以有地方讓我選擇是哪一種 project…
 在成立這個 project 的同時，也能把它相對應的任務先全部建起來。」
@@ -19,10 +19,8 @@ from shared.project_templates import (
     find_template,
     kind_label,
     load_templates,
-    stage_states,
-    unstaged,
+    stage_rank,
 )
-from shared.weekly_indexer import WeeklyIndexer
 
 TEMPLATES = """
 templates:
@@ -134,116 +132,41 @@ class TestCreateFromTemplate:
             create_project_with_template(vault, "[Pod] 壞名字", "podcast")
 
 
-class TestStageStates:
-    """The rail is DERIVED — there is no tickable stage. These pin that."""
+class TestStageRank:
+    """``stage:`` survives only to ORDER the task list — the rail and the
+    「其他任務」 split that also used it were removed (修修 2026-09-11)."""
 
-    def _project(self, vault: Path):
+    def test_rank_follows_template_order(self, vault: Path):
         create_project_with_template(vault, "P", "podcast")
-        return find_project(vault, "P")
-
-    def _mark_done(self, vault: Path, basename: str):
-        p = vault / "TaskNotes" / "Tasks" / f"{basename}.md"
-        raw = p.read_text(encoding="utf-8")
-        fm, body = raw.split("---")[1], "---".join(raw.split("---")[2:])
-        d = yaml.safe_load(fm)
-        d["status"] = "done"
-        p.write_text(
-            "---\n" + yaml.dump(d, allow_unicode=True, sort_keys=False, width=10**9) + "---" + body,
-            encoding="utf-8",
-        )
-
-    def test_first_stage_is_now_when_nothing_done(self, vault: Path):
-        entry = self._project(vault)
-        tasks = WeeklyIndexer(vault).read_tasks()
-        states = stage_states(entry, tasks, {})
-        assert [s.name for s in states] == ["訪綱撰寫", "節目錄製", "後製與上架"]
-        assert [s.is_now for s in states] == [True, False, False]
-        assert not any(s.is_done for s in states)
-
-    def test_now_advances_as_tasks_complete(self, vault: Path):
-        entry = self._project(vault)
-        self._mark_done(vault, "P - 訪綱撰寫")
-        states = stage_states(entry, WeeklyIndexer(vault).read_tasks(), {})
-        assert states[0].is_done and not states[0].is_now
-        assert states[1].is_now
-
-    def test_all_done_marks_no_current_stage(self, vault: Path):
-        entry = self._project(vault)
-        for n in ("訪綱撰寫", "節目錄製", "後製與上架"):
-            self._mark_done(vault, f"P - {n}")
-        states = stage_states(entry, WeeklyIndexer(vault).read_tasks(), {})
-        assert all(s.is_done for s in states)
-        assert not any(s.is_now for s in states)
-
-    def test_empty_stage_is_not_done(self, vault: Path):
-        """0/0 means 'nothing here yet', never 'finished' — otherwise a stage
-        whose tasks were deleted would silently read as complete."""
-        entry = self._project(vault)
-        (vault / "TaskNotes" / "Tasks" / "P - 節目錄製.md").unlink()
-        states = stage_states(entry, WeeklyIndexer(vault).read_tasks(), {})
-        assert states[1].total == 0
-        assert states[1].is_done is False
-
-    def test_actual_pomodoros_roll_up_per_stage(self, vault: Path):
-        entry = self._project(vault)
-        tasks = WeeklyIndexer(vault).read_tasks()
-        states = stage_states(entry, tasks, {"P - 訪綱撰寫": 4})
-        assert states[0].actual == 4
-        assert states[0].est == 3
-
-    def test_stage_est_never_substitutes_the_template_default(self, vault: Path):
-        """A task with no 預估🍅 really is 0. Falling back to the template's
-        default made the rail disagree with the page's own est_total, which is
-        worse than an honest 0 (review 2026-09-10)."""
-        entry = self._project(vault)
-        p = vault / "TaskNotes" / "Tasks" / "P - 訪綱撰寫.md"
-        p.write_text(
-            '---\ntitle: P - 訪綱撰寫\nstatus: to-do\nstage: 訪綱撰寫\nprojects: ["[[P]]"]\n---\n',
-            encoding="utf-8",
-        )
-        tasks = WeeklyIndexer(vault).read_tasks()
-        states = stage_states(entry, tasks, {})
-        assert states[0].est == 0  # NOT the template's 3
-        assert states[0].est == sum(t.est_pomodoros for t in tasks if t.stage == "訪綱撰寫")
-
-    def test_no_kind_means_no_rail(self, vault: Path):
-        create_project_with_template(vault, "自由專案", "")
-        entry = find_project(vault, "自由專案")
-        assert stage_states(entry, WeeklyIndexer(vault).read_tasks(), {}) == []
-
-
-class TestUnstaged:
-    def test_tasks_outside_the_template_are_returned(self, vault: Path):
-        create_project_with_template(vault, "P", "podcast")
-        (vault / "TaskNotes" / "Tasks" / "P - 社群貼文.md").write_text(
-            '---\ntitle: P - 社群貼文\nstatus: to-do\nprojects: ["[[P]]"]\n---\n', encoding="utf-8"
-        )
         entry = find_project(vault, "P")
-        tasks = [t for t in WeeklyIndexer(vault).read_tasks() if t.project == "P"]
-        assert [t.slug for t in unstaged(entry, tasks)] == ["P - 社群貼文"]
+        assert stage_rank(entry) == {"訪綱撰寫": 0, "節目錄製": 1, "後製與上架": 2}
 
-    def test_stage_removed_from_yaml_falls_back_to_unstaged(
-        self, vault: Path, monkeypatch, tmp_path
+    def test_reordering_the_yaml_reorders_existing_projects(
+        self, vault: Path, tmp_path: Path, monkeypatch
     ):
+        """Order lives in the template, never in the task file — so editing the
+        YAML re-sorts projects that already exist."""
         create_project_with_template(vault, "P", "podcast")
-        trimmed = tmp_path / "trimmed.yaml"
-        io.open(trimmed, "w", encoding="utf-8", newline="\n").write(
-            "templates:\n  podcast:\n    label: P\n    stages: [訪綱撰寫]\n"
-        )
-        monkeypatch.setenv("NAKAMA_PROJECT_TEMPLATES", str(trimmed))
-        entry = find_project(vault, "P")
-        tasks = [t for t in WeeklyIndexer(vault).read_tasks() if t.project == "P"]
-        assert sorted(t.stage for t in unstaged(entry, tasks)) == ["後製與上架", "節目錄製"]
-
-    def test_no_template_returns_everything(self, vault: Path):
-        create_project_with_template(vault, "自由專案", "")
-        (vault / "TaskNotes" / "Tasks" / "自由專案 - 隨手事.md").write_text(
-            '---\ntitle: 自由專案 - 隨手事\nstatus: to-do\nprojects: ["[[自由專案]]"]\n---\n',
+        flipped = tmp_path / "flipped.yaml"
+        flipped.write_text(
+            "templates:\n  podcast:\n    label: P\n    stages: [後製與上架, 節目錄製, 訪綱撰寫]\n",
             encoding="utf-8",
         )
-        entry = find_project(vault, "自由專案")
-        tasks = [t for t in WeeklyIndexer(vault).read_tasks() if t.project == "自由專案"]
-        assert len(unstaged(entry, tasks)) == 1
+        monkeypatch.setenv("NAKAMA_PROJECT_TEMPLATES", str(flipped))
+        entry = find_project(vault, "P")
+        assert stage_rank(entry)["後製與上架"] == 0
+        assert stage_rank(entry)["訪綱撰寫"] == 2
+
+    def test_no_kind_has_no_ranking(self, vault: Path):
+        create_project_with_template(vault, "自由專案", "")
+        assert stage_rank(find_project(vault, "自由專案")) == {}
+
+    def test_retired_template_has_no_ranking(self, vault: Path, tmp_path: Path, monkeypatch):
+        create_project_with_template(vault, "P", "podcast")
+        empty = tmp_path / "empty.yaml"
+        empty.write_text("templates: {}\n", encoding="utf-8")
+        monkeypatch.setenv("NAKAMA_PROJECT_TEMPLATES", str(empty))
+        assert stage_rank(find_project(vault, "P")) == {}
 
 
 def test_shipped_yaml_is_valid():

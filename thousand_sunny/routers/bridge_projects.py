@@ -21,7 +21,6 @@ Auth: HMAC cookie (mirrors ``bridge_weekly.py``).
 from __future__ import annotations
 
 import hashlib
-import re
 import unicodedata
 from datetime import date
 from pathlib import Path
@@ -35,7 +34,7 @@ from fastapi.templating import Jinja2Templates
 from shared.config import get_vault_path
 from shared.log import get_logger
 from shared.markdown import render_markdown
-from shared.pomodoro_aggregator import POMODORO_MINUTES, weekly_actual
+from shared.pomodoro_aggregator import POMODORO_MINUTES, all_time_actual
 from shared.project_index import (
     ProjectEntry,
     ProjectError,
@@ -49,8 +48,7 @@ from shared.project_templates import (
     create_project_with_template,
     kind_label,
     load_templates,
-    stage_states,
-    unstaged,
+    stage_rank,
 )
 from shared.project_writer import ProjectWriteError, reassign_task_project
 from shared.weekly_indexer import WeeklyIndexer, WeeklyTask, today_taipei
@@ -63,8 +61,6 @@ page_router = APIRouter(prefix="/bridge", tags=["bridge-projects"])
 
 _TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "templates" / "bridge"
 _templates = Jinja2Templates(directory=str(_TEMPLATE_DIR))
-
-_DAILY_NOTE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
 
 
 def _shosho_asset_version() -> str:
@@ -102,48 +98,15 @@ _ERRORS = {
 # ── rollup helpers (all computed on read — ADR-068) ──────────────────────────
 
 
-def _history_floor(vault: Path) -> date:
-    """Earliest daily-note date — the all-time window's start for the 🍅 union."""
-    daily = vault / "Journals" / "Daily"
-    floor: Optional[date] = None
-    if daily.is_dir():
-        for p in daily.iterdir():
-            m = _DAILY_NOTE_RE.match(p.name)
-            if not m:
-                continue
-            try:
-                d = date.fromisoformat(m.group(1))
-            except ValueError:
-                continue
-            if floor is None or d < floor:
-                floor = d
-    return floor or today_taipei()
-
-
 def _actual_by_slug(vault: Path, tasks: list[WeeklyTask]) -> dict[str, int]:
-    """All-time actual 🍅 per task slug — ONE daily scan for the whole set."""
+    """All-time actual 🍅 per task slug — the shared cross-week rollup, the same
+    one the Weekly dashboard's 「全部」 tab uses."""
     if not tasks:
         return {}
-    slugs = {t.slug for t in tasks}
-    # Window floor: earliest daily note AND earliest task trace — a timeEntry can
-    # predate the daily-notes history (or the Journals/Daily dir may be absent).
-    floor = _history_floor(vault)
-    for t in tasks:
-        for e in t.time_entries:
-            if isinstance(e, dict):
-                raw = str(e.get("startTime") or e.get("endTime") or "")[:10]
-                try:
-                    floor = min(floor, date.fromisoformat(raw))
-                except ValueError:
-                    continue
-        if t.plan:
-            floor = min(floor, min(a.date for a in t.plan))
-    rollup = weekly_actual(
+    rollup = all_time_actual(
         vault,
-        floor,
-        today_taipei(),
-        task_time_entries=[(t.slug, t.time_entries) for t in tasks],
-        work_task_keys=slugs,
+        [(t.slug, t.time_entries) for t in tasks],
+        work_task_keys={t.slug for t in tasks},
     )
     return rollup.by_task
 
@@ -245,6 +208,15 @@ def _project_view(p: ProjectEntry, members: list[WeeklyTask], actual: dict[str, 
     # 未完在前、已完成沉底；兩組內都以最近活動新→舊排。
     open_views = sorted([v for v in views if not v["done"]], key=lambda v: v["last"], reverse=True)
     done_views = sorted([v for v in views if v["done"]], key=lambda v: v["last"], reverse=True)
+    # …then, for a template project, put them back in the order the work is meant
+    # to happen. Without this a fresh podcast project lists 上架 before 訪綱撰寫,
+    # because the vault scan is alphabetical. Stable sort ⇒ the recency order above
+    # survives as the tie-break inside a stage (修修 2026-09-11).
+    rank = stage_rank(p)
+    if rank:
+        last_rank = len(rank)
+        for group in (open_views, done_views):
+            group.sort(key=lambda v: rank.get(v["stage"], last_rank))
     ordered = open_views + done_views
     last = max((v["last"] for v in ordered if v["last"]), default="")
 
@@ -258,10 +230,6 @@ def _project_view(p: ProjectEntry, members: list[WeeklyTask], actual: dict[str, 
     eta_days = (eta - today_taipei()).days if eta else None
 
     sched_rows, sched_loose = _schedule_rows(members, by_slug)
-    stages = stage_states(p, members, actual)
-    # Hoisted: inside the comprehension's `if` this re-ran (and re-read the
-    # templates YAML) once per member task (review 2026-09-10).
-    loose_slugs = {t.slug for t in unstaged(p, members)}
 
     return {
         "name": p.name,
@@ -270,21 +238,6 @@ def _project_view(p: ProjectEntry, members: list[WeeklyTask], actual: dict[str, 
         "kind_label": kind_label(p.kind) if p.kind else "",
         "created": p.created[:10],
         "tasks": ordered,
-        "stages": [
-            {
-                "name": s.name,
-                "order": s.order,
-                "total": s.total,
-                "done": s.done,
-                "est": s.est,
-                "actual": s.actual,
-                "is_done": s.is_done,
-                "is_now": s.is_now,
-                "tasks": [v for v in ordered if v["stage"] == s.name],
-            }
-            for s in stages
-        ],
-        "loose_tasks": [v for v in ordered if v["slug"] in loose_slugs],
         "kanban": {
             "todo": [v for v in ordered if not v["done"] and v["status"] != "doing"],
             "doing": [v for v in ordered if not v["done"] and v["status"] == "doing"],

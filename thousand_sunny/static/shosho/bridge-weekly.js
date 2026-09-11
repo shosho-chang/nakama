@@ -1,14 +1,14 @@
 /* Shared task-row behaviour (ADR-041 v3-H Slice 3).
  *
  * These three handlers are page-agnostic — they operate on the task_row markup
- * (.wk-box-form / form[data-confirm] / .wk-sched-form) wherever it appears, so the
+ * (.sho-box-form / form[data-confirm] / .wk-sched-form) wherever it appears, so the
  * Weekly Dashboard AND the Project Brief tab both load this file. The dashboard's
  * tab-toggle + stay-in-place sessionStorage restore stays inline in weekly.html
  * (it targets .wk-tab/.wk-tabpane that only exist there). */
 (function () {
   /* Done-toggle checkbox: the box is a real <form> submit. Stop the click bubbling
      so it doesn't also toggle the parent <details> row. */
-  document.querySelectorAll('.wk-box-form button').forEach(function (b) {
+  document.querySelectorAll('.sho-box-form button').forEach(function (b) {
     b.addEventListener('click', function (e) { e.stopPropagation(); });
   });
 
