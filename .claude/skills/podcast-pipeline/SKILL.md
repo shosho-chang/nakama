@@ -521,6 +521,13 @@ Editorial Master 開得起來＝定稿是真的。開不起來就**立刻**回�
 ### 派工圖（哪些真的能平行，哪些只是看起來像）
 
 ```
+Editorial Master 封存
+ │
+ ├─【平行】完整節目 packaging（S7P）—— 一路跑到 gate，中間不要停下來問
+ │     title-brainstorm --cut-id full → emit_packages
+ │     cutout 抽格（麥克風能量取窗 → blendshape → vision 複驗）→ face_measure --write
+ │     ⇒ 到 `/bridge/packaging/<slug>` **為止**；標題／臉／大字他在 gate 上挑，不在對話裡問
+ ▼
 定稿
  │
  ├─【平行 ×3】miner：story / punch / value          subagent，互相隔離不讀彼此輸出
@@ -576,6 +583,16 @@ Editorial Master 開得起來＝定稿是真的。開不起來就**立刻**回�
 選段（停點 1）、timeline review（停點 2）、packaging review（停點 3），
 加上最後 YouTube 上傳要他明確核准。**其餘每一次「要不要繼續」都是在把決策成本丟回給他。**
 中途失敗就修，修不動才停下來報——見 §Stop and recovery policy。
+
+⛔ **不要自己發明第四個停點。** 尤其不要把「做好了、先給他在對話裡看一眼」當成停點——
+packaging 的 review 介面**就是 gate**（ADR-054 D11：gate 端零 render、零 LLM，桌機先把 PNG 做完，
+Bridge 只勾）。標題挑哪一條、用哪兩張臉、大字打什麼，全部是 gate 上〈組封面〉區的欄位，
+不是對話題目。在對話裡問＝把他從那個介面拉出來，還要他自己記得回去。
+
+2026-09-11 血淚：20260721 呂冠緯，我叫 title-brainstorm subagent「不要 emit，修修要先看過」——
+那句是我編的，流程裡沒有。結果 packaging 全部做完卻沒進 gate，他問「我不是這時候應該進
+Packaging Gate 去 review 嗎？Packaging Gate 上沒看到啊」。他的原話：
+「以後我確定了 editorial master 之後，你就直接跑到 packaging gate 那邊再停下來，**不要讓我一直提醒**。」
 
 ### carousel 這一條的入口（免得每次重新摸索）
 
