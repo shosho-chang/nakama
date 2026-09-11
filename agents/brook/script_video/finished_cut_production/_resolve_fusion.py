@@ -416,16 +416,15 @@ class DaVinciResolveFacade:
         # 一格是 33 毫秒、肉眼不可見，而且是 conform 的必然結果，不是落點錯了；
         # 真正放錯位置的落差遠大於一格，仍然擋得住。
         # 起點不放寬——落點是我們指定的，沒有 conform 的理由。
+        expected_source_frames = _conformed_source_frames(
+            actual_end - actual_start, source_fps, timeline_fps
+        )
         if (
             actual_start != record_frame
             or abs(actual_end - (record_frame + record_duration_frames)) > 1
             or actual_end <= actual_start
             or actual_source_start != 0
-            or actual_source_end
-            not in {
-                source_duration_frames - 1,
-                source_duration_frames,
-            }
+            or abs((actual_source_end - actual_source_start + 1) - expected_source_frames) > 1
             or not same_media
         ):
             raise ResolveTransactionError(
@@ -433,7 +432,7 @@ class DaVinciResolveFacade:
                 f"actual=({actual_start},{actual_end},{actual_source_start},"
                 f"{actual_source_end},{same_media}); "
                 f"expected=({record_frame},{record_frame + record_duration_frames}±1,0,"
-                f"{source_duration_frames - 1}|{source_duration_frames},True)"
+                f"{actual_source_start + expected_source_frames - 1}±1,True)"
             )
 
     def select_timeline(self, uid: str) -> None:
@@ -810,6 +809,24 @@ def _json_compatible(value: object) -> object:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         return [_json_compatible(item) for item in value]
     raise ResolveTransactionError("Resolve snapshot contains an unsupported value")
+
+
+def _conformed_source_frames(
+    timeline_frames: int, source_fps: float, timeline_fps: float
+) -> int:
+    """記錄端佔 `timeline_frames` 格時，來源端該被吃掉幾格。
+
+    來源端的長度**跟著實際的記錄長度走**，不是跟著我們用浮點秒數算出來的
+    `round(duration_sec * source_fps)`。Resolve 是先把記錄端取整，再把那個長度
+    conform 回來源幀率；兩層取整各帶一次誤差，用秒數直接算必然對不上。
+
+    value-L02：落點 8.02s、來源 59.94fps、時間軸 30fps。`round(8.02*59.94)=481`，
+    但 Resolve 實際給 240 記錄格 → 480 來源格（末格索引 479）。舊檢查要
+    480 或 481，整條物化被一個純粹的單位錯誤擋住。
+    """
+    if source_fps <= 0 or timeline_fps <= 0:
+        raise ResolveTransactionError("frame rates must be positive to conform a source range")
+    return round(timeline_frames * source_fps / timeline_fps)
 
 
 def _is_sha256(value: object) -> bool:
