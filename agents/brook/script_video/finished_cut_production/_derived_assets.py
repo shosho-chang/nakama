@@ -31,6 +31,47 @@ _NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS = frozenset({"stock_video", "photo", "non_e
 MAX_FULLSCREEN_TRANSITION_SHOW_SEC = 4.0
 MAX_TITLE_OR_IDENTITY_SHOW_SEC = 8.0
 MAX_ASSET_BACKED_BROLL_SHOW_SEC = 12.0
+# 字卡要讀得完。中文上字閱讀約每字 0.35 秒，加上進退場動畫約 0.8 秒，並保底 2.5 秒。
+#
+# 2026-09-08 蘇予昕 punch-L04：Hero「花了快一百萬」語意跨度 7 秒，卡片只給 1.07 秒
+# ——六個字含動畫 1.07 秒，觀眾根本讀不完。秒數從來不是設計出來的，是 DP 隨手挑的
+# placement_cue_ids 決定的，而整條 pipeline 只有上限、沒有下限。
+#
+# 只套用在 DP 能決定跨度的字卡。滿版轉場卡的 3.0 秒是 derive_visual_placement 依
+# canonical section 固定鑄造的，不由 DP 選 cue，因此不在此列。
+MIN_READABLE_SHOW_SEC = 2.5
+READ_SEC_PER_CHAR = 0.35
+CARD_ANIMATION_SEC = 0.8
+_READABLE_FLOOR_IMPLEMENTATIONS = frozenset({"hero_title", "identity_card"})
+
+
+def readable_floor_sec(implementation_kind: str, display: str) -> float | None:
+    """回傳這張字卡至少要停留幾秒；不受此限的實作回 None。"""
+    if implementation_kind not in _READABLE_FLOOR_IMPLEMENTATIONS:
+        return None
+    return max(
+        MIN_READABLE_SHOW_SEC,
+        len(display.strip()) * READ_SEC_PER_CHAR + CARD_ANIMATION_SEC,
+    )
+
+
+def max_readable_display_chars() -> int:
+    """字卡最多寫幾個字——再多就讀不完，而讀得完所需的秒數又撞破上限。
+
+    `readable_floor_sec` 會把字卡撐到讀得完，`_PLACEMENT_DURATION_CEILINGS_SEC`
+    又限制它最多停多久。兩條一夾，display 的字數就有一個硬上限——可是 Director
+    的 `format_policy` 從來沒把它說出來，只講「要是完整主張」跟數量／間隔上限。
+
+    20260721 punch-L03 的實測：hero01 的 display 是 23 個字，撐出 8.85 秒 >
+    8.0 秒上限，整條 run 在 preflight 就以 `visual_placement_duration_exceeded`
+    失敗。而且 **DP 怎麼挑 cue 都救不回來**——秒數的下限是 display 長度決定的，
+    長度是 Director 寫的。不告訴上游的硬限制，就是讓它在下游撞牆。
+    """
+    return math.floor(
+        (MAX_TITLE_OR_IDENTITY_SHOW_SEC - CARD_ANIMATION_SEC) / READ_SEC_PER_CHAR + 1e-9
+    )
+
+
 _PLACEMENT_DURATION_CEILINGS_SEC = {
     "fullscreen_transition": MAX_FULLSCREEN_TRANSITION_SHOW_SEC,
     "hero_title": MAX_TITLE_OR_IDENTITY_SHOW_SEC,

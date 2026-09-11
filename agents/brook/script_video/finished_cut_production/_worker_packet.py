@@ -10,7 +10,10 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, Protocol, TypeAlias
 
+from shared.quiet_subprocess import quiet_kwargs
+
 from ._assets import AssetContractError, AssetKind, AssetResolver, ResolvedAsset
+from ._derived_assets import max_readable_display_chars
 from ._policy import (
     LONG_MAX_HERO_TITLES,
     LONG_MAX_NONSTRUCTURAL_VISUAL_GAP_SEC,
@@ -135,6 +138,7 @@ class SubprocessMediaPreviewProcessRunner:
                 stderr=subprocess.DEVNULL,
                 timeout=timeout_sec,
                 shell=False,
+                **quiet_kwargs(),
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             raise WorkerPacketError("inspection preview process failed") from error
@@ -697,6 +701,9 @@ def expected_format_policy(
                 "dangling_slash_allowed": False,
                 "orphan_line_allowed": False,
                 "ambiguous_fragment_allowed": False,
+                # 字卡撐到讀得完所需的秒數，不能撞破它自己的停留上限。
+                # 這個上限一直存在，但以前只在建置端爆——見 max_readable_display_chars。
+                "max_display_chars": max_readable_display_chars(),
             },
             "hero_title": {
                 "standalone_claim_only": True,

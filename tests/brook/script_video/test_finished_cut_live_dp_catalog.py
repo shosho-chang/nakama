@@ -7,7 +7,9 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parents[3]))
 
 from agents.brook.script_video.finished_cut_production._engine import (  # noqa: E402
+    _derived_build_failed,
     _live_catalog,
+    _retry_with_live_catalog,
 )
 
 
@@ -52,3 +54,110 @@ def test_without_a_resolver_the_stored_snapshot_still_answers():
     snapshot = _Catalog((_Item("asset-sha256:old"),))
 
     assert _live_catalog(None, snapshot) is snapshot  # type: ignore[arg-type]
+
+
+@dataclass(frozen=True)
+class _Request:
+    """StageRequest 的最小替身——只有這條路徑會動到的欄位。"""
+
+    stage: str
+    request_id: str
+    attempt: int
+    worker_asset_refs: tuple[str, ...]
+    worker_catalog_items: tuple[_Item, ...]
+
+
+def test_dp_retry_carries_the_catalog_as_it_is_now_not_as_it_failed():
+    """DP 之所以失敗常常正是因為當時櫃子裡沒有對的素材——重試要看得到補買的那些。
+
+    20260721 punch-L03：登錄時素材庫是空的（DP 還沒跑，沒人知道要買什麼），補買八支
+    之後 `retry-failed-dispatch`，packet 的 catalog 仍然是 []，DP 連一個 asset_ref
+    都引用不到，而它的契約就是「只能選、不能買」。
+    """
+    failed = _Request(
+        stage="dp",
+        request_id="request-old",
+        attempt=1,
+        worker_asset_refs=(),
+        worker_catalog_items=(),
+    )
+    live = _Catalog((_Item("asset-sha256:acquired-after-the-failure"),))
+
+    retry = _retry_with_live_catalog(failed, "request-new", live)  # type: ignore[arg-type]
+
+    assert retry.request_id == "request-new"
+    assert retry.attempt == 2
+    assert retry.worker_asset_refs == ("asset-sha256:acquired-after-the-failure",)
+    assert retry.worker_catalog_items == live.items()
+
+
+def test_non_dp_retry_keeps_its_empty_catalog():
+    """Director／visual_review 的請求本來就不帶目錄，硬塞會弄壞一致性檢查。"""
+    failed = _Request(
+        stage="director",
+        request_id="request-old",
+        attempt=2,
+        worker_asset_refs=(),
+        worker_catalog_items=(),
+    )
+    live = _Catalog((_Item("asset-sha256:irrelevant-here"),))
+
+    retry = _retry_with_live_catalog(failed, "request-new", live)  # type: ignore[arg-type]
+
+    assert retry.attempt == 3
+    assert retry.worker_asset_refs == ()
+    assert retry.worker_catalog_items == ()
+
+
+@dataclass(frozen=True)
+class _Stage:
+    stage: str
+
+
+@dataclass(frozen=True)
+class _View:
+    derived_asset_request: object
+    status: str
+    accepted_stages: tuple[_Stage, ...] = ()
+    outstanding_request: object = None
+
+
+def test_a_failed_derived_build_is_not_current_work():
+    """建置死了就要讓得開——否則上游造成的失敗沒有任何合法出路。
+
+    20260721 punch-L03：hero 字卡 23 個字撐破 8 秒上限，長度是 Director 寫的、DP
+    改不了，而 request_correction 原本用「有 derived_asset_request 且 status 不是
+    pending」擋住上游修正——那個條件正好就是建置失敗的條件。
+    """
+    view = _View(derived_asset_request=object(), status="needs_review")
+
+    assert _derived_build_failed(view)  # type: ignore[arg-type]
+
+
+def test_a_build_still_in_flight_is_not_treated_as_failed():
+    view = _View(derived_asset_request=object(), status="pending")
+
+    assert not _derived_build_failed(view)  # type: ignore[arg-type]
+
+
+def test_a_build_already_handed_to_visual_review_is_not_failed():
+    """已經交出去給 visual_review 的建置是 current work，不該被上游修正推翻。"""
+    accepted = _View(
+        derived_asset_request=object(),
+        status="needs_review",
+        accepted_stages=(_Stage("visual_review"),),
+    )
+    outstanding = _View(
+        derived_asset_request=object(),
+        status="needs_review",
+        outstanding_request=_Stage("visual_review"),
+    )
+
+    assert not _derived_build_failed(accepted)  # type: ignore[arg-type]
+    assert not _derived_build_failed(outstanding)  # type: ignore[arg-type]
+
+
+def test_no_build_request_at_all_is_not_a_failure():
+    view = _View(derived_asset_request=None, status="needs_review")
+
+    assert not _derived_build_failed(view)  # type: ignore[arg-type]

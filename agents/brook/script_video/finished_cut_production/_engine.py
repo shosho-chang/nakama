@@ -507,7 +507,7 @@ class FinishedCutProduction:
             if not _request_base_is_current(run, request, aggregate):
                 raise CommandRejectedError("failed semantic request is not exact current")
             request_id = f"request-{uuid4().hex}"
-            retry = replace(request, request_id=request_id, attempt=request.attempt + 1)
+            retry = _retry_with_live_catalog(request, request_id, run.worker_catalog)
             self._store.save_run(
                 _StoredRun(
                     command=stored.command,
@@ -600,7 +600,12 @@ class FinishedCutProduction:
         )
         if dispatch_state != "unclaimed":
             raise CommandRejectedError("downstream semantic request was already claimed")
-        if view.derived_asset_request is not None and view.status != "pending" and stage != "dp":
+        if (
+            view.derived_asset_request is not None
+            and view.status != "pending"
+            and stage != "dp"
+            and not _derived_build_failed(view)
+        ):
             raise CommandRejectedError("downstream derived-asset work is already current")
         target = next(event for event in selection.base.events if event.event_id == event_id)
         upstream = selection.current_prefix[-1] if selection.current_prefix else None
@@ -688,7 +693,7 @@ class FinishedCutProduction:
         ):
             build_state = "ready"
         elif view.derived_asset_request is not None:
-            build_state = "failed" if view.status == "needs_review" else "pending"
+            build_state = "failed" if _derived_build_failed(view) else "pending"
         else:
             build_state = "not_started"
         return _project_run_inspection(
@@ -781,6 +786,63 @@ class _RunState:
     stock_video_metadata: tuple[StockVideoMetadata, ...] = ()
     derived_asset_builder: DerivedAssetBuilder | None = None
     asset_resolver: AssetResolver | None = None
+
+
+def _derived_build_failed(view: RunView) -> bool:
+    """衍生素材建置已經死在這裡——不是還在跑，也不是已經交給 visual_review。
+
+    `request_correction` 原本用「有 derived_asset_request 且 status 不是 pending」
+    當「下游工作還是 current」來擋上游修正。可是那個條件**正好就是建置失敗的條件**
+    （見 `inspect_run` 的 build_state），於是唯一需要回上游修的情況被擋死了。
+
+    20260721 punch-L03：hero01 的字卡 23 個字，撐到讀得完要 8.85 秒 > 8.0 秒上限，
+    preflight 直接 `visual_placement_duration_exceeded`。長度是 Director 寫的，DP
+    改不了；而 `retry-failed-dispatch` 要有 outstanding 的語意請求才動得了，這時
+    沒有。整條 run 於是沒有任何合法出路，只剩「重新登錄整支」——而那正是這個檔案
+    自己在 `_live_catalog` 裡記下的「蠻力，不是流程」。
+
+    失敗的建置不是 current work，是死路；死路必須讓得開。
+    """
+    if view.derived_asset_request is None:
+        return False
+    if any(stage.stage == "visual_review" for stage in view.accepted_stages):
+        return False
+    outstanding = view.outstanding_request
+    if outstanding is not None and outstanding.stage == "visual_review":
+        return False
+    return view.status == "needs_review"
+
+
+def _retry_with_live_catalog(
+    request: StageRequest,
+    request_id: str,
+    catalog: WorkerSelectionCatalog,
+) -> StageRequest:
+    """重試一站 DP 時，換上**現在**的素材目錄，不是失敗那一刻的那份。
+
+    `_live_catalog` 已經讓每次載入 run 都重讀目錄，但 `retry_failed_dispatch` 造重試
+    請求時是 `replace(request, request_id=…, attempt=…)`——只換這兩個欄位，於是舊請求
+    那份 `worker_catalog_items` 原封不動被複製過去。活目錄只被拿去做 base 驗證，從來
+    沒進到送出去的請求裡。
+
+    20260721 punch-L03 的實測：登錄那一刻素材庫是空的（DP 還沒跑，沒人知道要買什麼），
+    補買八支之後 retry，packet 的 `catalog` 仍然是 `[]`，DP 連一個 `asset_ref` 都引用
+    不到。而 DP 的契約就是 `implement_current_events_using_only_catalog_references`
+    ——只能選、不能買——所以空目錄等於整站無解。
+
+    只在 DP 這一站換。Director 與 visual_review 的請求本來就不帶素材目錄，硬塞會讓
+    `_worker_packet` 的 `worker_catalog_items` / `worker_asset_refs` 一致性檢查失效。
+    """
+    if request.stage != "dp":
+        return replace(request, request_id=request_id, attempt=request.attempt + 1)
+    items = catalog.items()
+    return replace(
+        request,
+        request_id=request_id,
+        attempt=request.attempt + 1,
+        worker_asset_refs=tuple(item.reference for item in items),
+        worker_catalog_items=items,
+    )
 
 
 def _live_catalog(

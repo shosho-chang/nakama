@@ -7,6 +7,9 @@ from pathlib import Path
 
 import pytest
 
+from agents.brook.script_video.finished_cut_production._derived_assets import (
+    max_readable_display_chars,
+)
 from agents.brook.script_video.finished_cut_production._assets import (
     AssetKind,
     AssetRecord,
@@ -356,6 +359,7 @@ def test_long_worker_brief_prevents_fragmented_or_semantically_duplicated_card_c
             "dangling_slash_allowed": False,
             "orphan_line_allowed": False,
             "ambiguous_fragment_allowed": False,
+            "max_display_chars": max_readable_display_chars(),
         },
         "hero_title": {
             "standalone_claim_only": True,
