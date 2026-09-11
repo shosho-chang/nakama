@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from shared.zh_linebreak import clean_breaks, split_clause, wrap_lines
+from shared.zh_linebreak import clean_breaks, display_width, split_clause, wrap_lines
 
 
 @pytest.mark.parametrize(
@@ -77,7 +77,29 @@ def test_never_orphans_a_two_char_line():
 
 
 def test_relaxed_fallback_never_starts_a_line_with_a_sticky_char():
-    """排不下時可以鬆行尾，不可以鬆行首——行首掛「的」讀起來是話斷掉。"""
+    """排不下時可以鬆行尾，不可以鬆行首——行首掛「的」讀起來是話斷掉。
+
+    2026-09-11 `display_width` 上線後這句**不再需要那條妥協**：右半
+    「人類的Agency是什麼」是 18 個半形單位、排得下（舊的字元數量尺算成 12 字
+    > 10 就排不下，才被逼去鬆行尾、切出行尾掛「的」的 `好好的定義人類的`）。
+    量尺修對之後走回乾淨切點，行尾是「義」不是「的」——**這是升級不是迴歸**。
+    """
     lines = wrap_lines("好好的定義人類的Agency是什麼", 10, 2)
-    assert lines == ["好好的定義人類的", "Agency是什麼"]
+    assert lines == ["好好的定義", "人類的Agency是什麼"]
     assert not lines[1].startswith("的")
+    assert lines[0][-1] != "的"
+
+
+def test_latin_words_are_measured_by_display_width_not_character_count():
+    """英文詞不該因為字母多就排不下——12 個字母只有 6 個中文字寬。
+
+    20260721 呂冠緯：`Frictionless`（12）與 `bookkeeping`（11）在舊量尺下
+    `wrap_lines` 回 None，`run_shortform_director.py` 直接 SystemExit，兩支已
+    挑定的短片做不出來。實際寬度分別是 12／11 個半形單位，遠低於 10 字（20 單位）。
+    """
+    assert display_width("Frictionless") == 12
+    assert display_width("大腦外包") == 8
+    assert wrap_lines("Frictionless", 10, 2) == ["Frictionless"]
+    assert wrap_lines("bookkeeping", 10, 2) == ["bookkeeping"]
+    # 一行放不下就斷行，但不是判死
+    assert wrap_lines("就是說一些 bookkeeping", 10, 2) == ["就是說一些 ", "bookkeeping"]

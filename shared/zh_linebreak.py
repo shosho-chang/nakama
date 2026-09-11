@@ -24,6 +24,7 @@
 
 from __future__ import annotations
 
+import unicodedata
 from typing import Literal
 
 from shared.cue_builder import jieba_boundaries
@@ -38,6 +39,27 @@ from shared.subtitle_finalize import (
 )
 
 BreakMode = Literal["card", "line"]
+
+#: 半形字元的顯示寬度。`limit` 一直以來的語意是「**幾個中文字寬**」，所以內部
+#: 一律換算成半形單位比較：limit 10 = 20 個半形單位。
+_HALF = 1
+_FULL = 2
+
+
+def display_width(text: str) -> int:
+    """字串佔幾個半形單位——全形 2、半形 1。
+
+    2026-09-11 血淚（20260721 呂冠緯 story-S06／story-S07）：原本用 `len(text)`
+    當寬度，於是 `Frictionless`（12 個半形字母）被判成超過 10 字的行寬排不下，
+    `run_shortform_director.py` 直接 `SystemExit`，兩支修修已經挑定的短片做不出來。
+    但那 12 個字母的實際寬度只等於 6 個中文字，**版面綽綽有餘，錯的是量尺**。
+
+    `bookkeeping`（11）也是同一個原因。這類詞在 AI 主題的訪談裡只會越來越多，
+    用字元數當寬度等於讓片子被英文詞卡死。
+    """
+    return sum(
+        _FULL if unicodedata.east_asian_width(ch) in ("W", "F") else _HALF for ch in text
+    )
 
 #: 左段結尾「自己站得住」的詞性：名詞類、獨立動詞、習語、簡稱。
 #: 代名詞（r）與數量詞（m/q）刻意不收——「這件」「一個」收尾就是拆到一半。
@@ -133,7 +155,7 @@ def _relaxed_breaks(text: str, limit: int) -> list[int]:
     """
     out = []
     for i in sorted(jieba_boundaries(text)):
-        if not 0 < i <= limit or i >= len(text):
+        if not 0 < i or display_width(text[:i]) > limit * _FULL or i >= len(text):
             continue
         if text[i] in _HEAD_STICKY or text[i] in CLOSE_BRACKETS:
             continue
@@ -149,11 +171,11 @@ def wrap_lines(text: str, limit: int, max_lines: int = 2) -> list[str] | None:
     ⚠️ 不做「排不下就降級成別的樣式」——那是把版面問題推給樣式，
     正解是回上游把過長的子句拆開（`split_clause`）。
     """
-    if len(text) <= limit:
+    if display_width(text) <= limit * _FULL:
         return [text]
     if max_lines < 2:
         return None
-    fits = [i for i in clean_breaks(text, "line") if i <= limit]
+    fits = [i for i in clean_breaks(text, "line") if display_width(text[:i]) <= limit * _FULL]
     for cut in (fits, _relaxed_breaks(text, limit)):
         for i in sorted(cut, key=lambda i: -break_score(text, i)):
             rest = wrap_lines(text[i:], limit, max_lines - 1)
