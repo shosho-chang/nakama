@@ -178,6 +178,9 @@ class TestStatusToggle:
         assert r.headers["location"] == "/bridge/projects?err=missing"
 
 
+# Codepoint order for these three is 後製與上架 < 節目錄製 < 訪綱撰寫 — the exact
+# REVERSE of the template order, so an ordering test on them is meaningful (the
+# vault scan sorts filenames).
 TEMPLATE_YAML = """
 templates:
   podcast:
@@ -185,6 +188,7 @@ templates:
     stages:
       - { name: 訪綱撰寫, pomodoros: 3 }
       - { name: 節目錄製, pomodoros: 4 }
+      - { name: 後製與上架, pomodoros: 8 }
 """
 
 
@@ -246,17 +250,34 @@ class TestCreateWithTemplate:
         assert r.headers["location"] == "/bridge/projects?err=template"
         assert not (tmp_path / "Projects" / "X.md").exists()
 
-    def test_rail_renders_derived_state(self, tclient, tmp_path):
+    def test_list_is_flat_and_in_template_order(self, tclient, tmp_path):
+        """修修 2026-09-11:「已經重複了…我只需要乾淨的任務列表」— no per-stage
+        headers, but the ORDER still follows the template (the vault scan is
+        alphabetical, which would list 後製與上架 before 訪綱撰寫)."""
         tclient.post("/bridge/projects/new", data={"name": "P", "kind": "podcast"})
-        # finish stage 1 only
-        p = tmp_path / "TaskNotes" / "Tasks" / "P - 訪綱撰寫.md"
-        p.write_text(
-            p.read_text(encoding="utf-8").replace("status: to-do", "status: done"), "utf-8"
-        )
         html = tclient.get("/bridge/projects/P").text
-        rail = html.split('class="pjd-rail"', 1)[1].split("</ol>", 1)[0]
-        assert "is-done" in rail and "is-now" in rail
-        assert "訪綱撰寫" in rail and "節目錄製" in rail
+        listing = html.split('data-pane="list"', 1)[1].split("pjd-attach", 1)[0]
+        assert "pjd-group-t" not in listing  # no group headings at all
+        assert "其他任務" not in listing
+        assert listing.index("訪綱撰寫") < listing.index("節目錄製") < listing.index("後製與上架")
+
+    def test_attached_tasks_sort_after_the_template_ones(self, tclient, tmp_path):
+        tclient.post("/bridge/projects/new", data={"name": "P", "kind": "podcast"})
+        _write_task(tmp_path, "散裝任務")
+        tclient.post("/bridge/projects/P/attach", data={"task": ["散裝任務"]})
+        listing = (tclient.get("/bridge/projects/P").text.split('data-pane="list"', 1)[1]).split(
+            "pjd-attach", 1
+        )[0]
+        assert listing.index("後製與上架") < listing.index("散裝任務")
+
+    def test_no_progress_rail_is_rendered(self, tclient, tmp_path):
+        """修修 2026-09-11:「這一列我沒有跟你講說我要做」— the stage rail was my
+        own addition to the mockup, never a requirement. Pinned so it does not
+        creep back in."""
+        tclient.post("/bridge/projects/new", data={"name": "P", "kind": "podcast"})
+        html = tclient.get("/bridge/projects/P").text
+        assert "pjd-rail" not in html
+        assert "pjd-stage" not in html
 
 
 class TestDashboardReadouts:
@@ -418,11 +439,20 @@ class TestTaskCheckbox:
         _write_project(tmp_path, "P")
         _write_task(tmp_path, "P - 任務", project="P")
         html = client.get("/bridge/projects/P").text
-        assert 'class="pjd-box' in html
+        assert 'class="sho-box' in html
         assert "/task/P%20-%20%E4%BB%BB%E5%8B%99/done" in html
         # no anchor may contain a tick-box form
         for chunk in html.split("<a ")[1:]:
-            assert "pjd-box" not in chunk.split("</a>")[0]
+            assert "sho-box" not in chunk.split("</a>")[0]
+
+    def test_uses_the_shared_box_not_a_page_local_copy(self, client, tmp_path):
+        """修修 2026-09-10:「這裡你為什麼要重新發明一個？」— the tick box is
+        bridge.css's .sho-box, the same one the Weekly dashboard renders."""
+        _write_project(tmp_path, "P")
+        _write_task(tmp_path, "P - 任務", project="P")
+        html = client.get("/bridge/projects/P").text
+        assert "pjd-box" not in html
+        assert 'class="sho-box-form"' in html
 
     def test_pomodoro_readout_shows_actual_over_estimate(self, client, tmp_path):
         """修修: 剩餘工作要用預估🍅與實際🍅表示。"""

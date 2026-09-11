@@ -30,6 +30,7 @@ import yaml
 from shared.pomodoro_aggregator import (
     POMODORO_MINUTES,
     WeeklyActual,
+    all_time_actual,
     parse_dt,
     weekly_actual,
 )
@@ -489,6 +490,10 @@ class WeeklyView:
     backlog_count: int  # total open tasks in the backlog (across all three buckets)
     by_project: dict[str, list[WeeklyTask]]
     planned_by_task: dict[str, int]  # slug -> planned 🍅 this week (work only)
+    # slug -> actual 🍅 over the WHOLE history. The 「全部」 tab is a cross-week view,
+    # so a week-scoped count there is always 0 (修修 2026-09-11). 今日/整週 keep
+    # using `actual`, which is the right question for those tabs.
+    actual_all_time: dict[str, int]
     days: tuple[dict, ...]  # 5 day-cards Mon..Fri (the bullet section)
     day_headers: list[dict]  # 7 entries {zh, date, is_weekend, is_today} — editor day-select
     review: Optional[WeeklyReview]
@@ -888,6 +893,11 @@ class WeeklyIndexer:
             task_time_entries=[(t.slug, t.time_entries) for t in all_tasks if t.is_work],
             work_task_keys=work_slugs,
         )
+        all_time = all_time_actual(
+            self._root,
+            [(t.slug, t.time_entries) for t in all_tasks if t.is_work],
+            work_task_keys=work_slugs,
+        )
         # 🤩 UFO = 75-min deep sessions logged this week (work tasks only).
         ufo_count = sum(t.deep_sessions_in(wk) for t in all_tasks if t.is_work)
 
@@ -960,6 +970,7 @@ class WeeklyIndexer:
             backlog_count=len(backlog),
             by_project=by_project,
             planned_by_task={t.slug: t.planned_in(wk) for t in in_week},
+            actual_all_time=all_time.by_task,
             days=days,
             day_headers=day_headers,
             review=review,

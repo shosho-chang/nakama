@@ -2,7 +2,7 @@
 {# ── 專案 Dashboard (ADR-068 + 修修 2026-09-10) ────────────────────────────────
    一個 project 就是一組任務。這頁回答四件事：完成多少、還剩多少工作、預計何時
    做完、有沒有還沒排時間的漏網之魚。三個 view（列表／看板／時程）看同一批任務。
-   進度軌只在專案有 kind（樣板）時出現，狀態全由任務完成度推導，沒有手動勾。 #}
+   任務列表不分組、不畫進度軌——順序照樣板，未完在前（修修 2026-09-11）。 #}
 <html lang="zh-Hant">
 <head>
 <meta charset="UTF-8">
@@ -20,12 +20,13 @@
 
   {# The tick box is its own form and must sit OUTSIDE the row's <a> — a button
      nested in a link is invalid HTML and the click would follow the link.
-     Same 14px .wk-box visual as the Weekly dashboard, same set_task_done writer. #}
+     `.sho-box` is the SHARED component in bridge.css that the Weekly dashboard
+     also uses — one box, not a per-page copy (修修 2026-09-10). #}
   {% macro tick(t) %}
-    <form class="pjd-box-form" method="post"
+    <form class="sho-box-form" method="post"
           action="/bridge/projects/{{ p.name | urlencode }}/task/{{ t.slug | urlencode }}/done">
       <input type="hidden" name="done" value="{{ '0' if t.done else '1' }}">
-      <button type="submit" class="pjd-box{{ ' done' if t.done }}"
+      <button type="submit" class="sho-box{{ ' done' if t.done }}"
               aria-pressed="{{ 'true' if t.done else 'false' }}"
               aria-label="{{ ('標記未完成：' if t.done else '標記完成：') ~ t.name }}"></button>
     </form>
@@ -38,10 +39,8 @@
       {{ tick(t) }}
       <a class="pjd-task-link" href="/bridge/weekly/task/{{ t.slug | urlencode }}">
         <span class="pjd-task-n">{{ t.name }}</span>
-        <span class="pjd-task-meta">
-          <span>🍅 {{ t.actual }}/{{ t.est }}</span>
-          <span class="when{{ ' none' if not t.when }}">{{ t.when or '未排時間' }}</span>
-        </span>
+        <span class="pjd-task-pom">🍅 {{ t.actual }}/{{ t.est }}</span>
+        <span class="pjd-task-when{{ ' none' if not t.when }}">{{ t.when or '未排時間' }}</span>
       </a>
     </div>
   {% endmacro %}
@@ -120,23 +119,6 @@
       </div>
     </div>
 
-    {# ── 進度軌：只有樣板專案才有；狀態由任務完成度推導 ── #}
-    {% if p.stages %}
-      <ol class="pjd-rail">
-        {% for s in p.stages %}
-          <li class="pjd-stage{{ ' is-done' if s.is_done }}{{ ' is-now' if s.is_now }}">
-            <span class="pjd-stage-top">
-              <span class="pjd-dot">{{ '✓' if s.is_done else ('●' if s.is_now else '○') }}</span>{{ s.name }}
-            </span>
-            <span class="pjd-stage-meta">
-              {%- if s.total %}{{ s.done }}/{{ s.total }} 任務 · 🍅 {{ s.actual }}/{{ s.est }}
-              {%- else %}尚無任務{% endif -%}
-            </span>
-          </li>
-        {% endfor %}
-      </ol>
-    {% endif %}
-
     <div class="pjd-secbar">
       <span class="pjd-sec-t">任務 · {{ p.total_count }} 項</span>
       <div class="pjd-views">
@@ -148,17 +130,10 @@
 
     {# ══ 列表 ══ #}
     <div class="pjd-pane is-on" data-pane="list">
-      {% for s in p.stages %}
-        {% if s.tasks %}
-          <span class="pjd-group-t">{{ '①②③④⑤⑥⑦⑧⑨'[s.order - 1] if s.order <= 9 else s.order }} {{ s.name }}</span>
-          {% for t in s.tasks %}{{ task_row(t) }}{% endfor %}
-        {% endif %}
-      {% endfor %}
-
-      {% if p.loose_tasks %}
-        {% if p.stages %}<span class="pjd-group-t">其他任務（非樣板）</span>{% endif %}
-        {% for t in p.loose_tasks %}{{ task_row(t) }}{% endfor %}
-      {% endif %}
+      {# 修修 2026-09-11：不分組，就是一份乾淨的任務列表。原本每個階段上面有一行
+         「① 前期研究」標題，跟任務自己的名字重複，沒有帶來資訊。順序仍照樣板
+         （router 的 stage_rank），未完在前、已完成沉底。 #}
+      {% for t in p.tasks %}{{ task_row(t) }}{% endfor %}
 
       {% if not p.total_count %}
         <p class="pj-empty sho-mono">這個專案還沒有任務 — 用下面的「加入既有任務」，或到

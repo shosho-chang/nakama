@@ -370,6 +370,70 @@ body.sho .sho-btn--ghost:focus-visible {
   box-shadow: var(--sho-focus);
 }
 
+/* ── Completion tick box ────────────────────────────────────────────────────
+   ONE box for every surface that ticks something off (Weekly dashboard rows and
+   daily cards, Project dashboard rows and kanban cards). It lives here, in the
+   shared ops vocabulary, because it was briefly re-implemented per page — the
+   same duplication that produced three disagreeing wikilink parsers (修修
+   2026-09-10: 「這裡你為什麼要重新發明一個？」).
+
+   Ticked = filled square + a ✓ drawn as a CSS border-corner, so there is no glyph
+   to pick a font for and it inherits the page's ink colour in both themes.
+   Pair it with `.sho-struck` on the row so the whole line greys out, not just the
+   name. */
+body.sho .sho-box-form {
+  display: inline-flex;
+  margin: 0;
+  padding: 0;
+  flex-shrink: 0;
+}
+body.sho .sho-box {
+  position: relative;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  flex-shrink: 0;
+  appearance: none;
+  background: var(--sho-bg);
+  border: 1.5px solid var(--sho-line-2);
+  border-radius: 3px;
+  cursor: pointer;
+  transition:
+    border-color var(--sho-t-fast) var(--sho-ease),
+    background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .sho-box:hover {
+  border-color: var(--sho-accent);
+}
+body.sho .sho-box:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .sho-box.done {
+  background: var(--sho-text);
+  border-color: var(--sho-text);
+}
+/* the ✓ — two borders of a rotated box, drawn in the page background colour */
+body.sho .sho-box.done::after {
+  content: "";
+  position: absolute;
+  left: 3px;
+  top: 0;
+  width: 4px;
+  height: 8px;
+  border: solid var(--sho-bg);
+  border-width: 0 1.5px 1.5px 0;
+  transform: rotate(42deg);
+}
+
+/* A completed row: struck through AND greyed, meta included — a finished task
+   should recede as a whole, not keep a bright date column (修修 2026-09-10). */
+body.sho .sho-struck {
+  color: var(--sho-muted);
+  text-decoration: line-through;
+  text-decoration-color: var(--sho-line-2);
+}
+
 /* ── Hairline-bordered surface panel ────────────────────────────────────── */
 body.sho .sho-panel {
   background: var(--sho-bg);
