@@ -8,16 +8,14 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Literal, Protocol
 
-_VISUAL_PLACEMENT_AUTHORITY = object()
-
 #: 收尾那一句的 t1 允許超出 duration 的浮點誤差上限。
 #:
 #: `duration_sec` 是 `sum(t1 - t0 for source_ranges)`——一串二進位浮點加起來，尾巴
 #: 一定帶誤差（punch-L03 六段相加得 490.3029999999999）。cue 是從同一個 tight cut
 #: 切出來的，最後一句本來就結束在片尾，寫下來是 490.303。兩個數學上相等的值浮點上
-#: 差 6e-14，於是「cue 越界」為真。這條規則在登錄（`_approved_cut._validate_cues`）
-#: 與物化（`_materialization._validate_context_contract`）各有一份實作，必須共用同
-#: 一個容忍度，否則登錄過得去、物化卻擋下來，而且兩邊的錯誤訊息都不含數字。
+#: 差 6e-14，於是「cue 越界」為真。這條規則以前在登錄與物化各有一份實作，容忍度一旦
+#: 走鐘就會「登錄過得去、物化卻擋下來」；現在只剩 `_approved_cut._validate_cues`
+#: 這一份——只有登錄那一刻才保證 `duration_sec` 就是來源範圍的總和。
 #:
 #: 1e-6 只吸收表示誤差：真正越界的 cue（毫秒級以上）照樣擋下。
 CUE_END_EPSILON_SEC = 1e-6
@@ -62,20 +60,29 @@ class DerivedEventAnchor:
     section_id: str | None
 
 
-@dataclass(frozen=True, slots=True, init=False)
+@dataclass(frozen=True, slots=True)
 class VisualPlacement:
-    """Core-minted temporal range where a DP-selected visual is actually shown."""
+    """Temporal range where a DP-selected visual is actually shown."""
 
     placement_cue_ids: tuple[str, ...]
     t0: float
     t1: float
     section_id: str | None
 
-    def __init__(self, *, _authority: object | None = None, **values: object) -> None:
-        if _authority is not _VISUAL_PLACEMENT_AUTHORITY:
-            raise TypeError("VisualPlacement can be minted only from Editorial Cut Context")
-        for name in self.__dataclass_fields__:
-            object.__setattr__(self, name, values[name])
+    def __post_init__(self) -> None:
+        # 這條檢查以前只在 `_mint_visual_placement` 裡跑，於是「誰造的」跟「造得對
+        # 不對」綁在一起：任何直接建構的路徑（含 store 讀回）都繞得過去。搬進
+        # `__post_init__` 之後，不管是推導出來的還是從磁碟讀回來的，同一條規則都
+        # 會跑；ADR-069 要留的就是這種便宜的結構檢查。
+        if (
+            not self.placement_cue_ids
+            or len(self.placement_cue_ids) != len(set(self.placement_cue_ids))
+            or not math.isfinite(self.t0)
+            or not math.isfinite(self.t1)
+            or self.t0 < 0
+            or self.t0 >= self.t1
+        ):
+            raise ValueError("Visual Placement fields are invalid")
 
 
 def _mint_visual_placement(
@@ -85,19 +92,9 @@ def _mint_visual_placement(
     t1: float,
     section_id: str | None,
 ) -> VisualPlacement:
-    """Single module-private constructor for derived or reloaded placement authority."""
+    """Keyword-only spelling used by the derivation sites."""
 
-    if (
-        not placement_cue_ids
-        or len(placement_cue_ids) != len(set(placement_cue_ids))
-        or not math.isfinite(t0)
-        or not math.isfinite(t1)
-        or t0 < 0
-        or t0 >= t1
-    ):
-        raise ValueError("Visual Placement fields are invalid")
     return VisualPlacement(
-        _authority=_VISUAL_PLACEMENT_AUTHORITY,
         placement_cue_ids=placement_cue_ids,
         t0=t0,
         t1=t1,
@@ -117,6 +114,53 @@ class EditorialCutContext:
     cues: tuple[CueAnchor, ...]
     sections: tuple[CanonicalSection, ...] = ()
     editorial_feedback: tuple[str, ...] = ()
+
+    def __post_init__(self) -> None:
+        """Refuse to exist unless the ranges and cues are individually well-formed.
+
+        這裡放的是**只有 context 自己知道**的結構規則：每一段來源範圍、每一句 cue
+        本身站不站得住。以前它們住在 `_materialization._validate_context_contract`，
+        於是只有物化那條路驗得到——store 讀回來的、worker packet 拿去的，都繞過去了。
+
+        刻意**不**放兩件事，因為已經有別人在管，搬過來只會變成第三份實作：
+
+        * 「來源範圍加總等於 duration」是 `_policy` 的 `source_range_sum_mismatch`
+          ——它要把這件事當成**診斷**報給修修看，不是讓物件造不出來。
+        * 「cue 不可為空」是 `_approved_cut` 登錄那關的事。引擎的 in-memory 假
+          authority（`_engine._in_memory_editorial_context`）本來就沒有 cue。
+        """
+
+        if not math.isfinite(self.duration_sec) or self.duration_sec <= 0:
+            raise ValueError("Editorial Cut Context duration is invalid")
+        if not self.source_ranges:
+            raise ValueError("Editorial Cut Context has no source ranges")
+        previous_source_end = -1.0
+        for source in self.source_ranges:
+            if (
+                not math.isfinite(source.t0)
+                or not math.isfinite(source.t1)
+                or source.t0 < 0
+                or source.t0 >= source.t1
+                or source.t0 < previous_source_end
+            ):
+                raise ValueError("Editorial Cut Context source ranges are invalid")
+            previous_source_end = source.t1
+        cue_ids: set[str] = set()
+        previous_cue_end = -1.0
+        for cue in self.cues:
+            if (
+                not cue.cue_id
+                or cue.cue_id in cue_ids
+                or not cue.text
+                or not math.isfinite(cue.t0)
+                or not math.isfinite(cue.t1)
+                or cue.t0 < previous_cue_end
+                or cue.t0 < 0
+                or cue.t0 >= cue.t1
+            ):
+                raise ValueError("Editorial Cut Context cue contract is invalid")
+            cue_ids.add(cue.cue_id)
+            previous_cue_end = cue.t1
 
     def derive_anchor(self, cue_ids: tuple[str, ...]) -> DerivedEventAnchor:
         """Derive event authority from current tight cues, never worker timing."""

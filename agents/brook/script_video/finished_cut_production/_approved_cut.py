@@ -150,18 +150,23 @@ class ApprovedCutAuthority:
             raise ApprovedCutRegistrationError("ApprovedCut requires valid tight subtitle cues")
         _validate_sections(registration.sections, duration_sec)
         _validate_cues(registration.cues, registration.sections, duration_sec)
-        context = EditorialCutContext(
-            episode_id=registration.episode_id,
-            cut_id=registration.cut_id,
-            format=registration.format,
-            editorial_master_id=registration.editorial_master_id,
-            tight_cut_id=registration.tight_cut_id,
-            duration_sec=duration_sec,
-            source_ranges=registration.source_ranges,
-            cues=registration.cues,
-            sections=registration.sections,
-            editorial_feedback=registration.editorial_feedback,
-        )
+        try:
+            context = EditorialCutContext(
+                episode_id=registration.episode_id,
+                cut_id=registration.cut_id,
+                format=registration.format,
+                editorial_master_id=registration.editorial_master_id,
+                tight_cut_id=registration.tight_cut_id,
+                duration_sec=duration_sec,
+                source_ranges=registration.source_ranges,
+                cues=registration.cues,
+                sections=registration.sections,
+                editorial_feedback=registration.editorial_feedback,
+            )
+        except ValueError as error:
+            # 建構子講的是同一件事，只是用 context 的詞彙。登錄端要的是登錄端的
+            # 錯誤型別，原訊息照原樣帶出去，不要換成含糊的泛稱。
+            raise ApprovedCutRegistrationError(str(error)) from error
         row = _registration_row(registration, context)
         identity = hashlib.sha256(_canonical_json(row)).hexdigest()[:32]
         command_id = f"approved-cut:{identity}"
@@ -533,23 +538,20 @@ def _validate_cues(
     sections: tuple[CanonicalSection, ...],
     duration_sec: float,
 ) -> None:
+    """Only what registration knows on top of the Editorial Cut Context contract.
+
+    唯一性、時序、文字非空、有限數——那些是 context 自己的結構規則，
+    `EditorialCutContext.__post_init__` 會擋，這裡不再抄一份。留下來的三條都
+    只有登錄這一刻知道：cue_id 的字面形狀、cue 落在這次登錄的章節裡，以及
+    「不可越過片尾」——`duration_sec` 是來源範圍的總和，只有在這裡才保證成立
+    （之後 `_policy` 會把兩者對不上當成診斷報出來，不是讓物件造不出來）。
+    """
+
     section_ids = {section.section_id for section in sections}
-    seen: set[str] = set()
-    prior_end = -1.0
     for cue in cues:
         if (
             not _identity(cue.cue_id)
-            or cue.cue_id in seen
-            or not isinstance(cue.text, str)
-            or not cue.text.strip()
-            or not math.isfinite(cue.t0)
-            or not math.isfinite(cue.t1)
-            or cue.t0 < 0
-            or cue.t0 >= cue.t1
             or cue.t1 > duration_sec + CUE_END_EPSILON_SEC
-            or cue.t0 < prior_end
             or (section_ids and cue.section_id not in section_ids)
         ):
             raise ApprovedCutRegistrationError("ApprovedCut tight subtitle cues are invalid")
-        prior_end = cue.t1
-        seen.add(cue.cue_id)

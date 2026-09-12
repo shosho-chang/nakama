@@ -40,6 +40,7 @@ from agents.brook.script_video.finished_cut_production._semantic import (
 )
 from agents.brook.script_video.finished_cut_production._store import (
     InMemoryApprovedCutStore,
+    ProductionStoreError,
     _StoredRun,
 )
 
@@ -1273,9 +1274,12 @@ def test_tampered_derived_request_fails_before_builder_dispatch(tmp_path) -> Non
         context_resolver=InMemoryEditorialCutContextResolver((_editorial_context(),)),
     )
 
-    forged_scope = forged_scope_process.advance(COMMAND_ID)
+    # 詞彙表以外的 scope 是「存壞了」，不是「這一輪做壞了」：store 讀回來的當下就
+    # 擋，`advance` 根本拿不到那份 run。比起讓引擎晚一步自己發現，這條路徑更短，
+    # 而且不需要引擎那邊再寫一份同樣的名單。
+    with pytest.raises(ProductionStoreError, match="scope"):
+        forged_scope_process.advance(COMMAND_ID)
 
-    assert forged_scope.status == "needs_review"
     assert forged_scope_builder.calls == 0
 
 

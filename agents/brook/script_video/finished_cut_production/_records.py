@@ -21,10 +21,6 @@ RequestScope = Literal["full_stage", "event_retry"]
 InspectionState = Literal["ready", "missing", "invalid"]
 InspectionErrorCode = Literal["current_release_missing", "current_release_invalid"]
 STAGE_RESPONSE_SCHEMA = "nakama.finished-cut-stage-response.v1"
-_STAGE_AUTHORITY = object()
-_PLAN_AUTHORITY = object()
-_RELEASE_AUTHORITY = object()
-_PROJECTED_COMPONENT_AUTHORITY = object()
 ProbeValue = str | int | float | bool | None
 
 
@@ -79,7 +75,7 @@ class EventPlacementCandidates:
     cues: tuple[CueAnchor, ...]
 
 
-@dataclass(frozen=True, slots=True, init=False)
+@dataclass(frozen=True, slots=True)
 class ProjectedComponent:
     component_id: str
     event_id: str
@@ -91,11 +87,9 @@ class ProjectedComponent:
     t1: float
     asset_ref: str | None
 
-    def __init__(self, *, _authority: object | None = None, **values: object) -> None:
-        if _authority is not _PROJECTED_COMPONENT_AUTHORITY:
-            raise TypeError("ProjectedComponent can be minted only by Finished Cut Production")
-        for name in self.__dataclass_fields__:
-            object.__setattr__(self, name, values[name])
+    #: 退役投影的規則住在 `_mint_projected_component`，不在這裡——`_release` 的
+    #: receipt reader 刻意比 writer 寬鬆（既有 receipt 含 supporting_title 要讀得
+    #: 回來），放進 `__post_init__` 會把那條相容路徑一起擋掉。
 
 
 def _mint_projected_component(
@@ -110,6 +104,8 @@ def _mint_projected_component(
     t1: float,
     asset_ref: str | None,
 ) -> ProjectedComponent:
+    """Mint a component that today's vocabulary still projects."""
+
     if not _is_active_projection(semantic_kind, implementation_kind, lane):
         # Name the projection.  A bare "retired or unsupported" over three free
         # strings leaves the reader with no way to tell which lane was retired
@@ -120,7 +116,6 @@ def _mint_projected_component(
             f"implementation_kind={implementation_kind!r} lane={lane!r}"
         )
     return ProjectedComponent(
-        _authority=_PROJECTED_COMPONENT_AUTHORITY,
         component_id=component_id,
         event_id=event_id,
         semantic_kind=semantic_kind,
@@ -148,7 +143,6 @@ def _rehydrate_release_projected_component(
     """Read an already-sealed receipt without granting current production authority."""
 
     return ProjectedComponent(
-        _authority=_PROJECTED_COMPONENT_AUTHORITY,
         component_id=component_id,
         event_id=event_id,
         semantic_kind=semantic_kind,
@@ -226,7 +220,7 @@ class StageProposal:
     schema: str = STAGE_RESPONSE_SCHEMA
 
 
-@dataclass(frozen=True, slots=True, init=False)
+@dataclass(frozen=True, slots=True)
 class AcceptedStage:
     acceptance_id: str
     run_id: str
@@ -238,13 +232,7 @@ class AcceptedStage:
     parent_acceptance_id: str | None
     events: tuple[EventRecord, ...]
     components: tuple[ComponentProposal, ...]
-    built_components: tuple[BuiltComponentAsset, ...]
-
-    def __init__(self, *, _authority: object | None = None, **values: object) -> None:
-        if _authority is not _STAGE_AUTHORITY:
-            raise TypeError("AcceptedStage can be minted only by the aggregate")
-        for name in self.__dataclass_fields__:
-            object.__setattr__(self, name, values[name])
+    built_components: tuple[BuiltComponentAsset, ...] = ()
 
 
 def _mint_accepted_stage(
@@ -262,7 +250,6 @@ def _mint_accepted_stage(
     built_components: tuple[BuiltComponentAsset, ...] = (),
 ) -> AcceptedStage:
     return AcceptedStage(
-        _authority=_STAGE_AUTHORITY,
         acceptance_id=acceptance_id,
         run_id=run_id,
         request_id=request_id,
@@ -277,7 +264,7 @@ def _mint_accepted_stage(
     )
 
 
-@dataclass(frozen=True, slots=True, init=False)
+@dataclass(frozen=True, slots=True)
 class MaterializationPlan:
     plan_id: str
     run_id: str
@@ -289,47 +276,11 @@ class MaterializationPlan:
     dp_acceptance_id: str
     visual_acceptance_id: str
     events: tuple[EventRecord, ...]
-    components: tuple[ProjectedComponent, ...]
-    duration_sec: float
-    #: 結構性覆蓋層：不經語意流、由規則推導。目前只有品牌 badge。
-    brand_badge_overlays: tuple[BrandBadgeOverlay, ...]
-
-    def __init__(
-        self,
-        *,
-        _authority: object,
-        plan_id: str,
-        run_id: str,
-        command_id: str,
-        episode_id: str,
-        cut_id: str,
-        format: Literal["long", "short"],
-        director_acceptance_id: str,
-        dp_acceptance_id: str,
-        visual_acceptance_id: str,
-        events: tuple[EventRecord, ...],
-        components: tuple[ProjectedComponent, ...] = (),
-        duration_sec: float = 0.0,
-        brand_badge_overlays: tuple[BrandBadgeOverlay, ...] = (),
-    ) -> None:
-        if _authority is not _PLAN_AUTHORITY:
-            raise TypeError("MaterializationPlan can be minted only by Finished Cut Production")
-        for name, value in (
-            ("plan_id", plan_id),
-            ("run_id", run_id),
-            ("command_id", command_id),
-            ("episode_id", episode_id),
-            ("cut_id", cut_id),
-            ("format", format),
-            ("director_acceptance_id", director_acceptance_id),
-            ("dp_acceptance_id", dp_acceptance_id),
-            ("visual_acceptance_id", visual_acceptance_id),
-            ("events", events),
-            ("components", components),
-            ("duration_sec", duration_sec),
-            ("brand_badge_overlays", brand_badge_overlays),
-        ):
-            object.__setattr__(self, name, value)
+    components: tuple[ProjectedComponent, ...] = ()
+    duration_sec: float = 0.0
+    #: 結構性覆蓋層：不經語意流、由規則推導。唯一的產生點是
+    #: `_mint_materialization_plan`——呼叫端不該自己傳。目前只有品牌 badge。
+    brand_badge_overlays: tuple[BrandBadgeOverlay, ...] = ()
 
 
 def _mint_materialization_plan(
@@ -366,7 +317,6 @@ def _mint_materialization_plan(
     ):
         raise ValueError("MaterializationPlan contains a retired or unsupported projection")
     return MaterializationPlan(
-        _authority=_PLAN_AUTHORITY,
         plan_id=plan_id,
         run_id=run_id,
         command_id=command_id,
@@ -460,7 +410,7 @@ class FinishedCutInspection:
     error_code: InspectionErrorCode | None = None
 
 
-@dataclass(frozen=True, slots=True, init=False)
+@dataclass(frozen=True, slots=True)
 class StagedReleaseCandidate:
     candidate_id: str
     episode_id: str
@@ -479,12 +429,6 @@ class StagedReleaseCandidate:
     subtitle: ReleaseArtifact
     preview_ready_transaction_id: str
     components: tuple[ProjectedComponent, ...]
-
-    def __init__(self, *, _authority: object, **values: object) -> None:
-        if _authority is not _RELEASE_AUTHORITY:
-            raise TypeError("StagedReleaseCandidate can be minted only inside the module")
-        for name in self.__dataclass_fields__:
-            object.__setattr__(self, name, values[name])
 
 
 def _mint_staged_release_candidate(
@@ -508,7 +452,6 @@ def _mint_staged_release_candidate(
     components: tuple[ProjectedComponent, ...] | None = None,
 ) -> StagedReleaseCandidate:
     return StagedReleaseCandidate(
-        _authority=_RELEASE_AUTHORITY,
         candidate_id=candidate_id,
         episode_id=episode_id,
         cut_id=cut_id,
@@ -529,7 +472,7 @@ def _mint_staged_release_candidate(
     )
 
 
-@dataclass(frozen=True, slots=True, init=False)
+@dataclass(frozen=True, slots=True)
 class FinishedCutRelease:
     release_id: str
     episode_id: str
@@ -549,13 +492,7 @@ class FinishedCutRelease:
     subtitle: ReleaseArtifact
     transaction_receipt_id: str
     rollback_ref: str
-    components: tuple[ProjectedComponent, ...]
-
-    def __init__(self, *, _authority: object, **values: object) -> None:
-        if _authority is not _RELEASE_AUTHORITY:
-            raise TypeError("FinishedCutRelease can be sealed only inside the module")
-        for name in self.__dataclass_fields__:
-            object.__setattr__(self, name, values[name])
+    components: tuple[ProjectedComponent, ...] = ()
 
 
 def _seal_finished_cut_release(
@@ -599,7 +536,6 @@ def _seal_finished_cut_release(
     ):
         raise ValueError("FinishedCutRelease contains a retired or unsupported projection")
     return FinishedCutRelease(
-        _authority=_RELEASE_AUTHORITY,
         release_id=release_id,
         episode_id=episode_id,
         cut_id=cut_id,
@@ -623,9 +559,9 @@ def _seal_finished_cut_release(
 
 
 def _rehydrate_finished_cut_release(**values: object) -> FinishedCutRelease:
-    """Read an immutable historical receipt without exposing a production mint seam."""
+    """Read an immutable historical receipt without re-running the seal-time gates."""
 
-    return FinishedCutRelease(_authority=_RELEASE_AUTHORITY, **values)
+    return FinishedCutRelease(**values)  # type: ignore[arg-type]
 
 
 @dataclass(frozen=True, slots=True)

@@ -274,6 +274,25 @@ ADR-066 的核心決策是對的，是實作超標。否決。
    reviewer 的「0 個呼叫端」判斷，實測錯了——它們在 `_persistence.py:163` 與
    `:186` 被 cutover journal 呼叫。所以它們隨 `_cutover` 一起走，也在階段 4。
 
+## 實作中發現的第三處修正（2026-09-12，階段 3 實作時）
+
+3. **`_validate_context_contract` 只有一半搬得進 `__post_init__`。** 它有四條規則，
+   其中兩條已經有別的主人，搬過去會變成「第三份實作」而且會弄壞既有行為：
+
+   | 規則 | 處置 | 為什麼 |
+   |---|---|---|
+   | 每段來源範圍自身有效、不重疊 | **搬進 `__post_init__`** | 只有 context 自己知道；以前只有物化那條路驗得到，store 讀回與 worker packet 都繞過去 |
+   | 每句 cue 的 id 唯一、文字非空、時序不倒退 | **搬進 `__post_init__`** | 同上。順帶把 `_approved_cut._validate_cues` 的重複實作刪掉 |
+   | 來源範圍總和 == `duration_sec` | **留在 `_policy`** | 它是 `source_range_sum_mismatch` 診斷，要報給修修看。放進建構子等於讓那條診斷永遠發不出來——帶著它的 context 根本造不出來 |
+   | `cues` 不可為空、cue 不可越過片尾 | **留在 `_approved_cut`** | 引擎的 in-memory 假 authority 本來就沒有 cue；而「不越過片尾」只有在登錄那一刻才保證 `duration_sec` 就是來源範圍總和（見上一列）。`CUE_END_EPSILON_SEC` 因此只剩這一份實作 |
+
+   淨結果仍然是「一條規則一個地方」，只是那個地方不是每一條都在建構子。
+
+4. **`ProjectedComponent` 的退役投影檢查不能進 `__post_init__`。** `_release` 的
+   receipt reader 刻意比 writer 寬鬆——既有 receipt 裡的 `supporting_title` 要讀得
+   回來（`test_historical_supporting_title_receipt_remains_read_only_compatible`）。
+   規則因此留在 writer 側的 `_mint_projected_component`，store 讀回走同一支。
+
 ## Review record
 
 - **v1 三方審查（2026-09-12）**：創作者視角、cost×risk×complexity 審計、ADR-066 原作者辯護——三方一致「改了再簽」。審計重算數字並指出 v1 標「留」但該砍的七項；辯護人對 v1 標「砍」的八項各給出今天就會發生的失敗情境（`source_range_drift`、活字幕軌、master content hash、`_current_chain_is_exact`、retry base、ledger 三態、canonical 精確匹配、素材 bytes），並指出 journal 的承擔理由對錯對象。整合報告在該 session 的 `ADR-069-panel-report.md`。

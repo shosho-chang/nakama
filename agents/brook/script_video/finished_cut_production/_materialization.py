@@ -13,7 +13,7 @@ from typing import Literal, Protocol, cast
 
 from ._assets import AssetContractError, AssetKind, AssetResolver, ResolvedAsset
 from ._commands import ApprovedCutCommand, _is_authoritative_approved_cut
-from ._context import CUE_END_EPSILON_SEC, EditorialCutContext
+from ._context import EditorialCutContext
 from ._records import (
     MaterializationPlan,
     ReleaseArtifact,
@@ -160,7 +160,6 @@ class MaterializationCoordinator:
                 "command, plan, and Editorial Cut Context do not share one authority chain",
                 reason_code="authority_chain_mismatch",
             )
-        _validate_context_contract(context)
         if (
             view.command_id != command_id
             or plan.command_id != command_id
@@ -968,60 +967,6 @@ def _file_sha256(path: Path) -> str:
         for chunk in iter(lambda: handle.read(1024 * 1024), b""):
             digest.update(chunk)
     return digest.hexdigest()
-
-
-def _validate_context_contract(context: EditorialCutContext) -> None:
-    if (
-        not math.isfinite(context.duration_sec)
-        or context.duration_sec <= 0
-        or not context.source_ranges
-        or not context.cues
-    ):
-        raise MaterializationError(
-            "Editorial Cut Context duration, ranges, or cues are invalid",
-            reason_code="authority_chain_mismatch",
-        )
-    source_total = 0.0
-    previous_source_end = -1.0
-    for source in context.source_ranges:
-        if (
-            not math.isfinite(source.t0)
-            or not math.isfinite(source.t1)
-            or source.t0 < 0
-            or source.t0 >= source.t1
-            or source.t0 < previous_source_end
-        ):
-            raise MaterializationError(
-                "Editorial Cut Context source ranges are invalid",
-                reason_code="authority_chain_mismatch",
-            )
-        source_total += source.t1 - source.t0
-        previous_source_end = source.t1
-    if not math.isclose(source_total, context.duration_sec, rel_tol=0.0, abs_tol=1e-6):
-        raise MaterializationError(
-            "Editorial Cut Context source ranges do not equal its duration",
-            reason_code="authority_chain_mismatch",
-        )
-    cue_ids: set[str] = set()
-    previous_cue_end = -1.0
-    for cue in context.cues:
-        if (
-            not cue.cue_id
-            or cue.cue_id in cue_ids
-            or not cue.text
-            or not math.isfinite(cue.t0)
-            or not math.isfinite(cue.t1)
-            or cue.t0 < previous_cue_end
-            or cue.t0 < 0
-            or cue.t0 >= cue.t1
-            or cue.t1 > context.duration_sec + CUE_END_EPSILON_SEC
-        ):
-            raise MaterializationError(
-                "Editorial Cut Context cue contract is invalid",
-                reason_code="authority_chain_mismatch",
-            )
-        cue_ids.add(cue.cue_id)
-        previous_cue_end = cue.t1
 
 
 def _validate_editorial_base(

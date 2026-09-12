@@ -9,42 +9,23 @@ from collections.abc import Iterable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import Protocol, TypeVar
 from uuid import uuid4
 
-from ._assets import AssetKind, WorkerCatalogItem, WorkerSelectionCatalog
-from ._commands import ApprovedCutCommand, Format, TargetedRevisionCommand
-from ._context import (
-    CanonicalSection,
-    CueAnchor,
-    CutSourceRange,
-    EditorialCutContext,
-    _mint_visual_placement,
-)
+from ._assets import WorkerCatalogItem, WorkerSelectionCatalog
+from ._codec import RecordCodec, RecordCodecError
+from ._commands import ApprovedCutCommand, TargetedRevisionCommand
 from ._correction import _PreReleaseCorrection
-from ._derived_assets import (
-    BuiltComponentAsset,
-    DerivedAssetBuildRequest,
-    DerivedAssetGeometry,
-    DerivedAssetInstruction,
-)
-from ._policy import PolicyDiagnostic, PolicyDiagnosticCode
 from ._records import (
     AcceptedStage,
-    ComponentLane,
-    ComponentProposal,
     DirectorEventProposal,
     DPEventProposal,
-    EventPlacementCandidates,
     EventRecord,
     FinishedCutRelease,
     MaterializationPlan,
     ProjectedComponent,
-    RequestScope,
-    StageName,
     StageProposal,
     StageRequest,
-    Status,
     VisualEventProposal,
     _mint_accepted_stage,
     _mint_materialization_plan,
@@ -398,172 +379,116 @@ class _FilesystemProductionStore:
             temporary.unlink(missing_ok=True)
 
 
+#: 落盤格式的定義就是各個 record 的欄位宣告，這裡不再抄第二份。例外只有四種，
+#: 全部掛在下面的 `register`：退役投影要走 mint、AcceptedStage 要走 mint、
+#: 衍生欄位不落盤、tagged union 結構描述不了。
+_CODEC = RecordCodec(localns={"_PreReleaseCorrection": _PreReleaseCorrection})
+
+#: badge 是規則推導出來的，不是輸入。落盤會讓它變成第二個真相來源，之後就分不出
+#: 「當初算出來的」跟「有人手改過的」。
+_PLAN_DERIVED_FIELDS = frozenset({"brand_badge_overlays"})
+
+_T = TypeVar("_T")
+
+
+def _load(
+    cls: type[_T],
+    value: object,
+    *,
+    label: str,
+    error: type[Exception] = ProductionStoreError,
+) -> _T:
+    try:
+        return _CODEC.load(cls, value)
+    except RecordCodecError as failure:
+        raise error(f"persisted {label} is invalid: {failure}") from failure
+
+
 def _view_to_dict(view: _ProductionRun) -> dict[str, object]:
-    request = view.outstanding_request
-    return {
-        "run_id": view.run_id,
-        "command_id": view.command_id,
-        "editorial_context": _context_to_dict(view.editorial_context),
-        "status": view.status,
-        "outstanding_request": _request_to_dict(request) if request is not None else None,
-        "accepted_stages": [_accepted_to_dict(stage) for stage in view.accepted_stages],
-        "accepted_stage_history": [
-            _accepted_to_dict(stage) for stage in view.accepted_stage_history
-        ],
-        "derived_asset_request": (
-            _derived_build_request_to_dict(view.derived_asset_request)
-            if view.derived_asset_request is not None
-            else None
-        ),
-        "materialization_plan": (
-            _plan_to_dict(view.materialization_plan)
-            if view.materialization_plan is not None
-            else None
-        ),
-        "correction": (
-            _correction_to_dict(view.correction) if view.correction is not None else None
-        ),
-        "policy_diagnostics": [
-            _policy_diagnostic_to_dict(diagnostic) for diagnostic in view.policy_diagnostics
-        ],
-    }
-
-
-def _request_to_dict(request: StageRequest) -> dict[str, object]:
-    return {
-        "run_id": request.run_id,
-        "request_id": request.request_id,
-        "command_id": request.command_id,
-        "episode_id": request.episode_id,
-        "cut_id": request.cut_id,
-        "format": request.format,
-        "stage": request.stage,
-        "attempt": request.attempt,
-        "scope": request.scope,
-        "event_id": request.event_id,
-        "parent_acceptance_id": request.parent_acceptance_id,
-        "base_acceptance_id": request.base_acceptance_id,
-        "events": [_event_to_dict(event) for event in request.events],
-        "placement_candidates": [
-            {
-                "event_id": candidate.event_id,
-                "cues": [
-                    {
-                        "cue_id": cue.cue_id,
-                        "text": cue.text,
-                        "t0": cue.t0,
-                        "t1": cue.t1,
-                        "section_id": cue.section_id,
-                    }
-                    for cue in candidate.cues
-                ],
-            }
-            for candidate in request.placement_candidates
-        ],
-        "feedback": request.feedback,
-        "worker_asset_refs": list(request.worker_asset_refs),
-        "worker_catalog_items": [
-            {
-                "reference": item.reference,
-                "kind": item.kind.value,
-                "visual_summary": item.visual_summary,
-                "width": item.width,
-                "height": item.height,
-                "duration_sec": item.duration_sec,
-            }
-            for item in request.worker_catalog_items
-        ],
-        "components": [_component_proposal_to_dict(component) for component in request.components],
-        "built_components": [
-            _built_component_to_dict(component) for component in request.built_components
-        ],
-        "editorial_context": (
-            _context_to_dict(request.editorial_context)
-            if request.editorial_context is not None
-            else None
-        ),
-        "schema": request.schema,
-    }
+    return _CODEC.dump_record(view)
 
 
 def _view_from_dict(value: object) -> _ProductionRun:
-    if not isinstance(value, dict):
-        raise ProductionStoreError("persisted ProductionRun view is invalid")
+    if isinstance(value, dict) and "accepted_stage_history" not in value:
+        # 分開記歷史之前存的 run：當時「歷史」就等於「目前」。
+        value = {**value, "accepted_stage_history": value.get("accepted_stages", [])}
+    return _load(_ProductionRun, value, label="ProductionRun view")
+
+
+def _request_to_dict(request: StageRequest) -> dict[str, object]:
+    return _CODEC.dump_record(request)
+
+
+def _event_to_dict(event: EventRecord) -> dict[str, object]:
+    return _CODEC.dump_record(event)
+
+
+def _event_from_dict(value: object) -> EventRecord:
+    return _load(EventRecord, value, label="event")
+
+
+def _accepted_from_dict(value: object) -> AcceptedStage:
     try:
-        request_value = value["outstanding_request"]
-        request = _request_from_dict(request_value) if request_value is not None else None
-        accepted_value = value["accepted_stages"]
-        if not isinstance(accepted_value, list):
-            raise ProductionStoreError("persisted AcceptedStage collection is invalid")
-        history_value = value.get("accepted_stage_history", accepted_value)
-        if not isinstance(history_value, list):
-            raise ProductionStoreError("persisted AcceptedStage history is invalid")
-        diagnostics_value = value.get("policy_diagnostics", [])
-        if not isinstance(diagnostics_value, list):
-            raise ProductionStoreError("persisted policy diagnostics are invalid")
-        plan_value = value["materialization_plan"]
-        derived_request_value = value["derived_asset_request"]
-        return _ProductionRun(
-            run_id=str(value["run_id"]),
-            command_id=str(value["command_id"]),
-            editorial_context=_context_from_dict(value["editorial_context"]),
-            status=cast(Status, value["status"]),
-            outstanding_request=request,
-            accepted_stages=tuple(_accepted_from_dict(item) for item in accepted_value),
-            accepted_stage_history=tuple(_accepted_from_dict(item) for item in history_value),
-            derived_asset_request=(
-                _derived_build_request_from_dict(derived_request_value)
-                if derived_request_value is not None
-                else None
-            ),
-            materialization_plan=(_plan_from_dict(plan_value) if plan_value is not None else None),
-            correction=(
-                _correction_from_dict(value["correction"])
-                if value.get("correction") is not None
-                else None
-            ),
-            policy_diagnostics=tuple(
-                _policy_diagnostic_from_dict(item) for item in diagnostics_value
-            ),
+        return _CODEC.load_record(AcceptedStage, value, factory=_mint_accepted_stage)
+    except RecordCodecError as failure:
+        raise ProductionStoreError(f"persisted AcceptedStage is invalid: {failure}") from failure
+
+
+def _plan_to_dict(plan: MaterializationPlan) -> dict[str, object]:
+    return _CODEC.dump_record(plan, exclude=_PLAN_DERIVED_FIELDS)
+
+
+def _plan_from_dict(value: object) -> MaterializationPlan:
+    try:
+        return _CODEC.load_record(
+            MaterializationPlan,
+            value,
+            exclude=_PLAN_DERIVED_FIELDS,
+            factory=_mint_materialization_plan,
         )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError("persisted ProductionRun view fields are invalid") from error
+    except RecordCodecError as failure:
+        raise ProductionStoreError(
+            f"persisted MaterializationPlan is invalid: {failure}"
+        ) from failure
 
 
-def _approved_cut_to_dict(command: ApprovedCutCommand) -> dict[str, str]:
-    return {
-        "command_id": command.command_id,
-        "episode_id": command.episode_id,
-        "cut_id": command.cut_id,
-        "format": command.format,
-        "editorial_master_id": command.editorial_master_id,
-        "winner_id": command.winner_id,
-        "tight_cut_id": command.tight_cut_id,
-    }
+def _projected_from_dict(value: object) -> ProjectedComponent:
+    try:
+        return _CODEC.load_record(ProjectedComponent, value, factory=_mint_projected_component)
+    except RecordCodecError as failure:
+        raise ProductionStoreError(
+            f"persisted projected component is invalid: {failure}"
+        ) from failure
 
 
-def _targeted_revision_to_dict(command: TargetedRevisionCommand) -> dict[str, str]:
-    return {
-        "command_id": command.command_id,
-        "current_release_id": command.current_release_id,
-        "episode_id": command.episode_id,
-        "cut_id": command.cut_id,
-        "format": command.format,
-        "event_id": command.event_id,
-        "feedback": command.feedback,
-    }
+def _catalog_to_list(catalog: WorkerSelectionCatalog) -> list[dict[str, object]]:
+    return [_CODEC.dump_record(item) for item in catalog.items()]
+
+
+def _catalog_from_list(value: object) -> WorkerSelectionCatalog:
+    if not isinstance(value, list):
+        raise ProductionStoreError("persisted Worker Selection Catalog is invalid")
+    return WorkerSelectionCatalog(
+        _load(WorkerCatalogItem, item, label="Worker Selection Catalog entry") for item in value
+    )
 
 
 def _command_to_dict(
     command: ApprovedCutCommand | TargetedRevisionCommand,
-) -> dict[str, str]:
-    if isinstance(command, ApprovedCutCommand):
-        return _approved_cut_to_dict(command)
-    return _targeted_revision_to_dict(command)
+) -> dict[str, object]:
+    return _CODEC.dump_record(command)
 
 
 def _command_kind(command: ApprovedCutCommand | TargetedRevisionCommand) -> str:
     return "approved_cut" if isinstance(command, ApprovedCutCommand) else "targeted_revision"
+
+
+def _targeted_revision_to_dict(command: TargetedRevisionCommand) -> dict[str, object]:
+    return _CODEC.dump_record(command)
+
+
+def _targeted_revision_from_dict(value: object) -> TargetedRevisionCommand:
+    return _load(TargetedRevisionCommand, value, label="TargetedRevision command")
 
 
 def _run_from_row(value: object) -> _StoredRun:
@@ -578,677 +503,41 @@ def _run_from_row(value: object) -> _StoredRun:
         raise ProductionStoreError("persisted ProductionRun row is invalid")
     command_kind = value["command_kind"]
     if command_kind == "approved_cut":
-        command: ApprovedCutCommand | TargetedRevisionCommand = _approved_cut_from_dict(
-            value["command"]
+        command: ApprovedCutCommand | TargetedRevisionCommand = _load(
+            ApprovedCutCommand, value["command"], label="ApprovedCut command"
         )
     elif command_kind == "targeted_revision":
         command = _targeted_revision_from_dict(value["command"])
     else:
         raise ProductionStoreError("persisted ProductionRun command kind is invalid")
+    base_release_id = value["base_release_id"]
+    if base_release_id is not None and not isinstance(base_release_id, str):
+        raise ProductionStoreError("persisted ProductionRun base release is invalid")
     return _StoredRun(
         command=command,
         view=_view_from_dict(value["view"]),
         worker_catalog=_catalog_from_list(value["worker_catalog"]),
-        base_release_id=cast(str | None, value["base_release_id"]),
+        base_release_id=base_release_id,
     )
 
 
-def _approved_cut_from_dict(value: object) -> ApprovedCutCommand:
-    if not isinstance(value, dict):
-        raise ProductionStoreError("persisted ApprovedCut command is invalid")
-    try:
-        return ApprovedCutCommand(
-            command_id=str(value["command_id"]),
-            episode_id=str(value["episode_id"]),
-            cut_id=str(value["cut_id"]),
-            format=cast(Format, value["format"]),
-            editorial_master_id=str(value["editorial_master_id"]),
-            winner_id=str(value["winner_id"]),
-            tight_cut_id=str(value["tight_cut_id"]),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError("persisted ApprovedCut command fields are invalid") from error
-
-
-def _targeted_revision_from_dict(value: object) -> TargetedRevisionCommand:
-    if not isinstance(value, dict):
-        raise ProductionStoreError("persisted TargetedRevision command is invalid")
-    try:
-        return TargetedRevisionCommand(
-            command_id=str(value["command_id"]),
-            current_release_id=str(value["current_release_id"]),
-            episode_id=str(value["episode_id"]),
-            cut_id=str(value["cut_id"]),
-            format=cast(Format, value["format"]),
-            event_id=str(value["event_id"]),
-            feedback=str(value["feedback"]),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError(
-            "persisted TargetedRevision command fields are invalid"
-        ) from error
-
-
-def _catalog_to_list(catalog: WorkerSelectionCatalog) -> list[dict[str, object]]:
-    return [
-        {
-            "reference": item.reference,
-            "kind": item.kind.value,
-            "visual_summary": item.visual_summary,
-            "width": item.width,
-            "height": item.height,
-            "duration_sec": item.duration_sec,
-        }
-        for item in catalog.items()
-    ]
-
-
-def _catalog_from_list(value: object) -> WorkerSelectionCatalog:
-    if not isinstance(value, list):
-        raise ProductionStoreError("persisted Worker Selection Catalog is invalid")
-    try:
-        return WorkerSelectionCatalog(
-            WorkerCatalogItem(
-                reference=str(item["reference"]),
-                kind=AssetKind(item["kind"]),
-                visual_summary=cast(str | None, item["visual_summary"]),
-                width=cast(int | None, item["width"]),
-                height=cast(int | None, item["height"]),
-                duration_sec=cast(float | None, item["duration_sec"]),
-            )
-            for item in value
-            if isinstance(item, dict)
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError(
-            "persisted Worker Selection Catalog fields are invalid"
-        ) from error
-
-
-def _derived_geometry_to_dict(geometry: DerivedAssetGeometry) -> dict[str, object]:
-    return {
-        "target_width": geometry.target_width,
-        "target_height": geometry.target_height,
-        "layout_identity": geometry.layout_identity,
-    }
-
-
-def _derived_geometry_from_dict(value: object) -> DerivedAssetGeometry:
-    if not isinstance(value, dict):
-        raise ProductionStoreError("persisted derived asset geometry is invalid")
-    try:
-        return DerivedAssetGeometry(
-            target_width=int(value["target_width"]),
-            target_height=int(value["target_height"]),
-            layout_identity=str(value["layout_identity"]),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError("persisted derived asset geometry fields are invalid") from error
-
-
-def _derived_instruction_to_dict(instruction: DerivedAssetInstruction) -> dict[str, object]:
-    return {
-        "component_id": instruction.component_id,
-        "event_id": instruction.event_id,
-        "semantic_kind": instruction.semantic_kind,
-        "implementation_kind": instruction.implementation_kind,
-        "lane": instruction.lane,
-        "display": instruction.display,
-        "t0": instruction.t0,
-        "t1": instruction.t1,
-        "source_asset_ref": instruction.source_asset_ref,
-        "geometry": _derived_geometry_to_dict(instruction.geometry),
-        "recipe_identity": instruction.recipe_identity,
-    }
-
-
-def _derived_instruction_from_dict(value: object) -> DerivedAssetInstruction:
-    if not isinstance(value, dict):
-        raise ProductionStoreError("persisted derived asset instruction is invalid")
-    try:
-        return DerivedAssetInstruction(
-            component_id=str(value["component_id"]),
-            event_id=str(value["event_id"]),
-            semantic_kind=str(value["semantic_kind"]),
-            implementation_kind=str(value["implementation_kind"]),
-            lane=cast(ComponentLane, value["lane"]),
-            display=str(value["display"]),
-            t0=float(value["t0"]),
-            t1=float(value["t1"]),
-            source_asset_ref=cast(str | None, value["source_asset_ref"]),
-            geometry=_derived_geometry_from_dict(value["geometry"]),
-            recipe_identity=cast(str | None, value["recipe_identity"]),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError(
-            "persisted derived asset instruction fields are invalid"
-        ) from error
-
-
-def _derived_build_request_to_dict(request: DerivedAssetBuildRequest) -> dict[str, object]:
-    return {
-        "build_request_id": request.build_request_id,
-        "run_id": request.run_id,
-        "command_id": request.command_id,
-        "episode_id": request.episode_id,
-        "cut_id": request.cut_id,
-        "format": request.format,
-        "dp_acceptance_id": request.dp_acceptance_id,
-        "scope": request.scope,
-        "event_id": request.event_id,
-        "instructions": [
-            _derived_instruction_to_dict(instruction) for instruction in request.instructions
-        ],
-        "worker_catalog_items": [
-            {
-                "reference": item.reference,
-                "kind": item.kind.value,
-                "visual_summary": item.visual_summary,
-                "width": item.width,
-                "height": item.height,
-                "duration_sec": item.duration_sec,
-            }
-            for item in request.worker_catalog_items
-        ],
-    }
-
-
-def _derived_build_request_from_dict(value: object) -> DerivedAssetBuildRequest:
-    if not isinstance(value, dict):
-        raise ProductionStoreError("persisted derived asset build request is invalid")
-    try:
-        catalog = _catalog_from_list(value["worker_catalog_items"])
-        return DerivedAssetBuildRequest(
-            build_request_id=str(value["build_request_id"]),
-            run_id=str(value["run_id"]),
-            command_id=str(value["command_id"]),
-            episode_id=str(value["episode_id"]),
-            cut_id=str(value["cut_id"]),
-            format=cast(Format, value["format"]),
-            dp_acceptance_id=str(value["dp_acceptance_id"]),
-            scope=cast(RequestScope, value["scope"]),
-            event_id=cast(str | None, value["event_id"]),
-            instructions=tuple(
-                _derived_instruction_from_dict(item) for item in value["instructions"]
-            ),
-            worker_catalog_items=catalog.items(),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError(
-            "persisted derived asset build request fields are invalid"
-        ) from error
-
-
-def _built_component_to_dict(component: BuiltComponentAsset) -> dict[str, object]:
-    return {
-        "component_id": component.component_id,
-        "event_id": component.event_id,
-        "source_asset_ref": component.source_asset_ref,
-        "final_asset_ref": component.final_asset_ref,
-        "inspection_ref": component.inspection_ref,
-        "recipe_identity": component.recipe_identity,
-    }
-
-
-def _built_component_from_dict(value: object) -> BuiltComponentAsset:
-    if not isinstance(value, dict):
-        raise ProductionStoreError("persisted built component is invalid")
-    try:
-        return BuiltComponentAsset(
-            component_id=str(value["component_id"]),
-            event_id=str(value["event_id"]),
-            source_asset_ref=cast(str | None, value["source_asset_ref"]),
-            final_asset_ref=str(value["final_asset_ref"]),
-            inspection_ref=cast(str | None, value["inspection_ref"]),
-            recipe_identity=cast(str | None, value["recipe_identity"]),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError("persisted built component fields are invalid") from error
-
-
-def _request_from_dict(value: object) -> StageRequest:
-    if not isinstance(value, dict):
-        raise ProductionStoreError("persisted current request is invalid")
-    try:
-        events_value = value["events"]
-        if not isinstance(events_value, list):
-            raise ProductionStoreError("persisted current request events are invalid")
-        return StageRequest(
-            run_id=str(value["run_id"]),
-            request_id=str(value["request_id"]),
-            command_id=str(value["command_id"]),
-            episode_id=str(value["episode_id"]),
-            cut_id=str(value["cut_id"]),
-            format=cast(Format, value["format"]),
-            stage=cast(StageName, value["stage"]),
-            attempt=int(value["attempt"]),
-            scope=cast(RequestScope, value["scope"]),
-            event_id=cast(str | None, value["event_id"]),
-            parent_acceptance_id=cast(str | None, value["parent_acceptance_id"]),
-            base_acceptance_id=cast(str | None, value.get("base_acceptance_id")),
-            events=tuple(_event_from_dict(event) for event in events_value),
-            placement_candidates=tuple(
-                EventPlacementCandidates(
-                    event_id=str(item["event_id"]),
-                    cues=tuple(
-                        CueAnchor(
-                            cue_id=str(cue["cue_id"]),
-                            text=str(cue["text"]),
-                            t0=float(cue["t0"]),
-                            t1=float(cue["t1"]),
-                            section_id=cast(str | None, cue["section_id"]),
-                        )
-                        for cue in item["cues"]
-                    ),
-                )
-                for item in value.get("placement_candidates", [])
-            ),
-            feedback=cast(str | None, value["feedback"]),
-            worker_asset_refs=tuple(str(item) for item in value["worker_asset_refs"]),
-            worker_catalog_items=_catalog_from_list(value["worker_catalog_items"]).items(),
-            components=tuple(_component_proposal_from_dict(item) for item in value["components"]),
-            built_components=tuple(
-                _built_component_from_dict(item) for item in value["built_components"]
-            ),
-            editorial_context=(
-                _context_from_dict(value["editorial_context"])
-                if value["editorial_context"] is not None
-                else None
-            ),
-            schema=str(value["schema"]),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError("persisted current request fields are invalid") from error
-
-
-def _event_to_dict(event: EventRecord) -> dict[str, object]:
-    placement = event.visual_placement
-    return {
-        "event_id": event.event_id,
-        "master_cue_ids": list(event.master_cue_ids),
-        "text_hash": event.text_hash,
-        "intent": event.intent,
-        "asset_ref": event.asset_ref,
-        "visual_status": event.visual_status,
-        "text": event.text,
-        "t0": event.t0,
-        "t1": event.t1,
-        "section_id": event.section_id,
-        "display": event.display,
-        "semantic_kind": event.semantic_kind,
-        "intentional_aroll": event.intentional_aroll,
-        "implementation_kind": event.implementation_kind,
-        "lane": event.lane,
-        "visual_placement": (
-            {
-                "placement_cue_ids": list(placement.placement_cue_ids),
-                "t0": placement.t0,
-                "t1": placement.t1,
-                "section_id": placement.section_id,
-            }
-            if placement is not None
-            else None
-        ),
-    }
-
-
-def _event_from_dict(value: object) -> EventRecord:
-    if not isinstance(value, dict):
-        raise ProductionStoreError("persisted event is invalid")
-    try:
-        placement_value = value.get("visual_placement")
-        placement = None
-        if placement_value is not None:
-            if not isinstance(placement_value, dict):
-                raise ValueError("persisted Visual Placement is invalid")
-            placement = _mint_visual_placement(
-                placement_cue_ids=tuple(str(item) for item in placement_value["placement_cue_ids"]),
-                t0=float(placement_value["t0"]),
-                t1=float(placement_value["t1"]),
-                section_id=cast(str | None, placement_value["section_id"]),
-            )
-        return EventRecord(
-            event_id=str(value["event_id"]),
-            master_cue_ids=tuple(str(item) for item in value["master_cue_ids"]),
-            text_hash=str(value["text_hash"]),
-            intent=str(value["intent"]),
-            asset_ref=cast(str | None, value["asset_ref"]),
-            visual_status=cast(str | None, value["visual_status"]),
-            text=str(value["text"]),
-            t0=float(value["t0"]),
-            t1=float(value["t1"]),
-            section_id=cast(str | None, value["section_id"]),
-            display=str(value["display"]),
-            semantic_kind=str(value["semantic_kind"]),
-            intentional_aroll=bool(value["intentional_aroll"]),
-            implementation_kind=str(value["implementation_kind"]),
-            lane=cast(ComponentLane | None, value["lane"]),
-            visual_placement=placement,
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError("persisted event fields are invalid") from error
-
-
-def _accepted_to_dict(stage: AcceptedStage) -> dict[str, object]:
-    return {
-        "acceptance_id": stage.acceptance_id,
-        "run_id": stage.run_id,
-        "request_id": stage.request_id,
-        "stage": stage.stage,
-        "attempt": stage.attempt,
-        "scope": stage.scope,
-        "event_id": stage.event_id,
-        "parent_acceptance_id": stage.parent_acceptance_id,
-        "events": [_event_to_dict(event) for event in stage.events],
-        "components": [_component_proposal_to_dict(component) for component in stage.components],
-        "built_components": [
-            _built_component_to_dict(component) for component in stage.built_components
-        ],
-    }
-
-
-def _accepted_from_dict(value: object) -> AcceptedStage:
-    if not isinstance(value, dict):
-        raise ProductionStoreError("persisted AcceptedStage is invalid")
-    try:
-        events_value = value["events"]
-        if not isinstance(events_value, list):
-            raise ProductionStoreError("persisted AcceptedStage events are invalid")
-        return _mint_accepted_stage(
-            acceptance_id=str(value["acceptance_id"]),
-            run_id=str(value["run_id"]),
-            request_id=str(value["request_id"]),
-            stage=cast(StageName, value["stage"]),
-            attempt=int(value["attempt"]),
-            scope=cast(RequestScope, value["scope"]),
-            event_id=cast(str | None, value["event_id"]),
-            parent_acceptance_id=cast(str | None, value["parent_acceptance_id"]),
-            events=tuple(_event_from_dict(event) for event in events_value),
-            components=tuple(_component_proposal_from_dict(item) for item in value["components"]),
-            built_components=tuple(
-                _built_component_from_dict(item) for item in value.get("built_components", [])
-            ),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError("persisted AcceptedStage fields are invalid") from error
-
-
-def _correction_to_dict(correction: _PreReleaseCorrection) -> dict[str, object]:
-    return {
-        "event_id": correction.event_id,
-        "feedback": correction.feedback,
-        "remaining_base_acceptance_ids": list(correction.remaining_base_acceptance_ids),
-    }
-
-
-def _correction_from_dict(value: object) -> _PreReleaseCorrection:
-    if not isinstance(value, dict) or set(value) != {
-        "event_id",
-        "feedback",
-        "remaining_base_acceptance_ids",
-    }:
-        raise ProductionStoreError("persisted pre-release correction is invalid")
-    try:
-        return _PreReleaseCorrection(
-            event_id=str(value["event_id"]),
-            feedback=str(value["feedback"]),
-            remaining_base_acceptance_ids=tuple(
-                str(item) for item in value["remaining_base_acceptance_ids"]
-            ),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError("persisted pre-release correction fields are invalid") from error
-
-
-def _policy_diagnostic_to_dict(diagnostic: PolicyDiagnostic) -> dict[str, object]:
-    return {
-        "code": diagnostic.code,
-        "message": diagnostic.message,
-        "component_ids": list(diagnostic.component_ids),
-        "section_ids": list(diagnostic.section_ids),
-        "asset_refs": list(diagnostic.asset_refs),
-    }
-
-
-def _policy_diagnostic_from_dict(value: object) -> PolicyDiagnostic:
-    if not isinstance(value, dict) or set(value) != {
-        "code",
-        "message",
-        "component_ids",
-        "section_ids",
-        "asset_refs",
-    }:
-        raise ProductionStoreError("persisted policy diagnostic is invalid")
-    try:
-        return PolicyDiagnostic(
-            code=cast(PolicyDiagnosticCode, value["code"]),
-            message=str(value["message"]),
-            component_ids=tuple(str(item) for item in value["component_ids"]),
-            section_ids=tuple(str(item) for item in value["section_ids"]),
-            asset_refs=tuple(str(item) for item in value["asset_refs"]),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError("persisted policy diagnostic fields are invalid") from error
-
-
-def _plan_to_dict(plan: MaterializationPlan) -> dict[str, object]:
-    return {
-        "plan_id": plan.plan_id,
-        "run_id": plan.run_id,
-        "command_id": plan.command_id,
-        "episode_id": plan.episode_id,
-        "cut_id": plan.cut_id,
-        "format": plan.format,
-        "director_acceptance_id": plan.director_acceptance_id,
-        "dp_acceptance_id": plan.dp_acceptance_id,
-        "visual_acceptance_id": plan.visual_acceptance_id,
-        "events": [_event_to_dict(event) for event in plan.events],
-        "components": [_projected_to_dict(component) for component in plan.components],
-        "duration_sec": plan.duration_sec,
-    }
-
-
-def _plan_from_dict(value: object) -> MaterializationPlan:
-    if not isinstance(value, dict):
-        raise ProductionStoreError("persisted MaterializationPlan is invalid")
-    try:
-        events_value = value["events"]
-        if not isinstance(events_value, list):
-            raise ProductionStoreError("persisted MaterializationPlan events are invalid")
-        return _mint_materialization_plan(
-            plan_id=str(value["plan_id"]),
-            run_id=str(value["run_id"]),
-            command_id=str(value["command_id"]),
-            episode_id=str(value["episode_id"]),
-            cut_id=str(value["cut_id"]),
-            format=cast(Format, value["format"]),
-            director_acceptance_id=str(value["director_acceptance_id"]),
-            dp_acceptance_id=str(value["dp_acceptance_id"]),
-            visual_acceptance_id=str(value["visual_acceptance_id"]),
-            events=tuple(_event_from_dict(event) for event in events_value),
-            components=tuple(_projected_from_dict(item) for item in value["components"]),
-            # 2026-09-09 之前存的 plan 沒有這個欄位。用 .get 讀回來，舊 plan 的
-            # duration 是 0，derive_brand_badge_overlays 就回空 tuple——歷史 plan
-            # 照樣 rehydrate，只是沒有 badge。
-            duration_sec=float(value.get("duration_sec") or 0.0),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError("persisted MaterializationPlan fields are invalid") from error
-
-
-def _component_proposal_to_dict(component: ComponentProposal) -> dict[str, object]:
-    return {
-        "component_id": component.component_id,
-        "event_id": component.event_id,
-        "semantic_kind": component.semantic_kind,
-        "implementation_kind": component.implementation_kind,
-        "lane": component.lane,
-        "display": component.display,
-        "t0": component.t0,
-        "t1": component.t1,
-    }
-
-
-def _component_proposal_from_dict(value: object) -> ComponentProposal:
-    if not isinstance(value, dict):
-        raise ProductionStoreError("persisted component proposal is invalid")
-    try:
-        return ComponentProposal(
-            component_id=str(value["component_id"]),
-            event_id=str(value["event_id"]),
-            semantic_kind=str(value["semantic_kind"]),
-            implementation_kind=str(value["implementation_kind"]),
-            lane=cast(ComponentLane, value["lane"]),
-            display=str(value["display"]),
-            t0=float(value["t0"]),
-            t1=float(value["t1"]),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError("persisted component proposal fields are invalid") from error
-
-
-def _projected_to_dict(component: ProjectedComponent) -> dict[str, object]:
-    return {
-        **_component_proposal_to_dict(
-            ComponentProposal(
-                component.component_id,
-                component.event_id,
-                component.semantic_kind,
-                component.implementation_kind,
-                component.lane,
-                component.display,
-                component.t0,
-                component.t1,
-            )
-        ),
-        "asset_ref": component.asset_ref,
-    }
-
-
-def _projected_from_dict(value: object) -> ProjectedComponent:
-    proposal = _component_proposal_from_dict(value)
-    if not isinstance(value, dict):
-        raise ProductionStoreError("persisted projected component is invalid")
-    return _mint_projected_component(
-        component_id=proposal.component_id,
-        event_id=proposal.event_id,
-        semantic_kind=proposal.semantic_kind,
-        implementation_kind=proposal.implementation_kind,
-        lane=proposal.lane,
-        display=proposal.display,
-        t0=proposal.t0,
-        t1=proposal.t1,
-        asset_ref=cast(str | None, value.get("asset_ref")),
-    )
-
-
-def _context_to_dict(context: EditorialCutContext) -> dict[str, object]:
-    return {
-        "episode_id": context.episode_id,
-        "cut_id": context.cut_id,
-        "format": context.format,
-        "editorial_master_id": context.editorial_master_id,
-        "tight_cut_id": context.tight_cut_id,
-        "duration_sec": context.duration_sec,
-        "source_ranges": [
-            {"t0": source_range.t0, "t1": source_range.t1} for source_range in context.source_ranges
-        ],
-        "cues": [
-            {
-                "cue_id": cue.cue_id,
-                "text": cue.text,
-                "t0": cue.t0,
-                "t1": cue.t1,
-                "section_id": cue.section_id,
-            }
-            for cue in context.cues
-        ],
-        "sections": [
-            {
-                "section_id": section.section_id,
-                "chapter_title": section.chapter_title,
-                "t0": section.t0,
-                "transition_before": section.transition_before,
-                "transition_title": section.transition_title,
-                "summary": section.summary,
-            }
-            for section in context.sections
-        ],
-        "editorial_feedback": list(context.editorial_feedback),
-    }
-
-
-def _context_from_dict(value: object) -> EditorialCutContext:
-    if not isinstance(value, dict):
-        raise ProductionStoreError("persisted Editorial Cut Context is invalid")
-    try:
-        return EditorialCutContext(
-            episode_id=str(value["episode_id"]),
-            cut_id=str(value["cut_id"]),
-            format=cast(Format, value["format"]),
-            editorial_master_id=str(value["editorial_master_id"]),
-            tight_cut_id=str(value["tight_cut_id"]),
-            duration_sec=float(value["duration_sec"]),
-            source_ranges=tuple(
-                CutSourceRange(float(item["t0"]), float(item["t1"]))
-                for item in value["source_ranges"]
-            ),
-            cues=tuple(
-                CueAnchor(
-                    cue_id=str(item["cue_id"]),
-                    text=str(item["text"]),
-                    t0=float(item["t0"]),
-                    t1=float(item["t1"]),
-                    section_id=cast(str | None, item["section_id"]),
-                )
-                for item in value["cues"]
-            ),
-            sections=tuple(
-                CanonicalSection(
-                    section_id=str(item["section_id"]),
-                    chapter_title=str(item["chapter_title"]),
-                    t0=float(item["t0"]),
-                    transition_before=bool(item["transition_before"]),
-                    transition_title=cast(str | None, item["transition_title"]),
-                    # 舊的 run store 沒有這個欄位，讀回來時不能因此整份炸掉。
-                    summary=str(item.get("summary") or ""),
-                )
-                for item in value["sections"]
-            ),
-            editorial_feedback=tuple(str(item) for item in value["editorial_feedback"]),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise ProductionStoreError("persisted Editorial Cut Context fields are invalid") from error
+#: Stage proposal 的 events 是 tagged union——四種 record 共用一個陣列，靠 `kind`
+#: 分辨。這是唯一一個「欄位型別描述不了」的形狀，所以自己寫。
+_PROPOSAL_EVENT_KINDS: dict[
+    str, type[DirectorEventProposal] | type[DPEventProposal] | type[VisualEventProposal]
+] = {
+    "director": DirectorEventProposal,
+    "dp": DPEventProposal,
+    "visual_review": VisualEventProposal,
+}
 
 
 def _proposal_event_to_dict(
     event: DirectorEventProposal | DPEventProposal | VisualEventProposal | EventRecord,
 ) -> dict[str, object]:
-    if isinstance(event, DirectorEventProposal):
-        return {
-            "kind": "director",
-            "event_id": event.event_id,
-            "master_cue_ids": list(event.master_cue_ids),
-            "intent": event.intent,
-            "display": event.display,
-            "semantic_kind": event.semantic_kind,
-            "intentional_aroll": event.intentional_aroll,
-        }
-    if isinstance(event, DPEventProposal):
-        return {
-            "kind": "dp",
-            "event_id": event.event_id,
-            "implementation_kind": event.implementation_kind,
-            "lane": event.lane,
-            "asset_ref": event.asset_ref,
-            "placement_cue_ids": list(event.placement_cue_ids),
-        }
-    if isinstance(event, VisualEventProposal):
-        return {
-            "kind": "visual_review",
-            "event_id": event.event_id,
-            "status": event.status,
-        }
+    for kind, cls in _PROPOSAL_EVENT_KINDS.items():
+        if type(event) is cls:
+            return {"kind": kind, **_CODEC.dump_record(event)}
     return {"kind": "event_record", "event": _event_to_dict(event)}
 
 
@@ -1257,114 +546,57 @@ def _proposal_event_from_dict(
 ) -> DirectorEventProposal | DPEventProposal | VisualEventProposal | EventRecord:
     if not isinstance(value, dict):
         raise SemanticDispatchStoreError("semantic proposal event is invalid")
-    try:
-        kind = value["kind"]
-        if kind == "director":
-            return DirectorEventProposal(
-                event_id=str(value["event_id"]),
-                master_cue_ids=tuple(str(item) for item in value["master_cue_ids"]),
-                intent=str(value["intent"]),
-                display=str(value["display"]),
-                semantic_kind=str(value["semantic_kind"]),
-                intentional_aroll=bool(value["intentional_aroll"]),
-            )
-        if kind == "dp":
-            return DPEventProposal(
-                event_id=str(value["event_id"]),
-                implementation_kind=str(value["implementation_kind"]),
-                lane=cast(ComponentLane | None, value["lane"]),
-                asset_ref=cast(str | None, value["asset_ref"]),
-                placement_cue_ids=tuple(str(item) for item in value.get("placement_cue_ids", [])),
-            )
-        if kind == "visual_review":
-            status = value["status"]
-            if status not in {"approved", "failed"}:
-                raise ValueError("visual status is invalid")
-            return VisualEventProposal(
-                event_id=str(value["event_id"]),
-                status=cast(Literal["approved", "failed"], status),
-            )
-        if kind == "event_record":
-            return _event_from_dict(value["event"])
-    except (KeyError, TypeError, ValueError) as error:
-        raise SemanticDispatchStoreError("semantic proposal event fields are invalid") from error
-    raise SemanticDispatchStoreError("semantic proposal event kind is invalid")
+    kind = value.get("kind")
+    if kind == "event_record":
+        return _event_from_dict(value.get("event"))
+    cls = _PROPOSAL_EVENT_KINDS.get(kind) if isinstance(kind, str) else None
+    if cls is None:
+        raise SemanticDispatchStoreError("semantic proposal event kind is invalid")
+    return _load(
+        cls,
+        value,
+        label="semantic proposal event",
+        error=SemanticDispatchStoreError,
+    )
 
 
 def _proposal_to_dict(proposal: StageProposal) -> dict[str, object]:
-    return {
-        "run_id": proposal.run_id,
-        "request_id": proposal.request_id,
-        "episode_id": proposal.episode_id,
-        "cut_id": proposal.cut_id,
-        "format": proposal.format,
-        "stage": proposal.stage,
-        "attempt": proposal.attempt,
-        "scope": proposal.scope,
-        "event_id": proposal.event_id,
-        "parent_acceptance_id": proposal.parent_acceptance_id,
-        "events": [_proposal_event_to_dict(event) for event in proposal.events],
-        "components": [_component_proposal_to_dict(component) for component in proposal.components],
-        "schema": proposal.schema,
-    }
+    return _CODEC.dump_record(
+        proposal,
+        overrides={"events": [_proposal_event_to_dict(event) for event in proposal.events]},
+    )
 
 
 def _proposal_from_dict(value: object) -> StageProposal:
     if not isinstance(value, dict):
         raise SemanticDispatchStoreError("semantic proposal is invalid")
+    events = value.get("events")
+    if not isinstance(events, list):
+        raise SemanticDispatchStoreError("semantic proposal events are invalid")
     try:
-        return StageProposal(
-            run_id=str(value["run_id"]),
-            request_id=str(value["request_id"]),
-            episode_id=str(value["episode_id"]),
-            cut_id=str(value["cut_id"]),
-            format=cast(Format, value["format"]),
-            stage=cast(StageName, value["stage"]),
-            attempt=int(value["attempt"]),
-            scope=cast(RequestScope, value["scope"]),
-            event_id=cast(str | None, value["event_id"]),
-            parent_acceptance_id=cast(str | None, value["parent_acceptance_id"]),
-            events=tuple(_proposal_event_from_dict(event) for event in value["events"]),
-            components=tuple(
-                _component_proposal_from_dict(component) for component in value["components"]
-            ),
-            schema=str(value["schema"]),
+        return _CODEC.load_record(
+            StageProposal,
+            value,
+            presets={"events": tuple(_proposal_event_from_dict(item) for item in events)},
         )
-    except (KeyError, TypeError, ValueError) as error:
-        raise SemanticDispatchStoreError("semantic proposal fields are invalid") from error
+    except RecordCodecError as failure:
+        raise SemanticDispatchStoreError(f"semantic proposal is invalid: {failure}") from failure
 
 
 def _outcome_to_dict(outcome: SemanticDispatchOutcome) -> dict[str, object]:
-    return {
-        "request_id": outcome.request_id,
-        "state": outcome.state,
-        "proposal": _proposal_to_dict(outcome.proposal) if outcome.proposal is not None else None,
-        "reason_code": outcome.reason_code,
-        "diagnostic": outcome.diagnostic,
-    }
+    return _CODEC.dump_record(outcome)
 
 
 def _outcome_from_dict(value: object) -> SemanticDispatchOutcome:
-    if not isinstance(value, dict) or set(value) != {
-        "request_id",
-        "state",
-        "proposal",
-        "reason_code",
-        "diagnostic",
-    }:
-        raise SemanticDispatchStoreError("semantic dispatch outcome is invalid")
-    try:
-        state = value["state"]
-        if state not in {"ready", "failed", "indeterminate"}:
-            raise ValueError("semantic dispatch outcome state is invalid")
-        return SemanticDispatchOutcome(
-            request_id=str(value["request_id"]),
-            state=cast(Literal["ready", "failed", "indeterminate"], state),
-            proposal=(
-                _proposal_from_dict(value["proposal"]) if value["proposal"] is not None else None
-            ),
-            reason_code=cast(str | None, value["reason_code"]),
-            diagnostic=cast(str | None, value["diagnostic"]),
-        )
-    except (KeyError, TypeError, ValueError) as error:
-        raise SemanticDispatchStoreError("semantic dispatch outcome fields are invalid") from error
+    return _load(
+        SemanticDispatchOutcome,
+        value,
+        label="semantic dispatch outcome",
+        error=SemanticDispatchStoreError,
+    )
+
+
+_CODEC.register(AcceptedStage, load=_accepted_from_dict)
+_CODEC.register(MaterializationPlan, dump=_plan_to_dict, load=_plan_from_dict)
+_CODEC.register(ProjectedComponent, load=_projected_from_dict)
+_CODEC.register(StageProposal, dump=_proposal_to_dict, load=_proposal_from_dict)

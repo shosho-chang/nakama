@@ -38,7 +38,6 @@ from agents.brook.script_video.finished_cut_production._records import (
     DirectorEventProposal,
     DPEventProposal,
     EventRecord,
-    ProjectedComponent,
     ReleaseArtifact,
     VisualEventProposal,
     _mint_projected_component,
@@ -1269,9 +1268,7 @@ def test_four_minute_nineteen_second_long_warns_but_is_not_blocked(
     assert len(authority.accepted_stages) == 3
     # 分級之後不再「撞到第一條就早退」，所以這支 4:19 的 fixture 會一次收齊
     # 全部警告（它也真的素材太少、節奏有缺口）。斷言改成包含，不是相等。
-    assert "long_duration_below_minimum" in {
-        item.code for item in authority.policy_diagnostics
-    }
+    assert "long_duration_below_minimum" in {item.code for item in authority.policy_diagnostics}
     assert unchanged == rejected
 
 
@@ -1289,6 +1286,15 @@ def test_good_long_chain_passes_long_policy_before_plan_mint(tmp_path) -> None:
         ("photo-420", 420.0, "section-3", "b_roll", "Expert"),
         ("clip-480", 480.0, "section-3", "b_roll", "Closing example"),
     )
+    # tight cut 的字幕 cue 不會重疊：同一刻同時要出章節卡與 B-roll 時，它們錨在
+    # 相鄰的兩句話上，不是同一句。以前這份 fixture 讓 chapter-2 與 clip-180 共用
+    # 180.0，只是因為那時候沒有人在建構 context 的時候看一眼。
+    cues: list[CueAnchor] = []
+    cue_end = 0.0
+    for event_id, t0, section_id, _semantic_kind, display in rows:
+        cue_start = max(t0, cue_end)
+        cues.append(CueAnchor(f"cue-{event_id}", display, cue_start, cue_start + 10.0, section_id))
+        cue_end = cue_start + 10.0
     context = EditorialCutContext(
         episode_id="episode-1",
         cut_id="cut-1",
@@ -1297,10 +1303,7 @@ def test_good_long_chain_passes_long_policy_before_plan_mint(tmp_path) -> None:
         tight_cut_id="tight-1",
         duration_sec=540.0,
         source_ranges=(CutSourceRange(0.0, 540.0),),
-        cues=tuple(
-            CueAnchor(f"cue-{event_id}", display, t0, t0 + 10.0, section_id)
-            for event_id, t0, section_id, _semantic_kind, display in rows
-        ),
+        cues=tuple(cues),
         sections=(
             CanonicalSection("section-1", "開場", 0.0),
             CanonicalSection(
@@ -1891,9 +1894,7 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
                 None,
                 ("cue-support",),
             ),
-            DPEventProposal(
-                "inset-event", "photo", "b_roll", inset.reference, ("cue-inset",)
-            ),
+            DPEventProposal("inset-event", "photo", "b_roll", inset.reference, ("cue-inset",)),
         ),
     )
     visual_process = reopen()
@@ -1943,8 +1944,10 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
     # 「吃素材又要再算一次」這個組合不存在了。
     assert inset_component.asset_ref == inset_event.asset_ref
     assert resolver.resolve_active_asset(inset_component.asset_ref).record.kind is AssetKind.PHOTO
-    with pytest.raises(TypeError, match="minted only"):
-        ProjectedComponent(
+    # ADR-069：擋的是「這個投影今天還成不成立」，不是「誰造的」。sentinel 那版
+    # 只認得出身，反而擋不住一個出身正確但語意／實作／軌道對不起來的組合。
+    with pytest.raises(ValueError, match="retired or unsupported component projection"):
+        _mint_projected_component(
             component_id="forged",
             event_id="support-event",
             semantic_kind="identity_card",
