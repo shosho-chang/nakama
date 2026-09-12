@@ -1,12 +1,30 @@
 # ADR-066: Finished Cut Production 與 Podcast Highlight 舊版退役
 
-- **Status**: Accepted — owner authorized implementation 2026-08-28; production cutover pending
+- **Status**: Accepted — owner authorized implementation 2026-08-28；**實作範圍於 2026-09-12 由 ADR-069 修改（見下方 Amended 一節）**
 - **Date**: 2026-08-28
 - **Owner**: Brook / Podcast Stage 5
 - **Stage**: 5 Multi-channel Production
 - **Supersedes after cutover**: ADR-065 Podcast Highlight production path and finished-review revision producer
 - **Preserves**: ADR-051 Director creative ownership; ADR-064 Editorial Master truth root
 - **Does not supersede**: ADR-051 standalone `storyboard.yaml` workflow
+
+## Amended 2026-09-12 by ADR-069 — 實作回到本文件說的 inexpensive structural gates
+
+本決策的核心（一個深模組、一條 `AcceptedStage` 權威鏈、Long/Short 分家）不變，但
+**實作超過了本文件〈Validation profile〉自己的授權範圍**——那一節寫 *"keeps only
+inexpensive structural gates"*，跑出來是 21,547 行、991 個 `raise`、48 種錯誤碼、
+77 份白名單。ADR-069 把它拉回來，並修改本決策三條：
+
+1. **Candidate → seal → Release → pointer → cutover 的封存鏈退役。** review_ready 的
+   `MaterializationPlan` 就是紀錄（帶 timeline 名、transaction receipt id、preview
+   sha256、events、components）。實測：cutover 之後從未封存過任何 Release，
+   Bridge 與 YouTube 分章因此一直是空的。
+2. **§Production run and stage authority 的「Constructors … are not public」不變式
+   取消。** 那五個 sentinel 覆寫了 dataclass `__init__`，是 70 個手寫 `_from_dict`
+   存在的根因；權威改由 run 邊界檢查與 `_current_chain_is_exact` 保證。
+3. **§Open follow-up 的 `request_amendment` 承諾放棄。**
+
+本文件以下內容保留為當時的決策紀錄；現行實作範圍以 ADR-069 為準。
 
 ## Revision 2026-09-10 — 修正窗口關在「封存成 Release」，不是「鑄出 plan」
 

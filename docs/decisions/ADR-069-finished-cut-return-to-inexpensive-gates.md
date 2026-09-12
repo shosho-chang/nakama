@@ -1,6 +1,6 @@
 # ADR-069: Finished Cut Production 回到 ADR-066 自己說的 inexpensive structural gates
 
-- **Status**: Proposed v2 — owner 三項裁決已定（2026-09-12：放棄封存 Release、person_inset 整刪、`chapter_transition_projection_mismatch` 升回 blocking）；待 v2 文字簽核後動 code
+- **Status**: **Accepted** — owner 簽核 2026-09-12（三項裁決：放棄封存 Release、person_inset 整刪、`chapter_transition_projection_mismatch` 升回 blocking）
 - **Date**: 2026-09-12（v1）→ 2026-09-12（v2，三方審查後）
 - **Owner**: Brook / Podcast Stage 5
 - **Stage**: 5 Multi-channel Production
@@ -256,17 +256,26 @@ ADR-066 的核心決策是對的，是實作超標。否決。
 ## 執行順序（每階段一個 PR，各有測試證明行為不變）
 
 1. **詞彙收斂**：`_projection` 升格為唯一宣告，其餘改 import。純重構，全部既有測試須綠。**做完 badge 就能接。**
-2. **純刪除**：`_cutover`、`_neutral_asset_import`、`_amendment`＋`amendments/`、`_face_placement`、`ShortPolicy`、legacy 路徑掃描、hyperframes 供應鏈釘死、`_release_payload`、`_resolve_fusion.py:332` landscape 硬 raise；歸檔含 `visual_effect` 的 89 個 run 後刪相容層。連帶 `cutover` CLI、`ProductionCutoverConfiguration` export、對應測試。回歸：既有 `review_ready` run 仍讀得回來。
+2. **純刪除**：`_neutral_asset_import`、`_amendment`＋`amendments/`、`_face_placement`（含 person_inset 詞彙與接線）、`ShortPolicy`、legacy 路徑掃描、hyperframes 供應鏈釘死、`_resolve_fusion.py:328` landscape 硬 raise；歸檔含 `visual_effect` 的 89 個 run 後刪相容層。連帶對應測試。回歸：既有 `review_ready` run 仍讀得回來。（`_cutover` 與 `_release_payload` 移到階段 4——見上方〈兩處順序修正〉。）
 3. **取消 sentinel、通用 loader**：`_records`／`_context` 的 `_authority` 刪；`_store` 的 `_from_dict` 群 → generic loader；`_materialization.py:982-1021` 搬 `_context.__post_init__`。回歸：store 讀寫 round-trip。
-4. **plan 成為紀錄**：Candidate／Release／pointer 合一為「review_ready plan record」（帶 timeline 名、receipt id、preview sha256、events、components）；`publish_timeline.py` 與 `highlight_review.py` 改讀 plan；journal 檔砍，`_persistence` 縮到 atomic write＋交易紀錄。回歸：**同一 approved cut `advance` 兩次、跨重啟 → duplicate／render 各恰好 1 次**；Bridge 頁與分章從 plan 出來的內容與現在一致。
+4. **plan 成為紀錄**：Candidate／Release／pointer 合一為「review_ready plan record」（帶 timeline 名、receipt id、preview sha256、events、components）；`publish_timeline.py` 與 `highlight_review.py` 改讀 plan；`_cutover.py` 與 `_release_payload` 在此刪除（連帶 `cutover` CLI、`ProductionCutoverConfiguration` export）；journal 檔砍，`_persistence` 縮到 atomic write＋交易紀錄。回歸：**同一 approved cut `advance` 兩次、跨重啟 → duplicate／render 各恰好 1 次**；Bridge 頁與分章從 plan 出來的內容與現在一致。
 5. **身分碼收斂**：master 8→1（content hash＋cache，邏輯搬 `_resolve_davinci`）、Resolve 9→1（UID＋名稱精確匹配留、雙讀砍）、dispatch 9→1（ledger 三態留）、drift 3→0（併入 `protected_track_drift`）。回歸：故意換 master.srt 一個字 → 擋；故意在 Resolve 修剪 V1 一段 2 秒（段數不變）→ 擋；故意改字幕軌一個字 → 擋；專案裡放一條 `__fcp_backup__` → 不會複製到它。
 6. **review diff**：Bridge timeline review 頁加「這一輪 vs 上一輪」的 event diff（第幾秒、哪種卡、原文→新文；第一輪全標新增）。G＋H 不動。回歸：用 punch-L04 那份平移複製的回覆當測試資料，diff 必須顯示 34 個 event 同一常數。
 7. **素材收據簡化＋政策分級**：URL profile 砍、license 釘常數、`asset_digest_mismatch` 獨立；`_policy` 表格化、`chapter_transition_projection_mismatch` 升 blocking。回歸：沒收據 → 擋；同名換 bytes → 擋；Envato 新舊兩種網址都過；章節標題被 Director 改寫 → 擋。
 
 **階段 6 之前不動 G＋H**——diff 是加法，不是替代；本 ADR 本來就不砍它們。
 
+## 實作中發現的兩處順序修正（2026-09-12，階段 1 實作時）
+
+1. **`_cutover.py` 從階段 2 移到階段 4。** 辯護人的警告成立：它是唯一的
+   commit → seal → pointer 路徑，在 plan 成為紀錄之前刪掉它，中間那一個 commit
+   會讓 `inspect_current` 永遠空。刪除與替代必須同一個 PR。
+2. **`_release_payload` / `_release_from_payload` 不是今天就死的死碼。** v2 引用
+   reviewer 的「0 個呼叫端」判斷，實測錯了——它們在 `_persistence.py:163` 與
+   `:186` 被 cutover journal 呼叫。所以它們隨 `_cutover` 一起走，也在階段 4。
+
 ## Review record
 
 - **v1 三方審查（2026-09-12）**：創作者視角、cost×risk×complexity 審計、ADR-066 原作者辯護——三方一致「改了再簽」。審計重算數字並指出 v1 標「留」但該砍的七項；辯護人對 v1 標「砍」的八項各給出今天就會發生的失敗情境（`source_range_drift`、活字幕軌、master content hash、`_current_chain_is_exact`、retry base、ledger 三態、canonical 精確匹配、素材 bytes），並指出 journal 的承擔理由對錯對象。整合報告在該 session 的 `ADR-069-panel-report.md`。
 - **owner 裁決（2026-09-12）**：放棄封存 Release；`_face_placement.py` 整刪；`chapter_transition_projection_mismatch` 升回 blocking。
-- v2 文字待 owner 簽核。
+- **owner 簽核 v2：2026-09-12「簽，直接做到完」。** 七個階段依序實作，每階段一個 commit。
