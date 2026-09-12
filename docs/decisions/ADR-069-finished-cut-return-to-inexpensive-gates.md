@@ -329,6 +329,34 @@ ADR-066 的核心決策是對的，是實作超標。否決。
    它們回答的是「哪個已封存的 Release 用了這份素材」。同樣不在本階段動手，
    理由同上：那是素材存活期的問題，跟紀錄層分開處理才看得清楚。
 
+## 階段 5 實作時的一處修正（2026-09-12）
+
+9. **「邏輯搬 `_resolve_davinci`」不做。** v2 寫這一句的時候把兩個 Resolve 模組
+   看成一個。實際上 `_materialization_fusion` 的模組定位就是「Resolve-backed,
+   read-only authority」——Editorial Master 的收據驗證與 cache 正是那個東西；
+   `_resolve_davinci` 是會**動** timeline 的交易 adapter。把一個唯讀的 cache 搬
+   進會動手的那一支，是讓兩邊都變模糊，不是收斂。code 的收斂照做，檔案不搬。
+
+   實際收斂結果（用 AST 掃 `reason_code=` 的字面值量的，不是估的）：
+
+   | 家族 | 之前 | 之後 |
+   |---|---|---|
+   | Editorial Master 身分 | 8 | `editorial_master_mismatch` |
+   | Resolve 綁定／canonical timeline | 9 | `resolve_binding_mismatch` |
+   | 語意派工（含 `f"semantic_{code}"` 組出來的 6 個） | 9 | `semantic_dispatch_failed` |
+   | drift | 3 | 併入 `protected_track_drift` |
+   | **模組總計** | **48（盤點日）** | **21** |
+
+   `f"semantic_{code}"` 那一行是這個毛病的原型：把「到底哪裡不對」編進 code，
+   一個家族就自動長出九個字串，而且沒有任何一處按它們分岔。細節移到
+   `diagnostic` 與 `CodexDispatchDiagnostic.code`——那兩處才是追問題會看的地方。
+
+10. **雙讀砍掉的理由要寫下來。** `ResolveCanonicalTimelineAuthority.inspect` 以前
+    把 state 與 baseline 各讀兩次再比對，用來抓「讀的當下有人在動 timeline」。
+    那個 race 沒有人遇過，而且抓不抓到都不改變結果：baseline 會原封不動帶到
+    `_resolve.prepare`，在**動手之前**再比一次指紋（`protected_track_drift`），
+    中間漂掉照樣擋得住。多讀的那一次是每支 cut 都要付的 Resolve 往返。
+
 ## Review record
 
 - **v1 三方審查（2026-09-12）**：創作者視角、cost×risk×complexity 審計、ADR-066 原作者辯護——三方一致「改了再簽」。審計重算數字並指出 v1 標「留」但該砍的七項；辯護人對 v1 標「砍」的八項各給出今天就會發生的失敗情境（`source_range_drift`、活字幕軌、master content hash、`_current_chain_is_exact`、retry base、ledger 三態、canonical 精確匹配、素材 bytes），並指出 journal 的承擔理由對錯對象。整合報告在該 session 的 `ADR-069-panel-report.md`。

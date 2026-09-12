@@ -531,10 +531,10 @@ def test_plan_context_and_command_must_be_one_exact_authority_chain(
 @pytest.mark.parametrize(
     ("inspections", "reason_code"),
     [
-        ((), "canonical_timeline_unknown"),
+        ((), "resolve_binding_mismatch"),
         (
             (_canonical(), replace(_canonical(), canonical=TimelineIdentity("Other", "uid-2"))),
-            "canonical_timeline_ambiguous",
+            "resolve_binding_mismatch",
         ),
     ],
 )
@@ -598,14 +598,14 @@ def test_receipt_content_identity_and_master_media_digest_are_distinct_authoriti
                 _split_identity_canonical(),
                 editorial_master_content_hash=_LIN_EDITORIAL_MASTER_MEDIA_SHA256,
             ),
-            "editorial_master_content_identity_mismatch",
+            "editorial_master_mismatch",
         ),
         (
             replace(
                 _split_identity_canonical(),
                 editorial_master_media_sha256=_LIN_EDITORIAL_MASTER_CONTENT_HASH,
             ),
-            "editorial_master_media_drift",
+            "editorial_master_mismatch",
         ),
         (
             _replace_item(
@@ -613,7 +613,7 @@ def test_receipt_content_identity_and_master_media_digest_are_distinct_authoriti
                 "video-1",
                 media_digest=_LIN_EDITORIAL_MASTER_CONTENT_HASH,
             ),
-            "editorial_master_media_drift",
+            "editorial_master_mismatch",
         ),
     ],
 )
@@ -667,26 +667,26 @@ def test_source_ranges_must_fit_inside_the_verified_master_duration(tmp_path: Pa
 @pytest.mark.parametrize(
     ("inspection", "reason_code"),
     [
-        (replace(_canonical(), episode_id="episode-other"), "canonical_identity_mismatch"),
-        (replace(_canonical(), cut_id="value-L01"), "canonical_identity_mismatch"),
-        (replace(_canonical(), timeline_frame_rate=29.97), "frame_rate_drift"),
+        (replace(_canonical(), episode_id="episode-other"), "resolve_binding_mismatch"),
+        (replace(_canonical(), cut_id="value-L01"), "resolve_binding_mismatch"),
+        (replace(_canonical(), timeline_frame_rate=29.97), "protected_track_drift"),
         (
             replace(
                 _canonical(),
                 state=replace(_canonical().state, end_frame=_canonical().state.end_frame + 2),
             ),
-            "timeline_duration_drift",
+            "resolve_binding_mismatch",
         ),
         (
             _replace_item(_canonical(), "video-1", media_digest="d" * 64),
-            "editorial_master_media_drift",
+            "editorial_master_mismatch",
         ),
         (
             _replace_item(_canonical(), "audio-1", media_digest="d" * 64),
-            "editorial_master_media_drift",
+            "editorial_master_mismatch",
         ),
-        (_replace_item(_canonical(), "video-1", source_in_frame=3_001), "source_range_drift"),
-        (_replace_item(_canonical(), "audio-1", end_frame=100_799), "source_range_drift"),
+        (_replace_item(_canonical(), "video-1", source_in_frame=3_001), "protected_track_drift"),
+        (_replace_item(_canonical(), "audio-1", end_frame=100_799), "protected_track_drift"),
         (
             replace(
                 _canonical(),
@@ -701,10 +701,10 @@ def test_source_ranges_must_fit_inside_the_verified_master_duration(tmp_path: Pa
         ),
         # 差三格才算漂移：一格是 Python 與 Resolve 對 .5 邊界各自捨入的必然結果，
         # 由 `_validate_context_contract` 的容忍度吸收（見 _materialization 的註解）。
-        (_replace_item(_canonical(), "subtitle-1", end_frame=86_463), "subtitle_contract_drift"),
+        (_replace_item(_canonical(), "subtitle-1", end_frame=86_463), "protected_track_drift"),
         (
             _replace_item(_canonical(), "subtitle-1", properties=(("Text", "錯字"),)),
-            "subtitle_contract_drift",
+            "protected_track_drift",
         ),
         (
             replace(

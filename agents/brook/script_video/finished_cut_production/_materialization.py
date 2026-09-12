@@ -215,18 +215,18 @@ class MaterializationCoordinator:
                 reason_code=(
                     reason_code
                     if isinstance(reason_code, str) and reason_code
-                    else "canonical_authority_failed"
+                    else "resolve_binding_mismatch"
                 ),
             ) from error
         if not inspections:
             raise MaterializationError(
                 "canonical Timeline UID is unknown",
-                reason_code="canonical_timeline_unknown",
+                reason_code="resolve_binding_mismatch",
             )
         if len(inspections) != 1:
             raise MaterializationError(
                 "canonical Timeline UID is ambiguous",
-                reason_code="canonical_timeline_ambiguous",
+                reason_code="resolve_binding_mismatch",
             )
         inspection = inspections[0]
         _validate_editorial_base(inspection, context)
@@ -682,7 +682,7 @@ def _render_srt(context: EditorialCutContext) -> bytes:
         ):
             raise MaterializationError(
                 "current cue timing or text cannot produce a review subtitle",
-                reason_code="subtitle_contract_drift",
+                reason_code="protected_track_drift",
             )
         blocks.append(
             f"{index}\n{_srt_timestamp(start_ms)} --> {_srt_timestamp(end_ms)}\n{cue.text}"
@@ -691,7 +691,7 @@ def _render_srt(context: EditorialCutContext) -> bytes:
     if not blocks:
         raise MaterializationError(
             "current cue authority is empty",
-            reason_code="subtitle_contract_drift",
+            reason_code="protected_track_drift",
         )
     return ("\n\n".join(blocks) + "\n").encode("utf-8")
 
@@ -700,7 +700,7 @@ def _cue_milliseconds(value: float) -> int:
     if isinstance(value, bool) or not math.isfinite(value) or value < 0:
         raise MaterializationError(
             "current cue time is invalid",
-            reason_code="subtitle_contract_drift",
+            reason_code="protected_track_drift",
         )
     return round(value * 1000)
 
@@ -814,7 +814,7 @@ def _validate_editorial_base(
     ):
         raise MaterializationError(
             "canonical Timeline inspection belongs to another cut",
-            reason_code="canonical_identity_mismatch",
+            reason_code="resolve_binding_mismatch",
         )
     if (
         re.fullmatch(r"[0-9a-f]{64}", inspection.editorial_master_content_hash) is None
@@ -822,12 +822,12 @@ def _validate_editorial_base(
     ):
         raise MaterializationError(
             "Editorial Cut Context does not bind the verified ADR-064 receipt",
-            reason_code="editorial_master_content_identity_mismatch",
+            reason_code="editorial_master_mismatch",
         )
     if re.fullmatch(r"[0-9a-f]{64}", inspection.editorial_master_media_sha256) is None:
         raise MaterializationError(
             "verified ADR-064 Master media identity is invalid",
-            reason_code="editorial_master_media_drift",
+            reason_code="editorial_master_mismatch",
         )
     master_duration = inspection.editorial_master_duration_sec
     if (
@@ -837,7 +837,7 @@ def _validate_editorial_base(
     ):
         raise MaterializationError(
             "verified ADR-064 Master duration is invalid",
-            reason_code="editorial_master_duration_invalid",
+            reason_code="editorial_master_mismatch",
         )
     if any(source.t1 > master_duration + 1e-6 for source in context.source_ranges):
         raise MaterializationError(
@@ -857,7 +857,7 @@ def _validate_editorial_base(
     ):
         raise MaterializationError(
             "canonical Timeline frame rate differs from the Editorial Master",
-            reason_code="frame_rate_drift",
+            reason_code="protected_track_drift",
         )
     state = inspection.state
     actual_frames = state.end_frame - state.start_frame
@@ -866,7 +866,7 @@ def _validate_editorial_base(
     ):
         raise MaterializationError(
             "canonical Timeline duration differs by more than one frame",
-            reason_code="timeline_duration_drift",
+            reason_code="resolve_binding_mismatch",
         )
 
     protected_tracks = tuple(
@@ -923,7 +923,7 @@ def _validate_editorial_base(
             #
             # 這裡本來用 `round`，於是每個落在半格以上的邊界都會多算一格：
             # punch-L03 六段裡有三段對不上（1593.364s → floor 47800、round 47801），
-            # 一路報 `source_range_drift`，可是 timeline 跟 ApprovedCut 其實描述的是
+            # 一路報 `protected_track_drift`，可是 timeline 跟 ApprovedCut 其實描述的是
             # 同一個剪點。字幕軌 377 條逐格對得上、只有 source_ranges 對不上，就是
             # 這個量化方式不一致造成的，不是資料真的漂了。
             #
@@ -935,7 +935,7 @@ def _validate_editorial_base(
             if item.media_digest != inspection.editorial_master_media_sha256:
                 raise MaterializationError(
                     "protected V1 or audio media is not the ADR-064 Master",
-                    reason_code="editorial_master_media_drift",
+                    reason_code="editorial_master_mismatch",
                 )
             if (
                 item.start_frame != record_cursor
@@ -945,7 +945,7 @@ def _validate_editorial_base(
             ):
                 raise MaterializationError(
                     "protected V1 or audio source range differs from ApprovedCut",
-                    reason_code="source_range_drift",
+                    reason_code="protected_track_drift",
                 )
             record_cursor = expected_record_end
         # 允許差一格：timeline 的結束影格是**所有軌道**的最大值，字幕軌常常比
@@ -954,7 +954,7 @@ def _validate_editorial_base(
         if not 0 <= state.end_frame - record_cursor <= 1:
             raise MaterializationError(
                 "protected V1 or audio record spans do not cover the exact cut",
-                reason_code="source_range_drift",
+                reason_code="protected_track_drift",
             )
 
     subtitle_items = tuple(
@@ -966,7 +966,7 @@ def _validate_editorial_base(
     if len(subtitle_items) != len(context.cues):
         raise MaterializationError(
             "protected subtitle cue count differs from tight context",
-            reason_code="subtitle_contract_drift",
+            reason_code="protected_track_drift",
         )
     for item, cue in zip(subtitle_items, context.cues, strict=True):
         # 時間允許差一格，文字必須逐字相同。
@@ -983,7 +983,7 @@ def _validate_editorial_base(
         ):
             raise MaterializationError(
                 "protected subtitle timing or text differs from tight context",
-                reason_code="subtitle_contract_drift",
+                reason_code="protected_track_drift",
             )
 
 

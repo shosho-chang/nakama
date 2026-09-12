@@ -124,7 +124,7 @@ class _FilesystemSemanticDispatchLedger:
             return SemanticDispatchOutcome(
                 request_id=request_id,
                 state="indeterminate",
-                reason_code="semantic_dispatch_indeterminate",
+                reason_code="semantic_dispatch_failed",
                 diagnostic="request was claimed without a durable terminal outcome",
             )
         outcome = _outcome_from_dict(document["outcome"])

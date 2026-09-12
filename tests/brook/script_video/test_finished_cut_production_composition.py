@@ -472,7 +472,7 @@ def test_review_ready_run_prepares_candidate_without_publishing_current(
         return
     if expected_state == "needs_review":
         assert status.state == "needs_review"
-        assert status.reason_code == "resolve_project_identity_mismatch"
+        assert status.reason_code == "resolve_binding_mismatch"
         assert (facade.duplicates, facade.applies, facade.renders) == (0, 0, 0)
         assert not tuple((episode_root / "highlights" / "staging").rglob("materialization.json"))
         return

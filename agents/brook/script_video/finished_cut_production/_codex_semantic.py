@@ -382,13 +382,21 @@ class CodexSemanticAdapter:
         code: DiagnosticCode,
         detail: str,
     ) -> SemanticDispatchOutcome:
-        bounded_detail = _bounded_head_and_tail(detail, _MAX_DIAGNOSTIC_DETAIL_CHARS)
+        # diagnostic 現在要帶上 code，所以留位置給它——總長仍然守住 512。
+        prefix = f"{code}: "
+        bounded_detail = _bounded_head_and_tail(
+            detail, _MAX_DIAGNOSTIC_DETAIL_CHARS - len(prefix)
+        )
         self._record(request, code, bounded_detail)
         outcome = SemanticDispatchOutcome(
             request_id=request.request_id,
             state="failed",
-            reason_code=f"semantic_{code}",
-            diagnostic=bounded_detail,
+            # ADR-069：`reason_code` 回答「是哪一類事情不對」，這裡一律是「派工失敗」。
+            # 是 timeout 還是 output_invalid 屬於「到底哪裡不對」，放 diagnostic 與
+            # `CodexDispatchDiagnostic.code`——以前它被編進 code 裡，於是這一個家族
+            # 就長出九個字串，而沒有任何一處按它們分岔。
+            reason_code="semantic_dispatch_failed",
+            diagnostic=prefix + bounded_detail,
         )
         self._outcomes[request.request_id] = outcome
         return outcome

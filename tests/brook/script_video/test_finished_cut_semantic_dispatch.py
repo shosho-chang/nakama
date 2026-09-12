@@ -98,7 +98,7 @@ def test_concurrent_durable_claims_launch_exactly_one_worker(tmp_path) -> None:
             return SemanticDispatchOutcome(
                 current.request_id,
                 "failed",
-                reason_code="semantic_process_failed",
+                reason_code="semantic_dispatch_failed",
                 diagnostic="fixture failure",
             )
 

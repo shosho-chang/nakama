@@ -65,7 +65,7 @@ def _context() -> EditorialCutContext:
 
 
 class _FailingWorker:
-    def __init__(self, reason_code: str = "semantic_dispatch_error") -> None:
+    def __init__(self, reason_code: str = "semantic_dispatch_failed") -> None:
         self.calls = 0
         self.request_ids: list[str] = []
         self.reason_code = reason_code
@@ -184,7 +184,7 @@ def test_failed_first_dispatch_requires_one_explicit_recovery_after_restart(
         failing.request_ids[0]
     )
     assert old_outcome is not None
-    assert old_outcome.reason_code == "semantic_dispatch_error"
+    assert old_outcome.reason_code == "semantic_dispatch_failed"
     assert accepted.current_stage == "dp"
     assert checkpoint.current_stages[0].stage == "director"
     assert checkpoint.current_stages[0].attempt == 2

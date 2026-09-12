@@ -529,7 +529,7 @@ def test_director_rejects_materializer_metadata_before_codex_dispatch() -> None:
     outcome = adapter.dispatch(request)
 
     assert outcome.state == "failed"
-    assert outcome.reason_code == "semantic_packet_rejected"
+    assert outcome.reason_code == "semantic_dispatch_failed"
     assert runner.calls == []
 
 
@@ -1119,7 +1119,11 @@ def test_process_failure_timeout_and_missing_output_never_redispatch_same_reques
     second = adapter.dispatch(request)
 
     assert first.state == "failed"
-    assert first.reason_code == f"semantic_{diagnostic_code}"
+    # ADR-069：code 是類別（派工失敗），是哪一種失敗在 diagnostic 與
+    # `CodexDispatchDiagnostic.code` 裡——那兩處才是拿來追問題的。
+    assert first.reason_code == "semantic_dispatch_failed"
+    assert first.diagnostic is not None and first.diagnostic.startswith(f"{diagnostic_code}: ")
+    assert [entry.code for entry in adapter.diagnostics] == [diagnostic_code]
     assert second == first
     assert len(runner.calls) == 1
     assert materializer.requests == [request]
@@ -1149,9 +1153,11 @@ def test_process_failure_diagnostic_retains_stderr_head_and_tail() -> None:
 
     assert outcome.diagnostic is not None
     assert len(outcome.diagnostic) <= 512
-    assert outcome.diagnostic.startswith("Codex exit=2; stderr=stderr-head:")
+    # ADR-069：diagnostic 前面掛上診斷類別（以前它被編進 reason_code 裡），
+    # 界線仍然守在 512——頭尾都要留住，中間才是被砍掉的那一段。
+    assert outcome.diagnostic.startswith("process_failed: Codex exit=2; stderr=stderr-head:")
     assert outcome.diagnostic.endswith(":stderr-tail")
-    assert adapter.diagnostics[-1].detail == outcome.diagnostic
+    assert outcome.diagnostic == f"process_failed: {adapter.diagnostics[-1].detail}"
 
 
 def test_subprocess_runner_is_a_bounded_injected_codex_process_adapter(

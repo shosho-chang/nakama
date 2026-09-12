@@ -696,9 +696,9 @@ def test_failed_director_dispatch_is_needs_review_and_never_redispatches_after_r
     assert len(dispatches) == 1
     assert reopened_status.run_id == first_status.run_id
     assert first_status.state == "needs_review"
-    assert first_status.reason_code == "semantic_process_failed"
+    assert first_status.reason_code == "semantic_dispatch_failed"
     assert reopened_status.state == "needs_review"
-    assert reopened_status.reason_code == "semantic_process_failed"
+    assert reopened_status.reason_code == "semantic_dispatch_failed"
     retry_request_id = reopened.retry_failed_dispatch(command_id)
     assert retry_request_id.startswith("request-")
 
@@ -809,7 +809,7 @@ def test_restart_after_claim_without_outcome_is_indeterminate_and_never_redispat
 
     assert child_calls == 1
     assert status.state == "needs_review"
-    assert status.reason_code == "semantic_dispatch_indeterminate"
+    assert status.reason_code == "semantic_dispatch_failed"
 
 
 @requires_local_hyperframes
@@ -868,7 +868,7 @@ def test_wrong_request_response_is_durably_rejected_without_redispatch(
 
     assert child_calls == 1
     assert first_status.state == "needs_review"
-    assert first_status.reason_code == "semantic_output_invalid"
+    assert first_status.reason_code == "semantic_dispatch_failed"
     assert reopened_status == first_status
 
 
@@ -951,7 +951,7 @@ def test_targeted_revision_dispatches_its_new_event_request_once_without_full_st
             return SemanticDispatchOutcome(
                 request.request_id,
                 "failed",
-                reason_code="semantic_process_failed",
+                reason_code="semantic_dispatch_failed",
                 diagnostic="fixture failure",
             )
 
@@ -992,7 +992,7 @@ def test_targeted_revision_dispatches_its_new_event_request_once_without_full_st
     }
     assert tuple(event.event_id for event in worker_requests[0].events) == ("event-1",)
     assert first_status.state == "needs_review"
-    assert first_status.reason_code == "semantic_process_failed"
+    assert first_status.reason_code == "semantic_dispatch_failed"
     assert reopened_status == first_status
     assert base.status(base_command_id).current_stage == "materialization"
 
