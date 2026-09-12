@@ -8,6 +8,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+import agents.usopp.video_description as vd
 from agents.usopp.video_description import (  # noqa: E402
     build_description,
     chapters_from_broll,
@@ -310,3 +311,128 @@ def test_legacy_flat_registration_of_another_episode_is_not_borrowed(tmp_path, m
     monkeypatch.setenv("NAKAMA_FINISHED_CUT_RUNTIME", str(tmp_path))
 
     assert chapters_from_registration("20260721 呂冠緯", "punch-L04") == []
+
+
+# --- agent 切的章節表 --------------------------------------------------------
+#
+# 完整版沒有轉場卡，所以推不出章節；長片也不保險——轉場卡少於兩張就回空
+# （20260721 的 story-L02 與 value-L02 各只有一張）。2026-09-11 那支 87 分鐘的
+# 完整版上架時描述裡一個時間戳都沒有，就是這個缺口。
+
+_CHAPTERS_DOC = {
+    "schema": "nakama.publish_chapters.v1",
+    "episode": "20260721 呂冠緯",
+    "cut_id": "full",
+    "generated_at": "2026-09-12T00:00:00Z",
+    "source": "editorial-master/v1/master.srt",
+    "chapters": [
+        {"t0": 0.0, "title": "開場：這集在聊什麼"},
+        {"t0": 318.0, "title": "AI 用到極致長什麼樣"},
+        {"t0": 1123.0, "title": "回到教育現場"},
+    ],
+}
+
+
+def _write_authored(episode_dir, cut_id, doc=None):
+    path = episode_dir / "publish" / "chapters" / f"{cut_id}.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    payload = dict(doc or _CHAPTERS_DOC)
+    payload["cut_id"] = cut_id
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def test_authored_chapters_are_used_when_nothing_else_has_any(tmp_path):
+    """完整版的三個既有來源全都空——這條就是為了那個洞。"""
+    _write_authored(tmp_path, "full")
+
+    assert vd.resolve_chapters(tmp_path, "full") == [
+        (0.0, "開場：這集在聊什麼"),
+        (318.0, "AI 用到極致長什麼樣"),
+        (1123.0, "回到教育現場"),
+    ]
+
+
+def test_transition_cards_still_win_over_the_authored_table(tmp_path, monkeypatch):
+    """轉場卡是畫面上真的有的東西，湊得到兩張就用它。"""
+    # `resolve_chapters` 用 episode 資料夾名去查登錄檔，所以 payload 的 episode_id
+    # 必須就是那個名字——production 本來就是這樣（資料夾 `20260721 呂冠緯`）。
+    _write_registration(
+        tmp_path,
+        "punch-L09",
+        [
+            {"t0": 52.6, "transition_before": True, "transition_title": "第一個線索"},
+            {"t0": 107.8, "transition_before": True, "transition_title": "情緒像粽子"},
+        ],
+        episode=tmp_path.name,
+    )
+    monkeypatch.setenv("NAKAMA_FINISHED_CUT_RUNTIME", str(tmp_path))
+    _write_authored(tmp_path, "punch-L09")
+
+    assert vd.resolve_chapters(tmp_path, "punch-L09") == [
+        (0.0, "開場"),
+        (52.6, "第一個線索"),
+        (107.8, "情緒像粽子"),
+    ]
+
+
+def test_a_single_transition_card_falls_through_to_the_authored_table(tmp_path, monkeypatch):
+    """一張轉場卡湊不出章節表（gate 要 ≥2），那就別讓描述空著。"""
+    _write_registration(
+        tmp_path,
+        "story-L02",
+        [{"t0": 52.6, "transition_before": True, "transition_title": "唯一一張"}],
+        episode=tmp_path.name,
+    )
+    monkeypatch.setenv("NAKAMA_FINISHED_CUT_RUNTIME", str(tmp_path))
+    _write_authored(tmp_path, "story-L02")
+
+    assert [title for _t, title in vd.resolve_chapters(tmp_path, "story-L02")] == [
+        "開場：這集在聊什麼",
+        "AI 用到極致長什麼樣",
+        "回到教育現場",
+    ]
+
+
+def test_no_authored_table_is_not_an_error(tmp_path):
+    """舊集數本來就沒有這個檔。"""
+    assert vd.chapters_from_authored(tmp_path, "full") == []
+
+
+def test_a_broken_authored_table_fails_loud(tmp_path):
+    """靜靜地當成沒有章節，等於讓一份切好的表無聲消失。"""
+    path = tmp_path / "publish" / "chapters" / "full.json"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{ 這不是合法 JSON", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="不是合法的章節表"):
+        vd.chapters_from_authored(tmp_path, "full")
+
+
+@pytest.mark.parametrize(
+    ("mutation", "match"),
+    [
+        ({"chapters": _CHAPTERS_DOC["chapters"][:2]}, "至少要 3 章"),
+        (
+            {"chapters": [{"t0": 12.0, "title": "沒有從零開始"}, *_CHAPTERS_DOC["chapters"][1:]]},
+            "首章必須是 0:00",
+        ),
+        (
+            {
+                "chapters": [
+                    {"t0": 0.0, "title": "開場"},
+                    {"t0": 5.0, "title": "太近了"},
+                    {"t0": 900.0, "title": "第三章"},
+                ]
+            },
+            "不足 10s",
+        ),
+    ],
+)
+def test_youtube_hard_rules_are_enforced_at_the_schema(tmp_path, mutation, match):
+    """違反任何一條，YouTube 會整份忽略而且不報錯——所以在這裡擋。"""
+    doc = {**_CHAPTERS_DOC, **mutation}
+    _write_authored(tmp_path, "full", doc)
+
+    with pytest.raises(ValueError, match=match):
+        vd.chapters_from_authored(tmp_path, "full")

@@ -565,6 +565,7 @@ Editorial Master 封存
  ▼
 ■ 停點 3：packaging review（Bridge）
  ▼
+ [序列] author_chapters.py --cut <每一支，含 full>（切章節；描述要帶時間戳）
  publish_description.py → /bridge/publish/<ep>/<cut> → 上傳（**要他明確核准**）
 ```
 

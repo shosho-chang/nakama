@@ -138,8 +138,35 @@ def chapters_from_registration(episode_id: str, cut_id: str) -> list[tuple[float
     return [(0.0, "開場"), *marks]
 
 
+#: agent 切好的章節表落在這裡，一支 cut 一個檔。
+AUTHORED_CHAPTERS_RELDIR = Path("publish") / "chapters"
+
+
+def chapters_from_authored(episode_dir: Path, cut_id: str) -> list[tuple[float, str]]:
+    """讀 agent 切好的章節表（`publish/chapters/<cut_id>.json`）。
+
+    完整版**沒有轉場卡**，所以推不出章節；長片也不保險——轉場卡少於兩張就回空
+    （20260721 的 story-L02 與 value-L02 各只有一張）。這條來源補的就是那個缺口：
+    章節由讀過逐字稿的 agent 切，schema 擋 YouTube 的硬性規則。
+
+    缺檔回空，不是錯誤——舊集數本來就沒有。**壞損就吵**：靜靜地當成沒有章節，
+    等於讓一份切好的表無聲消失。
+    """
+    from shared.schemas.publish_chapters import PublishChaptersFileV1
+
+    path = Path(episode_dir) / AUTHORED_CHAPTERS_RELDIR / f"{cut_id}.json"
+    if not path.is_file():
+        return []
+    try:
+        return PublishChaptersFileV1.model_validate_json(
+            path.read_text(encoding="utf-8")
+        ).as_pairs()
+    except (OSError, ValueError) as error:
+        raise ValueError(f"{path} 不是合法的章節表：{error}") from error
+
+
 def resolve_chapters(episode_dir: Path, cut_id: str) -> list[tuple[float, str]]:
-    """分章來源，由權威到回退：Release 對應表 → 核准剪輯登錄 → 舊 broll 檔。
+    """分章來源，由權威到回退：Release 對應表 → 核准剪輯登錄 → agent 切的章節表 → 舊 broll 檔。
 
     一旦該集建了 publish-timelines 對應表，Release 就是唯一權威——它說沒有分章
     就是沒有分章，不可以回頭撿 broll，那份是 ADR-065 製作線的舊時間軸
@@ -156,6 +183,11 @@ def resolve_chapters(episode_dir: Path, cut_id: str) -> list[tuple[float, str]]:
     registered = chapters_from_registration(episode_dir.name, cut_id)
     if registered:
         return registered
+    # 轉場卡是畫面上真的有的東西，所以排在 agent 切的表前面；但它常常湊不到兩張，
+    # 而完整版根本沒有。接不上就換這一條，不要讓描述裡一個時間戳都沒有。
+    authored = chapters_from_authored(episode_dir, cut_id)
+    if authored:
+        return authored
     broll_path = episode_dir / "highlights" / "tighten" / f"{cut_id}_broll.json"
     if not broll_path.exists():
         return []

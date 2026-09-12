@@ -589,6 +589,23 @@ category／implementation component 分類，不可只看它來自哪個 JSON：
   transcript timestamp 只留內部，絕對不得顯示在對外 description。只有人類可讀的
   論文、書籍或公開 URL 才可出現「本集引用」；沒有就整段省略。
 - 交付前逐句掃描「不是／而是」「不只／更」「這一段會」「帶你看」「深入探討」；命中就重寫。
+- **描述裡的章節時間戳要先切好。** `resolve_chapters` 的來源依序是 Release 對應表 →
+  核准剪輯登錄的滿版轉場卡 → **agent 切的章節表** → 舊 broll 檔。前兩個常常接不上：
+  完整版根本沒有轉場卡，長片也可能湊不到兩張（20260721 的 story-L02 與 value-L02
+  各只有一張），這時描述裡會一個時間戳都沒有而且不報錯。所以**每一支（含 full）在
+  進 Publish review 之前先跑**：
+
+  ```bash
+  python scripts/author_chapters.py "<episode>" --cut <cut_id> [--duration-sec <片長>] < chapters.json
+  ```
+
+  切章本身是語意工作——讀 `editorial-master/v1/master.srt`（或該支的 tight SRT），
+  判斷話題在哪裡轉、用觀眾看得懂的話命名，由當下執行的 agent 做，腳本只驗規則。
+  顆粒度：**10 分鐘的長片可以切細，87 分鐘的完整版不要**——修修 2026-09-12 看過
+  29 章的版本後要求收斂，定版是 16 章（平均 5.4 分、最短 2.4 分）。
+  schema 擋 YouTube 的硬性規則（首章 0:00、至少 3 章、遞增、每章至少 10 秒）；
+  違反其中任何一條 YouTube 會整份忽略而且不會告訴你。
+
 - Packaging 核准、正式 export 登錄成 Release 後，Bridge 會呼叫
   `scripts/publish_description.py <episode> --cut <cut> --auto`，只走
   `auth_policy="subscription_required"`。成功後才進 Publish review，description 保持可編輯。
