@@ -21,6 +21,7 @@ _FORENSIC_REFERENCE_RE = re.compile(r"^forensic-sha256:[0-9a-f]{64}$")
 _UTC_SECONDS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _PEXELS_LICENSE = "Pexels license: https://www.pexels.com/license/"
 _ENVATO_LICENSE = "Envato Elements license: https://elements.envato.com/license-terms"
+_ENVATO_APP_ITEM_ID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
 _ACQUISITION_SOURCE_CLASSES = frozenset(
     {
         "licensed_stock",
@@ -138,15 +139,29 @@ class CompactAssetReceipt:
                 )
             elif self.provider == "envato-elements":
                 escaped_item_id = re.escape(self.provider_item_id or "")
-                expected_profile = (
+                # 舊站 elements.envato.com/<slug>-<item id>：既有 receipt 仍須驗得過。
+                legacy_slug_profile = (
                     re.fullmatch(r"[a-z0-9]+", self.provider_item_id or "") is not None
                     and re.fullmatch(
                         rf"https://elements\.envato\.com/[a-z0-9-]+-{escaped_item_id}",
                         self.source_url,
                     )
                     is not None
-                    and self.license == _ENVATO_LICENSE
                 )
+                # 現行站：Envato 已把 Elements 併進 app.envato.com，item 頁改用 UUID，
+                # 舊網址一律 302 過去（2026-09-07 實測）。只認小寫 hex UUID，維持
+                # 既有「大小寫變體一律拒絕」的保證。
+                app_uuid_profile = (
+                    _ENVATO_APP_ITEM_ID_RE.fullmatch(self.provider_item_id or "") is not None
+                    and re.fullmatch(
+                        rf"https://app\.envato\.com/search/[a-z0-9-]+/{escaped_item_id}",
+                        self.source_url,
+                    )
+                    is not None
+                )
+                expected_profile = (
+                    legacy_slug_profile or app_uuid_profile
+                ) and self.license == _ENVATO_LICENSE
             else:
                 expected_profile = False
             if not expected_profile:
