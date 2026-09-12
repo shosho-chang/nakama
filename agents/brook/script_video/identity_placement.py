@@ -160,7 +160,17 @@ def _seconds(value: str) -> float:
     match = _TIMESTAMP_RE.fullmatch(value)
     if match is None:
         raise IdentityPlacementError(f"invalid SRT timestamp: {value}")
-    return int(match["h"]) * 3600 + int(match["m"]) * 60 + int(match["s"]) + int(match["ms"]) / 1000
+    # 先湊成整數毫秒再除一次，不要逐項相加浮點。`h*3600 + m*60 + s + ms/1000` 把
+    # 00:00:01,816 算成 1.8159999999999998，而 worker 端慣用的 `1816/1000` 是
+    # 1.816——兩個不同的 double。哪一個時間戳會踩到純看運氣：同一輪的
+    # 00:00:02,548 與 00:00:34,239 剛好兩種算法同一個 bit 就過了，
+    # 2026-09-11 story-L02 的 ,816 就中獎。整數毫秒讓兩種算法收斂到同一個值。
+    return (
+        int(match["h"]) * 3_600_000
+        + int(match["m"]) * 60_000
+        + int(match["s"]) * 1_000
+        + int(match["ms"])
+    ) / 1000
 
 
 def parse_srt(path: Path) -> list[SrtCue]:
@@ -241,6 +251,13 @@ def _validate_master_identity(value: object, expected: Mapping[str, object]) -> 
 _CUE_KEYS = {"number", "start_sec", "end_sec", "text", "text_sha256"}
 
 
+#: 時間戳比對容差：半毫秒。SRT 的解析度**就是**毫秒，比它更細的差距一律是浮點
+#: 表示誤差，不是不同的時間。精確相等在這裡沒有保護任何東西，只是把「通過與否」
+#: 交給運氣——而且既有已 accept 的收據存著 `1.8159999999999998`（當初為了繞過精確
+#: 比對而改寫的序列化），換算法之後仍然要 verify 得過。
+_TIMESTAMP_TOLERANCE_SEC = 0.0005
+
+
 def _cue_from_claim(value: object, cues: list[SrtCue], label: str) -> SrtCue:
     claim = _require_exact_keys(value, _CUE_KEYS, label)
     number = claim["number"]
@@ -249,8 +266,21 @@ def _cue_from_claim(value: object, cues: list[SrtCue], label: str) -> SrtCue:
     cue = next((item for item in cues if item.number == number), None)
     if cue is None:
         raise IdentityPlacementError(f"{label} references a missing SRT cue")
-    if claim != cue.identity():
-        raise IdentityPlacementError(f"{label} timestamp/text identity drift")
+    identity = cue.identity()
+    drifted = [key for key in ("text", "text_sha256") if claim[key] != identity[key]]
+    for key in ("start_sec", "end_sec"):
+        claimed = claim[key]
+        if isinstance(claimed, bool) or not isinstance(claimed, (int, float)):
+            drifted.append(key)
+        elif abs(float(claimed) - float(identity[key])) > _TIMESTAMP_TOLERANCE_SEC:
+            drifted.append(key)
+    if drifted:
+        # 訊息要指出是哪一個欄位、兩邊各是什麼。舊版只說「identity drift」，
+        # 於是得自己去兩份 JSON 逐欄位比對才知道是時間戳還是文字。
+        detail = "、".join(
+            f"{key}（收據 {claim[key]!r} ≠ SRT {identity[key]!r}）" for key in drifted
+        )
+        raise IdentityPlacementError(f"{label} timestamp/text identity drift: {detail}")
     return cue
 
 
@@ -299,8 +329,16 @@ def _load_worker_audit(
         {"path", "bytes", "sha256", "cue_count"},
         "worker audit cut_srt",
     )
-    if claimed_srt != dict(cut_srt_identity):
-        raise IdentityPlacementError("worker audit cut SRT identity is stale")
+    expected_srt = dict(cut_srt_identity)
+    if claimed_srt != expected_srt:
+        # 四個欄位裡是哪一個不合要講清楚。`path` 要的是 episode 相對路徑，
+        # 光看 "identity is stale" 看不出派工單填了絕對路徑還是 sha256 對不上。
+        detail = "、".join(
+            f"{key}（派工單 {claimed_srt.get(key)!r} ≠ 實際 {expected_srt[key]!r}）"
+            for key in sorted(expected_srt)
+            if claimed_srt.get(key) != expected_srt[key]
+        )
+        raise IdentityPlacementError(f"worker audit cut SRT identity is stale: {detail}")
     # The audit file itself must be cut-local; this keeps evidence from another
     # episode/cut from being accidentally selected by an absolute path.
     if not path.resolve().is_relative_to(cut_dir.resolve()):
