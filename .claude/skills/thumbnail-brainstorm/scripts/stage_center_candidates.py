@@ -79,10 +79,33 @@ def stage(
     pool_dir = vault_dir / "center-candidates"
     pool_dir.mkdir(parents=True, exist_ok=True)
 
-    candidates: list[dict] = []
+    out = packaging_dir / "center-candidates" / f"{cut_id}.json"
+
+    # **既有候選要留著。** 這一步天生是分批的——修修 2026-08-29「來源的圖要多一點」，
+    # 一條概念搜 2–3 個說法、湊到二三十張，不可能一次搜完。舊版每跑一次就用這一批
+    # 重建整個池子，第二輪補搜等於把第一輪的成果全部丟掉（2026-09-12 三支長片各只有
+    # 9／8／6 張，正要補搜時才發現）。跟 `emit_packages` 的 title_trace 是同一類 bug。
+    # 要清空重來就先刪掉 `<cut_id>.json`。
+    existing: list[dict] = []
+    if out.is_file():
+        try:
+            existing = list(
+                CenterCandidatesFileV1.model_validate_json(
+                    out.read_text(encoding="utf-8")
+                ).model_dump(by_alias=True)["candidates"]
+            )
+        except (OSError, ValueError) as error:
+            # 壞損不靜默重建——重建等於把既有候選丟掉。
+            raise SystemExit(f"{out} 讀不回來（{error}）。修好或改名備份後再跑。") from error
+
+    candidates: list[dict] = list(existing)
+    seen = {str(item["candidate_id"]) for item in candidates}
     skipped: list[str] = []
     for row in results:
         identifier = item_id(str(row["item_url"]))
+        if identifier in seen:
+            skipped.append(f"{identifier}（池子裡已經有了）")
+            continue
         payload = _fetch(str(row["preview_url"]))
         with Image.open(BytesIO(payload)) as image:
             width, height = image.size
@@ -106,6 +129,7 @@ def stage(
                 "query": str(row["query"])[:200],
             }
         )
+        seen.add(identifier)
 
     pool = CenterCandidatesFileV1.model_validate(
         {
@@ -116,14 +140,14 @@ def stage(
             "candidates": candidates,
         }
     )
-    out = packaging_dir / "center-candidates" / f"{cut_id}.json"
     text = pool.model_dump_json(indent=2, by_alias=True) + "\n"
     for path in (out, pool_dir / f"{cut_id}.json"):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(text, encoding="utf-8")
     if skipped:
         print(f"[note] 跳過直式素材：{', '.join(skipped)}", file=sys.stderr)
-    print(f"{len(candidates)} 張候選 → {out}")
+    added = len(candidates) - len(existing)
+    print(f"{len(candidates)} 張候選（既有 {len(existing)} ＋ 這輪新增 {added}） → {out}")
     return out
 
 

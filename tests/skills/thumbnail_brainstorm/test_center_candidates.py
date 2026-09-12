@@ -137,3 +137,60 @@ def test_preview_downloads_must_be_https(monkeypatch, staged):
             "20260805 林之晨",
             [_result("22KBKWG", preview="http://cdn.example/p.png")],
         )
+
+
+def test_a_second_search_round_adds_to_the_pool_instead_of_replacing_it(monkeypatch, staged):
+    """補搜是常態，不是重來。
+
+    修修 2026-08-29「來源的圖要多一點」，一條概念要搜 2–3 個說法、湊到二三十張，
+    不可能一次搜完。舊版每跑一次就用這一批重建整個池子，第二輪補搜等於把第一輪
+    全部丟掉——2026-09-12 三支長片各只有 9／8／6 張、正要補搜時才發現。
+    """
+    _vault, packaging = staged
+    monkeypatch.setattr(stage_center_candidates, "_fetch", lambda url: _png_bytes(1600, 900))
+
+    stage_center_candidates.stage(
+        packaging, "punch-L04", "20260805-linzhichen", "20260805 林之晨", [_result("22KBKWG")]
+    )
+    out = stage_center_candidates.stage(
+        packaging, "punch-L04", "20260805-linzhichen", "20260805 林之晨", [_result("ML6MZD5")]
+    )
+
+    pool = json.loads(out.read_text(encoding="utf-8"))
+    assert [row["candidate_id"] for row in pool["candidates"]] == ["22KBKWG", "ML6MZD5"]
+
+
+def test_the_same_item_twice_is_not_staged_twice(monkeypatch, staged):
+    """同一張圖在兩個搜尋詞底下都出現是常事，gate 上不該看到兩份。"""
+    _vault, packaging = staged
+    monkeypatch.setattr(stage_center_candidates, "_fetch", lambda url: _png_bytes(1600, 900))
+
+    stage_center_candidates.stage(
+        packaging, "punch-L04", "20260805-linzhichen", "20260805 林之晨", [_result("22KBKWG")]
+    )
+    out = stage_center_candidates.stage(
+        packaging,
+        "punch-L04",
+        "20260805-linzhichen",
+        "20260805 林之晨",
+        [_result("22KBKWG", query="另一個搜尋詞"), _result("ML6MZD5")],
+    )
+
+    pool = json.loads(out.read_text(encoding="utf-8"))
+    assert [row["candidate_id"] for row in pool["candidates"]] == ["22KBKWG", "ML6MZD5"]
+    # 既有那筆保留第一次的來歷，不被第二個搜尋詞覆寫。
+    assert pool["candidates"][0]["query"] == "pampered dog on sofa"
+
+
+def test_a_corrupt_pool_is_not_silently_rebuilt(monkeypatch, staged):
+    """重建等於把既有候選丟掉——壞損要吵，不要自己修好。"""
+    _vault, packaging = staged
+    monkeypatch.setattr(stage_center_candidates, "_fetch", lambda url: _png_bytes(1600, 900))
+    pool_path = packaging / "center-candidates" / "punch-L04.json"
+    pool_path.parent.mkdir(parents=True, exist_ok=True)
+    pool_path.write_text("{ 這不是合法 JSON", encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="讀不回來"):
+        stage_center_candidates.stage(
+            packaging, "punch-L04", "20260805-linzhichen", "20260805 林之晨", [_result("22KBKWG")]
+        )
