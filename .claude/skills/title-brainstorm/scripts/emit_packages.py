@@ -138,8 +138,15 @@ def emit(
 
     packaging_dir.mkdir(parents=True, exist_ok=True)
 
-    # Always write title_trace.json
-    trace_path = packaging_dir / "title_trace.json"
+    # Always write title_trace.json — **逐支一個子目錄**，不是扁平單檔。
+    # ADR-054 D14「推導鏈逐支落地」，而 `title_trace_ref` 的形狀本來就是
+    # `packaging/<cut_id>/title_trace.json`。舊版寫在 `packaging/title_trace.json`，
+    # 跑第二支就把第一支的完整推導鏈整檔抹掉——跟下面 packages.json 那段血淚
+    # （2026-07-29 謝伯讓集）是同一類 bug，只是當時只修了 packages 那一半。
+    # 20260721 呂冠緯 的 `full` 那支已經有一份扁平的舊檔，改路徑之後它不會被動到。
+    trace_dir = packaging_dir / cut_id
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    trace_path = trace_dir / "title_trace.json"
     trace_out = {
         "episode": episode,
         "cut_id": cut_id,
@@ -224,8 +231,15 @@ def emit(
     if vault_path is not None:
         vault_ep_dir = vault_path / "Attachments" / "packaging" / episode_slug
         vault_ep_dir.mkdir(parents=True, exist_ok=True)
-        for src in (trace_path, packages_path):
-            dst = vault_ep_dir / src.name
+        # 推導鏈跟 working set 一樣逐支放子目錄——只用 `src.name` 的話，三支長片
+        # 會在 vault 裡搶同一個 title_trace.json，等於把 working set 剛修好的
+        # 覆寫問題原封不動搬到 SoT 上。packages.json 是全集共用一份，照舊。
+        trace_dst_dir = vault_ep_dir / cut_id
+        trace_dst_dir.mkdir(parents=True, exist_ok=True)
+        for src, dst in (
+            (trace_path, trace_dst_dir / trace_path.name),
+            (packages_path, vault_ep_dir / packages_path.name),
+        ):
             shutil.copy2(src, dst)
             vault_copies.append(str(dst))
 

@@ -122,10 +122,13 @@ class TestEmitShortFilm:
 
 class TestEmitLongFilm:
     def test_long_film_writes_title_trace_json(self, tmp_path):
-        """title_trace.json must always be written."""
+        """title_trace.json must always be written — 逐支一個子目錄（ADR-054 D14）。
+
+        扁平單檔會讓第二支把第一支的完整推導鏈整檔抹掉。
+        """
         packaging_dir = tmp_path / "packaging"
         emit_mod.emit(_long_input(), packaging_dir)
-        trace_path = packaging_dir / "title_trace.json"
+        trace_path = packaging_dir / "punch-L1" / "title_trace.json"
         assert trace_path.exists()
         trace = json.loads(trace_path.read_text(encoding="utf-8"))
         assert trace["cut_id"] == "punch-L1"
@@ -197,7 +200,9 @@ class TestVaultCopy:
 
         vault_ep = vault_path / "Attachments" / "packaging" / "20260723-xieboran"
         assert (vault_ep / "packages.json").exists()
-        assert (vault_ep / "title_trace.json").exists()
+        # 推導鏈在 vault 也是逐支子目錄——否則三支長片會搶同一個檔名，
+        # 等於把 working set 剛修好的覆寫問題搬到 SoT 上。
+        assert (vault_ep / "short-S1" / "title_trace.json").exists()
 
     def test_emit_skips_vault_when_not_set(self, tmp_path):
         """Without vault_path, only packaging_dir files are written."""
@@ -307,3 +312,43 @@ class TestEmitMergesInsteadOfOverwriting:
         mod.emit(payload, tmp_path / "work", vault_path=vault)
         assert (vault / "Attachments" / "packaging" / "20260723-xieboran").is_dir()
         assert not (vault / "Attachments" / "packaging" / "20260723 謝伯讓").exists()
+
+
+class TestTracePerCut:
+    def test_a_second_cut_does_not_erase_the_first_cuts_trace(self, tmp_path):
+        """兩支長片各自留著自己的推導鏈。
+
+        舊版把 title_trace.json 寫在 packaging 根目錄，跑第二支就整檔覆寫——
+        跟 packages.json 那段血淚（2026-07-29 謝伯讓集）同一類，只是當時只修了一半。
+        """
+        packaging_dir = tmp_path / "packaging"
+
+        first = _long_input()
+        first["cut_id"] = "punch-L5"
+        first["title_trace"] = {"marker": "first"}
+        emit_mod.emit(first, packaging_dir)
+
+        second = _long_input()
+        second["cut_id"] = "story-L1"
+        second["title_trace"] = {"marker": "second"}
+        emit_mod.emit(second, packaging_dir)
+
+        one = json.loads(
+            (packaging_dir / "punch-L5" / "title_trace.json").read_text(encoding="utf-8")
+        )
+        two = json.loads(
+            (packaging_dir / "story-L1" / "title_trace.json").read_text(encoding="utf-8")
+        )
+        assert one["title_trace"]["marker"] == "first"
+        assert two["title_trace"]["marker"] == "second"
+
+    def test_a_legacy_flat_trace_is_left_untouched(self, tmp_path):
+        """改路徑之前落下的扁平舊檔不該被動到——它是另一支的紀錄。"""
+        packaging_dir = tmp_path / "packaging"
+        packaging_dir.mkdir(parents=True)
+        legacy = packaging_dir / "title_trace.json"
+        legacy.write_text('{"cut_id": "full", "keep": true}', encoding="utf-8")
+
+        emit_mod.emit(_long_input(), packaging_dir)
+
+        assert json.loads(legacy.read_text(encoding="utf-8")) == {"cut_id": "full", "keep": True}
