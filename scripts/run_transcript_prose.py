@@ -405,8 +405,53 @@ def render_markdown(paragraphs: list[tuple[int, str]], names: dict[int, str]) ->
     return "\n\n".join(f"**{names.get(spk, f'講者{spk}')}**：{text}" for spk, text in paragraphs)
 
 
+def _load_conform_map(episode_dir: Path):
+    """conform map 是來源時鐘與成品時鐘之間唯一的正式對應（ADR-064）。"""
+    from shared.editorial_conform import RELATIVE_PATH, ConformMapError, load_conform_map
+
+    try:
+        # load_conform_map 收的是**檔案路徑**，不是 episode 目錄。
+        return load_conform_map(episode_dir / RELATIVE_PATH)
+    except ConformMapError as exc:
+        raise SystemExit(
+            f"要用 Editorial Master 當逐字稿就必須有 conform map（先跑 build_conform_map）：{exc}"
+        ) from exc
+
+
+def _drop_intro_outro_cues(
+    cmap, cues: list[tuple[float, float, str]]
+) -> tuple[list[tuple[float, float, str]], list[int]]:
+    """把落在片頭／片尾的 cue **整段**拿掉，回傳 (保留的 cue, 原始 cue 編號)。
+
+    片頭片尾沒有機位也沒有 mic 分軌，投影時那些詞就被丟掉了（`source_to_master_sec`
+    回 None），於是這些 cue 沒有任何講者證據——然後 `_forward_fill` 與
+    `build_paragraphs` 雙雙讓它承接**前一個** cue 的講者。片頭因為前面沒有「前一位」
+    而僥倖沒事，片尾就直接把主持人錄的 outro 旁白掛到來賓名下
+    （2026-09-12 20260721 呂冠緯：「以上就是冠緯以及均一教育平台的故事…」之後
+    整段都是主持人）。
+
+    判準是**過半**落在片頭片尾，不是碰到就丟——成品的字幕 cue 可能剛好跨在
+    剪接點上，那一句主體還是主體。
+    """
+    from shared.editorial_conform import intro_outro_overlap_sec, intro_outro_spans
+
+    if not intro_outro_spans(cmap):
+        return cues, list(range(1, len(cues) + 1))
+    kept: list[tuple[float, float, str]] = []
+    numbers: list[int] = []
+    for number, cue in enumerate(cues, 1):
+        t0, t1, _text = cue
+        span = t1 - t0
+        if span > 0 and intro_outro_overlap_sec(cmap, t0, t1) > span / 2:
+            continue
+        kept.append(cue)
+        numbers.append(number)
+    logger.info("片頭片尾字幕排除：%d 個 cue（不併入鄰近段落）", len(cues) - len(kept))
+    return kept, numbers
+
+
 def _project_words_to_master(
-    episode_dir: Path, words: list[dict], speakers: list[int | None]
+    cmap, words: list[dict], speakers: list[int | None]
 ) -> tuple[list[dict], list[int | None]]:
     """來源時鐘的詞 → 成品時鐘，落在被剪掉區間的詞直接丟。
 
@@ -414,20 +459,7 @@ def _project_words_to_master(
     是兩者之間唯一的正式對應（ADR-064）。沒有 conform map 就不能用 Editorial Master
     當逐字稿——硬對會生出「讀起來很通順但講錯人」的稿子。
     """
-    from shared.editorial_conform import (
-        RELATIVE_PATH,
-        ConformMapError,
-        load_conform_map,
-        source_to_master_sec,
-    )
-
-    try:
-        # load_conform_map 收的是**檔案路徑**，不是 episode 目錄。
-        cmap = load_conform_map(episode_dir / RELATIVE_PATH)
-    except ConformMapError as exc:
-        raise SystemExit(
-            f"要用 Editorial Master 當逐字稿就必須有 conform map（先跑 build_conform_map）：{exc}"
-        ) from exc
+    from shared.editorial_conform import source_to_master_sec
 
     out_words: list[dict] = []
     out_speakers: list[int | None] = []
@@ -515,8 +547,12 @@ def run(
     # 但 cue 可能在 Editorial Master 的時鐘上（成品剪過，跟來源差幾十秒）。
     # 兩邊不投影就對起來，講者會整片錯散——不是全域交換，是零星錯位，
     # 讀起來還很通順，所以特別難發現。
+    cue_numbers = list(range(1, len(cues) + 1))
     if source.origin == "editorial_master":
-        words, speakers = _project_words_to_master(episode_dir, words, speakers)
+        cmap = _load_conform_map(episode_dir)
+        words, speakers = _project_words_to_master(cmap, words, speakers)
+        # 片頭片尾的 cue 在投影後沒有任何講者證據，留著只會被鄰段吸收。
+        cues, cue_numbers = _drop_intro_outro_cues(cmap, cues)
 
     ranges = _cue_word_ranges(cues, words)
     cue_speakers = _forward_fill(([_cue_speaker(idx, speakers, words) for idx in ranges]))
@@ -541,7 +577,8 @@ def run(
     margins = cue_margins_db(cues, envelopes)
     mixed = [
         {
-            "cue": k + 1,
+            # 原始 SRT 的 cue 編號——片頭片尾被拿掉之後，位置索引不再等於編號。
+            "cue": cue_numbers[k],
             "t0": round(cues[k][0], 2),
             "t1": round(cues[k][1], 2),
             "margin_db": round(m, 1),

@@ -310,6 +310,36 @@ def source_to_master_sec(
     return None
 
 
+def intro_outro_spans(cmap: dict[str, Any]) -> list[tuple[float, float]]:
+    """成片時鐘上屬於片頭／片尾的區間（升冪、不重疊由 build 時保證）。
+
+    這些區間**沒有機位、沒有 mic 分軌**（見本檔開頭〈邊界：片頭片尾沒有機位〉），
+    所以講者判定對它們不成立。衍生產物要嘛整段排除，要嘛另外標明是旁白——
+    不可以讓它承接鄰段的講者。
+
+    2026-09-12 20260721 呂冠緯：片尾旁白（主持人自己錄的 outro）被併進最後一段
+    並掛上來賓的名字。片頭沒事只是因為它前面沒有「前一段」可以承接。
+    """
+    spans = [
+        (float(row["master_start_sec"]), float(row["master_end_sec"]))
+        for row in cmap.get("unconformable") or []
+        if row.get("origin") == "intro_outro"
+    ]
+    return sorted(spans)
+
+
+def intro_outro_overlap_sec(
+    cmap: dict[str, Any], master_start_sec: float, master_end_sec: float
+) -> float:
+    """這個成片區間有多少秒落在片頭／片尾裡。"""
+    total = 0.0
+    for start, end in intro_outro_spans(cmap):
+        overlap = min(master_end_sec, end) - max(master_start_sec, start)
+        if overlap > 0:
+            total += overlap
+    return total
+
+
 def removed_spans(cmap: dict[str, Any]) -> list[dict[str, float]]:
     """被修剪掉的原始區間——安全性的證據：這些內容在 conform 後拿不到。"""
     out: list[dict[str, float]] = []
