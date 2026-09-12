@@ -38,18 +38,77 @@ def _neutral_receipt(content: bytes) -> CompactAssetReceipt:
     ("field", "forged_value"),
     [
         ("provider", "unknown-stock-provider"),
-        ("source_url", "https://www.pexels.com/video/9999999/"),
         ("license", "trust me"),
     ],
 )
-def test_compact_receipt_rejects_a_forged_licensed_source_profile(
+def test_compact_receipt_rejects_an_unknown_provider_or_licence(
     field: str,
     forged_value: str,
 ) -> None:
+    """授權字串釘死在兩個常數上，provider 也是封閉集合（ADR-069 階段 7）。"""
+
     receipt = _neutral_receipt(b"native horizontal stock")
 
-    with pytest.raises(AssetContractError, match="source profile"):
+    with pytest.raises(AssetContractError, match="licensed provider or licence"):
         replace(receipt, **{field: forged_value})
+
+
+def test_the_source_url_is_evidence_for_a_human_not_a_machine_lock() -> None:
+    """網址的**形狀**不再被驗（ADR-069 階段 7）。
+
+    以前每個 provider 有一條「網址必須由 `provider_item_id` 組得出來」的 profile。
+    Envato 把 Elements 併進 app.envato.com 那次（2026-09-07）就得再加一條，於是同一
+    個判斷養著四條正則與兩套 item id 格式——而形狀本身什麼都不證明：它擋不住一個
+    格式正確但指錯素材的網址，也擋不住平台下次改版。
+
+    真的在保護來歷的是三件事，都還在：收據必須存在、授權字串必須逐字相符、檔案
+    bytes 的 sha256 必須對得上（`asset_digest_mismatch`）。
+    """
+
+    receipt = _neutral_receipt(b"native horizontal stock")
+
+    # 同一家 provider、同一份授權，網址指到別的 item——不再是 contract 錯誤。
+    moved = replace(receipt, source_url="https://www.pexels.com/video/9999999/")
+    assert moved.source_url == "https://www.pexels.com/video/9999999/"
+
+    # 但「根本不是一個可追過去的網址」還是擋——這一圈（scheme／host／不帶帳密）留著。
+    for not_a_url in (
+        "ftp://example.com/clip.mp4",
+        "https://user:pass@www.pexels.com/video/7106572/",
+        "not-a-url",
+    ):
+        with pytest.raises(AssetContractError, match="source URL is invalid"):
+            replace(receipt, source_url=not_a_url)
+
+
+@pytest.mark.parametrize(
+    ("provider_item_id", "source_url"),
+    [
+        # 舊站：elements.envato.com/<slug>-<item id>
+        ("abc123", "https://elements.envato.com/classroom-cadets-abc123"),
+        # 現行站：app.envato.com，item 頁改用 UUID（2026-09-07 實測舊網址 302 過去）
+        (
+            "0f4a1c2e-7b3d-4a5f-8c9d-1e2f3a4b5c6d",
+            "https://app.envato.com/search/stock-video/0f4a1c2e-7b3d-4a5f-8c9d-1e2f3a4b5c6d",
+        ),
+        # 下一次改版：不必再改程式。以前每一代都要補一條 profile。
+        ("whatever-they-use-next", "https://app.envato.com/items/whatever-they-use-next"),
+    ],
+)
+def test_every_envato_url_generation_is_accepted_without_a_new_profile(
+    provider_item_id: str,
+    source_url: str,
+) -> None:
+    receipt = replace(
+        _neutral_receipt(b"native horizontal stock"),
+        provider="envato-elements",
+        provider_item_id=provider_item_id,
+        source_url=source_url,
+        license="Envato Elements license: https://elements.envato.com/license-terms",
+    )
+
+    assert receipt.provider == "envato-elements"
+    assert receipt.source_url == source_url
 
 
 def test_compact_receipt_rejects_an_old_semantic_class_as_acquisition_origin() -> None:

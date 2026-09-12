@@ -768,9 +768,12 @@ def _validate_final_assets(plan: MaterializationPlan, assets: AssetResolver) -> 
                 )
             try:
                 if not path.is_file() or _file_sha256(path) != resolved.record.digest:
+                    # ADR-069 階段 7：bytes 對不上要有自己的名字。它跟「references
+                    # 綁錯」是兩件不同的事——後者是接線錯了，這一條是**同名的檔案
+                    # 被換過**，也就是收據簡化之後唯一還在保護素材來歷的那道鎖。
                     raise MaterializationError(
                         "component object bytes differ from its Active Store digest",
-                        reason_code="final_asset_identity_mismatch",
+                        reason_code="asset_digest_mismatch",
                     )
             except OSError as error:
                 raise MaterializationError(

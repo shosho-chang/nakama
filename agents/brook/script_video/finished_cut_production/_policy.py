@@ -13,12 +13,25 @@
 `StockVideoMetadata` 對照表少一筆就 KeyError——缺 metadata 只記警告，下一行卻直接
 index 進去。唯一實作留在選片那一刻，用目錄自己帶的 width/height。
 
-現在分兩級：
+## 分級表（ADR-069 階段 7）
 
-- ``BLOCKING_DIAGNOSTICS`` —— **會做出壞成品**的結構性問題（算術對不上、缺章節
-  資料、兩張卡疊在一起）。踩到就停。
-- 其餘 —— 品味與政策。印出來、記進收據、**繼續跑**。修修會在 Resolve timeline 上
-  親眼看每一支，那比任何自動稽核都強，而且成本是零（他本來就要看）。
+分級只寫在 ``DIAGNOSTIC_GRADES`` 一張表裡。在那之前它散在兩處，而且**其中一處
+是死的**：`BLOCKING_DIAGNOSTICS` 當時那四筆（`source_range_sum_mismatch`、
+`canonical_sections_missing`、`first_section_not_zero`、`title_placement_overlap`）
+全部在 `validate` 裡提前 `return PolicyDecision("needs_review", …)`，根本走不到
+`decide()`；而唯一真的走到 `decide()` 的硬擋——章節卡投影——被 5bdc499b 從名單裡
+移掉了。於是那張名單看起來有四道防線，實際上一道都不在，唯一該擋的那條反而放行。
+
+三級：
+
+- ``precondition`` —— **後面的規則靠它才成立**（下一行就 index `sections[0]`）。
+  它不是政策，降不了級：降了只是把 IndexError 推到更下游、訊息更難懂。`validate`
+  當場 return。
+- ``blocking`` —— 會做出壞成品，而且**人眼在 timeline 上看不出來**。走 `decide()`。
+  目前只有章節卡投影：它是全套件唯一有 docstring 記載真的抓到問題的規則
+  （2026-09-08 Director 改寫章節標題、錯字上片）。
+- ``warning`` —— 品味與政策。印出來、記進收據、**繼續跑**。修修會在 Resolve
+  timeline 上親眼看每一支，那比任何自動稽核都強，成本是零（他本來就要看）。
 
 要再收緊時，先問：這條規則擋下來的東西，人眼在 timeline 上看不看得出來？
 看得出來就不該是硬擋。
@@ -52,16 +65,35 @@ PolicyDiagnosticCode = Literal[
     "visual_gap_exceeded",
 ]
 
-#: 只有這四條會擋下物化——它們都是「不修就會做出壞成品」的結構性問題，
-#: 而且**人眼在 timeline 上看不出來**（算術差幾格、缺章節資料）。
-#: 其餘全部是品味／政策，降級成警告。分級理由見模組 docstring。
+DiagnosticGrade = Literal["precondition", "blocking", "warning"]
+
+#: 每一條診斷的分級，一張表講完。分級的判準見模組 docstring。
+#: 新增一個 code 而忘了分級 → `test_finished_cut_policy_grades` 當場紅。
+DIAGNOSTIC_GRADES: dict[PolicyDiagnosticCode, DiagnosticGrade] = {
+    # 前置條件：`validate` 後面的規則直接 index 進它們驗過的東西。
+    "source_range_sum_mismatch": "precondition",
+    "canonical_sections_missing": "precondition",
+    "first_section_not_zero": "precondition",
+    # 唯一的硬擋：章節標題被改寫，人眼在 timeline 上看不出來（卡片是對的，
+    # 字錯了），而它會直接上片。
+    "chapter_transition_projection_mismatch": "blocking",
+    # 以下都是修修在 timeline 上看得見的東西。
+    "long_duration_below_minimum": "warning",
+    "visual_placement_duration_exceeded": "warning",
+    "hero_title_limit_exceeded": "warning",
+    "title_like_density_exceeded": "warning",
+    "title_placement_overlap": "warning",
+    "title_cluster_exceeded": "warning",
+    "distinct_stock_video_minimum_not_met": "warning",
+    "stock_video_asset_reused": "warning",
+    "b_roll_cadence_gap_exceeded": "warning",
+    "visual_gap_exceeded": "warning",
+}
+
+#: `decide()` 讀的那一份。從表推導，不是另抄一份名單——抄了就會像 5bdc499b
+#: 那樣，兩邊各自漂走而沒有人發現。
 BLOCKING_DIAGNOSTICS: frozenset[PolicyDiagnosticCode] = frozenset(
-    {
-        "source_range_sum_mismatch",  # 時間軸算術對不上，剪出來會錯位
-        "canonical_sections_missing",  # 缺章節資料，下游直接爆
-        "first_section_not_zero",  # 同上
-        "title_placement_overlap",  # 兩張卡疊在一起＝畫面壞掉
-    }
+    code for code, grade in DIAGNOSTIC_GRADES.items() if grade == "blocking"
 )
 
 
@@ -332,8 +364,9 @@ class LongV2Policy:
         )
         for previous, current in zip(ordered_titles, ordered_titles[1:], strict=False):
             if current.t0 < previous.t1:
-                return PolicyDecision(
-                    "needs_review",
+                # 兩張卡疊在一起是 timeline 上一眼就看得到的事（它們就疊在那裡），
+                # 所以照分級表是警告，不是硬擋。
+                notices.extend(
                     (
                         PolicyDiagnostic(
                             "title_placement_overlap",

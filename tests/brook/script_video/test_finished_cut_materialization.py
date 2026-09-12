@@ -843,7 +843,10 @@ def test_assetless_component_and_changed_active_object_fail_closed(tmp_path: Pat
     )
     with pytest.raises(MaterializationError) as forged:
         changed.prepare("approved-cut:" + "a" * 32)
-    assert forged.value.reason_code == "final_asset_identity_mismatch"
+    # ADR-069 階段 7：同名的檔案 bytes 被換過有自己的名字。收據那邊的 URL profile
+    # 砍掉之後，這一條是唯一還在保護素材來歷的鎖，不該跟「reference 綁錯」共用一個
+    # code——出事的時候那兩件事要做的處置完全不同。
+    assert forged.value.reason_code == "asset_digest_mismatch"
 
 
 def test_vertical_stock_is_rejected_before_timeline_mutation(tmp_path: Path) -> None:

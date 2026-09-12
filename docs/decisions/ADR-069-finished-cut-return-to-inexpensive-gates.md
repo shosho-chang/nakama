@@ -357,6 +357,47 @@ ADR-066 的核心決策是對的，是實作超標。否決。
     `_resolve.prepare`，在**動手之前**再比一次指紋（`protected_track_drift`），
     中間漂掉照樣擋得住。多讀的那一次是每支 cut 都要付的 Resolve 往返。
 
+## 階段 7 實作時量到的事（2026-09-12）
+
+11. **`BLOCKING_DIAGNOSTICS` 當時是一張空名單。** v2 寫「其餘四條從未 fired，
+    降為警告」的時候，以為那四條是硬擋。實測：它們四個在 `validate` 裡都是
+    **提前 `return PolicyDecision("needs_review", …)`**，走不到 `decide()`；而
+    `decide()` 只看得到走完全程收進 `notices` 的診斷。所以：
+
+    * 名單裡那四筆對 `decide()` 是死的——看得到，永遠讀不到。
+    * 唯一真的會經過 `decide()` 的硬擋候選就是章節卡投影，而 5bdc499b 把它從
+      名單裡移掉了。
+
+    也就是說那張名單看起來有四道防線，實際上一道都不在，而唯一該擋的那一條
+    反而在放行。修修 2026-09-12 的裁決（升回 blocking）修的就是這一個。
+
+12. **那四條不能照 v2 寫的「降為警告」處理，其中三條是前置條件。**
+    `canonical_sections_missing` 的下一行就 `sections[0]`；`first_section_not_zero`
+    餵章節卡的配對；`source_range_sum_mismatch` 的 `duration_sec` 是後面覆蓋率與
+    節奏規則的分母。把它們降成警告不會讓系統更寬容，只會把 IndexError 推到更
+    下游、訊息更難懂。
+
+    所以分級是**三級**，寫在 `_policy.DIAGNOSTIC_GRADES` 一張表裡：
+
+    | 級別 | 誰 | 為什麼 |
+    |---|---|---|
+    | `precondition` | `source_range_sum_mismatch`、`canonical_sections_missing`、`first_section_not_zero` | 後面的規則靠它才成立。不是政策，降不了級 |
+    | `blocking` | `chapter_transition_projection_mismatch` | 會做出壞成品，而且人眼在 timeline 上看不出來（卡片對、字錯了） |
+    | `warning` | 其餘 10 條（含 `title_placement_overlap`，它從硬擋降下來） | 修修逐支看 timeline 時看得見 |
+
+    `BLOCKING_DIAGNOSTICS` 改成從表推導，不再是另抄一份名單——抄了就會像
+    5bdc499b 那樣，兩邊各自漂走而沒有人發現。
+
+13. **URL profile 砍掉之後，剩下的鎖要講清楚是哪三道。** 以前每個 provider 有一條
+    「網址必須由 `provider_item_id` 組得出來」的 profile；Envato 併站那次就得再
+    加一條，於是同一個判斷養著四條正則與兩套 item id 格式。而網址的**形狀**擋不住
+    一個格式正確但指錯素材的網址，也擋不住平台下次改版。
+
+    留下的三道：收據必須存在（sanitized source facts 那一圈）、授權字串必須是
+    `_LICENSES_BY_PROVIDER` 兩個常數之一且逐字相符、檔案 bytes 的 sha256 必須對
+    得上。第三道因此拿到自己的 code `asset_digest_mismatch`——它跟「reference
+    綁錯」（`final_asset_identity_mismatch`）出事時的處置完全不同，不該共用一個名字。
+
 ## Review record
 
 - **v1 三方審查（2026-09-12）**：創作者視角、cost×risk×complexity 審計、ADR-066 原作者辯護——三方一致「改了再簽」。審計重算數字並指出 v1 標「留」但該砍的七項；辯護人對 v1 標「砍」的八項各給出今天就會發生的失敗情境（`source_range_drift`、活字幕軌、master content hash、`_current_chain_is_exact`、retry base、ledger 三態、canonical 精確匹配、素材 bytes），並指出 journal 的承擔理由對錯對象。整合報告在該 session 的 `ADR-069-panel-report.md`。

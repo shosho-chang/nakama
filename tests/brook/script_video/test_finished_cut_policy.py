@@ -331,7 +331,16 @@ def test_first_canonical_section_must_start_at_zero() -> None:
     assert "first_section_not_zero" in {diagnostic.code for diagnostic in decision.diagnostics}
 
 
-def test_chapter_transition_projection_drift_needs_review() -> None:
+def test_chapter_transition_projection_drift_is_the_one_hard_block() -> None:
+    """章節卡投影對不上要**擋下來**（修修 2026-09-12 裁決，ADR-069 階段 7）。
+
+    它是全套件唯一有 docstring 記載真的抓到問題的規則——2026-09-08 Director 改寫
+    章節標題、錯字直接上片。5bdc499b 把它從 `BLOCKING_DIAGNOSTICS` 移掉，於是它
+    降成警告；而名單裡剩下的四筆全都在 `decide()` 之前就提前 return，那張名單
+    因此一道防線都不在。
+
+    人眼在 timeline 上看不出這件事：卡片出現了、位置也對，只有字錯了。
+    """
     components = tuple(
         replace(component, t0=181.0) if component.component_id == "chapter-2" else component
         for component in _long_components()
@@ -339,7 +348,7 @@ def test_chapter_transition_projection_drift_needs_review() -> None:
 
     decision = LongV2Policy().validate(replace(_long_input(), components=components))
 
-    assert decision.status == "accepted_with_warnings"
+    assert decision.status == "needs_review"
     assert "chapter_transition_projection_mismatch" in {
         diagnostic.code for diagnostic in decision.diagnostics
     }
@@ -552,14 +561,19 @@ def test_three_title_cards_inside_fifteen_seconds_need_review() -> None:
     assert "title_cluster_exceeded" in {diagnostic.code for diagnostic in decision.diagnostics}
 
 
-def test_title_like_visual_placements_must_not_overlap() -> None:
+def test_title_like_visual_placements_that_overlap_are_reported_not_blocked() -> None:
+    """兩張卡疊在一起是 timeline 上一眼就看得到的事（ADR-069 階段 7 分級表）。
+
+    它們就疊在那裡——修修本來就要逐支看過 timeline，這條不必是硬擋。診斷照樣
+    印出來、記進收據。
+    """
     overlapping_hero = _title_component("overlapping-hero", 180.0)
 
     decision = LongV2Policy().validate(
         replace(_long_input(), components=(*_long_components(), overlapping_hero))
     )
 
-    assert decision.status == "needs_review"
+    assert decision.status == "accepted_with_warnings"
     assert policy_module.PolicyDiagnostic(
             "title_placement_overlap",
             (

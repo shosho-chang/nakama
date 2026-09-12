@@ -45,6 +45,10 @@ COLLAPSED_FAMILIES = {
 
 #: 家族之外的 code，每一個都對應一個**不同**的判斷。
 DISTINCT_CODES = {
+    #: 同名的檔案 bytes 被換過。素材收據簡化之後（ADR-069 階段 7 砍掉 URL
+    #: profile），這是唯一還在保護素材來歷的那道鎖，所以它有自己的名字——
+    #: 跟「reference 綁錯」（`final_asset_identity_mismatch`）是兩件事。
+    "asset_digest_mismatch",
     "authority_chain_mismatch",
     "final_asset_identity_mismatch",
     "final_asset_unavailable",

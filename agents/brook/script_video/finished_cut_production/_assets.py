@@ -21,7 +21,12 @@ _FORENSIC_REFERENCE_RE = re.compile(r"^forensic-sha256:[0-9a-f]{64}$")
 _UTC_SECONDS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z$")
 _PEXELS_LICENSE = "Pexels license: https://www.pexels.com/license/"
 _ENVATO_LICENSE = "Envato Elements license: https://elements.envato.com/license-terms"
-_ENVATO_APP_ITEM_ID_RE = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+#: 授權字串釘死在這兩個常數上——收據要說得出它是哪一家的授權，而且逐字相符。
+_LICENSES_BY_PROVIDER = {
+    "pexels": _PEXELS_LICENSE,
+    "envato-elements": _ENVATO_LICENSE,
+}
 _ACQUISITION_SOURCE_CLASSES = frozenset(
     {
         "licensed_stock",
@@ -131,42 +136,19 @@ class CompactAssetReceipt:
         if self.source_class not in _ACQUISITION_SOURCE_CLASSES:
             raise AssetContractError("neutral compact receipt source class is invalid")
         if self.source_class == "licensed_stock":
-            if self.provider == "pexels":
-                expected_profile = (
-                    re.fullmatch(r"[0-9]+", self.provider_item_id or "") is not None
-                    and self.source_url == f"https://www.pexels.com/video/{self.provider_item_id}/"
-                    and self.license == _PEXELS_LICENSE
-                )
-            elif self.provider == "envato-elements":
-                escaped_item_id = re.escape(self.provider_item_id or "")
-                # 舊站 elements.envato.com/<slug>-<item id>：既有 receipt 仍須驗得過。
-                legacy_slug_profile = (
-                    re.fullmatch(r"[a-z0-9]+", self.provider_item_id or "") is not None
-                    and re.fullmatch(
-                        rf"https://elements\.envato\.com/[a-z0-9-]+-{escaped_item_id}",
-                        self.source_url,
-                    )
-                    is not None
-                )
-                # 現行站：Envato 已把 Elements 併進 app.envato.com，item 頁改用 UUID，
-                # 舊網址一律 302 過去（2026-09-07 實測）。只認小寫 hex UUID，維持
-                # 既有「大小寫變體一律拒絕」的保證。
-                app_uuid_profile = (
-                    _ENVATO_APP_ITEM_ID_RE.fullmatch(self.provider_item_id or "") is not None
-                    and re.fullmatch(
-                        rf"https://app\.envato\.com/search/[a-z0-9-]+/{escaped_item_id}",
-                        self.source_url,
-                    )
-                    is not None
-                )
-                expected_profile = (
-                    legacy_slug_profile or app_uuid_profile
-                ) and self.license == _ENVATO_LICENSE
-            else:
-                expected_profile = False
-            if not expected_profile:
+            # ADR-069 階段 7：以前這裡按 provider 逐一比對**網址長什麼形狀**，還要
+            # 從 `provider_item_id` 組出預期網址。Envato 把 Elements 併進
+            # app.envato.com 那次（2026-09-07）就得再加一條 profile，於是同一個判斷
+            # 養著四條正則、兩套 item id 格式，而網址的**形狀**其實什麼都不證明。
+            #
+            # 真的在保護素材來歷的是另外三件事，它們都還在：收據必須存在（上面那圈
+            # sanitized source facts）、授權字串必須是這兩個常數之一（下面）、檔案
+            # bytes 的 sha256 必須對得上（`_active_store` 與 `_materialization` 的
+            # `asset_digest_mismatch`）。網址是給人追過去看的證據，不是機器的鎖。
+            expected_license = _LICENSES_BY_PROVIDER.get(self.provider or "")
+            if expected_license is None or self.license != expected_license:
                 raise AssetContractError(
-                    "neutral compact receipt licensed source profile is invalid"
+                    "neutral compact receipt licensed provider or licence is invalid"
                 )
 
 
