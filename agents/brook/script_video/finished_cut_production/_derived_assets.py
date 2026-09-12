@@ -77,7 +77,6 @@ _PLACEMENT_DURATION_CEILINGS_SEC = {
     "stock_video": MAX_ASSET_BACKED_BROLL_SHOW_SEC,
     "photo": MAX_ASSET_BACKED_BROLL_SHOW_SEC,
     "non_editorial_clip": MAX_ASSET_BACKED_BROLL_SHOW_SEC,
-    "person_inset": MAX_ASSET_BACKED_BROLL_SHOW_SEC,
 }
 
 
@@ -167,8 +166,6 @@ class DerivedAssetInstruction:
                 )
         else:
             raise DerivedAssetContractError("unsupported derived asset implementation")
-        if self.implementation_kind == "person_inset" and self.source_asset_ref is None:
-            raise DerivedAssetContractError("person inset requires a neutral photo source")
 
 
 def _placement_duration_is_within_ceiling(instruction: DerivedAssetInstruction) -> bool:

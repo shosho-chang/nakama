@@ -323,10 +323,11 @@ class DaVinciResolveFacade:
             raise ResolveTransactionError("Resolve imported media path does not match final asset")
         _assert_online_media(properties)
         width, height = _media_resolution(properties)
-        if placement.implementation_kind == "stock_video":
-            if width <= height or width * 9 != height * 16:
-                raise ResolveTransactionError("Stock media is not native 16:9 landscape")
-        elif (width, height) != (1920, 1080):
+        # 取得的 Stock 原生解析度不限（4K 很常見），所以只有生成的字卡要是 1920x1080。
+        # 「直式 Stock」在選片那一刻就擋掉了（`_visual_assets` 用目錄自己的
+        # width/height 驗），這裡不驗第二遍——同一條規則兩處實作，其中一處還是在
+        # Resolve 交易中間 raise，而且 2026-09 誤擋過合法的 DCI 4K（ADR-069 階段 2）。
+        if placement.implementation_kind != "stock_video" and (width, height) != (1920, 1080):
             raise ResolveTransactionError("derived media is not a pre-rendered 1920x1080 canvas")
         source_fps = _positive_number(properties.get("FPS"), label="media FPS")
         source_frames = _positive_int(properties.get("Frames"), label="media frame count")

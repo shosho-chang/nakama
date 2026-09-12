@@ -31,7 +31,6 @@ from agents.brook.script_video.finished_cut_production._projection import (
     _ACTIVE_COMPONENT_LANES,
     _ACTIVE_PROJECTION_COMBINATIONS,
     _WORKER_PROJECTION_COMBINATIONS,
-    ASSET_BACKED_IMPLEMENTATIONS,
     ASSET_KIND_BY_IMPLEMENTATION,
     GENERATED_IMPLEMENTATIONS,
     LANE_TRACKS,
@@ -51,6 +50,7 @@ _ROLE_TO_IMPLEMENTATION = {
     "chapter": "fullscreen_transition",
     "hero_title": "hero_title",
     "identity_card": "identity_card",
+    # 已退役，但渲染器仍有配方（既有 receipt 讀得回來）。
     "visual_effect": "visual_effect",
 }
 
@@ -176,10 +176,15 @@ def test_passthrough_set_is_the_vocabulary_in_both_builders() -> None:
 
 
 def test_policy_visual_coverage_set_is_the_vocabulary() -> None:
-    assert _policy.VISUAL_COVERAGE_BROLL_IMPLEMENTATIONS is ASSET_BACKED_IMPLEMENTATIONS
+    assert _policy.VISUAL_COVERAGE_BROLL_IMPLEMENTATIONS is NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
 
 
-def test_asset_backed_implementations_are_exactly_those_with_a_source_kind() -> None:
-    """`person_inset` 吃素材但不是 passthrough——這條分界別再弄丟。"""
-    assert ASSET_BACKED_IMPLEMENTATIONS == set(SOURCE_ASSET_KIND_BY_IMPLEMENTATION)
-    assert NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS < ASSET_BACKED_IMPLEMENTATIONS
+def test_source_and_final_asset_kinds_coincide_for_passthrough() -> None:
+    """person_inset 退役之後，「吃素材」與「不經渲染直接用」重合。
+
+    哪天又出現「吃素材但要再算一次」的實作，`ImplementationSpec` 就要分回兩個
+    欄位；這條會在那時候紅，提醒有人做那個決定。
+    """
+    assert set(SOURCE_ASSET_KIND_BY_IMPLEMENTATION) == NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
+    for kind, source_kind in SOURCE_ASSET_KIND_BY_IMPLEMENTATION.items():
+        assert ASSET_KIND_BY_IMPLEMENTATION[kind] is source_kind

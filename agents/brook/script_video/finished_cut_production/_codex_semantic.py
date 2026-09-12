@@ -740,7 +740,7 @@ def _stage_prompt(stage: StageName) -> str:
             "combinations. For every non-chapter visual, choose the smallest useful contiguous "
             "cue subset rather than the complete Semantic Evidence Range: hero_title and "
             "identity_card placement must be no longer than 8 seconds; "
-            "stock_video, photo, non_editorial_clip, and person_inset placement must be no "
+            "stock_video, photo, and non_editorial_clip placement must be no "
             "longer than 12 seconds. Calculate duration from the selected candidates' t0/t1. "
             "intentional_aroll must use an empty placement_cue_ids array; chapter "
             "must echo all its Director master_cue_ids because core owns canonical chapter timing. "

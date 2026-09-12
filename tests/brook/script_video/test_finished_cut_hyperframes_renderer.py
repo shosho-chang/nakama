@@ -24,12 +24,6 @@ from agents.brook.script_video.finished_cut_production._long_visual_renderer imp
 from agents.brook.script_video.finished_cut_production._projection import (
     layout_identity,
 )
-from agents.brook.script_video.finished_cut_production._visual_assets import (
-    FaceSafePlacement,
-    FfmpegPersonInsetCompositor,
-    PersonInsetCompositeRequest,
-    build_long_visual_media_adapters,
-)
 
 
 class _ProcessRunner:
@@ -526,54 +520,6 @@ def test_every_generated_long_visual_role_uses_the_resolve_media_contract(
     assert list((tmp_path / "workspaces").iterdir()) == []
 
 
-def test_private_factory_wires_title_and_person_inset_to_one_probed_process_seam(
-    tmp_path: Path,
-) -> None:
-    runner = _AdaptiveProcessRunner()
-    adapters = build_long_visual_media_adapters(
-        workspace_root=tmp_path / "workspaces",
-        render_output_root=tmp_path / "renders",
-        inset_output_root=tmp_path / "insets",
-        runtime=_pinned_runtime(tmp_path),
-        runner=runner,
-    )
-    title = adapters.title_renderer.render(
-        LongVisualRenderRequest(
-            recipe_identity="recipe:hero:factory",
-            event_id="event-hero",
-            role="hero_title",
-            display="真正的選擇",
-            duration_sec=3.0,
-            target_width=1920,
-            target_height=1080,
-            layout_identity=layout_identity("hero_title"),
-        )
-    )
-    portrait = tmp_path / "portrait.png"
-    portrait.write_bytes(b"portrait")
-    inset = adapters.person_inset_compositor.composite(
-        PersonInsetCompositeRequest(
-            render_identity="recipe:person:factory",
-            source_path=portrait,
-            target_width=1920,
-            target_height=1080,
-            duration_sec=3.0,
-            placement=FaceSafePlacement(
-                x_ratio=0.75,
-                y_ratio=0.24,
-                width_ratio=0.20,
-                height_ratio=0.42,
-                avoids_faces=True,
-            ),
-        )
-    )
-
-    assert title.media.path.suffix == ".mov"
-    assert inset.path.suffix == ".mov"
-    assert inset.has_alpha is True
-    assert [call[0][0] for call in runner.calls].count("ffprobe") == 2
-
-
 @pytest.mark.skipif(
     os.environ.get("NAKAMA_RUN_LOCAL_RENDER_SMOKE") != "1",
     reason="explicit local HyperFrames/ffmpeg smoke",
@@ -661,51 +607,3 @@ def test_real_pinned_hyperframes_renders_prores_4444_alpha_hero(
     assert rendered.media.pixel_format == "yuva444p12le"
     assert rendered.media.has_alpha is True
 
-
-@pytest.mark.skipif(
-    os.environ.get("NAKAMA_RUN_LOCAL_RENDER_SMOKE") != "1",
-    reason="explicit local HyperFrames/ffmpeg smoke",
-)
-def test_real_ffmpeg_person_inset_has_alpha_animation_and_cleans_workspace(
-    tmp_path: Path,
-) -> None:
-    from PIL import Image, ImageDraw
-
-    portrait = tmp_path / "synthetic-person.png"
-    canvas = Image.new("RGBA", (320, 480), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(canvas)
-    draw.ellipse((96, 24, 224, 152), fill=(238, 196, 162, 255))
-    draw.rounded_rectangle((56, 142, 264, 476), radius=56, fill=(41, 64, 87, 255))
-    canvas.save(portrait)
-    runner = SubprocessRenderProcessRunner()
-    probe = FfprobeGeneratedMediaProbe(runner=runner)
-    output_root = tmp_path / "person-insets"
-    result = FfmpegPersonInsetCompositor(
-        output_root=output_root,
-        runner=runner,
-        probe=probe,
-    ).composite(
-        PersonInsetCompositeRequest(
-            render_identity="recipe:person:real-local-alpha-smoke",
-            source_path=portrait,
-            target_width=1920,
-            target_height=1080,
-            duration_sec=0.5,
-            placement=FaceSafePlacement(
-                x_ratio=0.72,
-                y_ratio=0.12,
-                width_ratio=0.20,
-                height_ratio=0.50,
-                avoids_faces=True,
-            ),
-        )
-    )
-
-    inspected = probe.inspect(result.path)
-    assert (inspected.codec_name, inspected.pixel_format, inspected.has_alpha) == (
-        "prores",
-        "yuva444p12le",
-        True,
-    )
-    assert result.animated is True
-    assert not any(path.name.startswith(".person-inset-") for path in output_root.iterdir())

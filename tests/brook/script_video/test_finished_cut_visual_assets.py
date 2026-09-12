@@ -27,9 +27,6 @@ from agents.brook.script_video.finished_cut_production._derived_assets import (
     DerivedAssetGeometry,
     DerivedAssetInstruction,
 )
-from agents.brook.script_video.finished_cut_production._hyperframes_renderer import (
-    GeneratedMediaProbe,
-)
 from agents.brook.script_video.finished_cut_production._long_visual_renderer import (
     LongVisualRenderer,
 )
@@ -37,11 +34,7 @@ from agents.brook.script_video.finished_cut_production._projection import (
     layout_identity,
 )
 from agents.brook.script_video.finished_cut_production._visual_assets import (
-    FaceSafePlacement,
-    FfmpegPersonInsetCompositor,
-    FfmpegProcessResult,
     LongDerivedAssetBuilder,
-    PersonInsetCompositeRequest,
 )
 
 
@@ -121,62 +114,9 @@ class _NeverFfmpegRunner:
         raise AssertionError("this build must not call ffmpeg")
 
 
-class _NeverFacePlacement:
-    def place(self, request):
-        raise AssertionError("neutral Stock must not call facial placement")
-
-
-class _FacePlacement:
-    def __init__(self) -> None:
-        self.requests = []
-        self.result = FaceSafePlacement(
-            x_ratio=0.75,
-            y_ratio=0.24,
-            width_ratio=0.20,
-            height_ratio=0.42,
-            avoids_faces=True,
-        )
-
-    def place(self, request):
-        self.requests.append(request)
-        return self.result
-
-
-class _FfmpegRunner:
-    def __init__(self) -> None:
-        self.calls = []
-
-    def run(self, arguments, *, cwd, timeout_sec):
-        self.calls.append((arguments, cwd, timeout_sec))
-        Path(arguments[-1]).write_bytes(b"person inset alpha animation")
-        return FfmpegProcessResult(returncode=0, stdout="", stderr="")
-
-
 class _NeverMediaProbe:
     def inspect(self, path: Path):
         raise AssertionError("this build must not probe generated media")
-
-
-class _PersonInsetProbe:
-    def __init__(self) -> None:
-        self.paths: list[Path] = []
-
-    def inspect(self, path: Path) -> GeneratedMediaProbe:
-        self.paths.append(path)
-        return GeneratedMediaProbe(
-            codec_name="prores",
-            pixel_format="yuva444p12le",
-            width=1920,
-            height=1080,
-            duration_sec=4.0,
-            has_alpha=True,
-        )
-
-
-class _MismatchedPersonInsetProbe(_PersonInsetProbe):
-    def inspect(self, path: Path) -> GeneratedMediaProbe:
-        result = super().inspect(path)
-        return replace(result, pixel_format="yuv420p", has_alpha=False)
 
 
 def test_sixty_second_semantic_evidence_renders_only_four_second_card_placement(
@@ -239,12 +179,6 @@ def test_sixty_second_semantic_evidence_renders_only_four_second_card_placement(
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=browser),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
 
     result = builder.build(request)
@@ -306,12 +240,6 @@ def test_native_horizontal_stock_within_one_frame_duration_tolerance_passes_thro
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
 
     result = builder.build(request)
@@ -369,12 +297,6 @@ def test_vertical_stock_is_rejected_instead_of_being_reframed(tmp_path: Path) ->
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
 
     result = builder.build(request)
@@ -391,12 +313,6 @@ def test_exact_current_hero_recipe_reuses_active_asset_without_rendering_again(
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=browser),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
     instruction = DerivedAssetInstruction(
         component_id="component-hero",
@@ -454,12 +370,6 @@ def test_oversized_chapter_placement_fails_before_browser_render(tmp_path: Path)
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=browser),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
     request = DerivedAssetBuildRequest(
         build_request_id="build-chapter-oversized",
@@ -514,12 +424,6 @@ def test_oversized_title_or_identity_placement_fails_before_browser_render(
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=browser),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
     request = DerivedAssetBuildRequest(
         build_request_id=f"build-{implementation_kind}-oversized",
@@ -562,7 +466,6 @@ def test_oversized_title_or_identity_placement_fails_before_browser_render(
         ("stock_video", AssetKind.STOCK, 30.0, None),
         ("photo", AssetKind.PHOTO, None, None),
         ("non_editorial_clip", AssetKind.NON_EDITORIAL_CLIP, 30.0, None),
-        ("person_inset", AssetKind.PHOTO, None, "recipe:person-inset:oversized"),
     ],
 )
 def test_oversized_asset_backed_broll_fails_before_resolution_or_render(
@@ -584,12 +487,6 @@ def test_oversized_asset_backed_broll_fails_before_resolution_or_render(
     builder = LongDerivedAssetBuilder(
         store=_CatalogOnlyStore(catalog_item),  # type: ignore[arg-type]
         title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
     request = DerivedAssetBuildRequest(
         build_request_id=f"build-{implementation_kind}-oversized",
@@ -641,12 +538,6 @@ def test_stock_placement_longer_than_source_by_more_than_one_frame_fails_before_
     builder = LongDerivedAssetBuilder(
         store=store,  # type: ignore[arg-type]
         title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
     request = DerivedAssetBuildRequest(
         build_request_id="build-stock-too-short",
@@ -697,12 +588,6 @@ def test_legacy_webm_title_cannot_be_reused_as_current_resolve_media(tmp_path: P
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
     request = DerivedAssetBuildRequest(
         build_request_id="build-hero-current",
@@ -744,12 +629,6 @@ def test_all_current_generated_browser_components_publish_final_assets(tmp_path:
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=browser),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
     # Each role pins its own canonical layout identity; the renderer rejects a
     # request that does not carry the exact one for that role.
@@ -823,205 +702,3 @@ def test_all_current_generated_browser_components_publish_final_assets(tmp_path:
         == expected_kinds
     )
 
-
-def test_person_inset_is_alpha_animated_small_and_face_safe(tmp_path: Path) -> None:
-    portrait_path = tmp_path / "doctor.png"
-    portrait_path.write_bytes(b"portrait with alpha")
-    store = ActiveAssetStore.open(tmp_path / "assets-v2", episode_id="episode-001")
-    portrait = store.publish(
-        ActiveAssetPublication(
-            source_path=portrait_path,
-            kind=AssetKind.PHOTO,
-            visual_summary="簡立峰博士的中性大頭照",
-            width=800,
-            height=1000,
-            compact_receipt=_neutral_receipt(
-                portrait_path.read_bytes(), source_class="provided_self_archive"
-            ),
-        )
-    )
-    face_placement = _FacePlacement()
-    ffmpeg = _FfmpegRunner()
-    probe = _PersonInsetProbe()
-    compositor = FfmpegPersonInsetCompositor(
-        output_root=tmp_path / "composites",
-        runner=ffmpeg,
-        probe=probe,
-    )
-    builder = LongDerivedAssetBuilder(
-        store=store,
-        title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
-        compositor=compositor,
-        face_placement=face_placement,
-    )
-    request = DerivedAssetBuildRequest(
-        build_request_id="build-person-current",
-        run_id="run-current",
-        command_id="command-current",
-        episode_id="episode-001",
-        cut_id="value-L01",
-        format="long",
-        dp_acceptance_id="acceptance-dp-current",
-        scope="full_stage",
-        event_id=None,
-        instructions=(
-            DerivedAssetInstruction(
-                component_id="component-person",
-                event_id="event-person",
-                semantic_kind="b_roll",
-                implementation_kind="person_inset",
-                lane="b_roll",
-                display="簡立峰博士",
-                t0=30.0,
-                t1=34.0,
-                source_asset_ref=portrait.record.reference,
-                geometry=DerivedAssetGeometry(
-                    target_width=1920,
-                    target_height=1080,
-                    layout_identity="person_inset:v1",
-                ),
-                recipe_identity="recipe:person-inset:current",
-            ),
-        ),
-        worker_catalog_items=store.worker_selection_catalog().items(),
-    )
-
-    result = builder.build(request)
-
-    assert result.status == "ready"
-    assert len(face_placement.requests) == 1
-    assert len(ffmpeg.calls) == 1
-    arguments, cwd, timeout_sec = ffmpeg.calls[0]
-    command = " ".join(arguments)
-    assert "prores_ks" in command
-    assert "-profile:v 4" in command
-    assert "yuva444p12le" in command
-    assert "alpha=1" in command
-    assert "overlay=" in command
-    assert cwd is None
-    assert arguments[arguments.index("-an") :] == (
-        "-an",
-        "-c:v",
-        "prores_ks",
-        "-profile:v",
-        "4",
-        "-pix_fmt",
-        "yuva444p12le",
-        "-movflags",
-        "+faststart",
-        arguments[-1],
-    )
-    assert Path(arguments[-1]).suffix == ".mov"
-    assert timeout_sec > 0
-    assert face_placement.result.avoids_faces is True
-    assert face_placement.result.width_ratio <= 0.24
-    assert len(probe.paths) == 1
-    assert result.assets[0].source_asset_ref == portrait.record.reference
-    assert result.assets[0].final_asset_ref != portrait.record.reference
-    assert result.assets[0].inspection_ref == result.assets[0].final_asset_ref
-    assert store.resolve_active_asset(result.assets[0].final_asset_ref).path.suffix == ".mov"
-    assert (
-        store.resolve_exact_recipe("recipe:person-inset:current").record.kind is AssetKind.COMPOSITE
-    )
-
-
-def test_person_inset_probe_mismatch_leaves_no_unverified_output(tmp_path: Path) -> None:
-    source = tmp_path / "portrait.png"
-    source.write_bytes(b"portrait")
-    output_root = tmp_path / "composites"
-    compositor = FfmpegPersonInsetCompositor(
-        output_root=output_root,
-        runner=_FfmpegRunner(),
-        probe=_MismatchedPersonInsetProbe(),
-    )
-
-    with pytest.raises(ValueError, match="probe"):
-        compositor.composite(
-            PersonInsetCompositeRequest(
-                render_identity="recipe:person-inset:mismatch",
-                source_path=source,
-                target_width=1920,
-                target_height=1080,
-                duration_sec=4.0,
-                placement=FaceSafePlacement(
-                    x_ratio=0.75,
-                    y_ratio=0.24,
-                    width_ratio=0.20,
-                    height_ratio=0.42,
-                    avoids_faces=True,
-                ),
-            )
-        )
-
-    assert list(output_root.iterdir()) == []
-
-
-def test_legacy_webm_person_inset_cannot_be_reused_as_resolve_composite(
-    tmp_path: Path,
-) -> None:
-    portrait_path = tmp_path / "portrait.png"
-    portrait_path.write_bytes(b"portrait")
-    legacy_path = tmp_path / "person-inset.webm"
-    legacy_path.write_bytes(b"legacy vp9 composite")
-    store = ActiveAssetStore.open(tmp_path / "assets-v2", episode_id="episode-001")
-    portrait = store.publish(
-        ActiveAssetPublication(
-            source_path=portrait_path,
-            kind=AssetKind.PHOTO,
-            visual_summary="中性人物照片",
-            width=800,
-            height=1000,
-            compact_receipt=_neutral_receipt(
-                portrait_path.read_bytes(), source_class="provided_self_archive"
-            ),
-        )
-    )
-    store.publish(
-        ActiveAssetPublication(
-            source_path=legacy_path,
-            kind=AssetKind.COMPOSITE,
-            recipe_identity="recipe:person-inset:current",
-        )
-    )
-    builder = LongDerivedAssetBuilder(
-        store=store,
-        title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
-    )
-    request = DerivedAssetBuildRequest(
-        build_request_id="build-person-current",
-        run_id="run-current",
-        command_id="command-current",
-        episode_id="episode-001",
-        cut_id="value-L01",
-        format="long",
-        dp_acceptance_id="acceptance-dp-current",
-        scope="full_stage",
-        event_id=None,
-        instructions=(
-            DerivedAssetInstruction(
-                component_id="component-person",
-                event_id="event-person",
-                semantic_kind="b_roll",
-                implementation_kind="person_inset",
-                lane="b_roll",
-                display="簡立峰博士",
-                t0=30.0,
-                t1=34.0,
-                source_asset_ref=portrait.record.reference,
-                geometry=DerivedAssetGeometry(1920, 1080, "person_inset:v1"),
-                recipe_identity="recipe:person-inset:current",
-            ),
-        ),
-        worker_catalog_items=store.worker_selection_catalog().items(),
-    )
-
-    result = builder.build(request)
-
-    assert result.status == "failed"
-    assert result.error_code == "derived_asset_mismatch"

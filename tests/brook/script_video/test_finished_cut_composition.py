@@ -19,10 +19,7 @@ from agents.brook.script_video.finished_cut_production._approved_cut import (
     VerifiedEditorialMaster,
 )
 from agents.brook.script_video.finished_cut_production._assets import (
-    AssetKind,
     InMemoryAssetResolver,
-    WorkerCatalogItem,
-    WorkerSelectionCatalog,
 )
 from agents.brook.script_video.finished_cut_production._codex_semantic import (
     CodexProcessResult,
@@ -32,7 +29,6 @@ from agents.brook.script_video.finished_cut_production._composition import (
     FinishedCutProductionApplication,
     ProductionDependencies,
     ProductionPaths,
-    _stock_video_metadata_from_catalog,
     build_production_application,
 )
 from agents.brook.script_video.finished_cut_production._context import (
@@ -42,10 +38,6 @@ from agents.brook.script_video.finished_cut_production._context import (
 )
 from agents.brook.script_video.finished_cut_production._cutover import (
     UnpublishedReleaseIndex,
-)
-from agents.brook.script_video.finished_cut_production._face_placement import (
-    DeterministicFacialSafePlacement,
-    OpenCvHaarFaceDetector,
 )
 from agents.brook.script_video.finished_cut_production._policy import PolicyDecision
 from agents.brook.script_video.finished_cut_production._records import (
@@ -749,62 +741,12 @@ def test_production_composition_wires_offline_long_media_builder_across_restart(
     reopened_builder = reopened._production._derived_asset_builder
     assert isinstance(first_builder, LongDerivedAssetBuilder)
     assert isinstance(reopened_builder, LongDerivedAssetBuilder)
-    assert isinstance(first_builder._face_placement, DeterministicFacialSafePlacement)
-    assert isinstance(
-        first_builder._face_placement._face_detector,
-        OpenCvHaarFaceDetector,
-    )
     first_runtime = first_builder._title_renderer._browser._runtime
     reopened_runtime = reopened_builder._title_renderer._browser._runtime
     assert first_runtime == reopened_runtime
     assert first_runtime.receipt_content_hash == (
         "59037c5dfd0c6769e2f6c43e5f31894913d7b6a3a7d5847d265da1a5a5a3938d"
     )
-
-
-def test_production_composition_projects_only_exact_stock_dimensions_from_live_catalog() -> None:
-    kinds = (
-        AssetKind.STOCK,
-        AssetKind.STOCK,
-        AssetKind.STOCK,
-        AssetKind.PHOTO,
-        AssetKind.NON_EDITORIAL_CLIP,
-    )
-    catalog = WorkerSelectionCatalog(
-        WorkerCatalogItem(
-            reference=f"asset-sha256:{index:064x}",
-            kind=kind,
-            visual_summary=f"neutral acquisition {index}",
-            width=1920 if index != 2 else 1080,
-            height=1080 if index != 2 else 1920,
-            duration_sec=None if kind is AssetKind.PHOTO else 12.0,
-        )
-        for index, kind in enumerate(kinds, start=1)
-    )
-
-    projected = _stock_video_metadata_from_catalog(catalog)
-
-    assert tuple((row.asset_ref, row.native_width, row.native_height) for row in projected) == (
-        ("asset-sha256:" + f"{1:064x}", 1920, 1080),
-        ("asset-sha256:" + f"{2:064x}", 1080, 1920),
-        ("asset-sha256:" + f"{3:064x}", 1920, 1080),
-    )
-
-
-def test_production_composition_rejects_untrusted_stock_dimensions() -> None:
-    catalog = SimpleNamespace(
-        items=lambda: (
-            SimpleNamespace(
-                reference="asset-sha256:" + "1" * 64,
-                kind=AssetKind.STOCK,
-                width=None,
-                height=1080,
-            ),
-        )
-    )
-
-    with pytest.raises(ValueError, match="not trustworthy"):
-        _stock_video_metadata_from_catalog(catalog)
 
 
 @requires_local_hyperframes

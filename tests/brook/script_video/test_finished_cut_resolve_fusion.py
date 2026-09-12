@@ -785,39 +785,6 @@ def test_each_typed_lane_has_one_fixed_video_track(
     assert project.media_pool.append_specs[0]["trackIndex"] == track_index
 
 
-def test_vertical_stock_media_is_rejected_instead_of_implicitly_cropped(
-    tmp_path: Path,
-) -> None:
-    media_path = tmp_path / "vertical-stock.mp4"
-    media_path.write_bytes(b"stock")
-    timeline = _Timeline(name="Long 3", uid="work-uid", tracks={("video", 1): []})
-    project = _Project(name="episode-1", timelines=[timeline])
-    project.media_pool = _VerticalStockMediaPool(project)
-    facade = DaVinciResolveFacade(
-        resolve=_Resolve(_ProjectManager(project)),
-        locator=_locator(),
-        media_identity_resolver=_DigestResolver(),
-    )
-
-    with pytest.raises(ResolveTransactionError, match="native 16:9 landscape"):
-        facade.append_pre_rendered(
-            "work-uid",
-            TimelinePlacement(
-                component_id="component-stock",
-                event_id="event-stock",
-                semantic_kind="b_roll",
-                implementation_kind="stock_video",
-                lane="b_roll",
-                display="",
-                t0=2.0,
-                t1=5.0,
-                source_path=media_path,
-            ),
-        )
-
-    assert project.media_pool.append_specs == []
-
-
 def test_render_preview_uses_exact_h264_aac_job_and_reads_status_before_deleting(
     tmp_path: Path,
 ) -> None:

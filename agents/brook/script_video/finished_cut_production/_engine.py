@@ -51,8 +51,6 @@ from ._policy import (
     CutPolicyInput,
     FormatPolicy,
     LongV2Policy,
-    ShortPolicy,
-    StockVideoMetadata,
 )
 from ._projection import (
     _WORKER_PROJECTION_COMBINATIONS,
@@ -170,8 +168,6 @@ class FinishedCutProduction:
         derived_asset_builder: DerivedAssetBuilder | None = None,
         context_resolver: EditorialCutContextResolver | None = None,
         long_policy: FormatPolicy | None = None,
-        short_policy: FormatPolicy | None = None,
-        stock_video_metadata: Iterable[StockVideoMetadata] = (),
         current_release_index: CurrentReleaseIndex | None = None,
     ) -> None:
         self._store = _FilesystemProductionStore(store_root)
@@ -183,8 +179,6 @@ class FinishedCutProduction:
         )
         self._context_resolver = context_resolver
         self._long_policy = long_policy or LongV2Policy()
-        self._short_policy = short_policy or ShortPolicy()
-        self._stock_video_metadata = tuple(stock_video_metadata)
         self._current_release_index = current_release_index or InMemoryCurrentReleaseIndex()
 
     def advance(self, command_id: str) -> RunView:
@@ -216,7 +210,6 @@ class FinishedCutProduction:
                     base_release=base_release,
                 ),
                 format_policy=self._policy_for(existing.command.format),
-                stock_video_metadata=self._stock_video_metadata,
                 derived_asset_builder=self._derived_asset_builder,
                 asset_resolver=self._asset_resolver,
             )
@@ -325,7 +318,6 @@ class FinishedCutProduction:
             base_release=base_release,
             editorial_context=editorial_context,
             format_policy=self._policy_for(command.format),
-            stock_video_metadata=self._stock_video_metadata,
             derived_asset_builder=self._derived_asset_builder,
             asset_resolver=self._asset_resolver,
         )
@@ -485,7 +477,6 @@ class FinishedCutProduction:
                     base_release=base_release,
                 ),
                 format_policy=self._policy_for(stored.command.format),
-                stock_video_metadata=self._stock_video_metadata,
                 derived_asset_builder=self._derived_asset_builder,
                 asset_resolver=self._asset_resolver,
             )
@@ -763,7 +754,12 @@ class FinishedCutProduction:
         return context
 
     def _policy_for(self, format: str) -> FormatPolicy:
-        return self._long_policy if format == "long" else self._short_policy
+        # ADR-067 之後短片整條線走 `shortform-cut`，本模組只產長片。store 裡 0 個
+        # short run；靜靜地回一個 Short policy 只會讓錯誤在更深的地方以更難懂的
+        # 形式出現。
+        if format != "long":
+            raise CommandRejectedError("Finished Cut Production only produces the Long format")
+        return self._long_policy
 
 
 @dataclass(slots=True)
@@ -774,7 +770,6 @@ class _RunState:
     base_release: FinishedCutRelease | None = None
     editorial_context: EditorialCutContext | None = None
     format_policy: FormatPolicy | None = None
-    stock_video_metadata: tuple[StockVideoMetadata, ...] = ()
     derived_asset_builder: DerivedAssetBuilder | None = None
     asset_resolver: AssetResolver | None = None
 
@@ -1790,7 +1785,6 @@ def _advance_visual_checkpoint(
             CutPolicyInput(
                 context=run.editorial_context,
                 components=projected_components,
-                stock_video_metadata=run.stock_video_metadata,
             )
         )
         # `accepted_with_warnings` 照樣往下走：那些是品味與政策，不是壞成品。
@@ -1860,10 +1854,6 @@ def _derived_result_matches(
             return False
         if instruction.recipe_identity is None and (
             asset.final_asset_ref != instruction.source_asset_ref
-        ):
-            return False
-        if instruction.implementation_kind == "person_inset" and (
-            asset.final_asset_ref == instruction.source_asset_ref
         ):
             return False
         try:

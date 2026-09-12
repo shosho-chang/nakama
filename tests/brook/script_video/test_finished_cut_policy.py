@@ -18,8 +18,10 @@ from agents.brook.script_video.finished_cut_production._context import (
 from agents.brook.script_video.finished_cut_production._policy import (
     CutPolicyInput,
     LongV2Policy,
-    ShortPolicy,
-    StockVideoMetadata,
+)
+from agents.brook.script_video.finished_cut_production._worker_packet import (
+    WorkerPacketError,
+    expected_format_policy,
 )
 
 
@@ -219,12 +221,12 @@ def _long_components() -> tuple[_Component, ...]:
                 "broll-420",
                 "event-420",
                 "b_roll",
-                "person_inset",
+                "non_editorial_clip",
                 "b_roll",
                 "Expert",
                 420.0,
                 430.0,
-                "asset-person-420",
+                "asset-clip-420",
             ),
             _Component(
                 "broll-480",
@@ -242,12 +244,8 @@ def _long_components() -> tuple[_Component, ...]:
     return tuple(rows)
 
 
-def _stock_metadata() -> tuple[StockVideoMetadata, ...]:
-    return tuple(StockVideoMetadata(f"asset-stock-{index}", 1920, 1080) for index in range(1, 4))
-
-
 def _long_input() -> CutPolicyInput:
-    return CutPolicyInput(_long_context(), _long_components(), _stock_metadata())
+    return CutPolicyInput(_long_context(), _long_components())
 
 
 def _components_with_implementation_duration(
@@ -259,7 +257,6 @@ def _components_with_implementation_duration(
         "stock_video": "stock-1",
         "photo": "broll-cadence-180",
         "non_editorial_clip": "broll-cadence-360",
-        "person_inset": "broll-420",
     }.get(implementation_kind)
     if existing_component_id is not None:
         return tuple(
@@ -376,7 +373,6 @@ def test_already_built_oversized_chapter_placement_needs_review() -> None:
         ("stock_video", 12.0),
         ("photo", 12.0),
         ("non_editorial_clip", 12.0),
-        ("person_inset", 12.0),
     ),
 )
 def test_already_built_component_over_duration_ceiling_needs_review(
@@ -403,7 +399,6 @@ def test_already_built_component_over_duration_ceiling_needs_review(
         ("stock_video", 12.0),
         ("photo", 12.0),
         ("non_editorial_clip", 12.0),
-        ("person_inset", 12.0),
     ),
 )
 def test_component_at_exact_duration_ceiling_is_allowed(
@@ -925,79 +920,6 @@ def test_distinct_stock_assets_do_not_trip_the_reuse_rule() -> None:
     assert "stock_video_asset_reused" not in {d.code for d in decision.diagnostics}
 
 
-def test_vertical_native_stock_video_needs_review() -> None:
-    metadata = tuple(
-        replace(row, native_width=1080, native_height=1920)
-        if row.asset_ref == "asset-stock-2"
-        else row
-        for row in _stock_metadata()
-    )
-
-    decision = LongV2Policy().validate(replace(_long_input(), stock_video_metadata=metadata))
-
-    assert decision.status == "accepted_with_warnings"
-    assert "stock_video_not_native_landscape" in {
-        diagnostic.code for diagnostic in decision.diagnostics
-    }
-
-
-def _short_input(duration_sec: float = 45.0) -> CutPolicyInput:
-    context = EditorialCutContext(
-        episode_id="episode-001",
-        cut_id="short-K01",
-        format="short",
-        editorial_master_id="master-current",
-        tight_cut_id="tight-short-current",
-        duration_sec=duration_sec,
-        source_ranges=(CutSourceRange(200.0, 200.0 + duration_sec),),
-        cues=(CueAnchor("cue-short", "短片", 0.0, 2.0),),
-        sections=(),
-    )
-    vertical_stock = _Component(
-        "short-stock",
-        "event-short-stock",
-        "b_roll",
-        "stock_video",
-        "b_roll",
-        "Short vertical stock",
-        5.0,
-        10.0,
-        "asset-short-vertical",
-    )
-    return CutPolicyInput(
-        context,
-        (vertical_stock,),
-        (StockVideoMetadata("asset-short-vertical", 1080, 1920),),
-    )
-
-
-def test_short_uses_its_own_rules_without_long_fallback() -> None:
-    decision = ShortPolicy().validate(_short_input())
-
-    assert decision.status == "accepted"
-    assert decision.diagnostics == ()
-
-
-def test_short_over_sixty_seconds_needs_review_under_short_rules() -> None:
-    decision = ShortPolicy().validate(_short_input(61.0))
-
-    assert decision.status == "accepted_with_warnings"
-    assert "short_duration_exceeded" in {diagnostic.code for diagnostic in decision.diagnostics}
-
-
-def test_short_uses_a_fixed_two_title_limit_not_long_per_minute_density() -> None:
-    titles = tuple(
-        _title_component(f"short-title-{index}", t0)
-        for index, t0 in enumerate((1.0, 12.0, 24.0), start=1)
-    )
-    candidate = replace(_short_input(), components=(*_short_input().components, *titles))
-
-    decision = ShortPolicy().validate(candidate)
-
-    assert decision.status == "accepted_with_warnings"
-    assert "short_title_limit_exceeded" in {diagnostic.code for diagnostic in decision.diagnostics}
-
-
 def test_bad_plan_validation_is_deterministic_and_has_no_semantic_retry_call() -> None:
     policy = LongV2Policy()
     candidate = replace(_long_input(), context=_long_context(259.0))
@@ -1021,3 +943,13 @@ def test_bad_plan_validation_is_deterministic_and_has_no_semantic_retry_call() -
     assert first.status == "accepted_with_warnings"
     assert {"proposal_for", "advance", "request_revision"}.isdisjoint(calls)
     assert "SemanticAdapter" not in source
+
+
+def test_short_format_is_refused_rather_than_silently_given_a_policy() -> None:
+    """ADR-067 之後短片整條線走 `shortform-cut`，本模組只產長片。
+
+    store 裡 0 個 short run。靜靜地回一個 Short policy 只會讓錯誤在更深的地方、
+    以更難懂的形式出現（ADR-069 階段 2）。
+    """
+    with pytest.raises(WorkerPacketError, match="only produces the Long format"):
+        expected_format_policy("short", "director")

@@ -300,7 +300,7 @@ def test_event_anchors_and_typed_component_kinds_and_lanes_project_without_infer
             component_id="component-b-roll",
             event_id="event-support",
             semantic_kind="b_roll",
-            implementation_kind="person_inset",
+            implementation_kind="photo",
             lane="b_roll",
             display="簡立峰博士",
             t0=18.0,
@@ -418,7 +418,7 @@ def test_event_anchors_and_typed_component_kinds_and_lanes_project_without_infer
         ("chapter", "fullscreen_transition", "fullscreen_transition"),
         ("hero_title", "hero_title", "hero_title"),
         ("supporting_title", "supporting_title", "supporting_title"),
-        ("b_roll", "person_inset", "b_roll"),
+        ("b_roll", "photo", "b_roll"),
         ("identity_card", "identity_card", "identity_card"),
         ("visual_effect", "visual_effect", "visual_effect"),
     )

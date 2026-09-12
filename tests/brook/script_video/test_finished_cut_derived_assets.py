@@ -59,7 +59,7 @@ def test_instruction_show_sec_uses_core_visual_placement_not_semantic_span() -> 
     assert instruction.show_sec == 4.0
 
 
-def test_build_request_carries_core_recipe_and_neutral_catalog_context() -> None:
+def test_build_request_carries_the_neutral_catalog_context() -> None:
     catalog_item = WorkerCatalogItem(
         reference="asset-sha256:" + "a" * 64,
         kind=AssetKind.PHOTO,
@@ -68,23 +68,27 @@ def test_build_request_carries_core_recipe_and_neutral_catalog_context() -> None
         height=1200,
         duration_sec=None,
     )
+    # 原本用 person_inset——它是唯一同時帶「來源素材」與「配方」的實作。ADR-069
+    # 階段 2 退役之後那個組合不存在了（`__post_init__` 會擋「passthrough 不得發明
+    # 配方」），所以這裡測的就是 passthrough 那一半：請求要帶著中性素材目錄。
+    # 「帶著 core 配方」那一半由上一條（identity_card）涵蓋。
     geometry = DerivedAssetGeometry(
         target_width=1920,
         target_height=1080,
-        layout_identity="person-inset-v1",
+        layout_identity="photo:v1",
     )
     instruction = DerivedAssetInstruction(
         component_id="component:event-1",
         event_id="event-1",
         semantic_kind="b_roll",
-        implementation_kind="person_inset",
+        implementation_kind="photo",
         lane="b_roll",
         display="簡立峰博士",
         t0=12.0,
         t1=18.0,
         source_asset_ref=catalog_item.reference,
         geometry=geometry,
-        recipe_identity="recipe-sha256:" + "b" * 64,
+        recipe_identity=None,
     )
 
     request = DerivedAssetBuildRequest(

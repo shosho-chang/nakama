@@ -56,9 +56,6 @@ class ImplementationSpec:
     generated: bool
     #: 成品資產發佈進 Active Store 時的類別；`camera_correction` 不產資產所以是 None。
     asset_kind: AssetKind | None
-    #: worker 挑進來的**來源**素材類別。跟 `asset_kind` 常常一樣，但 person_inset
-    #: 是挑一張 PHOTO、算出一支 COMPOSITE，兩者不同。不吃來源素材的是 None。
-    source_asset_kind: AssetKind | None
     #: 版位版本。只有 `generated` 的才有；renderer 與指令兩邊都讀這一份。
     layout_version: str | None
     #: 產出的檔案後綴。滿版轉場卡是不透明 mp4，其餘字卡要 alpha 所以是 mov。
@@ -81,7 +78,6 @@ VOCABULARY: dict[str, ImplementationSpec] = {
         track_index=6,
         generated=True,
         asset_kind=AssetKind.CHAPTER_RENDER,
-        source_asset_kind=None,
         layout_version="v4",
         media_suffix=".mp4",
         worker_selectable=True,
@@ -94,7 +90,6 @@ VOCABULARY: dict[str, ImplementationSpec] = {
         track_index=3,
         generated=True,
         asset_kind=AssetKind.TITLE_RENDER,
-        source_asset_kind=None,
         layout_version="v2",
         media_suffix=".mov",
         worker_selectable=True,
@@ -108,7 +103,6 @@ VOCABULARY: dict[str, ImplementationSpec] = {
         track_index=4,
         generated=True,
         asset_kind=AssetKind.CONCEPT_RENDER,
-        source_asset_kind=None,
         layout_version="v2",
         media_suffix=".mov",
         worker_selectable=True,
@@ -119,7 +113,6 @@ VOCABULARY: dict[str, ImplementationSpec] = {
         track_index=2,
         generated=False,
         asset_kind=AssetKind.STOCK,
-        source_asset_kind=AssetKind.STOCK,
         layout_version=None,
         media_suffix=None,
         worker_selectable=True,
@@ -130,7 +123,6 @@ VOCABULARY: dict[str, ImplementationSpec] = {
         track_index=2,
         generated=False,
         asset_kind=AssetKind.PHOTO,
-        source_asset_kind=AssetKind.PHOTO,
         layout_version=None,
         media_suffix=None,
         worker_selectable=True,
@@ -141,20 +133,8 @@ VOCABULARY: dict[str, ImplementationSpec] = {
         track_index=2,
         generated=False,
         asset_kind=AssetKind.NON_EDITORIAL_CLIP,
-        source_asset_kind=AssetKind.NON_EDITORIAL_CLIP,
         layout_version=None,
         media_suffix=None,
-        worker_selectable=True,
-    ),
-    "person_inset": ImplementationSpec(
-        semantic_kind="b_roll",
-        lane="b_roll",
-        track_index=2,
-        generated=True,
-        asset_kind=AssetKind.COMPOSITE,
-        source_asset_kind=AssetKind.PHOTO,
-        layout_version="v1",
-        media_suffix=".mov",
         worker_selectable=True,
     ),
     # core-only：worker 提案不出來，由 core 鑄。
@@ -164,7 +144,6 @@ VOCABULARY: dict[str, ImplementationSpec] = {
         track_index=2,
         generated=False,
         asset_kind=None,
-        source_asset_kind=None,
         layout_version=None,
         media_suffix=None,
         worker_selectable=False,
@@ -180,7 +159,6 @@ VOCABULARY: dict[str, ImplementationSpec] = {
         track_index=7,
         generated=True,
         asset_kind=AssetKind.CONCEPT_RENDER,
-        source_asset_kind=None,
         layout_version="v1",
         media_suffix=".mov",
         worker_selectable=False,
@@ -262,16 +240,17 @@ ASSET_KIND_BY_IMPLEMENTATION: dict[str, AssetKind] = {
     kind: spec.asset_kind for kind, spec in VOCABULARY.items() if spec.asset_kind is not None
 }
 
-#: 實作 → worker 挑進來的來源素材類別。`person_inset` 挑 PHOTO、產 COMPOSITE，
-#: 所以這張表跟 `ASSET_KIND_BY_IMPLEMENTATION` 不是同一份。
+#: 實作 → worker 挑進來的**來源**素材類別。
+#:
+#: person_inset（挑一張 PHOTO、算出一支 COMPOSITE）在 ADR-069 階段 2 退役之後，
+#: 「吃取得素材」與「不經渲染直接用」這兩個概念就重合了——現在來源類別就是成品
+#: 類別，所以這張表是 passthrough 那幾種各自的 `asset_kind`，不需要獨立欄位。
+#: 哪天又出現「吃素材但要再算一次」的實作，這裡就要分回兩個欄位。
 SOURCE_ASSET_KIND_BY_IMPLEMENTATION: dict[str, AssetKind] = {
-    kind: spec.source_asset_kind
+    kind: spec.asset_kind
     for kind, spec in VOCABULARY.items()
-    if spec.source_asset_kind is not None
+    if not spec.generated and spec.asset_kind is not None
 }
-
-#: 吃取得素材的實作（＝有來源素材類別的）。policy 的視覺覆蓋率算這幾種。
-ASSET_BACKED_IMPLEMENTATIONS: frozenset[str] = frozenset(SOURCE_ASSET_KIND_BY_IMPLEMENTATION)
 
 #: 實作 → 產出檔案後綴（只有 generated 的才有）。
 MEDIA_SUFFIX_BY_IMPLEMENTATION: dict[str, str] = {

@@ -33,9 +33,6 @@ from agents.brook.script_video.finished_cut_production._derived_assets import (
     DerivedAssetBuildRequest,
     DerivedAssetBuildResult,
 )
-from agents.brook.script_video.finished_cut_production._policy import (
-    StockVideoMetadata,
-)
 from agents.brook.script_video.finished_cut_production._records import (
     ComponentProposal,
     DirectorEventProposal,
@@ -173,7 +170,6 @@ class _ReadyDerivedAssetBuilder:
                 kind = {
                     "fullscreen_transition": AssetKind.CHAPTER_RENDER,
                     "hero_title": AssetKind.TITLE_RENDER,
-                    "person_inset": AssetKind.COMPOSITE,
                     "identity_card": AssetKind.CONCEPT_RENDER,
                     "visual_effect": AssetKind.CONCEPT_RENDER,
                 }[instruction.implementation_kind]
@@ -364,11 +360,11 @@ def test_historical_supporting_title_release_cannot_authorize_a_revision(tmp_pat
 
 
 def test_dp_visual_placement_is_distinct_from_director_semantic_evidence(tmp_path) -> None:
-    command = _approved_cut(format="short")
+    command = _approved_cut()
     context = EditorialCutContext(
         episode_id="episode-1",
         cut_id="cut-1",
-        format="short",
+        format="long",
         editorial_master_id="master-1",
         tight_cut_id="tight-1",
         duration_sec=60.0,
@@ -439,11 +435,11 @@ def test_dp_visual_placement_is_distinct_from_director_semantic_evidence(tmp_pat
 
 
 def test_chapter_visual_placement_uses_canonical_section_window_not_cue_time(tmp_path) -> None:
-    command = _approved_cut(format="short")
+    command = _approved_cut()
     context = EditorialCutContext(
         episode_id="episode-1",
         cut_id="cut-1",
-        format="short",
+        format="long",
         editorial_master_id="master-1",
         tight_cut_id="tight-1",
         duration_sec=45.0,
@@ -829,8 +825,8 @@ def test_dp_owns_implementation_lane_and_current_catalog_asset(tmp_path) -> None
 
 
 def test_assetless_title_stops_at_derived_build_before_visual_or_plan(tmp_path) -> None:
-    command = _approved_cut(format="short")
-    context = _editorial_context(format="short", duration_sec=45.0)
+    command = _approved_cut()
+    context = _editorial_context(duration_sec=45.0)
     semantic = InMemorySemanticAdapter()
     builder = _PendingDerivedAssetBuilder()
     approved_cuts = InMemoryApprovedCutStore((command,))
@@ -897,8 +893,8 @@ def test_assetless_title_stops_at_derived_build_before_visual_or_plan(tmp_path) 
 
 
 def test_failed_build_stays_in_review_without_calling_visual_or_rerunning_dp(tmp_path) -> None:
-    command = _approved_cut(format="short")
-    context = _editorial_context(format="short", duration_sec=45.0)
+    command = _approved_cut()
+    context = _editorial_context(duration_sec=45.0)
     semantic = InMemorySemanticAdapter()
     builder = _FailedDerivedAssetBuilder()
     production = FinishedCutProduction(
@@ -950,8 +946,8 @@ def test_failed_build_stays_in_review_without_calling_visual_or_rerunning_dp(tmp
 
 
 def test_visual_receives_the_exact_built_final_and_inspection_references(tmp_path) -> None:
-    command = _approved_cut(format="short")
-    context = _editorial_context(format="short", duration_sec=45.0)
+    command = _approved_cut()
+    context = _editorial_context(duration_sec=45.0)
     semantic = InMemorySemanticAdapter()
     resolver = InMemoryAssetResolver(())
     builder = _ReadyDerivedAssetBuilder(resolver)
@@ -1021,8 +1017,8 @@ def test_visual_receives_the_exact_built_final_and_inspection_references(tmp_pat
 
 
 def test_well_formed_but_unpublished_final_ref_never_reaches_visual(tmp_path) -> None:
-    command = _approved_cut(format="short")
-    context = _editorial_context(format="short", duration_sec=45.0)
+    command = _approved_cut()
+    context = _editorial_context(duration_sec=45.0)
     semantic = InMemorySemanticAdapter()
     production = FinishedCutProduction(
         store_root=tmp_path / "finished-cut-authority",
@@ -1071,8 +1067,8 @@ def test_well_formed_but_unpublished_final_ref_never_reaches_visual(tmp_path) ->
 
 
 def test_visual_only_approves_exact_dp_selection_and_core_projects_it(tmp_path) -> None:
-    command = _approved_cut(format="short")
-    context = _editorial_context(format="short", duration_sec=45.0)
+    command = _approved_cut()
+    context = _editorial_context(duration_sec=45.0)
     semantic = InMemorySemanticAdapter()
     stock = _asset("visual-stock")
     production = FinishedCutProduction(
@@ -1157,8 +1153,8 @@ def test_visual_only_approves_exact_dp_selection_and_core_projects_it(tmp_path) 
 
 
 def test_intentional_aroll_needs_no_asset_and_projects_no_component(tmp_path) -> None:
-    command = _approved_cut(format="short")
-    context = _editorial_context(format="short", duration_sec=45.0)
+    command = _approved_cut()
+    context = _editorial_context(duration_sec=45.0)
     semantic = InMemorySemanticAdapter()
     builder = _PendingDerivedAssetBuilder()
     production = FinishedCutProduction(
@@ -1290,7 +1286,7 @@ def test_good_long_chain_passes_long_policy_before_plan_mint(tmp_path) -> None:
         ("photo-300", 300.0, "section-2", "b_roll", "Workplace"),
         ("chapter-3", 360.0, "section-3", "chapter", "第三章"),
         ("clip-360", 360.0, "section-3", "b_roll", "Chapter example"),
-        ("person-420", 420.0, "section-3", "b_roll", "Expert"),
+        ("photo-420", 420.0, "section-3", "b_roll", "Expert"),
         ("clip-480", 480.0, "section-3", "b_roll", "Closing example"),
     )
     context = EditorialCutContext(
@@ -1330,7 +1326,7 @@ def test_good_long_chain_passes_long_policy_before_plan_mint(tmp_path) -> None:
         "clip-180": _asset("long-clip-180", kind=AssetKind.NON_EDITORIAL_CLIP),
         "clip-240": _asset("long-clip-240", kind=AssetKind.NON_EDITORIAL_CLIP),
         "photo-300": _asset("long-photo-300", kind=AssetKind.PHOTO, extension=".jpg"),
-        "person-420": _asset("long-person-420", kind=AssetKind.PHOTO, extension=".jpg"),
+        "photo-420": _asset("long-photo-420", kind=AssetKind.PHOTO, extension=".jpg"),
         "clip-360": _asset("long-clip-360", kind=AssetKind.NON_EDITORIAL_CLIP),
         "clip-480": _asset("long-clip-480", kind=AssetKind.NON_EDITORIAL_CLIP),
     }
@@ -1343,10 +1339,6 @@ def test_good_long_chain_passes_long_policy_before_plan_mint(tmp_path) -> None:
         semantic_adapter=semantic,
         derived_asset_builder=_ReadyDerivedAssetBuilder(resolver),
         context_resolver=InMemoryEditorialCutContextResolver((context,)),
-        stock_video_metadata=tuple(
-            StockVideoMetadata(assets[event_id].reference, 1920, 1080)
-            for event_id in ("stock-1", "stock-2", "stock-3")
-        ),
     )
     director_wait = production.advance(_approved_cut().command_id)
     director_request = _current_request(production, semantic, director_wait.command_id)
@@ -1375,7 +1367,7 @@ def test_good_long_chain_passes_long_policy_before_plan_mint(tmp_path) -> None:
         "photo-300": ("photo", "b_roll"),
         "chapter-3": ("fullscreen_transition", "fullscreen_transition"),
         "clip-360": ("non_editorial_clip", "b_roll"),
-        "person-420": ("person_inset", "b_roll"),
+        "photo-420": ("photo", "b_roll"),
         "clip-480": ("non_editorial_clip", "b_roll"),
     }
     semantic.respond(
@@ -1450,8 +1442,8 @@ def test_inspect_current_returns_only_public_immutable_finished_cut_view(tmp_pat
         release_id="release-1",
         episode_id="episode-1",
         cut_id="cut-1",
-        format="short",
-        command_id=_approved_cut(format="short").command_id,
+        format="long",
+        command_id=_approved_cut().command_id,
         run_id="run-1",
         editorial_master_id="master-1",
         winner_id="winner-1",
@@ -1693,8 +1685,8 @@ def test_missing_editorial_context_is_rejected_before_run_creation(tmp_path) -> 
 
 def test_complete_current_chain_and_plan_survive_every_process_restart(tmp_path) -> None:
     root = tmp_path / "finished-cut-authority"
-    command = _approved_cut(format="short")
-    context = _editorial_context(format="short", duration_sec=45.0)
+    command = _approved_cut()
+    context = _editorial_context(duration_sec=45.0)
     approved_cuts = InMemoryApprovedCutStore((command,))
     semantic = InMemorySemanticAdapter()
 
@@ -1808,11 +1800,11 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
     tmp_path,
 ) -> None:
     root = tmp_path / "finished-cut-authority"
-    command = _approved_cut(format="short")
+    command = _approved_cut()
     context = EditorialCutContext(
         episode_id="episode-1",
         cut_id="cut-1",
-        format="short",
+        format="long",
         editorial_master_id="master-1",
         tight_cut_id="tight-1",
         duration_sec=45.0,
@@ -1853,7 +1845,7 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
             semantic_adapter=semantic,
             derived_asset_builder=builder,
             context_resolver=InMemoryEditorialCutContextResolver((context,)),
-            short_policy=ProjectionPolicy(),
+            long_policy=ProjectionPolicy(),
         )
 
     director_process = reopen()
@@ -1900,7 +1892,7 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
                 ("cue-support",),
             ),
             DPEventProposal(
-                "inset-event", "person_inset", "b_roll", inset.reference, ("cue-inset",)
+                "inset-event", "photo", "b_roll", inset.reference, ("cue-inset",)
             ),
         ),
     )
@@ -1932,7 +1924,7 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
         ("chapter", "fullscreen_transition", "fullscreen_transition"),
         ("hero_title", "hero_title", "hero_title"),
         ("identity_card", "identity_card", "identity_card"),
-        ("b_roll", "person_inset", "b_roll"),
+        ("b_roll", "photo", "b_roll"),
     )
     assert all(
         component.asset_ref is not None for component in ready.materialization_plan.components
@@ -1946,10 +1938,11 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
         if component.event_id == "inset-event"
     )
     assert inset_event.asset_ref == inset.reference
-    assert inset_component.asset_ref != inset_event.asset_ref
-    assert (
-        resolver.resolve_active_asset(inset_component.asset_ref).record.kind is AssetKind.COMPOSITE
-    )
+    # passthrough 的 component 直接沿用 worker 挑的那一份素材，不另外算一支
+    # ——person_inset（挑 PHOTO、產 COMPOSITE）在 ADR-069 階段 2 退役之後，
+    # 「吃素材又要再算一次」這個組合不存在了。
+    assert inset_component.asset_ref == inset_event.asset_ref
+    assert resolver.resolve_active_asset(inset_component.asset_ref).record.kind is AssetKind.PHOTO
     with pytest.raises(TypeError, match="minted only"):
         ProjectedComponent(
             component_id="forged",
@@ -1966,11 +1959,11 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
 
 def test_targeted_revision_survives_restart_and_changes_only_one_event(tmp_path) -> None:
     root = tmp_path / "finished-cut-authority"
-    command = _approved_cut(format="short")
+    command = _approved_cut()
     context = EditorialCutContext(
         episode_id="episode-1",
         cut_id="cut-1",
-        format="short",
+        format="long",
         editorial_master_id="master-1",
         tight_cut_id="tight-1",
         duration_sec=45.0,
@@ -2255,11 +2248,11 @@ def test_wrong_parent_and_replayed_request_cannot_accept_a_stage(tmp_path) -> No
 
 
 def test_stage_shape_failures_stay_on_exact_request_without_full_rerun(tmp_path) -> None:
-    command = _approved_cut(format="short")
+    command = _approved_cut()
     context = EditorialCutContext(
         episode_id="episode-1",
         cut_id="cut-1",
-        format="short",
+        format="long",
         editorial_master_id="master-1",
         tight_cut_id="tight-1",
         duration_sec=45.0,
@@ -2438,6 +2431,8 @@ def test_cross_format_proposal_cannot_enter_the_current_chain(tmp_path) -> None:
                 "hero-1", ("cue-context-1",), "Explain", "目前論點", "hero_title"
             ),
         ),
+        # 本模組只產長片（ADR-069 階段 2），所以「跨格式」現在是任何非 long 的
+        # 宣告——worker 回一個對不上 run 的格式就擋，不進權威鏈。
         format="short",
     )
 

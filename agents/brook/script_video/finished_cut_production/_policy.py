@@ -8,6 +8,11 @@
 長片整個重新登錄、重做 20 個視覺事件；`stock_video_not_native_landscape` 擋掉一支
 4096×2160 的 DCI 4K，而它放進 16:9 timeline 只是縮放。
 
+後者在 ADR-069 階段 2 整條移除了：同一條「直式 Stock 不能用」的規則有三處實作
+（這裡、`_resolve_fusion` 的交易中間、`_visual_assets` 選片那一刻），而且這裡那張
+`StockVideoMetadata` 對照表少一筆就 KeyError——缺 metadata 只記警告，下一行卻直接
+index 進去。唯一實作留在選片那一刻，用目錄自己帶的 width/height。
+
 現在分兩級：
 
 - ``BLOCKING_DIAGNOSTICS`` —— **會做出壞成品**的結構性問題（算術對不上、缺章節
@@ -27,7 +32,7 @@ from typing import Literal, Protocol
 
 from ._context import EditorialCutContext
 from ._derived_assets import _PLACEMENT_DURATION_CEILINGS_SEC
-from ._projection import ASSET_BACKED_IMPLEMENTATIONS
+from ._projection import NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
 
 PolicyStatus = Literal["accepted", "accepted_with_warnings", "needs_review"]
 PolicyDiagnosticCode = Literal[
@@ -43,12 +48,8 @@ PolicyDiagnosticCode = Literal[
     "title_cluster_exceeded",
     "distinct_stock_video_minimum_not_met",
     "stock_video_asset_reused",
-    "stock_video_metadata_missing",
-    "stock_video_not_native_landscape",
     "b_roll_cadence_gap_exceeded",
     "visual_gap_exceeded",
-    "short_duration_exceeded",
-    "short_title_limit_exceeded",
 ]
 
 #: 只有這四條會擋下物化——它們都是「不修就會做出壞成品」的結構性問題，
@@ -88,11 +89,10 @@ LONG_TITLE_CLUSTER_MAX_CARDS = 2
 LONG_MAX_NONSTRUCTURAL_VISUAL_GAP_SEC = 75.0
 LONG_MAX_ASSET_BACKED_BROLL_GAP_SEC = 75.0
 LONG_MIN_DISTINCT_STOCK_VIDEO_EVENTS = 3
-SHORT_MAX_DURATION_SEC = 60.0
-SHORT_MAX_TITLE_LIKE_CARDS = 2
 TITLE_LIKE_LANES = frozenset({"hero_title", "fullscreen_transition"})
-#: 吃取得素材的實作。名單本體在 `_projection.VOCABULARY`（`source_asset_kind` 非空）。
-VISUAL_COVERAGE_BROLL_IMPLEMENTATIONS = ASSET_BACKED_IMPLEMENTATIONS
+#: 視覺覆蓋率算的是「畫面上有取得素材」的那幾種。person_inset 退役之後它與
+#: passthrough 完全重合，所以不再有第二個名字。名單本體在 `_projection.VOCABULARY`。
+VISUAL_COVERAGE_BROLL_IMPLEMENTATIONS = NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
 
 
 class PolicyComponent(Protocol):
@@ -108,17 +108,9 @@ class PolicyComponent(Protocol):
 
 
 @dataclass(frozen=True, slots=True)
-class StockVideoMetadata:
-    asset_ref: str
-    native_width: int
-    native_height: int
-
-
-@dataclass(frozen=True, slots=True)
 class CutPolicyInput:
     context: EditorialCutContext
     components: tuple[PolicyComponent, ...]
-    stock_video_metadata: tuple[StockVideoMetadata, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -427,35 +419,6 @@ class LongV2Policy:
                     ),
                 ),
             )
-        metadata_by_asset = {row.asset_ref: row for row in candidate.stock_video_metadata}
-        missing_stock_metadata = tuple(sorted(distinct_stock_assets.difference(metadata_by_asset)))
-        if missing_stock_metadata:
-            notices.extend((
-                    PolicyDiagnostic(
-                        "stock_video_metadata_missing",
-                        "Every Stock Video event requires native source dimensions",
-                        asset_refs=missing_stock_metadata,
-                    ),
-                ),
-            )
-        non_landscape_stock = tuple(
-            sorted(
-                asset_ref
-                for asset_ref in distinct_stock_assets
-                if metadata_by_asset[asset_ref].native_width
-                <= metadata_by_asset[asset_ref].native_height
-                or metadata_by_asset[asset_ref].native_height <= 0
-            )
-        )
-        if non_landscape_stock:
-            notices.extend((
-                    PolicyDiagnostic(
-                        "stock_video_not_native_landscape",
-                        "Long Stock Video must be natively landscape",
-                        asset_refs=non_landscape_stock,
-                    ),
-                ),
-            )
         visual_coverage = tuple(
             sorted(
                 (
@@ -558,31 +521,3 @@ def _coverage_gap_diagnostic(
         ),
         component_ids=adjacent_components,
     )
-
-
-class ShortPolicy:
-    """Short-only production policy; it never delegates to Long policy."""
-
-    def validate(self, candidate: CutPolicyInput) -> PolicyDecision:
-        notices: list[PolicyDiagnostic] = []
-        if candidate.context.duration_sec > SHORT_MAX_DURATION_SEC:
-            notices.extend((
-                    PolicyDiagnostic(
-                        "short_duration_exceeded",
-                        "Short duration must not exceed 60 seconds",
-                    ),
-                ),
-            )
-        title_like = tuple(
-            component for component in candidate.components if component.lane in TITLE_LIKE_LANES
-        )
-        if len(title_like) > SHORT_MAX_TITLE_LIKE_CARDS:
-            notices.extend((
-                    PolicyDiagnostic(
-                        "short_title_limit_exceeded",
-                        "Short permits at most two title-like cards",
-                        component_ids=tuple(component.component_id for component in title_like),
-                    ),
-                ),
-            )
-        return decide(tuple(notices))

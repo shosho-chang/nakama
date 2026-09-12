@@ -41,8 +41,8 @@ def _approved_cut() -> ApprovedCutCommand:
     return ApprovedCutCommand(
         command_id=COMMAND_ID,
         episode_id="episode-recovery",
-        cut_id="short-1",
-        format="short",
+        cut_id="long-1",
+        format="long",
         editorial_master_id="master-current",
         winner_id="winner-current",
         tight_cut_id="tight-current",
@@ -53,8 +53,8 @@ def _context() -> EditorialCutContext:
     text = "工作除了 Purpose，也需要清楚知道自己的 Calling。"
     return EditorialCutContext(
         episode_id="episode-recovery",
-        cut_id="short-1",
-        format="short",
+        cut_id="long-1",
+        format="long",
         editorial_master_id="master-current",
         tight_cut_id="tight-current",
         duration_sec=45.0,

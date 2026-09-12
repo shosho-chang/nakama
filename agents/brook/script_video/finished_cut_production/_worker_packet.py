@@ -22,8 +22,6 @@ from ._policy import (
     LONG_MIN_DURATION_SEC,
     LONG_TITLE_CLUSTER_MAX_CARDS,
     LONG_TITLE_CLUSTER_WINDOW_SEC,
-    SHORT_MAX_DURATION_SEC,
-    SHORT_MAX_TITLE_LIKE_CARDS,
 )
 from ._projection import _WORKER_PROJECTION_COMBINATIONS
 from ._records import EventRecord, StageName, StageRequest
@@ -678,17 +676,9 @@ def expected_format_policy(
         "dp": "implement_current_events_using_only_catalog_references",
         "visual_review": "judge_each_final_rendered_component_from_inspection_bytes",
     }[stage]
-    if format == "short":
-        return {
-            "policy_id": "short_v1",
-            "stage": stage,
-            "stage_instruction": stage_instruction,
-            "projection_combinations": projection_combinations,
-            "constraints": {
-                "duration_max_sec": SHORT_MAX_DURATION_SEC,
-                "title_like_max_cards": SHORT_MAX_TITLE_LIKE_CARDS,
-            },
-        }
+    if format != "long":
+        # ADR-067 之後短片走 `shortform-cut`／`shared/shortform_broll.py`，不經本模組。
+        raise WorkerPacketError("Finished Cut Production only produces the Long format")
     return {
         "policy_id": "long_v2",
         "stage": stage,
@@ -725,7 +715,6 @@ def expected_format_policy(
             "stock_min_distinct_asset_backed_events": LONG_MIN_DISTINCT_STOCK_VIDEO_EVENTS,
             "stock_native_landscape": True,
             "dp_catalog_references_only": True,
-            "person_inset_fullscreen": False,
             "single_paper_family": True,
             "orange_allowed": False,
             "ink_allowed": False,

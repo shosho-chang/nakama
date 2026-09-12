@@ -16,7 +16,7 @@ from ._approved_cut import (
     EditorialMasterVerifier,
     FilesystemEditorialMasterVerifier,
 )
-from ._assets import AssetKind, AssetResolver, WorkerSelectionCatalog
+from ._assets import AssetResolver
 from ._codex_semantic import (
     CodexProcessRunner,
     CodexSemanticAdapter,
@@ -34,14 +34,6 @@ from ._cutover import (
 )
 from ._derived_assets import DerivedAssetBuilder
 from ._engine import FinishedCutProduction, _current_inspection
-from ._face_placement import (
-    DeterministicFacialSafePlacement,
-    FilesystemEditorialMasterVideoResolver,
-    OpenCvHaarFaceDetector,
-    OpenCvMasterFrameReader,
-    PinnedOpenCvHaarModel,
-    StoredRunFacePlacementContextResolver,
-)
 from ._hyperframes_renderer import (
     PinnedHyperFramesRuntime,
     SubprocessRenderProcessRunner,
@@ -52,7 +44,7 @@ from ._materialization_fusion import (
     VerifiedEditorialMasterContractCache,
 )
 from ._persistence import AtomicCutoverJournalStore, AtomicResolveTransactionStore
-from ._policy import FormatPolicy, StockVideoMetadata
+from ._policy import FormatPolicy
 from ._records import (
     FinishedCutInspection,
     StagedReleaseCandidate,
@@ -211,8 +203,6 @@ class ProductionDependencies:
     derived_asset_builder: DerivedAssetBuilder | None = None
     current_release_index: CurrentReleaseIndex | None = None
     long_policy: FormatPolicy | None = None
-    short_policy: FormatPolicy | None = None
-    stock_video_metadata: tuple[StockVideoMetadata, ...] = ()
     materialization: MaterializationCoordinator | None = None
     materialization_unavailable_reason: str = "resolve_materialization_not_connected"
     cutover: _ProductionCutoverCoordinator | None = None
@@ -295,8 +285,6 @@ class FinishedCutProductionApplication:
             derived_asset_builder=dependencies.derived_asset_builder,
             context_resolver=ApprovedCutAuthorityContextResolver(authority),
             long_policy=dependencies.long_policy,
-            short_policy=dependencies.short_policy,
-            stock_video_metadata=dependencies.stock_video_metadata,
             current_release_index=dependencies.current_release_index,
         )
         return cls(
@@ -878,9 +866,6 @@ def build_production_application(
             asset_resolver=assets,
             semantic_adapter=semantic,
             derived_asset_builder=media,
-            stock_video_metadata=_stock_video_metadata_from_catalog(
-                assets.worker_selection_catalog()
-            ),
             current_release_index=_EpisodeCurrentReleaseIndex(
                 lifecycle,
                 episode_id=episode_id,
@@ -892,35 +877,6 @@ def build_production_application(
             cutover=production_cutover,
         ),
     )
-
-
-def _stock_video_metadata_from_catalog(
-    catalog: WorkerSelectionCatalog,
-) -> tuple[StockVideoMetadata, ...]:
-    """Project exact neutral acquisition dimensions into Long policy input."""
-
-    rows: list[StockVideoMetadata] = []
-    references: set[str] = set()
-    for item in catalog.items():
-        if item.kind is not AssetKind.STOCK:
-            continue
-        if (
-            type(item.width) is not int
-            or item.width <= 0
-            or type(item.height) is not int
-            or item.height <= 0
-            or item.reference in references
-        ):
-            raise ValueError("Stock Video catalog dimensions are not trustworthy")
-        references.add(item.reference)
-        rows.append(
-            StockVideoMetadata(
-                asset_ref=item.reference,
-                native_width=item.width,
-                native_height=item.height,
-            )
-        )
-    return tuple(rows)
 
 
 def _build_long_media_composition(
@@ -944,27 +900,10 @@ def _build_long_media_composition(
     adapters = build_long_visual_media_adapters(
         workspace_root=media_root / "workspaces",
         render_output_root=media_root / "renders",
-        inset_output_root=media_root / "person-insets",
         runtime=runtime,
         runner=process_runner,
-    )
-    face_model = PinnedOpenCvHaarModel.verify(Path(__file__).resolve().parent / "assets")
-    placement = DeterministicFacialSafePlacement(
-        context_resolver=StoredRunFacePlacementContextResolver(run_store_root),
-        master_resolver=FilesystemEditorialMasterVideoResolver(
-            paths.episodes_root,
-            cache_root=paths.runtime_root / "verified-editorial-masters",
-        ),
-        frame_reader=OpenCvMasterFrameReader(),
-        face_detector=OpenCvHaarFaceDetector(
-            model_path=face_model.path,
-            expected_model_sha256=face_model.sha256,
-            expected_opencv_version=face_model.opencv_version,
-        ),
     )
     return LongDerivedAssetBuilder(
         store=assets,
         title_renderer=adapters.title_renderer,
-        compositor=adapters.person_inset_compositor,
-        face_placement=placement,
     )

@@ -7,9 +7,6 @@ from pathlib import Path
 
 import pytest
 
-from agents.brook.script_video.finished_cut_production._derived_assets import (
-    max_readable_display_chars,
-)
 from agents.brook.script_video.finished_cut_production._assets import (
     AssetKind,
     AssetRecord,
@@ -26,6 +23,7 @@ from agents.brook.script_video.finished_cut_production._context import (
 )
 from agents.brook.script_video.finished_cut_production._derived_assets import (
     BuiltComponentAsset,
+    max_readable_display_chars,
 )
 from agents.brook.script_video.finished_cut_production._engine import _ALLOWED_PROJECTION
 from agents.brook.script_video.finished_cut_production._policy import (
@@ -36,8 +34,6 @@ from agents.brook.script_video.finished_cut_production._policy import (
     LONG_MIN_DURATION_SEC,
     LONG_TITLE_CLUSTER_MAX_CARDS,
     LONG_TITLE_CLUSTER_WINDOW_SEC,
-    SHORT_MAX_DURATION_SEC,
-    SHORT_MAX_TITLE_LIKE_CARDS,
 )
 from agents.brook.script_video.finished_cut_production._records import EventRecord, StageRequest
 from agents.brook.script_video.finished_cut_production._worker_packet import (
@@ -331,7 +327,6 @@ def test_long_worker_brief_exposes_exact_core_policy_without_repo_skills() -> No
         "stock_min_distinct_asset_backed_events": LONG_MIN_DISTINCT_STOCK_VIDEO_EVENTS,
         "stock_native_landscape": True,
         "dp_catalog_references_only": True,
-        "person_inset_fullscreen": False,
         "single_paper_family": True,
         "orange_allowed": False,
         "ink_allowed": False,
@@ -370,30 +365,6 @@ def test_long_worker_brief_prevents_fragmented_or_semantically_duplicated_card_c
         },
         "fullscreen_transition": {"canonical_chapter_only": True},
     }
-
-
-def test_short_worker_brief_does_not_apply_long_policy_constraints() -> None:
-    request = _director_request()
-    context = request.editorial_context
-    assert context is not None
-    request = replace(
-        request,
-        format="short",
-        editorial_context=replace(context, format="short", duration_sec=45.0),
-    )
-    packet = ProductionWorkerPacketMaterializer(
-        scope=WorkerPacketScope("run-current", "episode-current", "value-L02", "short"),
-        asset_resolver=_UnusedResolver(),
-        previewer=_UnusedPreviewer(),
-    ).materialize(request)
-
-    assert packet.format_policy["policy_id"] == "short_v1"
-    assert packet.format_policy["constraints"] == {
-        "duration_max_sec": SHORT_MAX_DURATION_SEC,
-        "title_like_max_cards": SHORT_MAX_TITLE_LIKE_CARDS,
-    }
-    assert "editorial_brief" not in packet.format_policy
-    assert "hero_title_max_count" not in packet.format_policy["constraints"]
 
 
 @pytest.mark.parametrize(
