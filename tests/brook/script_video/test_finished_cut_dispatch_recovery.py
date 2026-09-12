@@ -229,7 +229,7 @@ def test_completed_failure_can_be_recovered_after_run_save_crash_window(tmp_path
             command=stored.command,
             view=replace(stored.view, status="pending"),
             worker_catalog=stored.worker_catalog,
-            base_release_id=stored.base_release_id,
+            base_plan_id=stored.base_plan_id,
         )
     )
     restarted = _production(tmp_path, _ReadyDirectorWorker())
@@ -256,7 +256,7 @@ def test_recovery_rejects_wrong_stage_that_differs_from_durable_claim(tmp_path) 
                 outstanding_request=replace(request, stage="dp"),
             ),
             worker_catalog=stored.worker_catalog,
-            base_release_id=stored.base_release_id,
+            base_plan_id=stored.base_plan_id,
         )
     )
     restarted = _production(tmp_path, _ReadyDirectorWorker())

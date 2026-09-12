@@ -13,17 +13,18 @@ Finished Cut Release。20260805 林之晨的實測：
 舊剪輯冒充成 492 秒的成品，掛上已核准的標題與縮圖登錄進 DB。安靜地發錯內容
 比失敗更糟，因為沒有人會知道。
 
-這裡把對應關係變成 episode 內一份顯式紀錄（`highlights/publish-timelines.v1.json`），
-並且**每次 render 前都拿實際 timeline 長度跟 Release preview 對一次**。ADR-066
-的 run 可由 resolve transaction 機器推導；migrated Release 沒有 transaction，
-只能由人記一次——記下來的東西可以被稽核，猜出來的不行。
+這裡把對應關係變成一份可稽核的紀錄，並且**每次 render 前都拿實際 timeline 長度
+跟那份紀錄的 preview 對一次**。
 
-**還沒有 Release 的 cut（`release_id: null`）**：短片線（ADR-067）產出的成品在
-`publish_prep` 那一步才第一次登錄 Release，所以它進對應表時手上沒有 release_id。
-這種 entry 仍然要填 `expected_duration_sec`，來源是**修修看過的那份 review
-preview** 的長度——護欄擋的是「preview 之後有人動過 timeline」，跟長片擋錯片
-是同一件事，只是對照物換成 preview 而不是 Release。缺 release_id 不是放行，
-是把對照物講清楚。
+ADR-069 之後，長片那條線的紀錄就是 finished cut 的 **plan record**：它記著這個
+plan 鋪到了哪一條 timeline、preview 的實際長度、以及成品的 event 與 component。
+在那之前這裡只認得封存過的 Release，而封存鏈從來沒有跑過一次——於是每一支長片
+都落在「沒有 Release」那條路上，分章與字幕來源全部回退。
+
+**沒有 plan record 的 cut**：短片線（ADR-067）不走 finished cut production，所以
+它仍然由人記一次 `highlights/publish-timelines.v1.json`。那種 entry 要填
+`expected_duration_sec`，來源是**修修看過的那份 review preview** 的長度——護欄擋
+的是「preview 之後有人動過 timeline」，跟長片擋錯片是同一件事。
 """
 
 from __future__ import annotations
@@ -51,8 +52,8 @@ class PublishTimelineTarget:
 
     cut_id: str
     timeline: str
-    #: 還沒登錄 Release 的 cut（新短片）為 None——見模組 docstring。
-    release_id: str | None
+    #: 這支 cut 的 plan record 身分。沒有 record 的成品（短片線）為 None。
+    plan_id: str | None
     release_cut_id: str
     expected_duration_sec: float
 
@@ -81,16 +82,17 @@ def resolve_target(timeline_map: dict, cut_id: str) -> PublishTimelineTarget:
     missing = [k for k in ("timeline", "expected_duration_sec") if not entry.get(k)]
     if missing:
         raise PublishTimelineError(f"{cut_id} 的對應表少了欄位 {missing}")
-    if "release_id" not in entry:
+    if "plan_id" not in entry and "release_id" not in entry:
         raise PublishTimelineError(
-            f"{cut_id} 的對應表沒有 release_id 欄位。還沒登錄 Release 的成品要明寫 "
-            '"release_id": null——欄位不見與「刻意沒有」必須分得出來'
+            f"{cut_id} 的對應表沒有 plan_id 欄位。沒有 plan record 的成品要明寫 "
+            '"plan_id": null——欄位不見與「刻意沒有」必須分得出來'
         )
-    release_id = entry["release_id"]
+    # ADR-069 之前這一格叫 `release_id`。既有的對應表照樣讀得回來。
+    plan_id = entry.get("plan_id", entry.get("release_id"))
     return PublishTimelineTarget(
         cut_id=cut_id,
         timeline=str(entry["timeline"]),
-        release_id=str(release_id) if release_id else None,
+        plan_id=str(plan_id) if plan_id else None,
         release_cut_id=str(entry.get("release_cut_id") or cut_id),
         expected_duration_sec=float(entry["expected_duration_sec"]),
     )
@@ -99,119 +101,135 @@ def resolve_target(timeline_map: dict, cut_id: str) -> PublishTimelineTarget:
 def verify_duration(target: PublishTimelineTarget, actual_duration_sec: float) -> None:
     """render 前最後一道：實際 timeline 長度必須等於對照物的長度。
 
-    對照物是 Release 的 preview；還沒登錄 Release 的成品（新短片）則是修修看過的
-    那份 review preview。訊息要講清楚是拿什麼在對，不然看到「Release None」的人
-    會以為是程式壞了而不是 timeline 被動過。
+    對照物是 plan record 的 preview；沒有 record 的成品（短片線）則是修修看過的
+    那份 review preview。訊息要講清楚是拿什麼在對，不然看到「plan None」的人會
+    以為是程式壞了而不是 timeline 被動過。
     """
     delta = abs(actual_duration_sec - target.expected_duration_sec)
     if delta > DURATION_TOLERANCE_SEC:
         against = (
-            f"Release {target.release_id} 的成品長度"
-            if target.release_id
+            f"plan record {target.plan_id} 的成品長度"
+            if target.plan_id
             else "修修看過的 review preview 長度"
         )
         raise PublishTimelineError(
             f"{target.cut_id}: timeline「{target.timeline}」長度 {actual_duration_sec:.3f}s，"
             f"但{against}是 "
             f"{target.expected_duration_sec:.3f}s（差 {delta:.3f}s）。\n"
-            f"  → 這條 timeline 不是這個 Release 的內容。專案裡通常還留著同名的舊剪輯；\n"
+            f"  → 這條 timeline 不是這份紀錄的內容。專案裡通常還留著同名的舊剪輯；\n"
             f"     先確認 {MAP_RELPATH} 指到正確的那條，不要就這樣 render 出去。"
         )
 
 
-def canonical_timeline_from_transactions(
-    transactions_dir: Path, transaction_receipt_id: str
-) -> str | None:
-    """ADR-066 run：由 Release 的 transaction receipt 反查 canonical timeline 名。
+def plan_record_target(episode_dir: Path, cut_id: str) -> PublishTimelineTarget | None:
+    """從 plan record 直接推出 render 目標——這支 cut 不必登記在對應表裡。
 
-    migrated Release 沒有 transaction，回 None——那種只能靠對應表裡人記的值。
+    ADR-069 之前 timeline 名只能由人記在 `publish-timelines.v1.json`：機器那條路
+    （`canonical_timeline_from_transactions`）要求交易 `status == "committed"`，
+    而全機器沒有一筆交易 commit 過，所以它永遠回 None。
+
+    plan record 現在直接記著「這個 plan 鋪到了哪一條 timeline」與 preview 的實際
+    長度，兩個護欄要的東西都在裡面。人只需要為**沒有 record 的成品**（短片線）
+    維護對應表。
+
+    回 None 代表這支沒有 record（或 record 是 ADR-069 之前產的、沒記 timeline），
+    呼叫端回頭讀對應表。
     """
-    directory = Path(transactions_dir)
-    if not directory.is_dir():
+
+    from agents.brook.script_video.finished_cut_production import build_plan_record_reader
+
+    episode_dir = Path(episode_dir)
+    inspection = build_plan_record_reader(episode_dir).inspect_current(episode_dir.name)
+    if inspection.state != "ready":
         return None
-    for path in sorted(directory.glob("resolve-*.json")):
-        payload = json.loads(path.read_text(encoding="utf-8")).get("payload") or {}
-        if payload.get("transaction_receipt_id") != transaction_receipt_id:
-            continue
-        if payload.get("status") != "committed":
-            continue
-        canonical = payload.get("canonical") or {}
-        name = canonical.get("name")
-        return str(name) if name else None
-    return None
+    cut = next((row for row in inspection.cuts if row.cut_id == cut_id), None)
+    if cut is None or not cut.timeline or cut.preview.duration_sec is None:
+        return None
+    return PublishTimelineTarget(
+        cut_id=cut_id,
+        timeline=cut.timeline,
+        plan_id=cut.plan_id,
+        release_cut_id=cut_id,
+        expected_duration_sec=float(cut.preview.duration_sec),
+    )
 
 
-def release_chapters(episode_dir: Path, cut_id: str) -> list[tuple[float, str]]:
-    """YouTube 分章取自 Release 的滿版轉場卡——與成品同一個時間軸。
+def target_for(episode_dir: Path, cut_id: str) -> PublishTimelineTarget:
+    """這支 cut 的 render 目標：先問 plan record，沒有才讀對應表。"""
+
+    recorded = plan_record_target(episode_dir, cut_id)
+    if recorded is not None:
+        return recorded
+    timeline_map = load_timeline_map(episode_dir)
+    if timeline_map is None:
+        raise PublishTimelineError(
+            f"{cut_id} 既沒有 plan record，也沒有 {MAP_RELPATH}——"
+            "沒有任何可稽核的來源能說出要 render 哪一條 timeline。"
+        )
+    return resolve_target(timeline_map, cut_id)
+
+
+def _plan_cut(episode_dir: Path, cut_id: str):
+    """這支 cut 的 plan record 投影，沒有就回 None。"""
+
+    from agents.brook.script_video.finished_cut_production import build_plan_record_reader
+
+    episode_dir = Path(episode_dir)
+    inspection = build_plan_record_reader(episode_dir).inspect_current(episode_dir.name)
+    if inspection.state != "ready":
+        return None
+    return next((row for row in inspection.cuts if row.cut_id == cut_id), None)
+
+
+def plan_chapters(episode_dir: Path, cut_id: str) -> list[tuple[float, str]]:
+    """YouTube 分章取自 plan record 的滿版轉場卡——與成品同一個時間軸。
 
     章節本來讀 `highlights/tighten/<cut>_broll.json`，那是 ADR-065 製作線的殘留：
     20260805 的 value-L02 broll 最遠只到 326.7s，但成品是 563.7s，於是描述欄的
     分章全部落在錯的位置（實際產出過 02:09/02:56/04:09/04:24/04:28，正確答案是
-    00:43/03:39/04:41/07:10）。Release 的 fullscreen_transition component 才是
+    00:43/03:39/04:41/07:10）。record 的 fullscreen_transition component 才是
     跟成品同源的那份。
 
-    回空 list 代表「這集沒有可信的分章」——沒有分章好過錯的分章。
+    ADR-069 之前這裡還要對應表先指出一個 `release_id`，而封存鏈從未跑過，所以
+    它對每一支 cut 都直接回空 list。現在只問 record 有沒有這支。
+
+    回空 list 代表「這集這支沒有可信的分章」——沒有分章好過錯的分章。
     """
-    timeline_map = load_timeline_map(episode_dir)
-    if timeline_map is None:
-        return []
-    target = resolve_target(timeline_map, cut_id)
-    if target.release_id is None:
-        return []  # 還沒登錄 Release ⇒ 沒有分章來源（短片本來也不分章）
 
-    from agents.brook.script_video.finished_cut_production import build_current_release_reader
-
-    inspection = build_current_release_reader(episode_dir).inspect_current(Path(episode_dir).name)
-    cut = next(
-        (c for c in inspection.cuts if c.release_id == target.release_id),
-        None,
-    )
+    cut = _plan_cut(episode_dir, cut_id)
     if cut is None:
-        raise PublishTimelineError(
-            f"{cut_id}: 對應表指的 Release {target.release_id} 不在 exact current——"
-            "分章來源不可信，先確認 pointer"
-        )
+        return []
     marks = sorted(
-        (float(c.t0), " ".join(str(c.display).split()))
-        for c in cut.components
-        if c.implementation_kind == "fullscreen_transition" and str(c.display).strip()
+        (float(component.t0), " ".join(str(component.display).split()))
+        for component in cut.components
+        if component.implementation_kind == "fullscreen_transition"
+        and str(component.display).strip()
     )
     if len(marks) < 2:
         return []
     return [(0.0, "開場"), *marks]
 
 
-def release_subtitle(episode_dir: Path, cut_id: str) -> Path | None:
-    """Release 的字幕檔——描述欄逐字稿的來源，與成品同一份內容。
+def plan_subtitle(episode_dir: Path, cut_id: str) -> Path | None:
+    """plan record 的字幕檔——描述欄逐字稿的來源，與成品同一份內容。
 
     描述欄的 hook 本來讀 `highlights/srt/<cut>_tight_r*.srt`，同樣是 ADR-065 的
     殘留：punch-L04 的 tight SRT 只有 260 秒的舊剪輯，成品卻是 492 秒，於是 LLM
-    是照著一份不存在的影片在寫文案。Release 的 subtitle 才是成品那份。
+    是照著一份不存在的影片在寫文案。record 的 subtitle 才是成品那份。
 
-    回 None 代表沒有對應表或檔案不在，由呼叫端回退。
+    回 None 代表沒有 record 或檔案不在，由呼叫端回退。
     """
-    timeline_map = load_timeline_map(episode_dir)
-    if timeline_map is None:
-        return None
-    target = resolve_target(timeline_map, cut_id)
-    if target.release_id is None:
-        return None  # 還沒登錄 Release ⇒ 字幕來源改由呼叫端的 tight SRT 決定
 
-    from agents.brook.script_video.finished_cut_production import build_current_release_reader
-
-    episode_dir = Path(episode_dir)
-    inspection = build_current_release_reader(episode_dir).inspect_current(episode_dir.name)
-    cut = next((c for c in inspection.cuts if c.release_id == target.release_id), None)
+    cut = _plan_cut(episode_dir, cut_id)
     if cut is None or not cut.subtitle:
         return None
-    path = episode_dir / cut.subtitle.reference
+    path = Path(episode_dir) / cut.subtitle.reference
     return path if path.is_file() else None
 
-
 def packaging_cut_id(episode_dir: Path, release_cut_id: str) -> str:
-    """Release 的 cut id → 發布線（winners／packages）的 cut id。
+    """成品審核的 cut id → 發布線（winners／packages）的 cut id。
 
-    兩邊是不同的識別空間：成品審核講 Release 的 `long3-fresh-20260828-r4`，
+    兩邊是不同的識別空間：成品審核講 `long3-fresh-20260828-r4`，
     packaging 與 `winners.json` 講 `punch-L04`。2026-08-29 修修在成品審核按下
     「核准這支」時兩邊都撞牆——publish_prep 收到 Release 的 id，log 只留下一行
     `--cut long3-fresh-20260828-r4 不在 winners.json`；redirect 帶著同一個 id 去
@@ -230,29 +248,27 @@ def packaging_cut_id(episode_dir: Path, release_cut_id: str) -> str:
     return release_cut_id
 
 
-def export_matches_current_release(episode_dir: Path, cut_id: str, receipt: dict | None) -> bool:
-    """已 render 的成品是不是**現在這個** Release 的內容。
+def export_matches_plan_record(episode_dir: Path, cut_id: str, receipt: dict | None) -> bool:
+    """已 render 的成品是不是**現在這份紀錄**的內容。
 
-    amendment 會重封 Release 而不改變片長（把一支 b-roll 移位、拿掉另一支，長度
-    分毫不差），所以長度護欄看不出差別，而 publish_prep 的 receipt 只記得「render
-    過了」。2026-08-29 long3 就是這樣：成品 15:19 出的，Release 19:07 才重封，
-    再按核准會直接跳過 render，把舊畫面當成新成品交出去。
+    重鑄一份 plan 可以不改變片長（把一支 b-roll 移位、拿掉另一支，長度分毫不差），
+    所以長度護欄看不出差別，而 publish_prep 的 receipt 只記得「render 過了」。
+    2026-08-29 long3 就是這樣：成品 15:19 出的，紀錄 19:07 才換，再按核准會直接
+    跳過 render，把舊畫面當成新成品交出去。
 
-    receipt 沒有 `release_id` 代表它是這個欄位之前產的——這種一律當**不是**現在
-    這版，寧可多 render 一次，也不要安靜發錯內容。舊集數（沒有對應表）不受影響。
+    receipt 沒有 `plan_id`（舊欄位名 `release_id`）代表它是這個欄位之前產的——
+    這種一律當**不是**現在這版，寧可多 render 一次，也不要安靜發錯內容。
     """
-    timeline_map = load_timeline_map(Path(episode_dir))
-    if timeline_map is None:
-        return True
     try:
-        target = resolve_target(timeline_map, cut_id)
+        target = target_for(Path(episode_dir), cut_id)
     except PublishTimelineError:
         return True
     rows = [row for row in (receipt or {}).get("cuts") or [] if row.get("cut_id") == cut_id]
     if len(rows) != 1:
         return False
-    if target.release_id is None:
-        # 對應表沒有指定 Release ⇒ 這一輪 render 才第一次登錄，沒有舊 id 可比對。
+    if target.plan_id is None:
+        # 沒有 plan record ⇒ 這一輪 render 才第一次留下紀錄，沒有舊 id 可比對。
         # 長度護欄（verify_duration）仍然在 render 前跑過了。
         return True
-    return str(rows[0].get("release_id") or "") == target.release_id
+    recorded = rows[0].get("plan_id") or rows[0].get("release_id") or ""
+    return str(recorded) == target.plan_id

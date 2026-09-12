@@ -3,25 +3,9 @@ from typing import cast
 
 import pytest
 
-from agents.brook.script_video.finished_cut_production._cutover import (
-    DeploymentSnapshot,
-    GlobalCutover,
-    GlobalCutoverJournal,
-    PointerSnapshot,
-    UnpublishedReleaseIndex,
-)
 from agents.brook.script_video.finished_cut_production._persistence import (
-    AtomicCutoverJournalStore,
     AtomicResolveTransactionStore,
     PersistenceError,
-)
-from agents.brook.script_video.finished_cut_production._records import (
-    EventRecord,
-    ReleaseArtifact,
-    _mint_materialization_plan,
-    _mint_projected_component,
-    _mint_staged_release_candidate,
-    _seal_finished_cut_release,
 )
 from agents.brook.script_video.finished_cut_production._resolve import (
     CommitReceipt,
@@ -122,79 +106,6 @@ class _RestartResolve:
         raise AssertionError("rollback is not expected in successful restart")
 
 
-class _RestartSealer:
-    def seal_candidate(self, candidate: object):
-        assert hasattr(candidate, "materialization_plan")
-        return _seal_finished_cut_release(
-            release_id=f"release-{candidate.cut_id}",
-            episode_id=candidate.episode_id,
-            cut_id=candidate.cut_id,
-            format=candidate.format,
-            command_id=candidate.command_id,
-            run_id=candidate.run_id,
-            editorial_master_id=candidate.editorial_master_id,
-            winner_id=candidate.winner_id,
-            tight_cut_id=candidate.tight_cut_id,
-            director_acceptance_id=candidate.director_acceptance_id,
-            dp_acceptance_id=candidate.dp_acceptance_id,
-            visual_acceptance_id=candidate.visual_acceptance_id,
-            materialization_plan_id=candidate.materialization_plan.plan_id,
-            events=candidate.materialization_plan.events,
-            preview=candidate.preview,
-            subtitle=candidate.subtitle,
-            transaction_receipt_id=f"receipt-{candidate.preview_ready_transaction_id}",
-            rollback_ref=f"backup-{candidate.preview_ready_transaction_id}",
-            components=candidate.components,
-        )
-
-    def discard_unpublished(self, releases: tuple[object, ...]) -> None:
-        raise AssertionError("discard is not expected in successful restart")
-
-
-class _RestartCurrentIndex:
-    def __init__(self) -> None:
-        self.current = PointerSnapshot(index_id="old-index")
-
-    def snapshot_pointer(self) -> PointerSnapshot:
-        return self.current
-
-    def inspect_pointer(self) -> PointerSnapshot:
-        return self.current
-
-    def build_index(self, releases: tuple[object, ...]) -> UnpublishedReleaseIndex:
-        return UnpublishedReleaseIndex(
-            index_id="new-index",
-            episode_id="episode-001",
-            release_ids=tuple(release.release_id for release in releases),
-        )
-
-    def publish_pointer(self, index: UnpublishedReleaseIndex) -> None:
-        self.current = PointerSnapshot(index_id=index.index_id)
-
-    def restore_pointer(self, snapshot: PointerSnapshot) -> None:
-        self.current = snapshot
-
-    def discard_index(self, index: UnpublishedReleaseIndex) -> None:
-        raise AssertionError("discard is not expected in successful restart")
-
-
-class _RestartDeployment:
-    def __init__(self) -> None:
-        self.current = DeploymentSnapshot(deployment_id="old-deployment")
-
-    def snapshot_deployment(self) -> DeploymentSnapshot:
-        return self.current
-
-    def inspect_deployment(self) -> DeploymentSnapshot:
-        return self.current
-
-    def activate(self, deployment_id: str) -> None:
-        self.current = DeploymentSnapshot(deployment_id=deployment_id)
-
-    def restore_deployment(self, snapshot: DeploymentSnapshot) -> None:
-        self.current = snapshot
-
-
 def _transaction(*, status: str = "preview_ready") -> ResolveTransaction:
     canonical = TimelineIdentity(name="Episode Master", uid="canonical-uid")
     return ResolveTransaction(
@@ -249,112 +160,15 @@ def test_restarted_transaction_manager_inspects_durable_preview_ready_state(
     assert restarted_manager.inspect_transaction(expected.transaction_id) == {
         "transaction_id": expected.transaction_id,
         "cut_id": "value-L01",
+        # plan record 要記「鋪到了哪一條 timeline」，所以這個唯讀視圖把 work
+        # 那一條交出來。以前發布線得自己掃交易目錄反查，而那條路要求交易
+        # `status == "committed"`——全機器從來沒有一筆 commit 過。
+        "timeline": {"name": "Episode Master", "uid": "work-uid"},
         "status": "preview_ready",
         "transaction_receipt_id": None,
         "rollback_ref": None,
         "backup_retained": False,
     }
-
-
-def test_global_cutover_journal_survives_store_restart(tmp_path: Path) -> None:
-    expected = GlobalCutoverJournal(
-        cutover_id="cutover-001",
-        episode_id="episode-001",
-        fixed_cut_order=("value-L01", "thesis-L02", "punch-L04"),
-        candidate_ids=("candidate-1", "candidate-2", "candidate-3"),
-        transaction_ids=("resolve-1", "resolve-2", "resolve-3"),
-        target_deployment_id="finished-cut-v3",
-        old_pointer=PointerSnapshot(index_id="old-index"),
-        old_deployment=DeploymentSnapshot(deployment_id="old-deployment"),
-        status="committing",
-        committed_transaction_ids=("resolve-1",),
-    )
-    first_process = AtomicCutoverJournalStore(tmp_path / "cutovers")
-    first_process.save(expected)
-
-    restarted_process = AtomicCutoverJournalStore(tmp_path / "cutovers")
-
-    assert restarted_process.load(expected.cutover_id) == expected
-
-
-def test_cutover_restart_preserves_sealed_release_and_unpublished_index(
-    tmp_path: Path,
-) -> None:
-    component = _mint_projected_component(
-        component_id="component-hero",
-        event_id="event-001",
-        semantic_kind="hero_title",
-        implementation_kind="hero_title",
-        lane="hero_title",
-        display="自主權",
-        t0=12.0,
-        t1=15.0,
-        asset_ref="asset-sha256:" + "b" * 64,
-    )
-    release = _seal_finished_cut_release(
-        release_id="release-001",
-        episode_id="episode-001",
-        cut_id="value-L01",
-        format="long",
-        command_id="command-001",
-        run_id="run-001",
-        editorial_master_id="master-001",
-        winner_id="winner-001",
-        tight_cut_id="tight-001",
-        director_acceptance_id="director-001",
-        dp_acceptance_id="dp-001",
-        visual_acceptance_id="visual-001",
-        materialization_plan_id="plan-001",
-        events=(
-            EventRecord(
-                event_id="event-001",
-                master_cue_ids=("cue-001",),
-                text_hash="c" * 64,
-                intent="support current argument",
-                asset_ref=component.asset_ref,
-                visual_status="approved",
-            ),
-        ),
-        preview=ReleaseArtifact(
-            path="previews/value-L01.mp4",
-            bytes=1234,
-            sha256="d" * 64,
-            duration_sec=481.5,
-            probe=(("video_codec", "h264"), ("audio_codec", "aac")),
-        ),
-        subtitle=ReleaseArtifact(
-            path="subtitles/value-L01.srt",
-            bytes=321,
-            sha256="e" * 64,
-        ),
-        transaction_receipt_id="receipt-001",
-        rollback_ref="resolve:backup-001",
-        components=(component,),
-    )
-    expected = GlobalCutoverJournal(
-        cutover_id="cutover-with-release",
-        episode_id="episode-001",
-        fixed_cut_order=("value-L01",),
-        candidate_ids=("candidate-1",),
-        transaction_ids=("resolve-1",),
-        target_deployment_id="finished-cut-v3",
-        old_pointer=PointerSnapshot(index_id="old-index"),
-        old_deployment=DeploymentSnapshot(deployment_id="old-deployment"),
-        status="pointer_published",
-        committed_transaction_ids=("resolve-1",),
-        releases=(release,),
-        unpublished_index=UnpublishedReleaseIndex(
-            index_id="index-v3-new",
-            episode_id="episode-001",
-            release_ids=(release.release_id,),
-        ),
-        pointer_published=True,
-    )
-    store = AtomicCutoverJournalStore(tmp_path / "cutovers")
-
-    store.save(expected)
-
-    assert AtomicCutoverJournalStore(tmp_path / "cutovers").load(expected.cutover_id) == expected
 
 
 def test_committed_and_compensated_transaction_states_survive_manager_restarts(
@@ -423,87 +237,3 @@ def test_transaction_store_rejects_checksum_tampering_without_historical_fallbac
         store.load(expected.transaction_id)
 
 
-def _restart_candidate(cut_id: str, transaction_id: str):
-    plan = _mint_materialization_plan(
-        plan_id=f"plan-{cut_id}",
-        run_id="run-001",
-        command_id=f"command-{cut_id}",
-        episode_id="episode-001",
-        cut_id=cut_id,
-        format="long",
-        director_acceptance_id="director-001",
-        dp_acceptance_id="dp-001",
-        visual_acceptance_id="visual-001",
-        events=(),
-    )
-    return _mint_staged_release_candidate(
-        candidate_id=f"candidate-{cut_id}",
-        episode_id="episode-001",
-        cut_id=cut_id,
-        format="long",
-        command_id=plan.command_id,
-        run_id=plan.run_id,
-        editorial_master_id="master-001",
-        winner_id=f"winner-{cut_id}",
-        tight_cut_id=f"tight-{cut_id}",
-        director_acceptance_id=plan.director_acceptance_id,
-        dp_acceptance_id=plan.dp_acceptance_id,
-        visual_acceptance_id=plan.visual_acceptance_id,
-        materialization_plan=plan,
-        preview=ReleaseArtifact(
-            path=f"previews/{cut_id}.mp4",
-            bytes=100,
-            sha256="a" * 64,
-            duration_sec=480.0,
-        ),
-        subtitle=ReleaseArtifact(
-            path=f"subtitles/{cut_id}.srt",
-            bytes=20,
-            sha256="b" * 64,
-        ),
-        preview_ready_transaction_id=transaction_id,
-    )
-
-
-def test_persistent_cutover_restart_reconciles_committed_transaction_without_double_commit(
-    tmp_path: Path,
-) -> None:
-    cuts = ("value-L01", "thesis-L02", "punch-L04")
-    candidates = tuple(
-        _restart_candidate(cut_id, f"resolve-{index}") for index, cut_id in enumerate(cuts, start=1)
-    )
-    journal_store = AtomicCutoverJournalStore(tmp_path / "cutovers")
-    journal_store.save(
-        GlobalCutoverJournal(
-            cutover_id="cutover-restart",
-            episode_id="episode-001",
-            fixed_cut_order=cuts,
-            candidate_ids=tuple(candidate.candidate_id for candidate in candidates),
-            transaction_ids=tuple(
-                candidate.preview_ready_transaction_id for candidate in candidates
-            ),
-            target_deployment_id="finished-cut-v3",
-            old_pointer=PointerSnapshot(index_id="old-index"),
-            old_deployment=DeploymentSnapshot(deployment_id="old-deployment"),
-            status="committing",
-        )
-    )
-    resolve = _RestartResolve()
-    cutover = GlobalCutover(
-        resolve=resolve,
-        sealer=_RestartSealer(),
-        current_index=_RestartCurrentIndex(),
-        deployment=_RestartDeployment(),
-        journals=AtomicCutoverJournalStore(tmp_path / "cutovers"),
-        fixed_cut_order=cuts,
-    )
-
-    result = cutover.run(
-        "cutover-restart",
-        candidates=candidates,
-        target_deployment_id="finished-cut-v3",
-    )
-
-    assert result.status == "completed"
-    assert resolve.commit_calls == ["resolve-2", "resolve-3"]
-    assert AtomicCutoverJournalStore(tmp_path / "cutovers").load("cutover-restart") == result

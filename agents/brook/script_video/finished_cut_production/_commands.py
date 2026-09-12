@@ -32,7 +32,7 @@ class TargetedRevisionCommand:
     """A module-minted revision scoped to one event of exact current."""
 
     command_id: str
-    current_release_id: str
+    current_plan_id: str
     episode_id: str
     cut_id: str
     format: Format

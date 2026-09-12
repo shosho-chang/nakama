@@ -52,7 +52,7 @@ def _ready_inspection(episode: Path) -> tuple[FinishedCutInspection, Path]:
             {
                 "schema": "nakama.finished_cut_review_manifest.v3",
                 "episode_id": episode.name,
-                "releases": [{"release_id": "release-L03"}],
+                "releases": [{"plan_id": "plan-L03"}],
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -103,9 +103,10 @@ def _ready_inspection(episode: Path) -> tuple[FinishedCutInspection, Path]:
         for index in range(1, 4)
     )
     cut = CutView(
-        release_id="release-L03",
+        plan_id="plan-L03",
         cut_id="value-L03",
         format="long",
+        timeline="長3 - value-L03（緊·導播）",
         preview=ArtifactView(
             reference=preview.relative_to(episode).as_posix(),
             bytes=preview.stat().st_size,
@@ -172,7 +173,7 @@ def test_missing_current_is_404_and_never_falls_back_to_historical_manifest(
     inspection = FinishedCutInspection(
         episode_id=episode.name,
         state="missing",
-        error_code="current_release_missing",
+        error_code="plan_record_missing",
     )
     client, inspector, _ = _client(monkeypatch, tmp_path, inspection)
 
@@ -194,12 +195,12 @@ def test_production_inspector_itself_ignores_historical_manifests(tmp_path: Path
         '{"schema":"nakama.finished_cut_review_manifest.v2"}',
         encoding="utf-8",
     )
-    from agents.brook.script_video.finished_cut_production import build_current_release_reader
+    from agents.brook.script_video.finished_cut_production import build_plan_record_reader
 
-    inspection = build_current_release_reader(episode).inspect_current(episode.name)
+    inspection = build_plan_record_reader(episode).inspect_current(episode.name)
 
     assert inspection.state == "missing"
-    assert inspection.error_code == "current_release_missing"
+    assert inspection.error_code == "plan_record_missing"
 
 
 def test_invalid_current_is_explicit_and_not_rendered(
@@ -211,7 +212,7 @@ def test_invalid_current_is_explicit_and_not_rendered(
     inspection = FinishedCutInspection(
         episode_id=episode.name,
         state="invalid",
-        error_code="current_release_invalid",
+        error_code="plan_record_invalid",
     )
     client, _, _ = _client(monkeypatch, tmp_path, inspection)
 
@@ -221,7 +222,7 @@ def test_invalid_current_is_explicit_and_not_rendered(
     )
 
     assert response.status_code == 422
-    assert "current_release_invalid" in response.json()["detail"]
+    assert "plan_record_invalid" in response.json()["detail"]
 
 
 def test_v3_board_projects_release_events_component_ranges_and_does_not_preload(
@@ -238,8 +239,8 @@ def test_v3_board_projects_release_events_component_ranges_and_does_not_preload(
     )
 
     assert response.status_code == 200
-    assert "FINISHED CUT RELEASE V3" in response.text
-    assert "release-L03" in response.text
+    assert "FINISHED CUT PLAN RECORD" in response.text
+    assert "plan-L03" in response.text
     assert "下一個黃金年代是什麼？" in response.text
     assert "61.0" in response.text
     assert 'id="review-player" controls preload="none"' in response.text
@@ -301,7 +302,7 @@ def test_save_writes_event_scoped_v3_revision_queue(
     assert payload["schema"] == "nakama.finished_cut_review_feedback.v3"
     job = payload["revisions"][0]["revision_jobs"][0]
     assert job["contract"] == "finished-cut-production-revision.v3"
-    assert job["release_id"] == "release-L03"
+    assert job["plan_id"] == "plan-L03"
     assert job["event_id"] == "event-hero"
     assert job["status"] == "queued"
     assert job["command_id"] is None

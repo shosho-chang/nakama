@@ -236,6 +236,11 @@ def test_commit_retains_backup_and_exposes_release_receipt(tmp_path: Path) -> No
     assert manager.inspect_transaction(transaction.transaction_id) == {
         "transaction_id": transaction.transaction_id,
         "cut_id": "value-L01",
+        # plan record 要記「鋪到了哪一條 timeline」，唯讀視圖因此帶著 work 那一條。
+        "timeline": {
+            "name": transaction.workspace.work.name,
+            "uid": transaction.workspace.work.uid,
+        },
         "status": "committed",
         "transaction_receipt_id": receipt.transaction_receipt_id,
         "rollback_ref": receipt.rollback_ref,

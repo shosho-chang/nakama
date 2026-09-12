@@ -33,6 +33,9 @@ from agents.brook.script_video.finished_cut_production._derived_assets import (
     DerivedAssetBuildRequest,
     DerivedAssetBuildResult,
 )
+from agents.brook.script_video.finished_cut_production._plan_record import (
+    PlanRecordStore,
+)
 from agents.brook.script_video.finished_cut_production._records import (
     ComponentProposal,
     DirectorEventProposal,
@@ -41,19 +44,15 @@ from agents.brook.script_video.finished_cut_production._records import (
     ReleaseArtifact,
     VisualEventProposal,
     _mint_projected_component,
-    _rehydrate_finished_cut_release,
-    _seal_finished_cut_release,
-)
-from agents.brook.script_video.finished_cut_production._release import (
-    FinishedCutReleaseLifecycle,
 )
 from agents.brook.script_video.finished_cut_production._semantic import (
     InMemorySemanticAdapter,
 )
 from agents.brook.script_video.finished_cut_production._store import (
     InMemoryApprovedCutStore,
-    InMemoryCurrentReleaseIndex,
+    InMemoryPlanRecordIndex,
 )
+from tests.brook.script_video.finished_cut_plan_records import plan_record
 
 
 def _approved_cut(*, format: str = "long") -> ApprovedCutCommand:
@@ -309,8 +308,8 @@ def test_retired_supporting_title_worker_response_fails_closed(tmp_path) -> None
 
 def test_historical_supporting_title_release_cannot_authorize_a_revision(tmp_path) -> None:
     artifact = ReleaseArtifact(path="historical", bytes=1, sha256="a" * 64)
-    historical = _rehydrate_finished_cut_release(
-        release_id="release-historical-support",
+    historical = plan_record(
+        plan_id="release-historical-support",
         episode_id="episode-1",
         cut_id="cut-1",
         format="long",
@@ -322,7 +321,6 @@ def test_historical_supporting_title_release_cannot_authorize_a_revision(tmp_pat
         director_acceptance_id="director-historical",
         dp_acceptance_id="dp-historical",
         visual_acceptance_id="visual-historical",
-        materialization_plan_id="plan-historical",
         events=(
             EventRecord(
                 event_id="historical-support",
@@ -336,23 +334,21 @@ def test_historical_supporting_title_release_cannot_authorize_a_revision(tmp_pat
         ),
         preview=artifact,
         subtitle=artifact,
-        transaction_receipt_id="receipt-historical",
-        rollback_ref="rollback-historical",
         components=(),
     )
-    current = InMemoryCurrentReleaseIndex()
+    current = InMemoryPlanRecordIndex()
     current.publish((historical,))
     production = FinishedCutProduction(
         store_root=tmp_path / "finished-cut-historical-read-only",
         approved_cut_store=InMemoryApprovedCutStore(()),
         asset_resolver=InMemoryAssetResolver(()),
         semantic_adapter=InMemorySemanticAdapter(),
-        current_release_index=current,
+        plan_records=current,
     )
 
-    with pytest.raises(CommandRejectedError, match="historical Release is read-only"):
+    with pytest.raises(CommandRejectedError, match="historical plan record is read-only"):
         production.request_revision(
-            historical.release_id,
+            historical.plan_id,
             "historical-support",
             "Do not reuse the retired card",
         )
@@ -1441,8 +1437,8 @@ def test_inspect_current_returns_only_public_immutable_finished_cut_view(tmp_pat
         t1=event.t1,
         asset_ref=event.asset_ref,
     )
-    release = _seal_finished_cut_release(
-        release_id="release-1",
+    release = plan_record(
+        plan_id="release-1",
         episode_id="episode-1",
         cut_id="cut-1",
         format="long",
@@ -1454,22 +1450,19 @@ def test_inspect_current_returns_only_public_immutable_finished_cut_view(tmp_pat
         director_acceptance_id="director-1",
         dp_acceptance_id="dp-1",
         visual_acceptance_id="visual-1",
-        materialization_plan_id="plan-1",
         events=(event,),
         components=(component,),
         preview=artifact,
         subtitle=artifact,
-        transaction_receipt_id="receipt-1",
-        rollback_ref="rollback-1",
     )
-    current = InMemoryCurrentReleaseIndex()
+    current = InMemoryPlanRecordIndex()
     current.publish((release,))
     production = FinishedCutProduction(
         store_root=tmp_path / "authority",
         approved_cut_store=InMemoryApprovedCutStore(()),
         asset_resolver=InMemoryAssetResolver(()),
         semantic_adapter=InMemorySemanticAdapter(),
-        current_release_index=current,
+        plan_records=current,
     )
 
     view = production.inspect_current("episode-1")
@@ -1492,7 +1485,7 @@ def test_inspect_current_returns_typed_missing_and_invalid_results(tmp_path) -> 
             return {}
 
     def lifecycle(episode_root):
-        return FinishedCutReleaseLifecycle(
+        return PlanRecordStore(
             episode_root,
             transactions=Transactions(),
             preview_probe=lambda _path: {},
@@ -1506,28 +1499,34 @@ def test_inspect_current_returns_typed_missing_and_invalid_results(tmp_path) -> 
     }
     missing = FinishedCutProduction(
         **common,
-        current_release_index=lifecycle(tmp_path / "missing-episode"),
+        plan_records=lifecycle(tmp_path / "missing-episode"),
     ).inspect_current("episode-1")
 
+    # 「壞掉」的意思跟著紀錄換了：以前是 review manifest，現在是 plan record 本身。
     corrupt_root = tmp_path / "corrupt-episode"
-    corrupt_manifest = (
-        corrupt_root / "highlights" / "review" / "finished_review_manifest_current.json"
+    corrupt_record = (
+        corrupt_root
+        / "highlights"
+        / "staging"
+        / "finished-cut"
+        / "0123456789abcdef01234567"
+        / "materialization.json"
     )
-    corrupt_manifest.parent.mkdir(parents=True)
-    corrupt_manifest.write_text("{", encoding="utf-8")
+    corrupt_record.parent.mkdir(parents=True)
+    corrupt_record.write_text("{", encoding="utf-8")
     invalid = FinishedCutProduction(
         **common,
-        current_release_index=lifecycle(corrupt_root),
+        plan_records=lifecycle(corrupt_root),
     ).inspect_current("episode-1")
 
     assert (missing.state, missing.error_code, missing.cuts) == (
         "missing",
-        "current_release_missing",
+        "plan_record_missing",
         (),
     )
     assert (invalid.state, invalid.error_code, invalid.cuts) == (
         "invalid",
-        "current_release_invalid",
+        "plan_record_invalid",
         (),
     )
 
@@ -1979,7 +1978,7 @@ def test_targeted_revision_survives_restart_and_changes_only_one_event(tmp_path)
     )
     approved_cuts = InMemoryApprovedCutStore((command,))
     semantic = InMemorySemanticAdapter()
-    current = InMemoryCurrentReleaseIndex()
+    current = InMemoryPlanRecordIndex()
     resolver = InMemoryAssetResolver(())
     builder = _ReadyDerivedAssetBuilder(resolver)
 
@@ -1991,7 +1990,7 @@ def test_targeted_revision_survives_restart_and_changes_only_one_event(tmp_path)
             semantic_adapter=semantic,
             derived_asset_builder=builder,
             context_resolver=InMemoryEditorialCutContextResolver((context,)),
-            current_release_index=current,
+            plan_records=current,
         )
 
     director_process = reopen()
@@ -2042,8 +2041,8 @@ def test_targeted_revision_survives_restart_and_changes_only_one_event(tmp_path)
     assert original_plan is not None
 
     artifact = ReleaseArtifact(path="fixture", bytes=1, sha256="a" * 64, duration_sec=45.0)
-    release = _seal_finished_cut_release(
-        release_id="release-current",
+    release = plan_record(
+        plan_id="release-current",
         episode_id=command.episode_id,
         cut_id=command.cut_id,
         format=command.format,
@@ -2055,18 +2054,15 @@ def test_targeted_revision_survives_restart_and_changes_only_one_event(tmp_path)
         director_acceptance_id=original_plan.director_acceptance_id,
         dp_acceptance_id=original_plan.dp_acceptance_id,
         visual_acceptance_id=original_plan.visual_acceptance_id,
-        materialization_plan_id=original_plan.plan_id,
         events=original_plan.events,
         components=original_plan.components,
         preview=artifact,
         subtitle=artifact,
-        transaction_receipt_id="receipt-1",
-        rollback_ref="rollback-1",
     )
     current.publish((release,))
 
     revision_id = reopen().request_revision(
-        release.release_id,
+        release.plan_id,
         "hero-2",
         "Use a concise supporting title",
     )

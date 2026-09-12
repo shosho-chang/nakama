@@ -203,14 +203,13 @@ def test_public_module_does_not_expose_private_authority_constructors() -> None:
         "CommandRejectedError",
         "ComponentView",
         "CueAnchor",
-        "CurrentReleaseReader",
+        "PlanRecordReader",
         "CutSourceRange",
         "CutView",
         "EventView",
         "FinishedCutInspection",
         "FinishedCutProduction",
         "FinishedCutProductionApplication",
-        "ProductionCutoverConfiguration",
         "ProductionPaths",
         "ProductionResolveConfiguration",
         "build_resolve_configuration",
@@ -227,14 +226,14 @@ def test_public_module_does_not_expose_private_authority_constructors() -> None:
         "StageName",
         "Status",
         "TimelineIdentity",
-        "build_current_release_reader",
+        "build_plan_record_reader",
         "build_production_application",
     }
     assert not hasattr(finished_cut_production, "AcceptedStage")
     assert not hasattr(finished_cut_production, "StagedReleaseCandidate")
     assert not hasattr(finished_cut_production, "TargetedRevisionCommand")
     assert not hasattr(finished_cut_production, "MaterializationPlan")
-    assert not hasattr(finished_cut_production, "FinishedCutRelease")
+    assert not hasattr(finished_cut_production, "PlanRecord")
     assert not hasattr(finished_cut_production, "FinishedCutView")
     assert not hasattr(finished_cut_production, "ReleaseArtifact")
     assert not hasattr(finished_cut_production, "StageRequest")
@@ -244,7 +243,7 @@ def test_public_module_does_not_expose_private_authority_constructors() -> None:
     assert not hasattr(finished_cut_production, "request_revision")
     assert not hasattr(finished_cut_production, "inspect_current")
     assert not hasattr(finished_cut_production, "AcceptedStageStore")
-    assert not hasattr(finished_cut_production, "FinishedCutReleaseLifecycle")
+    assert not hasattr(finished_cut_production, "PlanRecordStore")
     assert not hasattr(finished_cut_production, "ResolveTransactionManager")
     assert not hasattr(finished_cut_production, "_cut_view")
     assert hasattr(finished_cut_production, "FinishedCutProduction")
@@ -406,10 +405,10 @@ def test_request_revision_mints_one_current_event_retry_command() -> None:
         EventRecord("hero-2", ("cue-41",), "text-41", "Revise this event"),
     )
     ready, _ = _advance_ready(system, events)
-    release = system.install_current_release(ready, release_id="release-1")
+    release = system.install_plan_record(ready)
 
     revision_id = request_revision(
-        release.release_id,
+        release.plan_id,
         "hero-2",
         "Use a clearer, less oppressive Hero title",
         system=system,
@@ -437,9 +436,9 @@ def test_targeted_retry_changes_only_one_event_in_the_typed_plan() -> None:
         EventRecord("hero-2", ("cue-51",), "text-51", "Old dense title"),
     )
     ready, original_events = _advance_ready(system, director_events)
-    release = system.install_current_release(ready, release_id="release-2")
+    release = system.install_plan_record(ready)
     revision_id = request_revision(
-        release.release_id,
+        release.plan_id,
         "hero-2",
         "Use a concise contextual title",
         system=system,
@@ -499,15 +498,17 @@ def test_inspect_and_revision_use_only_exact_current_release() -> None:
         system,
         (EventRecord("hero-1", ("cue-60",), "text-60", "Current event"),),
     )
-    historical = system.install_current_release(ready, release_id="release-historical")
-    current = system.install_current_release(ready, release_id="release-current")
+    recorded = system.install_plan_record(ready)
 
-    assert inspect_current("episode-1", system=system) == (current,)
-    assert inspect_current(historical.release_id, system=system) == ()
-    with pytest.raises(CommandRejectedError, match="not exact current"):
+    assert inspect_current("episode-1", system=system) == (recorded,)
+    assert inspect_current("episode-nobody", system=system) == ()
+    # plan record 的身分就是 plan 的身分，所以「上一版」不是另一個 id，而是一個
+    # 已經不在索引裡的 plan（correction 會重鑄一份，舊的那個 id 就此消失）。
+    # 不在索引裡的就不能授權修訂。
+    with pytest.raises(CommandRejectedError, match="plan record is not current"):
         request_revision(
-            historical.release_id,
+            "plan-that-was-superseded",
             "hero-1",
-            "This stale release must not authorize a revision",
+            "This stale record must not authorize a revision",
             system=system,
         )

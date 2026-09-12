@@ -16,12 +16,13 @@ from ._assets import WorkerCatalogItem, WorkerSelectionCatalog
 from ._codec import RecordCodec, RecordCodecError
 from ._commands import ApprovedCutCommand, TargetedRevisionCommand
 from ._correction import _PreReleaseCorrection
+from ._plan_record import PlanRecord, plan_record_cut_view
 from ._records import (
     AcceptedStage,
     DirectorEventProposal,
     DPEventProposal,
     EventRecord,
-    FinishedCutRelease,
+    FinishedCutInspection,
     MaterializationPlan,
     ProjectedComponent,
     StageProposal,
@@ -196,39 +197,53 @@ class InMemoryApprovedCutStore:
         return self._commands.get(command_id)
 
 
-class CurrentReleaseIndex(Protocol):
-    """Exact-current Release seam used by inspection and targeted feedback."""
+class PlanRecordIndex(Protocol):
+    """The plan records of one episode: what review and targeted feedback read."""
 
-    def resolve_exact_current(self, release_id: str) -> FinishedCutRelease | None: ...
+    def resolve(self, plan_id: str) -> PlanRecord | None: ...
 
-    def inspect_current(self, episode_id: str) -> tuple[FinishedCutRelease, ...]: ...
+    def inspect(self, episode_id: str) -> FinishedCutInspection: ...
 
 
-class InMemoryCurrentReleaseIndex:
-    """Fixture adapter that never resolves a historical Release."""
+class InMemoryPlanRecordIndex:
+    """Fixture adapter holding one episode's records in memory."""
 
     def __init__(self) -> None:
-        self._current_by_episode: dict[str, tuple[FinishedCutRelease, ...]] = {}
+        self._by_episode: dict[str, tuple[PlanRecord, ...]] = {}
 
-    def publish(self, releases: Iterable[FinishedCutRelease]) -> None:
-        current = tuple(releases)
-        if not current or len({release.episode_id for release in current}) != 1:
-            raise ValueError("current Release fixture must contain exactly one episode")
-        self._current_by_episode[current[0].episode_id] = current
+    def publish(self, records: Iterable[PlanRecord]) -> None:
+        current = tuple(records)
+        if not current or len({record.episode_id for record in current}) != 1:
+            raise ValueError("plan record fixture must contain exactly one episode")
+        self._by_episode[current[0].episode_id] = current
 
-    def resolve_exact_current(self, release_id: str) -> FinishedCutRelease | None:
+    def resolve(self, plan_id: str) -> PlanRecord | None:
         return next(
             (
-                release
-                for releases in self._current_by_episode.values()
-                for release in releases
-                if release.release_id == release_id
+                record
+                for records in self._by_episode.values()
+                for record in records
+                if record.plan_id == plan_id
             ),
             None,
         )
 
-    def inspect_current(self, episode_id: str) -> tuple[FinishedCutRelease, ...]:
-        return self._current_by_episode.get(episode_id, ())
+    def records(self, episode_id: str) -> tuple[PlanRecord, ...]:
+        return self._by_episode.get(episode_id, ())
+
+    def inspect(self, episode_id: str) -> FinishedCutInspection:
+        records = self._by_episode.get(episode_id, ())
+        if not records:
+            return FinishedCutInspection(
+                episode_id=episode_id,
+                state="missing",
+                error_code="plan_record_missing",
+            )
+        return FinishedCutInspection(
+            episode_id=episode_id,
+            state="ready",
+            cuts=tuple(plan_record_cut_view(record) for record in records),
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -236,7 +251,7 @@ class _StoredRun:
     command: ApprovedCutCommand | TargetedRevisionCommand
     view: _ProductionRun
     worker_catalog: WorkerSelectionCatalog
-    base_release_id: str | None = None
+    base_plan_id: str | None = None
 
 
 class _FilesystemProductionStore:
@@ -278,7 +293,7 @@ class _FilesystemProductionStore:
         view: _ProductionRun,
         worker_catalog: WorkerSelectionCatalog,
         *,
-        base_release_id: str | None = None,
+        base_plan_id: str | None = None,
     ) -> None:
         payload = self._read_payload()
         if command.command_id in payload["runs"]:
@@ -288,7 +303,7 @@ class _FilesystemProductionStore:
             "command_kind": _command_kind(command),
             "view": _view_to_dict(view),
             "worker_catalog": _catalog_to_list(worker_catalog),
-            "base_release_id": base_release_id,
+            "base_plan_id": base_plan_id,
         }
         self._atomic_write(payload)
 
@@ -301,7 +316,7 @@ class _FilesystemProductionStore:
             "command_kind": _command_kind(run.command),
             "view": _view_to_dict(run.view),
             "worker_catalog": _catalog_to_list(run.worker_catalog),
-            "base_release_id": run.base_release_id,
+            "base_plan_id": run.base_plan_id,
         }
         self._atomic_write(payload)
 
@@ -493,12 +508,19 @@ def _targeted_revision_from_dict(value: object) -> TargetedRevisionCommand:
 
 def _run_from_row(value: object) -> _StoredRun:
     """Decode one persisted ProductionRun row without re-reading the store."""
-    if not isinstance(value, dict) or set(value) != {
+    if not isinstance(value, dict):
+        raise ProductionStoreError("persisted ProductionRun row is invalid")
+    keys = set(value)
+    if "base_release_id" in keys and "base_plan_id" not in keys:
+        # ADR-069 之前這一格叫 `base_release_id`。既有的 run 列要讀得回來，不然
+        # 整集的進度會變成「沒登錄過」，而那會讓下一次 advance 重跑一輪語意。
+        keys = (keys - {"base_release_id"}) | {"base_plan_id"}
+    if keys != {
         "command",
         "command_kind",
         "view",
         "worker_catalog",
-        "base_release_id",
+        "base_plan_id",
     }:
         raise ProductionStoreError("persisted ProductionRun row is invalid")
     command_kind = value["command_kind"]
@@ -510,14 +532,14 @@ def _run_from_row(value: object) -> _StoredRun:
         command = _targeted_revision_from_dict(value["command"])
     else:
         raise ProductionStoreError("persisted ProductionRun command kind is invalid")
-    base_release_id = value["base_release_id"]
-    if base_release_id is not None and not isinstance(base_release_id, str):
+    base_plan_id = value.get("base_plan_id", value.get("base_release_id"))
+    if base_plan_id is not None and not isinstance(base_plan_id, str):
         raise ProductionStoreError("persisted ProductionRun base release is invalid")
     return _StoredRun(
         command=command,
         view=_view_from_dict(value["view"]),
         worker_catalog=_catalog_from_list(value["worker_catalog"]),
-        base_release_id=base_release_id,
+        base_plan_id=base_plan_id,
     )
 
 

@@ -47,6 +47,7 @@ from ._derived_assets import (
     DerivedAssetInstruction,
     readable_floor_sec,
 )
+from ._plan_record import PlanRecord, PlanTimeline
 from ._policy import (
     CutPolicyInput,
     FormatPolicy,
@@ -64,17 +65,12 @@ from ._projection import (
 from ._records import (
     STAGE_RESPONSE_SCHEMA,
     AcceptedStage,
-    ArtifactView,
     ComponentProposal,
-    ComponentView,
-    CutView,
     DirectorEventProposal,
     DPEventProposal,
     EventPlacementCandidates,
     EventRecord,
-    EventView,
     FinishedCutInspection,
-    FinishedCutRelease,
     ProjectedComponent,
     ReleaseArtifact,
     RequestScope,
@@ -87,9 +83,7 @@ from ._records import (
     _mint_materialization_plan,
     _mint_projected_component,
     _ProductionRun,
-    _seal_finished_cut_release,
 )
-from ._release import ReleaseLifecycleError
 from ._semantic import (
     _DEFAULT_PARENT,
     InMemorySemanticAdapter,
@@ -98,8 +92,8 @@ from ._semantic import (
 )
 from ._store import (
     ApprovedCutStore,
-    CurrentReleaseIndex,
-    InMemoryCurrentReleaseIndex,
+    InMemoryPlanRecordIndex,
+    PlanRecordIndex,
     SemanticDispatchStoreError,
     _FilesystemProductionStore,
     _StoredRun,
@@ -168,7 +162,7 @@ class FinishedCutProduction:
         derived_asset_builder: DerivedAssetBuilder | None = None,
         context_resolver: EditorialCutContextResolver | None = None,
         long_policy: FormatPolicy | None = None,
-        current_release_index: CurrentReleaseIndex | None = None,
+        plan_records: PlanRecordIndex | None = None,
     ) -> None:
         self._store = _FilesystemProductionStore(store_root)
         self._approved_cut_store = approved_cut_store
@@ -179,7 +173,7 @@ class FinishedCutProduction:
         )
         self._context_resolver = context_resolver
         self._long_policy = long_policy or LongV2Policy()
-        self._current_release_index = current_release_index or InMemoryCurrentReleaseIndex()
+        self._plan_records = plan_records or InMemoryPlanRecordIndex()
 
     def advance(self, command_id: str) -> RunView:
         with self._store.command_lock(command_id):
@@ -190,24 +184,24 @@ class FinishedCutProduction:
             raise CommandRejectedError(f"opaque authoritative command ID required: {command_id}")
         existing = self._store.load_run(command_id)
         if existing is not None:
-            base_release = None
-            if existing.base_release_id is not None:
-                base_release = self._current_release_index.resolve_exact_current(
-                    existing.base_release_id
+            base_record = None
+            if existing.base_plan_id is not None:
+                base_record = self._plan_records.resolve(
+                    existing.base_plan_id
                 )
-                if base_release is None:
+                if base_record is None:
                     raise CommandRejectedError(
-                        f"targeted revision base is not exact current: {existing.base_release_id}"
+                        f"targeted revision base is not exact current: {existing.base_plan_id}"
                     )
             run = _RunState(
                 command=existing.command,
                 view=existing.view,
                 worker_catalog=_live_catalog(self._asset_resolver, existing.worker_catalog),
-                base_release=base_release,
+                base_record=base_record,
                 editorial_context=self._validate_stored_context(
                     existing.view.editorial_context,
                     existing.command,
-                    base_release=base_release,
+                    base_record=base_record,
                 ),
                 format_policy=self._policy_for(existing.command.format),
                 derived_asset_builder=self._derived_asset_builder,
@@ -226,7 +220,7 @@ class FinishedCutProduction:
                         command=existing.command,
                         view=result,
                         worker_catalog=existing.worker_catalog,
-                        base_release_id=existing.base_release_id,
+                        base_plan_id=existing.base_plan_id,
                     )
                 )
             return _public_run_view(result)
@@ -241,21 +235,21 @@ class FinishedCutProduction:
             command, command_id
         ):
             raise CommandRejectedError(f"opaque authoritative command ID required: {command_id}")
-        base_release = None
+        base_record = None
         events: tuple[EventRecord, ...] = ()
         feedback = None
         scope = "full_stage"
         event_id = None
         parent_acceptance_id = None
         if isinstance(command, TargetedRevisionCommand):
-            base_release = self._current_release_index.resolve_exact_current(
-                command.current_release_id
+            base_record = self._plan_records.resolve(
+                command.current_plan_id
             )
-            if base_release is None:
+            if base_record is None:
                 raise CommandRejectedError(
-                    f"targeted revision base is not exact current: {command.current_release_id}"
+                    f"targeted revision base is not exact current: {command.current_plan_id}"
                 )
-            director = self._store.load_accepted(base_release.director_acceptance_id)
+            director = self._store.load_accepted(base_record.director_acceptance_id)
             if director is None:
                 raise CommandRejectedError("targeted revision Director authority is unavailable")
             target = next(
@@ -269,7 +263,7 @@ class FinishedCutProduction:
             scope = "event_retry"
             event_id = command.event_id
             parent_acceptance_id = director.acceptance_id
-        editorial_context = self._resolve_context(command, base_release=base_release)
+        editorial_context = self._resolve_context(command, base_record=base_record)
         run_id = f"run-{uuid4().hex}"
         request = StageRequest(
             run_id=run_id,
@@ -283,7 +277,7 @@ class FinishedCutProduction:
             scope=scope,
             event_id=event_id,
             parent_acceptance_id=parent_acceptance_id,
-            base_acceptance_id=(director.acceptance_id if base_release is not None else None),
+            base_acceptance_id=(director.acceptance_id if base_record is not None else None),
             events=events,
             feedback=feedback,
             components=(
@@ -309,13 +303,13 @@ class FinishedCutProduction:
             command,
             view,
             worker_catalog,
-            base_release_id=base_release.release_id if base_release is not None else None,
+            base_plan_id=base_record.plan_id if base_record is not None else None,
         )
         run = _RunState(
             command=command,
             view=view,
             worker_catalog=worker_catalog,
-            base_release=base_release,
+            base_record=base_record,
             editorial_context=editorial_context,
             format_policy=self._policy_for(command.format),
             derived_asset_builder=self._derived_asset_builder,
@@ -336,29 +330,29 @@ class FinishedCutProduction:
                     command=command,
                     view=result,
                     worker_catalog=worker_catalog,
-                    base_release_id=(base_release.release_id if base_release is not None else None),
+                    base_plan_id=(base_record.plan_id if base_record is not None else None),
                 )
             )
         return _public_run_view(result)
 
     def request_revision(
         self,
-        current_release_ref: str,
+        current_plan_ref: str,
         event_id: str,
         feedback: str,
     ) -> str:
-        with self._store.command_lock(current_release_ref):
-            return self._request_revision_locked(current_release_ref, event_id, feedback)
+        with self._store.command_lock(current_plan_ref):
+            return self._request_revision_locked(current_plan_ref, event_id, feedback)
 
     def _request_revision_locked(
         self,
-        current_release_ref: str,
+        current_plan_ref: str,
         event_id: str,
         feedback: str,
     ) -> str:
-        release = self._current_release_index.resolve_exact_current(current_release_ref)
-        if release is None:
-            raise CommandRejectedError(f"release is not exact current: {current_release_ref}")
+        record = self._plan_records.resolve(current_plan_ref)
+        if record is None:
+            raise CommandRejectedError(f"plan record is not current: {current_plan_ref}")
         if any(
             not _event_has_active_projection(
                 semantic_kind=event.semantic_kind,
@@ -366,14 +360,14 @@ class FinishedCutProduction:
                 lane=event.lane,
                 intentional_aroll=event.intentional_aroll,
             )
-            for event in release.events
+            for event in record.events
             if event.semantic_kind
         ):
             raise CommandRejectedError(
-                "historical Release is read-only after projection retirement"
+                "a historical plan record is read-only after projection retirement"
             )
-        if event_id not in {event.event_id for event in release.events}:
-            raise CommandRejectedError(f"event is not in current release: {event_id}")
+        if event_id not in {event.event_id for event in record.events}:
+            raise CommandRejectedError(f"event is not in the plan record: {event_id}")
         normalized_feedback = feedback.strip()
         if not normalized_feedback:
             raise CommandRejectedError("targeted revision feedback is required")
@@ -381,10 +375,10 @@ class FinishedCutProduction:
         self._store.save_targeted_revision(
             TargetedRevisionCommand(
                 command_id=command_id,
-                current_release_id=release.release_id,
-                episode_id=release.episode_id,
-                cut_id=release.cut_id,
-                format=release.format,
+                current_plan_id=record.plan_id,
+                episode_id=record.episode_id,
+                cut_id=record.cut_id,
+                format=record.format,
                 event_id=event_id,
                 feedback=normalized_feedback,
             )
@@ -459,22 +453,22 @@ class FinishedCutProduction:
                 raise CommandRejectedError(
                     "current request has no terminal dispatch failure or rejected correction"
                 )
-            base_release = None
-            if stored.base_release_id is not None:
-                base_release = self._current_release_index.resolve_exact_current(
-                    stored.base_release_id
+            base_record = None
+            if stored.base_plan_id is not None:
+                base_record = self._plan_records.resolve(
+                    stored.base_plan_id
                 )
-                if base_release is None:
+                if base_record is None:
                     raise CommandRejectedError("dispatch recovery base is not exact current")
             run = _RunState(
                 command=stored.command,
                 view=view,
                 worker_catalog=_live_catalog(self._asset_resolver, stored.worker_catalog),
-                base_release=base_release,
+                base_record=base_record,
                 editorial_context=self._validate_stored_context(
                     view.editorial_context,
                     stored.command,
-                    base_release=base_release,
+                    base_record=base_record,
                 ),
                 format_policy=self._policy_for(stored.command.format),
                 derived_asset_builder=self._derived_asset_builder,
@@ -500,7 +494,7 @@ class FinishedCutProduction:
                         policy_diagnostics=(),
                     ),
                     worker_catalog=stored.worker_catalog,
-                    base_release_id=stored.base_release_id,
+                    base_plan_id=stored.base_plan_id,
                 )
             )
             return request_id
@@ -547,21 +541,19 @@ class FinishedCutProduction:
         # `save_run`），而新的 plan 依 `_materialization_paths` 會拿到**自己的** staging
         # 工作區與 Resolve transaction（兩者的身分都由 plan 決定），不會覆蓋舊的。
         #
-        # 真正不能動的是**已經封存成 Release** 的 plan——那要走 `request_revision`，
+        # 真正不能動的是**已經落成 plan record** 的 plan——那要走 `request_revision`，
         # 它會鑄新 run 並保留整條收據鏈。所以只擋這一種。
         plan = view.materialization_plan
         if plan is not None:
-            sealed = [
-                release
-                for release in self._current_release_index.inspect_current(
-                    stored.command.episode_id
-                )
-                if release.materialization_plan_id == plan.plan_id
+            recorded = [
+                record
+                for record in self._plan_records.records(stored.command.episode_id)
+                if record.plan_id == plan.plan_id
             ]
-            if sealed:
+            if recorded:
                 raise CommandRejectedError(
-                    "this MaterializationPlan is already sealed into current Release "
-                    f"{sealed[0].release_id}; use request_revision to change a released cut"
+                    "this MaterializationPlan already has a plan record "
+                    f"{recorded[0].plan_id}; use request_revision to change a recorded cut"
                 )
         if view.correction is not None:
             raise CommandRejectedError("another pre-release correction is still current")
@@ -651,7 +643,7 @@ class FinishedCutProduction:
                     policy_diagnostics=(),
                 ),
                 worker_catalog=stored.worker_catalog,
-                base_release_id=stored.base_release_id,
+                base_plan_id=stored.base_plan_id,
             )
         )
         return request_id
@@ -693,22 +685,22 @@ class FinishedCutProduction:
         )
 
     def inspect_current(self, episode_id: str) -> FinishedCutInspection:
-        return _current_inspection(episode_id, self._current_release_index)
+        return self._plan_records.inspect(episode_id)
 
     def _resolve_context(
         self,
         command: ApprovedCutCommand | TargetedRevisionCommand,
         *,
-        base_release: FinishedCutRelease | None,
+        base_record: PlanRecord | None,
     ) -> EditorialCutContext:
         if self._context_resolver is None:
             raise CommandRejectedError("exact Editorial Cut Context is unavailable")
         if isinstance(command, ApprovedCutCommand):
             editorial_master_id = command.editorial_master_id
             tight_cut_id = command.tight_cut_id
-        elif base_release is not None:
-            editorial_master_id = base_release.editorial_master_id
-            tight_cut_id = base_release.tight_cut_id
+        elif base_record is not None:
+            editorial_master_id = base_record.editorial_master_id
+            tight_cut_id = base_record.tight_cut_id
         else:
             raise CommandRejectedError("targeted revision has no exact current context")
         context = self._context_resolver.resolve(
@@ -733,14 +725,14 @@ class FinishedCutProduction:
         context: EditorialCutContext,
         command: ApprovedCutCommand | TargetedRevisionCommand,
         *,
-        base_release: FinishedCutRelease | None,
+        base_record: PlanRecord | None,
     ) -> EditorialCutContext:
         if isinstance(command, ApprovedCutCommand):
             editorial_master_id = command.editorial_master_id
             tight_cut_id = command.tight_cut_id
-        elif base_release is not None:
-            editorial_master_id = base_release.editorial_master_id
-            tight_cut_id = base_release.tight_cut_id
+        elif base_record is not None:
+            editorial_master_id = base_record.editorial_master_id
+            tight_cut_id = base_record.tight_cut_id
         else:
             raise CommandRejectedError("targeted revision has no exact current context")
         if (
@@ -767,7 +759,7 @@ class _RunState:
     command: ApprovedCutCommand | TargetedRevisionCommand
     view: _ProductionRun
     worker_catalog: WorkerSelectionCatalog
-    base_release: FinishedCutRelease | None = None
+    base_record: PlanRecord | None = None
     editorial_context: EditorialCutContext | None = None
     format_policy: FormatPolicy | None = None
     derived_asset_builder: DerivedAssetBuilder | None = None
@@ -929,8 +921,8 @@ class InMemoryProductionSystem:
         self._runs: dict[str, _RunState] = {}
         self._accepted_stages: dict[str, AcceptedStage] = {}
         self._state_views: dict[str, dict[str, object]] = {}
-        self._releases: dict[str, FinishedCutRelease] = {}
-        self._current_releases: dict[str, tuple[FinishedCutRelease, ...]] = {}
+        self._records: dict[str, PlanRecord] = {}
+        self._current_records: dict[str, tuple[PlanRecord, ...]] = {}
         self._sequence = 0
 
     def _next_id(self, prefix: str) -> str:
@@ -973,40 +965,43 @@ class InMemoryProductionSystem:
 
         self._state_views[run_id] = dict(forged_view)
 
-    def install_current_release(
-        self, view: _ProductionRun, *, release_id: str
-    ) -> FinishedCutRelease:
-        """Seed the fake current-index adapter from a plan produced by this module."""
+    def install_plan_record(self, view: _ProductionRun) -> PlanRecord:
+        """Seed the fake record index from a plan produced by this module.
+
+        以前這裡要「封存成 Release」才拿得到一個可以被 `request_revision` 指到的
+        身分，所以 fixture 得憑空生一個 release_id。plan record 的身分就是
+        plan 自己的 id——少一個參數，也少一個 fixture 與正式路徑對不上的機會。
+        """
 
         plan = view.materialization_plan
         run = self._runs.get(view.command_id)
         if plan is None or run is None or not isinstance(run.command, ApprovedCutCommand):
-            raise ValueError("only a review-ready approved cut can seed fake current")
+            raise ValueError("only a review-ready approved cut can seed a fake record")
         artifact = ReleaseArtifact(path="fixture", bytes=0, sha256="0" * 64)
-        release = _seal_finished_cut_release(
-            release_id=release_id,
+        record = PlanRecord(
+            plan_id=plan.plan_id,
+            command_id=run.command.command_id,
+            run_id=view.run_id,
             episode_id=run.command.episode_id,
             cut_id=run.command.cut_id,
             format=run.command.format,
-            command_id=run.command.command_id,
-            run_id=view.run_id,
             editorial_master_id=run.command.editorial_master_id,
             winner_id=run.command.winner_id,
             tight_cut_id=run.command.tight_cut_id,
             director_acceptance_id=plan.director_acceptance_id,
             dp_acceptance_id=plan.dp_acceptance_id,
             visual_acceptance_id=plan.visual_acceptance_id,
-            materialization_plan_id=plan.plan_id,
-            events=plan.events,
-            components=plan.components,
+            timeline=PlanTimeline(name="fixture-timeline", uid="fixture-uid"),
+            transaction_id="fixture-transaction",
+            duration_sec=max(plan.duration_sec, 1.0),
             preview=artifact,
             subtitle=artifact,
-            transaction_receipt_id="fixture-committed-transaction",
-            rollback_ref="fixture-rollback",
+            events=plan.events,
+            components=plan.components,
         )
-        self._releases[release.release_id] = release
-        self._current_releases[release.episode_id] = (release,)
-        return release
+        self._records[record.plan_id] = record
+        self._current_records[record.episode_id] = (record,)
+        return record
 
 
 def advance(command_id: str, *, system: InMemoryProductionSystem) -> _ProductionRun:
@@ -1020,7 +1015,7 @@ def advance(command_id: str, *, system: InMemoryProductionSystem) -> _Production
         raise CommandRejectedError(f"authoritative command not found: {command_id}")
     run_id = system._next_id("run")
     worker_catalog = system._asset_resolver.worker_selection_catalog()
-    base_release: FinishedCutRelease | None = None
+    base_record: PlanRecord | None = None
     events: tuple[EventRecord, ...] = ()
     scope = "full_stage"
     event_id: str | None = None
@@ -1028,8 +1023,8 @@ def advance(command_id: str, *, system: InMemoryProductionSystem) -> _Production
     base_acceptance_id: str | None = None
     feedback: str | None = None
     if isinstance(command, TargetedRevisionCommand):
-        base_release = system._releases[command.current_release_id]
-        director = system._accepted_stages[base_release.director_acceptance_id]
+        base_record = system._records[command.current_plan_id]
+        director = system._accepted_stages[base_record.director_acceptance_id]
         events = tuple(event for event in director.events if event.event_id == command.event_id)
         scope = "event_retry"
         event_id = command.event_id
@@ -1055,7 +1050,7 @@ def advance(command_id: str, *, system: InMemoryProductionSystem) -> _Production
     view = _ProductionRun(
         run_id=run_id,
         command_id=command.command_id,
-        editorial_context=_in_memory_editorial_context(command, base_release=base_release),
+        editorial_context=_in_memory_editorial_context(command, base_record=base_record),
         status="pending",
         outstanding_request=request,
     )
@@ -1063,7 +1058,7 @@ def advance(command_id: str, *, system: InMemoryProductionSystem) -> _Production
         command=command,
         view=view,
         worker_catalog=worker_catalog,
-        base_release=base_release,
+        base_record=base_record,
     )
     return view
 
@@ -1071,16 +1066,16 @@ def advance(command_id: str, *, system: InMemoryProductionSystem) -> _Production
 def _in_memory_editorial_context(
     command: ApprovedCutCommand | TargetedRevisionCommand,
     *,
-    base_release: FinishedCutRelease | None,
+    base_record: PlanRecord | None,
 ) -> EditorialCutContext:
     """Create deterministic fake authority for the legacy in-memory test adapter only."""
 
     if isinstance(command, ApprovedCutCommand):
         editorial_master_id = command.editorial_master_id
         tight_cut_id = command.tight_cut_id
-    elif base_release is not None:
-        editorial_master_id = base_release.editorial_master_id
-        tight_cut_id = base_release.tight_cut_id
+    elif base_record is not None:
+        editorial_master_id = base_record.editorial_master_id
+        tight_cut_id = base_record.tight_cut_id
     else:  # pragma: no cover - the caller resolves targeted base authority first
         raise CommandRejectedError("targeted revision has no exact current context")
     return EditorialCutContext(
@@ -1096,7 +1091,7 @@ def _in_memory_editorial_context(
 
 
 def request_revision(
-    current_release_ref: str,
+    current_plan_ref: str,
     event_id: str,
     feedback: str,
     *,
@@ -1104,20 +1099,20 @@ def request_revision(
 ) -> str:
     """Mint one current-event revision command after exact-current validation."""
 
-    release = system._releases.get(current_release_ref)
-    if release is None or release not in system._current_releases.get(release.episode_id, ()):
-        raise CommandRejectedError(f"release is not exact current: {current_release_ref}")
-    if event_id not in {event.event_id for event in release.events}:
-        raise CommandRejectedError(f"event is not in current release: {event_id}")
+    record = system._records.get(current_plan_ref)
+    if record is None or record not in system._current_records.get(record.episode_id, ()):
+        raise CommandRejectedError(f"plan record is not current: {current_plan_ref}")
+    if event_id not in {event.event_id for event in record.events}:
+        raise CommandRejectedError(f"event is not in the plan record: {event_id}")
     if not feedback.strip():
         raise CommandRejectedError("targeted revision feedback is required")
     command_id = system._next_id("targeted-revision")
     system._targeted_revisions[command_id] = TargetedRevisionCommand(
         command_id=command_id,
-        current_release_id=release.release_id,
-        episode_id=release.episode_id,
-        cut_id=release.cut_id,
-        format=release.format,
+        current_plan_id=record.plan_id,
+        episode_id=record.episode_id,
+        cut_id=record.cut_id,
+        format=record.format,
         event_id=event_id,
         feedback=feedback.strip(),
     )
@@ -1128,10 +1123,10 @@ def inspect_current(
     episode_id: str,
     *,
     system: InMemoryProductionSystem,
-) -> tuple[FinishedCutRelease, ...]:
-    """Return only the exact current Release index for an episode."""
+) -> tuple[PlanRecord, ...]:
+    """Return only this episode's recorded cuts."""
 
-    return system._current_releases.get(episode_id, ())
+    return system._current_records.get(episode_id, ())
 
 
 def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _ProductionRun:
@@ -1320,10 +1315,10 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
             next_event_id = None
             next_feedback = None
             correction = None
-    elif request.scope == "event_retry" and run.base_release is not None:
+    elif request.scope == "event_retry" and run.base_record is not None:
         next_base_acceptance_id = {
-            "dp": run.base_release.dp_acceptance_id,
-            "visual_review": run.base_release.visual_acceptance_id,
+            "dp": run.base_record.dp_acceptance_id,
+            "visual_review": run.base_record.visual_acceptance_id,
         }[next_stage]
     next_events = accepted.events
     next_components = accepted.components
@@ -1400,9 +1395,9 @@ def _request_base_is_current(
     if request.parent_acceptance_id != expected_parent:
         if not (
             not current
-            and run.base_release is not None
+            and run.base_record is not None
             and request.stage == "director"
-            and request.parent_acceptance_id == run.base_release.director_acceptance_id
+            and request.parent_acceptance_id == run.base_record.director_acceptance_id
         ):
             return False
     if request.scope == "full_stage":
@@ -1410,7 +1405,7 @@ def _request_base_is_current(
     if request.event_id is None:
         return False
     if request.base_acceptance_id is None:
-        return run.base_release is not None
+        return run.base_record is not None
     try:
         base = aggregate.load_accepted(request.base_acceptance_id)
     except KeyError:
@@ -1431,12 +1426,12 @@ def _request_base_is_current(
             and base.acceptance_id == latest.acceptance_id
             and run.view.correction.event_id == request.event_id
         )
-    if run.base_release is None:
+    if run.base_record is None:
         return False
     expected = {
-        "director": run.base_release.director_acceptance_id,
-        "dp": run.base_release.dp_acceptance_id,
-        "visual_review": run.base_release.visual_acceptance_id,
+        "director": run.base_record.director_acceptance_id,
+        "dp": run.base_record.dp_acceptance_id,
+        "visual_review": run.base_record.visual_acceptance_id,
     }[request.stage]
     return base.acceptance_id == expected
 
@@ -1449,8 +1444,8 @@ def _current_chain_is_exact(run: _RunState) -> bool:
     if any(stage.run_id != run.view.run_id for stage in current):
         return False
     expected_first_parent = (
-        run.base_release.director_acceptance_id
-        if run.base_release is not None and isinstance(run.command, TargetedRevisionCommand)
+        run.base_record.director_acceptance_id
+        if run.base_record is not None and isinstance(run.command, TargetedRevisionCommand)
         else None
     )
     if current and current[0].parent_acceptance_id != expected_first_parent:
@@ -1661,7 +1656,7 @@ def _derived_request_is_current(
         events = tuple(event for event in dp.events if event.event_id == request.event_id)
         if len(events) != 1:
             return False
-        if run.base_release is None and (
+        if run.base_record is None and (
             run.view.correction is None
             or run.view.correction.event_id != request.event_id
             or not run.view.correction.remaining_base_acceptance_ids
@@ -1729,9 +1724,9 @@ def _visual_retry_context(
                 remaining_base_acceptance_ids=correction.remaining_base_acceptance_ids[1:],
             ),
         )
-    if scope == "event_retry" and run.base_release is not None:
+    if scope == "event_retry" and run.base_record is not None:
         try:
-            base = aggregate.load_accepted(run.base_release.visual_acceptance_id)
+            base = aggregate.load_accepted(run.base_record.visual_acceptance_id)
         except KeyError:
             return None
         if base.stage != "visual_review" or event_id is None:
@@ -2160,12 +2155,12 @@ def _merge_retry_events(
             proposal_events,
             event_id=request.event_id,
         )
-    if run.base_release is None or request.event_id is None:
+    if run.base_record is None or request.event_id is None:
         raise RuntimeError("event retry has no current base release")
     acceptance_id = {
-        "director": run.base_release.director_acceptance_id,
-        "dp": run.base_release.dp_acceptance_id,
-        "visual_review": run.base_release.visual_acceptance_id,
+        "director": run.base_record.director_acceptance_id,
+        "dp": run.base_record.dp_acceptance_id,
+        "visual_review": run.base_record.visual_acceptance_id,
     }[request.stage]
     base = aggregate.load_accepted(acceptance_id)
     replacement = proposal_events[0]
@@ -2191,12 +2186,12 @@ def _merge_retry_components(
             proposal.components,
             event_id=request.event_id,
         )
-    if run.base_release is None or request.event_id is None:
+    if run.base_record is None or request.event_id is None:
         raise RuntimeError("event retry has no current base release")
     acceptance_id = {
-        "director": run.base_release.director_acceptance_id,
-        "dp": run.base_release.dp_acceptance_id,
-        "visual_review": run.base_release.visual_acceptance_id,
+        "director": run.base_record.director_acceptance_id,
+        "dp": run.base_record.dp_acceptance_id,
+        "visual_review": run.base_record.visual_acceptance_id,
     }[request.stage]
     base = aggregate.load_accepted(acceptance_id)
     return _replace_component_group(
@@ -2365,91 +2360,4 @@ def _public_run_view(run: _ProductionRun) -> RunView:
         current_stage=request.stage if request is not None else None,
         scope=request.scope if request is not None else None,
         event_id=request.event_id if request is not None else None,
-    )
-
-
-def _current_inspection(episode_id: str, index: CurrentReleaseIndex) -> FinishedCutInspection:
-    """Project the exact current index for one episode.
-
-    Shared so an inbound read-only adapter cannot drift from what
-    ``FinishedCutProduction.inspect_current`` returns.
-    """
-    try:
-        releases = index.inspect_current(episode_id)
-    except ReleaseLifecycleError as error:
-        if error.reason == "missing":
-            return FinishedCutInspection(
-                episode_id=episode_id,
-                state="missing",
-                error_code="current_release_missing",
-            )
-        return FinishedCutInspection(
-            episode_id=episode_id,
-            state="invalid",
-            error_code="current_release_invalid",
-        )
-    if not releases:
-        return FinishedCutInspection(
-            episode_id=episode_id,
-            state="missing",
-            error_code="current_release_missing",
-        )
-    return FinishedCutInspection(
-        episode_id=episode_id,
-        state="ready",
-        cuts=tuple(_cut_view(release) for release in releases),
-    )
-
-
-def _cut_view(release: FinishedCutRelease) -> CutView:
-    return CutView(
-        release_id=release.release_id,
-        cut_id=release.cut_id,
-        format=release.format,
-        preview=_artifact_view(release.preview),
-        subtitle=_artifact_view(release.subtitle),
-        events=tuple(
-            EventView(
-                event_id=event.event_id,
-                master_cue_ids=event.master_cue_ids,
-                text=event.text,
-                text_hash=event.text_hash,
-                t0=event.t0,
-                t1=event.t1,
-                section_id=event.section_id,
-                intent=event.intent,
-                display=event.display,
-                semantic_kind=event.semantic_kind,
-                implementation_kind=event.implementation_kind,
-                lane=event.lane,
-                asset_ref=event.asset_ref,
-                visual_status=event.visual_status,
-                intentional_aroll=event.intentional_aroll,
-            )
-            for event in release.events
-        ),
-        components=tuple(
-            ComponentView(
-                component_id=component.component_id,
-                event_id=component.event_id,
-                semantic_kind=component.semantic_kind,
-                implementation_kind=component.implementation_kind,
-                lane=component.lane,
-                display=component.display,
-                t0=component.t0,
-                t1=component.t1,
-                asset_ref=component.asset_ref,
-            )
-            for component in release.components
-        ),
-    )
-
-
-def _artifact_view(artifact: ReleaseArtifact) -> ArtifactView:
-    return ArtifactView(
-        reference=artifact.path,
-        bytes=artifact.bytes,
-        sha256=artifact.sha256,
-        duration_sec=artifact.duration_sec,
-        probe=artifact.probe,
     )

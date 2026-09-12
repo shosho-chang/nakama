@@ -30,8 +30,8 @@ class _Application:
         self.revision_calls: list[tuple[str, str, str]] = []
         self.advance_calls: list[str] = []
 
-    def request_revision(self, release_id: str, event_id: str, feedback: str) -> str:
-        self.revision_calls.append((release_id, event_id, feedback))
+    def request_revision(self, plan_id: str, event_id: str, feedback: str) -> str:
+        self.revision_calls.append((plan_id, event_id, feedback))
         if self.request_error is not None:
             raise self.request_error
         return _COMMAND_ID
@@ -67,7 +67,7 @@ def _job(*, status: str = "queued", command_id: str | None = None) -> dict[str, 
         "error": None,
         "episode_id": "20260805 林之晨",
         "source_manifest_sha256": "c" * 64,
-        "release_id": "release-L03",
+        "plan_id": "release-L03",
         "cut_id": "value-L03",
         "event_id": "event-hero",
         "feedback": "修改 Hero title：補上完整主詞。",
@@ -248,8 +248,8 @@ def test_existing_registration_claim_prevents_a_second_command_mint(
 
 def test_invalid_v3_job_fails_closed_instead_of_becoming_work(tmp_path: Path) -> None:
     invalid = _job()
-    invalid["release_id"] = "../historical-release"
+    invalid["plan_id"] = "../historical-release"
     _write_feedback(tmp_path, job=invalid)
 
-    with pytest.raises(RuntimeError, match="release_id is invalid"):
+    with pytest.raises(RuntimeError, match="plan_id is invalid"):
         pending_revision_jobs(tmp_path)

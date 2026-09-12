@@ -25,9 +25,9 @@ from agents.brook.script_video.editorial_master import (
     EditorialMasterRequest,
 )
 from agents.brook.script_video.finished_cut_production import (
-    build_current_release_reader,
+    build_plan_record_reader,
 )
-from agents.usopp.publish_timeline import export_matches_current_release, packaging_cut_id
+from agents.usopp.publish_timeline import export_matches_plan_record, packaging_cut_id
 from scripts.packaging_manifest import load_manifest, stage_parallel_jobs
 from shared.background_job import atomic_job_write, job_expired, load_job, new_job
 from shared.config import get_db_path, get_vault_path
@@ -210,19 +210,19 @@ def _visual_time_range(t0: object, t1: object) -> str:
 def _finished_cut_event_view(cut: dict[str, Any]) -> dict[str, object]:
     """Project only semantic events carried by the sealed current Release."""
 
-    release_id = cut.get("release_id")
-    if release_id is None:
+    plan_id = cut.get("plan_id")
+    if plan_id is None:
         # Short 走 run_short_review 的 packet，沒有 sealed Release，也沒有語意 event。
         return {
             "status": "review_packet",
             "status_label": "SHORT REVIEW PACKET",
-            "release_id": None,
+            "plan_id": None,
             "events": [],
         }
     return {
         "status": "sealed_current",
         "status_label": "FINISHED CUT RELEASE · SEALED CURRENT",
-        "release_id": release_id,
+        "plan_id": plan_id,
         "events": cut.get("events") or [],
     }
 
@@ -281,7 +281,7 @@ def _require_final_qa_clear(episode_dir: Path, cut_id: str) -> None:
         )
 
 
-_CURRENT_RELEASE_INSPECTOR_FACTORY = build_current_release_reader
+_CURRENT_RELEASE_INSPECTOR_FACTORY = build_plan_record_reader
 
 
 def _release_artifact(artifact: Any) -> dict[str, Any]:
@@ -395,7 +395,7 @@ def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
         )
         cuts.append(
             {
-                "release_id": cut.release_id,
+                "plan_id": cut.plan_id,
                 "cut_id": cut.cut_id,
                 "format": cut.format,
                 "title": cut.cut_id,
@@ -845,7 +845,7 @@ def _finished_revision_jobs(
         authority = {
             "episode_id": manifest["episode_id"],
             "source_manifest_sha256": manifest["_sha256"],
-            "release_id": row["release_id"],
+            "plan_id": row["plan_id"],
             "cut_id": row["cut_id"],
             "event_id": row["event_id"],
             "feedback": feedback,
@@ -1255,7 +1255,7 @@ def _start_publish_prep(episode_dir: Path, cut_id: str) -> None:
     if (
         current
         and current.get("status") == "rendered"
-        and export_matches_current_release(episode_dir, cut_id, current)
+        and export_matches_plan_record(episode_dir, cut_id, current)
     ):
         return
     if running is not None and running.poll() is None:
@@ -1452,7 +1452,7 @@ async def finished_review_save(
                     status_code=400, detail=f"move time is outside {cut['cut_id']} duration"
                 )
         row: dict[str, Any] = {
-            "release_id": cut.get("release_id"),
+            "plan_id": cut.get("plan_id"),
             "cut_id": cut["cut_id"],
             "component_id": component_id,
             "event_id": component.get("event_id"),

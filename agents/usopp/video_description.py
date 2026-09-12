@@ -170,16 +170,16 @@ def resolve_chapters(episode_dir: Path, cut_id: str) -> list[tuple[float, str]]:
 
     一旦該集建了 publish-timelines 對應表，Release 就是唯一權威——它說沒有分章
     就是沒有分章，不可以回頭撿 broll，那份是 ADR-065 製作線的舊時間軸
-    （見 agents/usopp/publish_timeline.release_chapters 的實測）。
+    （見 agents/usopp/publish_timeline.plan_chapters 的實測）。
 
     沒有對應表時才輪到登錄檔。它是修修按過核准的那份規劃（`human_approved`），
     跟成品同源；broll 檔留在最後只為了還沒走 ADR-066 的舊集數。
     """
-    from agents.usopp.publish_timeline import load_timeline_map, release_chapters
+    from agents.usopp.publish_timeline import load_timeline_map, plan_chapters
 
     episode_dir = Path(episode_dir)
     if load_timeline_map(episode_dir) is not None:
-        return release_chapters(episode_dir, cut_id)
+        return plan_chapters(episode_dir, cut_id)
     registered = chapters_from_registration(episode_dir.name, cut_id)
     if registered:
         return registered
@@ -329,11 +329,11 @@ def build_description_prompt(
     chapters: list[tuple[float, str]],
 ) -> str:
     """Build the bounded, evidence-fed request used by the subscription LLM seam."""
-    from agents.usopp.publish_timeline import release_subtitle
+    from agents.usopp.publish_timeline import plan_subtitle
 
     # 逐字稿必須是**成品那一份**。tight SRT 是 ADR-065 製作線的殘留，punch-L04 的
     # 只有 260 秒舊剪輯而成品是 492 秒——照它寫等於替一支不存在的影片寫文案。
-    source = release_subtitle(episode_dir, cut_id)
+    source = plan_subtitle(episode_dir, cut_id)
     if source is None:
         srt_dir = episode_dir / "highlights" / "srt"
         srt_files = sorted(srt_dir.glob(f"{cut_id}_tight_r*.srt")) if srt_dir.exists() else []

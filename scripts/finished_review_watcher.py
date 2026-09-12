@@ -52,7 +52,7 @@ _JOB_FIELDS = frozenset(
         "error",
         "episode_id",
         "source_manifest_sha256",
-        "release_id",
+        "plan_id",
         "cut_id",
         "event_id",
         "feedback",
@@ -75,7 +75,7 @@ class ProductionApplication(Protocol):
 
     def request_revision(
         self,
-        current_release_ref: str,
+        current_plan_ref: str,
         event_id: str,
         feedback: str,
     ) -> str: ...
@@ -131,7 +131,7 @@ def _validate_job(value: object, *, episode_id: str) -> dict[str, object]:
     status = value.get("status")
     if status not in _JOB_STATUSES:
         raise RuntimeError("Finished Cut revision status is invalid")
-    for key in ("release_id", "cut_id", "event_id"):
+    for key in ("plan_id", "cut_id", "event_id"):
         if not _opaque(value.get(key)):
             raise RuntimeError(f"Finished Cut revision {key} is invalid")
     if not _sha256(value.get("source_manifest_sha256")):
@@ -451,7 +451,7 @@ def run_revision_job(
             return False
         try:
             command_id = application.request_revision(
-                str(job["release_id"]),
+                str(job["plan_id"]),
                 str(job["event_id"]),
                 str(job["feedback"]),
             )

@@ -13,7 +13,6 @@ from agents.brook.script_video.finished_cut_production._approved_cut import (
 )
 from agents.brook.script_video.finished_cut_production._assets import WorkerSelectionCatalog
 from agents.brook.script_video.finished_cut_production._composition import (
-    ProductionCutoverConfiguration,
     ProductionPaths,
     ProductionResolveConfiguration,
     ProductionResolvePorts,
@@ -315,62 +314,6 @@ def test_factory_wires_private_materialization_only_from_exact_resolve_configura
     assert isinstance(application._materialization, MaterializationCoordinator)
     assert application._materialization_unavailable_reason is None
     assert facade_calls == 1
-
-
-@requires_local_hyperframes
-def test_factory_wires_global_cutover_only_from_three_exact_cut_bindings(
-    tmp_path: Path,
-) -> None:
-    paths = ProductionPaths(tmp_path / "runtime", tmp_path / "episodes")
-    episode_root = paths.episodes_root / "episode-1"
-    cuts = tuple(
-        ResolveCutBinding(
-            cut_id=f"long-{position}",
-            canonical=TimelineIdentity(
-                f"Long {position} clean base",
-                f"timeline-long-{position}",
-            ),
-        )
-        for position in range(1, 4)
-    )
-    resolve_configuration = ProductionResolveConfiguration(
-        locator=ResolveProjectLocator(
-            episode_id="episode-1",
-            database=ResolveDatabaseIdentity("Disk", "Local Database"),
-            folder="",
-            project_name="Episode Project",
-        ),
-        binding=ResolveProjectBinding(
-            episode_id="episode-1",
-            project_name="Episode Project",
-            project_uid="resolve-project:exact",
-            cuts=cuts,
-        ),
-        editorial_master_content_hash="a" * 64,
-        staging_root=episode_root / "highlights" / "staging" / "finished-cut",
-    )
-    deployment_path = paths.runtime_root / "deployment" / "current.json"
-    deployment_path.parent.mkdir(parents=True, exist_ok=True)
-    deployment_path.write_bytes(
-        b'{"deployment_id":"legacy-v1","schema":"nakama.finished-cut-deployment-pointer.v1"}\n'
-    )
-
-    application = build_production_application(
-        paths,
-        "episode-1",
-        resolve_configuration=resolve_configuration,
-        resolve_ports=ProductionResolvePorts(
-            facade_factory=lambda _locator, _resolver: object(),
-            media_probe=object(),
-        ),
-        cutover_configuration=ProductionCutoverConfiguration(
-            fixed_cut_order=("long-1", "long-2", "long-3"),
-            target_deployment_id="finished-cut-production-v1",
-            deployment_state_path=deployment_path,
-        ),
-    )
-
-    assert application._cutover is not None
 
 
 @requires_local_hyperframes

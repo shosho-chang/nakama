@@ -32,7 +32,6 @@ from agents.brook.script_video.finished_cut_production._records import (
     ReleaseArtifact,
     VisualEventProposal,
     _mint_accepted_stage,
-    _rehydrate_finished_cut_release,
 )
 from agents.brook.script_video.finished_cut_production._semantic import (
     InMemorySemanticAdapter,
@@ -43,6 +42,7 @@ from agents.brook.script_video.finished_cut_production._store import (
     ProductionStoreError,
     _StoredRun,
 )
+from tests.brook.script_video.finished_cut_plan_records import plan_record
 
 COMMAND_ID = "approved-cut:fedcba9876543210fedcba9876543210"
 
@@ -932,7 +932,7 @@ def test_stale_correction_base_fails_before_worker_dispatch_after_restart(tmp_pa
                 ),
             ),
             worker_catalog=stored.worker_catalog,
-            base_release_id=stored.base_release_id,
+            base_plan_id=stored.base_plan_id,
         )
     )
     counter = _CountingPendingSemanticAdapter()
@@ -1000,7 +1000,7 @@ def test_superseded_same_stage_base_fails_before_worker_dispatch(tmp_path) -> No
                 ),
             ),
             worker_catalog=stored.worker_catalog,
-            base_release_id=stored.base_release_id,
+            base_plan_id=stored.base_plan_id,
         )
     )
     counter = _CountingPendingSemanticAdapter()
@@ -1172,7 +1172,7 @@ def test_tampered_visual_lineage_cannot_mint_materialization_plan(tmp_path) -> N
                 ),
             ),
             worker_catalog=stored.worker_catalog,
-            base_release_id=stored.base_release_id,
+            base_plan_id=stored.base_plan_id,
         )
     )
 
@@ -1232,7 +1232,7 @@ def test_tampered_derived_request_fails_before_builder_dispatch(tmp_path) -> Non
                 ),
             ),
             worker_catalog=stored.worker_catalog,
-            base_release_id=stored.base_release_id,
+            base_plan_id=stored.base_plan_id,
         )
     )
     builder = _CountingFailedBuilder()
@@ -1261,7 +1261,7 @@ def test_tampered_derived_request_fails_before_builder_dispatch(tmp_path) -> Non
                 derived_asset_request=replace(build_request, scope="forged"),
             ),
             worker_catalog=after_geometry.worker_catalog,
-            base_release_id=after_geometry.base_release_id,
+            base_plan_id=after_geometry.base_plan_id,
         )
     )
     forged_scope_builder = _CountingFailedBuilder()
@@ -1413,11 +1413,10 @@ def test_correction_after_the_plan_re_mints_a_different_plan(tmp_path) -> None:
     assert [component.asset_ref for component in second_plan.components] == [spare.reference]
 
 
-def test_correction_is_refused_once_the_plan_is_sealed_into_a_release(tmp_path) -> None:
-    """已經封存成 Release 的 plan 不能就地重鑄——那要走 request_revision。"""
+def test_correction_is_refused_once_the_plan_has_a_record(tmp_path) -> None:
+    """已經落成 plan record 的 plan 不能就地重鑄——那要走 request_revision。"""
     production, semantic, plan, _spare = _run_to_minted_plan(tmp_path)
-    index = production._current_release_index
-    index.publish((_sealed_release_for(plan),))
+    production._plan_records.publish((_record_for(plan),))
 
     with pytest.raises(CommandRejectedError) as excinfo:
         production.request_correction(
@@ -1425,18 +1424,22 @@ def test_correction_is_refused_once_the_plan_is_sealed_into_a_release(tmp_path) 
         )
 
     message = str(excinfo.value)
-    assert "already sealed into current Release" in message
+    assert "already has a plan record" in message
     assert "request_revision" in message
     # 被擋下來時 plan 必須原封不動。
     still = production._store.load_run(COMMAND_ID)
     assert still is not None and still.view.materialization_plan is not None
 
 
-def _sealed_release_for(plan):
-    """把這份 plan 封成一個 current Release——只給上面那個「已發布就擋下來」用。"""
+def _record_for(plan):
+    """把這份 plan 做成一份 plan record——只給上面那個「已有紀錄就擋下來」用。
+
+    紀錄的身分就是 plan 的身分，所以 `plan_id` 必須是 `plan.plan_id`：引擎是拿
+    這一格去認「這個 plan 已經有紀錄了」。
+    """
     artifact = ReleaseArtifact(path="preview.mp4", bytes=1024, sha256="b" * 64, duration_sec=9.0)
-    return _rehydrate_finished_cut_release(
-        release_id="release-sealed-from-this-plan",
+    return plan_record(
+        plan_id=plan.plan_id,
         episode_id=plan.episode_id,
         cut_id=plan.cut_id,
         format=plan.format,
@@ -1448,11 +1451,8 @@ def _sealed_release_for(plan):
         director_acceptance_id=plan.director_acceptance_id,
         dp_acceptance_id=plan.dp_acceptance_id,
         visual_acceptance_id=plan.visual_acceptance_id,
-        materialization_plan_id=plan.plan_id,
         events=plan.events,
         preview=artifact,
         subtitle=replace(artifact, path="review.srt"),
-        transaction_receipt_id="txn-sealed",
-        rollback_ref="rollback-sealed",
         components=plan.components,
     )

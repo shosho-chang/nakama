@@ -12,8 +12,7 @@ from agents.usopp.publish_timeline import (  # noqa: E402
     MAP_RELPATH,
     SCHEMA,
     PublishTimelineError,
-    canonical_timeline_from_transactions,
-    export_matches_current_release,
+    export_matches_plan_record,
     load_timeline_map,
     packaging_cut_id,
     resolve_target,
@@ -26,7 +25,7 @@ MAP = {
     "cuts": {
         "punch-L04": {
             "timeline": "long3-fresh-20260828-r4-base",
-            "release_id": "release-af65a1d7a2ac611eb78be493",
+            "plan_id": "release-af65a1d7a2ac611eb78be493",
             "release_cut_id": "long3-fresh-20260828-r4",
             "expected_duration_sec": 492.309333,
         }
@@ -51,7 +50,7 @@ def test_foreign_schema_is_refused(tmp_path):
         load_timeline_map(tmp_path)
 
 
-def test_resolve_target_carries_the_release_side_id(tmp_path):
+def test_resolve_target_carries_the_plan_side_id(tmp_path):
     _write_map(tmp_path, MAP)
     target = resolve_target(load_timeline_map(tmp_path), "punch-L04")
     assert target.timeline == "long3-fresh-20260828-r4-base"
@@ -68,7 +67,7 @@ def test_unregistered_cut_fails_instead_of_falling_back_to_the_guess(tmp_path):
 
 
 def test_entry_missing_a_field_fails_loud(tmp_path):
-    broken = {**MAP, "cuts": {"punch-L04": {"timeline": "x", "release_id": "y"}}}
+    broken = {**MAP, "cuts": {"punch-L04": {"timeline": "x", "plan_id": "y"}}}
     _write_map(tmp_path, broken)
     with pytest.raises(PublishTimelineError, match="expected_duration_sec"):
         resolve_target(load_timeline_map(tmp_path), "punch-L04")
@@ -89,54 +88,14 @@ def test_the_actual_20260805_mismatch_is_caught(tmp_path):
         verify_duration(target, 260.0)
 
 
-def test_canonical_timeline_read_back_from_a_committed_transaction(tmp_path):
-    (tmp_path / "resolve-368cb9c9.json").write_text(
-        json.dumps(
-            {
-                "schema": "nakama.finished-cut-resolve-transaction.v1",
-                "payload": {
-                    "status": "committed",
-                    "transaction_receipt_id": "resolve-receipt-278cda15",
-                    "canonical": {"name": "long3-fresh-20260828-r4-base"},
-                },
-            }
-        ),
-        encoding="utf-8",
-    )
-    assert (
-        canonical_timeline_from_transactions(tmp_path, "resolve-receipt-278cda15")
-        == "long3-fresh-20260828-r4-base"
-    )
-
-
-def test_uncommitted_transaction_is_not_authority(tmp_path):
-    (tmp_path / "resolve-abandoned.json").write_text(
-        json.dumps(
-            {
-                "payload": {
-                    "status": "rolled_back",
-                    "transaction_receipt_id": "resolve-receipt-278cda15",
-                    "canonical": {"name": "half-written-base"},
-                }
-            }
-        ),
-        encoding="utf-8",
-    )
-    assert canonical_timeline_from_transactions(tmp_path, "resolve-receipt-278cda15") is None
-
-
-def test_migrated_release_has_no_transaction_to_read(tmp_path):
-    assert canonical_timeline_from_transactions(tmp_path / "nope", "any") is None
-
-
-def test_release_chapters_without_a_map_is_empty(tmp_path):
+def test_plan_chapters_without_a_record_is_empty(tmp_path):
     """沒有對應表就沒有 Release 權威——回空，由呼叫端決定要不要回退。"""
-    from agents.usopp.publish_timeline import release_chapters
+    from agents.usopp.publish_timeline import plan_chapters
 
-    assert release_chapters(tmp_path, "punch-L04") == []
+    assert plan_chapters(tmp_path, "punch-L04") == []
 
 
-def test_resolve_chapters_prefers_release_over_stale_broll(tmp_path, monkeypatch):
+def test_resolve_chapters_prefers_the_record_over_stale_broll(tmp_path, monkeypatch):
     """有對應表時，絕不回頭撿 broll——那是 ADR-065 的舊時間軸。"""
     from agents.usopp import video_description as vd
 
@@ -155,7 +114,7 @@ def test_resolve_chapters_prefers_release_over_stale_broll(tmp_path, monkeypatch
         encoding="utf-8",
     )
     monkeypatch.setattr(
-        "agents.usopp.publish_timeline.release_chapters",
+        "agents.usopp.publish_timeline.plan_chapters",
         lambda episode_dir, cut_id: [(0.0, "開場"), (47.0, "來自 Release")],
     )
     assert vd.resolve_chapters(tmp_path, "punch-L04") == [(0.0, "開場"), (47.0, "來自 Release")]
@@ -180,7 +139,7 @@ def test_resolve_chapters_with_a_map_never_falls_back(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     monkeypatch.setattr(
-        "agents.usopp.publish_timeline.release_chapters", lambda episode_dir, cut_id: []
+        "agents.usopp.publish_timeline.plan_chapters", lambda episode_dir, cut_id: []
     )
     assert vd.resolve_chapters(tmp_path, "punch-L04") == []
 
@@ -205,10 +164,10 @@ def test_resolve_chapters_falls_back_when_episode_has_no_map(tmp_path):
     assert vd.resolve_chapters(tmp_path, "punch-L5") == [(0.0, "開場"), (10.0, "A"), (20.0, "B")]
 
 
-def test_release_subtitle_without_a_map_is_none(tmp_path):
-    from agents.usopp.publish_timeline import release_subtitle
+def test_plan_subtitle_without_a_record_is_none(tmp_path):
+    from agents.usopp.publish_timeline import plan_subtitle
 
-    assert release_subtitle(tmp_path, "punch-L04") is None
+    assert plan_subtitle(tmp_path, "punch-L04") is None
 
 
 def test_description_prompt_falls_back_to_tight_srt_without_a_map(tmp_path):
@@ -224,7 +183,7 @@ def test_description_prompt_falls_back_to_tight_srt_without_a_map(tmp_path):
     assert "舊線逐字稿" in prompt
 
 
-def test_description_prompt_prefers_the_release_subtitle(tmp_path, monkeypatch):
+def test_description_prompt_prefers_the_recorded_subtitle(tmp_path, monkeypatch):
     """有 Release 時要照成品那份寫，不能照被取代的 tight SRT。"""
     from agents.usopp.video_description import build_description_prompt
 
@@ -234,7 +193,7 @@ def test_description_prompt_prefers_the_release_subtitle(tmp_path, monkeypatch):
     fresh = tmp_path / "release.srt"
     fresh.write_text("1\n00:00:00,000 --> 00:00:02,000\n成品那一份\n", encoding="utf-8")
     monkeypatch.setattr(
-        "agents.usopp.publish_timeline.release_subtitle", lambda episode_dir, cut_id: fresh
+        "agents.usopp.publish_timeline.plan_subtitle", lambda episode_dir, cut_id: fresh
     )
     prompt = build_description_prompt(
         tmp_path, cut_id="punch-L04", title="t", citations=[], chapters=[]
@@ -262,7 +221,7 @@ def _stub_youtube(recorder):
     return _YT()
 
 
-def test_uploaded_captions_come_from_the_release_not_the_stale_tight_srt(tmp_path, monkeypatch):
+def test_uploaded_captions_come_from_the_record_not_the_stale_tight_srt(tmp_path, monkeypatch):
     """貼錯字幕會讓整支片的 CC 對不上畫面——來源必須跟成品同源。"""
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
     import publish_upload
@@ -273,7 +232,7 @@ def test_uploaded_captions_come_from_the_release_not_the_stale_tight_srt(tmp_pat
     stale.write_text("1\n00:00:00,000 --> 00:00:01,000\n舊剪輯字幕\n", encoding="utf-8")
 
     monkeypatch.setattr(
-        "agents.usopp.publish_timeline.release_subtitle", lambda episode_dir, cid: fresh
+        "agents.usopp.publish_timeline.plan_subtitle", lambda episode_dir, cid: fresh
     )
     monkeypatch.setattr("shared.tight_srt.latest_tight_srt", lambda episode_dir, cid: stale)
     monkeypatch.setattr(
@@ -292,14 +251,14 @@ def test_uploaded_captions_come_from_the_release_not_the_stale_tight_srt(tmp_pat
     assert seen["path"] == str(fresh)
 
 
-def test_uploaded_captions_fall_back_when_the_episode_has_no_release(tmp_path, monkeypatch):
+def test_uploaded_captions_fall_back_when_the_episode_has_no_record(tmp_path, monkeypatch):
     sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
     import publish_upload
 
     stale = tmp_path / "punch-L5_tight_r001.srt"
     stale.write_text("1\n00:00:00,000 --> 00:00:01,000\n舊線字幕\n", encoding="utf-8")
     monkeypatch.setattr(
-        "agents.usopp.publish_timeline.release_subtitle", lambda episode_dir, cid: None
+        "agents.usopp.publish_timeline.plan_subtitle", lambda episode_dir, cid: None
     )
     monkeypatch.setattr("shared.tight_srt.latest_tight_srt", lambda episode_dir, cid: stale)
     monkeypatch.setattr(
@@ -420,35 +379,35 @@ def test_export_from_the_current_release_is_reused(tmp_path):
     _write_map(tmp_path, MAP)
     receipt = {
         "status": "rendered",
-        "cuts": [{"cut_id": "punch-L04", "release_id": "release-af65a1d7a2ac611eb78be493"}],
+        "cuts": [{"cut_id": "punch-L04", "plan_id": "release-af65a1d7a2ac611eb78be493"}],
     }
-    assert export_matches_current_release(tmp_path, "punch-L04", receipt) is True
+    assert export_matches_plan_record(tmp_path, "punch-L04", receipt) is True
 
 
 def test_export_from_a_superseded_release_is_not_reused(tmp_path):
-    """amendment 重封 Release 時片長不變，長度護欄看不出差別——只能靠 release_id。"""
+    """amendment 重封 Release 時片長不變，長度護欄看不出差別——只能靠 plan_id。"""
     _write_map(tmp_path, MAP)
     receipt = {
         "status": "rendered",
-        "cuts": [{"cut_id": "punch-L04", "release_id": "release-37058c0dbeed4b6cab280975"}],
+        "cuts": [{"cut_id": "punch-L04", "plan_id": "release-37058c0dbeed4b6cab280975"}],
     }
-    assert export_matches_current_release(tmp_path, "punch-L04", receipt) is False
+    assert export_matches_plan_record(tmp_path, "punch-L04", receipt) is False
 
 
 def test_receipt_without_release_id_is_treated_as_stale(tmp_path):
     """寧可多 render 一次，也不要把來歷不明的舊成品當成現行 Release。"""
     _write_map(tmp_path, MAP)
     receipt = {"status": "rendered", "cuts": [{"cut_id": "punch-L04"}]}
-    assert export_matches_current_release(tmp_path, "punch-L04", receipt) is False
+    assert export_matches_plan_record(tmp_path, "punch-L04", receipt) is False
 
 
 def test_episodes_without_a_map_keep_reusing_their_exports(tmp_path):
     receipt = {"status": "rendered", "cuts": [{"cut_id": "punch-L04"}]}
-    assert export_matches_current_release(tmp_path, "punch-L04", receipt) is True
+    assert export_matches_plan_record(tmp_path, "punch-L04", receipt) is True
 
 
 # --- 還沒登錄 Release 的成品（短片線 ADR-067） ---------------------------------
-# 短片在 publish_prep 那一步才第一次登錄 Release，進對應表時手上沒有 release_id。
+# 短片在 publish_prep 那一步才第一次登錄 Release，進對應表時手上沒有 plan_id。
 # 對照物換成「修修看過的 review preview 長度」，護欄本身不放寬。
 
 FRESH_MAP = {
@@ -457,7 +416,7 @@ FRESH_MAP = {
     "cuts": {
         "punch-S07": {
             "timeline": "短3 - 也許天堂裡的人，正想來人間受苦（緊·導播）",
-            "release_id": None,
+            "plan_id": None,
             "expected_duration_sec": 39.70,
         }
     },
@@ -466,7 +425,7 @@ FRESH_MAP = {
 
 def test_target_allows_explicit_null_release_id():
     target = resolve_target(FRESH_MAP, "punch-S07")
-    assert target.release_id is None
+    assert target.plan_id is None
     assert target.expected_duration_sec == 39.70
     verify_duration(target, 39.72)  # frame rounding 仍在容差內
 
@@ -474,8 +433,8 @@ def test_target_allows_explicit_null_release_id():
 def test_missing_release_id_key_is_still_an_error():
     """欄位不見與「刻意沒有」必須分得出來——漏填不能當成 null 放行。"""
     bad = json.loads(json.dumps(FRESH_MAP))
-    del bad["cuts"]["punch-S07"]["release_id"]
-    with pytest.raises(PublishTimelineError, match="release_id"):
+    del bad["cuts"]["punch-S07"]["plan_id"]
+    with pytest.raises(PublishTimelineError, match="plan_id"):
         resolve_target(bad, "punch-S07")
 
 
@@ -491,8 +450,8 @@ def test_export_check_passes_when_map_pins_no_release(tmp_path, monkeypatch):
 
     monkeypatch.setattr(pt, "load_timeline_map", lambda _d: FRESH_MAP)
     assert (
-        pt.export_matches_current_release(
-            tmp_path, "punch-S07", {"cuts": [{"cut_id": "punch-S07", "release_id": 91}]}
+        pt.export_matches_plan_record(
+            tmp_path, "punch-S07", {"cuts": [{"cut_id": "punch-S07", "plan_id": 91}]}
         )
         is True
     )

@@ -88,9 +88,11 @@ class ReviewComponentView:
 
 @dataclass(frozen=True, slots=True)
 class ReviewCutView:
-    release_id: str
+    plan_id: str
     cut_id: str
     format: Literal["long", "short"]
+    #: plan 鋪上去的那條 Resolve timeline。舊紀錄沒記，會是空字串。
+    timeline: str
     preview: ReviewArtifactView
     subtitle: ReviewArtifactView
     events: tuple[ReviewEventView, ...]
@@ -125,27 +127,28 @@ class FinishedCutReviewAdapter:
                 episode_id,
                 ReviewState.INVALID,
                 "current_invalid",
-                "current_release_invalid",
+                "plan_record_invalid",
             )
         if inspection.state == "missing":
             return _unavailable_view(
                 episode_id,
                 ReviewState.MISSING,
                 "current_missing",
-                inspection.error_code or "current_release_missing",
+                inspection.error_code or "plan_record_missing",
             )
         if inspection.state == "invalid":
             return _unavailable_view(
                 episode_id,
                 ReviewState.INVALID,
                 "current_invalid",
-                inspection.error_code or "current_release_invalid",
+                inspection.error_code or "plan_record_invalid",
             )
         cuts = tuple(
             ReviewCutView(
-                release_id=cut.release_id,
+                plan_id=cut.plan_id,
                 cut_id=cut.cut_id,
                 format=cut.format,
+                timeline=cut.timeline,
                 preview=_artifact_view(cut.preview),
                 subtitle=_artifact_view(cut.subtitle),
                 events=tuple(_event_view(event) for event in cut.events),
@@ -157,7 +160,7 @@ class FinishedCutReviewAdapter:
             episode_id=episode_id,
             state=ReviewState.READY,
             cuts=cuts,
-            review_capability=ReviewCapability(True, "sealed_current"),
+            review_capability=ReviewCapability(True, "plan_record_current"),
         )
 
 

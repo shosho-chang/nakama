@@ -293,6 +293,42 @@ ADR-066 的核心決策是對的，是實作超標。否決。
    回來（`test_historical_supporting_title_receipt_remains_read_only_compatible`）。
    規則因此留在 writer 側的 `_mint_projected_component`，store 讀回走同一支。
 
+## 階段 4 實作時量到的事（2026-09-12）
+
+5. **封存鏈從來沒有跑過一次。** 動手前先量了整台機器，不是推論：
+
+   | 量到什麼 | 數字 |
+   |---|---|
+   | 已 `review_ready` 並有 `materialization.json` 的 cut | 6（20260721 ×3、20260901 ×3）|
+   | 其中 `transaction_receipt_id` 不是 `null` 的 | **0** |
+   | `G:\Footages` 與 `E:\nakama\data` 裡的 release receipt | **0** |
+   | `current.v1.json`（pointer） | **0** |
+   | `highlights/publish-timelines.v1.json`（人維護的對應表） | **0** |
+   | `authority.json` 裡的 `targeted_revisions` | **0**（兩集都是 `{}`）|
+
+   所以 `StagedReleaseCandidate` → `FinishedCutRelease` → 不可變版本 →
+   pointer → `GlobalCutoverJournal` 這五層，加上 `GlobalCutover` 的原子切換與
+   回滾，全部只在測試裡執行過。而 `materialization.json` 已經是事實上的紀錄。
+
+6. **這條鏈不只是沒用，它還讓發布線查不到 timeline 名。**
+   `publish_timeline.canonical_timeline_from_transactions` 要求交易
+   `status == "committed"` 才回名字——而沒有任何路徑會 commit，所以它對每一支
+   cut 都回 `None`。`release_chapters` 與 `release_subtitle` 也都以
+   `target.release_id is not None` 為前提，於是長片的分章與字幕來源**一直**
+   在回退。plan record 直接記下 `timeline`、`preview.duration_sec`、`events`、
+   `components`，這三個缺口同時補上——階段 4 因此不是純刪除，是修掉一個
+   安靜錯了很久的東西。
+
+7. **`_resolve.commit` / `compensating_rollback` 成為不可達碼。** `_cutover` 是
+   它們唯一的呼叫端（grep 實測）。本階段沒有刪它們：交易狀態機與
+   `__fcp_backup__` 的保留策略是階段 5「身分碼收斂」要一起看的東西，拆開改
+   會讓兩邊都半途。留著的代價是 `ResolveTransactionStatus` 有四個今天到不了的
+   狀態——記在這裡，不要當成還有人在用。
+
+8. **`ActiveAssetStore.bind_release` / `resolve_for_release` 沒有生產呼叫端。**
+   它們回答的是「哪個已封存的 Release 用了這份素材」。同樣不在本階段動手，
+   理由同上：那是素材存活期的問題，跟紀錄層分開處理才看得清楚。
+
 ## Review record
 
 - **v1 三方審查（2026-09-12）**：創作者視角、cost×risk×complexity 審計、ADR-066 原作者辯護——三方一致「改了再簽」。審計重算數字並指出 v1 標「留」但該砍的七項；辯護人對 v1 標「砍」的八項各給出今天就會發生的失敗情境（`source_range_drift`、活字幕軌、master content hash、`_current_chain_is_exact`、retry base、ledger 三態、canonical 精確匹配、素材 bytes），並指出 journal 的承擔理由對錯對象。整合報告在該 session 的 `ADR-069-panel-report.md`。

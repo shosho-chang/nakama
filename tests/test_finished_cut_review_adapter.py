@@ -48,7 +48,8 @@ def _release(
     components: tuple[ComponentView, ...] = (),
 ) -> CutView:
     return CutView(
-        release_id=f"release-{cut_id}",
+        plan_id=f"plan-{cut_id}",
+        timeline=f"長x - {cut_id}（緊·導播）",
         cut_id=cut_id,
         format=format,
         preview=_artifact(
@@ -78,7 +79,7 @@ def test_missing_current_is_explicit_and_never_reads_a_historical_sentinel(
         FinishedCutInspection(
             episode_id="episode-001",
             state="missing",
-            error_code="current_release_missing",
+            error_code="plan_record_missing",
         )
     )
     adapter = FinishedCutReviewAdapter(inspector)
@@ -106,7 +107,7 @@ def test_corrupt_wrong_episode_and_release_digest_are_invalid(_scenario: str) ->
         FinishedCutInspection(
             episode_id="episode-001",
             state="invalid",
-            error_code="current_release_invalid",
+            error_code="plan_record_invalid",
         )
     )
     adapter = FinishedCutReviewAdapter(inspector)
@@ -117,7 +118,7 @@ def test_corrupt_wrong_episode_and_release_digest_are_invalid(_scenario: str) ->
     assert view.cuts == ()
     assert view.review_capability.enabled is False
     assert view.review_capability.reason == "current_invalid"
-    assert view.error == "current_release_invalid"
+    assert view.error == "plan_record_invalid"
 
 
 def test_v3_three_cut_release_index_projects_exact_artifacts() -> None:
@@ -153,7 +154,7 @@ def test_inspector_result_for_a_different_episode_is_invalid() -> None:
     assert view.state is ReviewState.INVALID
     assert view.cuts == ()
     assert view.review_capability.enabled is False
-    assert view.error == "current_release_invalid"
+    assert view.error == "plan_record_invalid"
 
 
 def test_short_release_is_projected_without_a_virtual_manifest(tmp_path: Path) -> None:
@@ -217,10 +218,12 @@ def test_adapter_has_no_legacy_visual_pipeline_or_glob_dependency() -> None:
     assert "highlight_visual_pipeline" not in source
     assert "highlight_visual_pipeline" not in " ".join(imported_modules)
     assert "finished_cut_production._" not in source
+    # Bridge 只能拿公開的 view 型別；模組內部的紀錄與錯誤型別不准跨進來。
     assert {
-        "FinishedCutRelease",
+        "PlanRecord",
+        "PlanRecordError",
+        "PlanRecordStore",
         "ReleaseArtifact",
-        "ReleaseLifecycleError",
     }.isdisjoint(imported_modules)
     assert {"visual_pipeline_status", "verify_visual_pipeline", "glob"}.isdisjoint(called_names)
 

@@ -19,7 +19,7 @@ Status = Literal["pending", "needs_review", "review_ready", "failed"]
 StageName = Literal["director", "dp", "visual_review"]
 RequestScope = Literal["full_stage", "event_retry"]
 InspectionState = Literal["ready", "missing", "invalid"]
-InspectionErrorCode = Literal["current_release_missing", "current_release_invalid"]
+InspectionErrorCode = Literal["plan_record_missing", "plan_record_invalid"]
 STAGE_RESPONSE_SCHEMA = "nakama.finished-cut-stage-response.v1"
 ProbeValue = str | int | float | bool | None
 
@@ -115,33 +115,6 @@ def _mint_projected_component(
             f"{component_id} is semantic_kind={semantic_kind!r} "
             f"implementation_kind={implementation_kind!r} lane={lane!r}"
         )
-    return ProjectedComponent(
-        component_id=component_id,
-        event_id=event_id,
-        semantic_kind=semantic_kind,
-        implementation_kind=implementation_kind,
-        lane=lane,
-        display=display,
-        t0=t0,
-        t1=t1,
-        asset_ref=asset_ref,
-    )
-
-
-def _rehydrate_release_projected_component(
-    *,
-    component_id: str,
-    event_id: str,
-    semantic_kind: str,
-    implementation_kind: str,
-    lane: ComponentLane,
-    display: str,
-    t0: float,
-    t1: float,
-    asset_ref: str | None,
-) -> ProjectedComponent:
-    """Read an already-sealed receipt without granting current production authority."""
-
     return ProjectedComponent(
         component_id=component_id,
         event_id=event_id,
@@ -391,9 +364,14 @@ class ComponentView:
 
 @dataclass(frozen=True, slots=True)
 class CutView:
-    release_id: str
+    #: plan record 的身分。ADR-069 之前這裡是 `release_id`——封存鏈退役之後，
+    #: 「這支 cut 是哪一份紀錄」的答案就是鑄出它的那個 plan。
+    plan_id: str
     cut_id: str
     format: Literal["long", "short"]
+    #: plan 鋪上去的那條 Resolve timeline 顯示名。發布線靠它決定 render 哪一條；
+    #: 舊紀錄沒有記，會是空字串。
+    timeline: str
     preview: ArtifactView
     subtitle: ArtifactView
     events: tuple[EventView, ...]
@@ -402,166 +380,12 @@ class CutView:
 
 @dataclass(frozen=True, slots=True)
 class FinishedCutInspection:
-    """Stable public result for exact-current inspection."""
+    """Stable public result for reading this episode's recorded cuts."""
 
     episode_id: str
     state: InspectionState
     cuts: tuple[CutView, ...] = ()
     error_code: InspectionErrorCode | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class StagedReleaseCandidate:
-    candidate_id: str
-    episode_id: str
-    cut_id: str
-    format: Literal["long", "short"]
-    command_id: str
-    run_id: str
-    editorial_master_id: str
-    winner_id: str
-    tight_cut_id: str
-    director_acceptance_id: str
-    dp_acceptance_id: str
-    visual_acceptance_id: str
-    materialization_plan: MaterializationPlan
-    preview: ReleaseArtifact
-    subtitle: ReleaseArtifact
-    preview_ready_transaction_id: str
-    components: tuple[ProjectedComponent, ...]
-
-
-def _mint_staged_release_candidate(
-    *,
-    candidate_id: str,
-    episode_id: str,
-    cut_id: str,
-    format: Literal["long", "short"],
-    command_id: str,
-    run_id: str,
-    editorial_master_id: str,
-    winner_id: str,
-    tight_cut_id: str,
-    director_acceptance_id: str,
-    dp_acceptance_id: str,
-    visual_acceptance_id: str,
-    materialization_plan: MaterializationPlan,
-    preview: ReleaseArtifact,
-    subtitle: ReleaseArtifact,
-    preview_ready_transaction_id: str,
-    components: tuple[ProjectedComponent, ...] | None = None,
-) -> StagedReleaseCandidate:
-    return StagedReleaseCandidate(
-        candidate_id=candidate_id,
-        episode_id=episode_id,
-        cut_id=cut_id,
-        format=format,
-        command_id=command_id,
-        run_id=run_id,
-        editorial_master_id=editorial_master_id,
-        winner_id=winner_id,
-        tight_cut_id=tight_cut_id,
-        director_acceptance_id=director_acceptance_id,
-        dp_acceptance_id=dp_acceptance_id,
-        visual_acceptance_id=visual_acceptance_id,
-        materialization_plan=materialization_plan,
-        preview=preview,
-        subtitle=subtitle,
-        preview_ready_transaction_id=preview_ready_transaction_id,
-        components=materialization_plan.components if components is None else components,
-    )
-
-
-@dataclass(frozen=True, slots=True)
-class FinishedCutRelease:
-    release_id: str
-    episode_id: str
-    cut_id: str
-    format: Literal["long", "short"]
-    command_id: str
-    run_id: str
-    editorial_master_id: str
-    winner_id: str
-    tight_cut_id: str
-    director_acceptance_id: str
-    dp_acceptance_id: str
-    visual_acceptance_id: str
-    materialization_plan_id: str
-    events: tuple[EventRecord, ...]
-    preview: ReleaseArtifact
-    subtitle: ReleaseArtifact
-    transaction_receipt_id: str
-    rollback_ref: str
-    components: tuple[ProjectedComponent, ...] = ()
-
-
-def _seal_finished_cut_release(
-    *,
-    release_id: str,
-    episode_id: str,
-    cut_id: str,
-    format: Literal["long", "short"],
-    command_id: str,
-    run_id: str,
-    editorial_master_id: str,
-    winner_id: str,
-    tight_cut_id: str,
-    director_acceptance_id: str,
-    dp_acceptance_id: str,
-    visual_acceptance_id: str,
-    materialization_plan_id: str,
-    events: tuple[EventRecord, ...],
-    preview: ReleaseArtifact,
-    subtitle: ReleaseArtifact,
-    transaction_receipt_id: str,
-    rollback_ref: str,
-    components: tuple[ProjectedComponent, ...] = (),
-) -> FinishedCutRelease:
-    if any(
-        event.semantic_kind
-        and not _event_has_active_projection(
-            semantic_kind=event.semantic_kind,
-            implementation_kind=event.implementation_kind,
-            lane=event.lane,
-            intentional_aroll=event.intentional_aroll,
-        )
-        for event in events
-    ) or any(
-        not _is_active_projection(
-            component.semantic_kind,
-            component.implementation_kind,
-            component.lane,
-        )
-        for component in components
-    ):
-        raise ValueError("FinishedCutRelease contains a retired or unsupported projection")
-    return FinishedCutRelease(
-        release_id=release_id,
-        episode_id=episode_id,
-        cut_id=cut_id,
-        format=format,
-        command_id=command_id,
-        run_id=run_id,
-        editorial_master_id=editorial_master_id,
-        winner_id=winner_id,
-        tight_cut_id=tight_cut_id,
-        director_acceptance_id=director_acceptance_id,
-        dp_acceptance_id=dp_acceptance_id,
-        visual_acceptance_id=visual_acceptance_id,
-        materialization_plan_id=materialization_plan_id,
-        events=events,
-        preview=preview,
-        subtitle=subtitle,
-        transaction_receipt_id=transaction_receipt_id,
-        rollback_ref=rollback_ref,
-        components=components,
-    )
-
-
-def _rehydrate_finished_cut_release(**values: object) -> FinishedCutRelease:
-    """Read an immutable historical receipt without re-running the seal-time gates."""
-
-    return FinishedCutRelease(**values)  # type: ignore[arg-type]
 
 
 @dataclass(frozen=True, slots=True)

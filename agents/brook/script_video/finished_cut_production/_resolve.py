@@ -358,6 +358,13 @@ class ResolveTransactionManager:
             "transaction_id": transaction.transaction_id,
             "cut_id": transaction.cut_id,
             "status": transaction.status,
+            # plan record 要記「鋪到了哪一條 timeline」。以前發布線得自己掃交易
+            # 目錄反查，而那條反查要求 `status == "committed"`——所以它從來沒回
+            # 過一個名字。這裡直接把 work 那一條交出去。
+            "timeline": {
+                "name": transaction.workspace.work.name,
+                "uid": transaction.workspace.work.uid,
+            },
             "transaction_receipt_id": transaction.transaction_receipt_id,
             "rollback_ref": transaction.rollback_ref,
             "backup_retained": transaction.backup_retained,

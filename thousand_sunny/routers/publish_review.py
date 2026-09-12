@@ -29,7 +29,7 @@ from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Redirect
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 
-from agents.usopp.publish_timeline import release_subtitle
+from agents.usopp.publish_timeline import plan_subtitle
 from shared.config import get_runtime_data_dir, get_vault_path
 from shared.log import get_logger
 from shared.publish_calendar import short_execution_readiness
@@ -357,7 +357,7 @@ def publish_cut(
     # 標籤要說出「實際會上傳的那一份」。之前寫死 tight SRT，實際送的是 Release
     # 那份——頁面上的檔名跟播放器聽到的內容不是同一個東西。
     subs = (
-        (release_subtitle(_episode_dir(rel), cut_id) or latest_tight_srt(_episode_dir(rel), cut_id))
+        (plan_subtitle(_episode_dir(rel), cut_id) or latest_tight_srt(_episode_dir(rel), cut_id))
         if cc_policy == "sidecar_required"
         else None
     )
@@ -432,7 +432,7 @@ def publish_subs(episode: str, cut_id: str, nakama_auth: str | None = Cookie(Non
     # 改讀 Release 字幕、這裡沒跟上，於是修修在審核頁看到的是 260 秒舊剪輯的 125
     # 句，實際要上架的是 492 秒成品的 226 句。驗證的對象跟交付的對象不同，比顯示
     # 錯更糟——它讓驗證這件事失去意義。
-    srt = release_subtitle(episode_dir, cut_id) or latest_tight_srt(episode_dir, cut_id)
+    srt = plan_subtitle(episode_dir, cut_id) or latest_tight_srt(episode_dir, cut_id)
     if srt is None:
         raise HTTPException(status_code=404, detail=f"{cut_id} 沒有可用的字幕")
     return Response(

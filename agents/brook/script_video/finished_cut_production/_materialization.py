@@ -1,4 +1,4 @@
-"""Private, fail-closed coordination from an exact plan to a staged Candidate."""
+"""Private, fail-closed coordination from an exact plan to a recorded preview."""
 
 from __future__ import annotations
 
@@ -7,25 +7,24 @@ import json
 import math
 import os
 import re
-from dataclasses import asdict, dataclass
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import Literal, Protocol
 
 from ._assets import AssetContractError, AssetKind, AssetResolver, ResolvedAsset
 from ._commands import ApprovedCutCommand, _is_authoritative_approved_cut
 from ._context import EditorialCutContext
-from ._records import (
-    MaterializationPlan,
-    ReleaseArtifact,
-    StagedReleaseCandidate,
-    _mint_staged_release_candidate,
+from ._plan_record import (
+    PLAN_RECORD_FILENAME,
+    PlanRecord,
+    PlanRecordError,
+    PlanRecordStore,
+    PlanTimeline,
+    read_plan_record_at,
+    write_plan_record,
 )
-from ._release import (
-    FinishedCutReleaseLifecycle,
-    ReleaseLifecycleError,
-    _artifact_from_receipt,
-    _measure,
-)
+from ._records import MaterializationPlan
 from ._resolve import (
     ResolveTransaction,
     ResolveTransactionError,
@@ -66,7 +65,7 @@ class CanonicalTimelineInspection:
 
 @dataclass(frozen=True, slots=True)
 class MaterializationPreparation:
-    """Private, uncommitted result of an exact preview-ready preparation."""
+    """The result of one exact preview-ready preparation, plus its record."""
 
     command_id: str
     run_id: str
@@ -74,7 +73,7 @@ class MaterializationPreparation:
     status: Literal["preview_ready"]
     transaction_id: str
     subtitle_sha256: str
-    candidate: StagedReleaseCandidate
+    record: PlanRecord
 
 
 class _CanonicalTimelineAuthority(Protocol):
@@ -97,14 +96,14 @@ class MaterializationCoordinator:
         canonical_authority: _CanonicalTimelineAuthority,
         assets: AssetResolver,
         transactions: ResolveTransactionManager,
-        releases: FinishedCutReleaseLifecycle,
+        records: PlanRecordStore,
         episode_root: Path,
     ) -> None:
         self._run_store = run_store
         self._canonical_authority = canonical_authority
         self._assets = assets
         self._transactions = transactions
-        self._releases = releases
+        self._records = records
         self._episode_root = Path(episode_root)
 
     def prepare(self, command_id: str) -> MaterializationPreparation:
@@ -181,16 +180,27 @@ class MaterializationCoordinator:
             plan,
             context,
         )
-        journal_path = subtitle_path.parent / "materialization.json"
-        prior_journal = _read_materialization_journal(journal_path)
-        if prior_journal is not None:
-            return self._reopen_prior_preparation(
-                prior_journal,
+        record_path = subtitle_path.parent / PLAN_RECORD_FILENAME
+        try:
+            prior_record = read_plan_record_at(record_path)
+        except PlanRecordError as error:
+            raise MaterializationError(
+                f"persisted plan record is unusable: {error}",
+                reason_code=(
+                    "materialization_journal_incomplete"
+                    if error.reason == "incomplete"
+                    else "materialization_journal_invalid"
+                ),
+            ) from error
+        if prior_record is not None:
+            return self._reopen_prior_record(
+                prior_record,
                 command=command,
                 plan=plan,
                 context=context,
                 subtitle_path=subtitle_path,
                 preview_path=preview_path,
+                record_path=record_path,
             )
         try:
             inspections = self._canonical_authority.inspect(
@@ -236,7 +246,7 @@ class MaterializationCoordinator:
                 inspection=inspection,
                 subtitle_path=subtitle_path,
                 preview_path=preview_path,
-                journal_path=journal_path,
+                record_path=record_path,
             )
         subtitle_sha256 = _stage_review_subtitle(subtitle_path, context)
         try:
@@ -263,33 +273,25 @@ class MaterializationCoordinator:
             subtitle_path=subtitle_path,
             context=context,
         )
-        try:
-            candidate = self._releases.stage_candidate(
-                plan,
-                editorial_master_id=context.editorial_master_id,
-                winner_id=command.winner_id,
-                tight_cut_id=context.tight_cut_id,
-                transaction_id=transaction.transaction_id,
-                preview_path=preview_path,
-                subtitle_path=subtitle_path,
-            )
-        except ReleaseLifecycleError as error:
-            raise MaterializationError(
-                "preview_ready transaction cannot stage its exact Candidate",
-                reason_code="candidate_staging_failed",
-            ) from error
-        preparation = MaterializationPreparation(
+        record = self._stage_record(
+            plan,
+            command=command,
+            context=context,
+            transaction_id=transaction.transaction_id,
+            timeline=_transaction_timeline(transaction),
+            preview_path=preview_path,
+            subtitle_path=subtitle_path,
+        )
+        write_plan_record(record_path, record)
+        return MaterializationPreparation(
             command_id=command_id,
             run_id=plan.run_id,
             plan_id=plan.plan_id,
             status="preview_ready",
             transaction_id=transaction.transaction_id,
             subtitle_sha256=subtitle_sha256,
-            candidate=candidate,
+            record=record,
         )
-        payload = _preparation_payload(preparation)
-        _write_materialization_journal(journal_path, payload)
-        return preparation
 
     def _resume_prepared_transaction(
         self,
@@ -301,7 +303,7 @@ class MaterializationCoordinator:
         inspection: CanonicalTimelineInspection,
         subtitle_path: Path,
         preview_path: Path,
-        journal_path: Path,
+        record_path: Path,
     ) -> MaterializationPreparation:
         """把一筆已經做完、但帳沒結成的交易接回來。
 
@@ -311,8 +313,8 @@ class MaterializationCoordinator:
         duplicate 一次——衍生軌疊第二層。只要交易之後任何一步失敗，那個 run
         以前就永遠結不了帳（20260721 punch-L03 卡在 preview 探測）。
 
-        這條路只做交易之後**還沒做完**的事：確認輸出物還在、蓋掉 Candidate、
-        把 `materialization.json` 補上。不碰 Resolve。
+        這條路只做交易之後**還沒做完**的事：確認輸出物還在、量成品、把 plan
+        record 補上。不碰 Resolve。
 
         `transaction.canonical` 與 `inspection.canonical` 刻意不比對——那兩者
         本來就該不一樣，正是「交易已經生效」的證據。plan_id 與 plan_fingerprint
@@ -355,52 +357,49 @@ class MaterializationCoordinator:
             ) from error
         subtitle_sha256 = hashlib.sha256(subtitle_payload).hexdigest()
         _verify_srt_bytes(subtitle_payload, context, expected_digest=subtitle_sha256)
-        try:
-            candidate = self._releases.stage_candidate(
-                plan,
-                editorial_master_id=context.editorial_master_id,
-                winner_id=command.winner_id,
-                tight_cut_id=context.tight_cut_id,
-                transaction_id=transaction.transaction_id,
-                preview_path=preview_path,
-                subtitle_path=subtitle_path,
-            )
-        except ReleaseLifecycleError as error:
-            raise MaterializationError(
-                "preview_ready transaction cannot stage its exact Candidate",
-                reason_code="candidate_staging_failed",
-            ) from error
-        preparation = MaterializationPreparation(
+        record = self._stage_record(
+            plan,
+            command=command,
+            context=context,
+            transaction_id=transaction.transaction_id,
+            timeline=_transaction_timeline(transaction),
+            preview_path=preview_path,
+            subtitle_path=subtitle_path,
+        )
+        write_plan_record(record_path, record)
+        return MaterializationPreparation(
             command_id=command.command_id,
             run_id=plan.run_id,
             plan_id=plan.plan_id,
             status="preview_ready",
             transaction_id=transaction.transaction_id,
             subtitle_sha256=subtitle_sha256,
-            candidate=candidate,
+            record=record,
         )
-        _write_materialization_journal(journal_path, _preparation_payload(preparation))
-        return preparation
 
-    def _reopen_prior_preparation(
+    def _reopen_prior_record(
         self,
-        payload: dict[str, object],
+        prior: PlanRecord,
         *,
         command: ApprovedCutCommand,
         plan: MaterializationPlan,
         context: EditorialCutContext,
         subtitle_path: Path,
         preview_path: Path,
+        record_path: Path,
     ) -> MaterializationPreparation:
-        transaction_id = payload.get("transaction_id")
-        if (
-            not isinstance(transaction_id, str)
-            or re.fullmatch(r"resolve-[0-9a-f]{24}", transaction_id) is None
-        ):
-            raise MaterializationError(
-                "persisted materialization transaction identity is invalid",
-                reason_code="materialization_journal_conflict",
-            )
+        """Return the same preparation this plan already produced, or refuse.
+
+        重進入的守則只有一條：**同一個 plan 只能有一份紀錄**。所以這裡不是「相信
+        磁碟上那份」，而是把事實重新量一遍（字幕 bytes、preview bytes、交易狀態），
+        算出這一刻**應該**是什麼樣子，再跟磁碟上那份逐欄位比。相等就回傳，不等就
+        停——那代表有人動過成品，或者 plan 換了但紀錄沒換。
+
+        ADR-069 之前這裡還有一條 `committed` 分支，用來重建「交易已封存、不能再
+        stage」的 Candidate。封存鏈退役之後沒有任何路徑會 commit，那條分支連同它
+        的 payload 重建器一起刪掉——留著只會讓人以為系統還有第二種狀態。
+        """
+
         try:
             subtitle_payload = subtitle_path.read_bytes()
         except OSError as error:
@@ -409,191 +408,101 @@ class MaterializationCoordinator:
                 reason_code="materialization_journal_conflict",
             ) from error
         subtitle_sha256 = hashlib.sha256(subtitle_payload).hexdigest()
-        _verify_srt_bytes(
-            subtitle_payload,
-            context,
-            expected_digest=subtitle_sha256,
-        )
+        _verify_srt_bytes(subtitle_payload, context, expected_digest=subtitle_sha256)
         try:
-            transaction = self._transactions.inspect_transaction(transaction_id)
+            transaction = self._transactions.inspect_transaction(prior.transaction_id)
         except ResolveTransactionError as error:
             raise MaterializationError(
                 "persisted materialization transaction is unavailable",
                 reason_code="materialization_journal_conflict",
             ) from error
-        status = transaction.get("status")
         if (
-            transaction.get("transaction_id") != transaction_id
+            transaction.get("transaction_id") != prior.transaction_id
             or transaction.get("cut_id") != plan.cut_id
-            or status not in {"preview_ready", "committed"}
-            or (
-                status == "committed"
-                and (
-                    not isinstance(transaction.get("transaction_receipt_id"), str)
-                    or not transaction.get("transaction_receipt_id")
-                    or not isinstance(transaction.get("rollback_ref"), str)
-                    or not transaction.get("rollback_ref")
-                    or transaction.get("backup_retained") is not True
-                )
-            )
+            or transaction.get("status") != "preview_ready"
         ):
             raise MaterializationError(
                 "persisted materialization transaction is not exact",
                 reason_code="materialization_journal_conflict",
             )
-        if status == "preview_ready":
-            try:
-                candidate = self._releases.stage_candidate(
-                    plan,
-                    editorial_master_id=context.editorial_master_id,
-                    winner_id=command.winner_id,
-                    tight_cut_id=context.tight_cut_id,
-                    transaction_id=transaction_id,
-                    preview_path=preview_path,
-                    subtitle_path=subtitle_path,
-                )
-            except ReleaseLifecycleError as error:
-                raise MaterializationError(
-                    "persisted materialization Candidate is not exact",
-                    reason_code="materialization_journal_conflict",
-                ) from error
-        else:
-            candidate = _candidate_from_prior_payload(
-                payload.get("candidate"),
-                command=command,
-                plan=plan,
-                context=context,
-                transaction_id=transaction_id,
-                episode_root=self._episode_root,
-                subtitle_path=subtitle_path,
-                preview_path=preview_path,
+        timeline = _inspected_timeline(transaction)
+        fresh = self._stage_record(
+            plan,
+            command=command,
+            context=context,
+            transaction_id=prior.transaction_id,
+            timeline=timeline or prior.timeline,
+            preview_path=preview_path,
+            subtitle_path=subtitle_path,
+        )
+        if not prior.timeline.name and not prior.timeline.uid and timeline is not None:
+            # ADR-069 之前的紀錄沒有記 timeline（那時候要從交易反查，而反查要求
+            # `status == "committed"`，所以永遠查不到）。補上並改寫成 v2——既有的
+            # run 因此不必重跑就能被發布線讀懂。
+            prior = replace(prior, timeline=timeline)
+            write_plan_record(record_path, prior)
+        if prior != fresh:
+            raise MaterializationError(
+                "persisted plan record differs from exact current preparation",
+                reason_code="materialization_journal_conflict",
             )
-        preparation = MaterializationPreparation(
+        return MaterializationPreparation(
             command_id=command.command_id,
             run_id=plan.run_id,
             plan_id=plan.plan_id,
             status="preview_ready",
-            transaction_id=transaction_id,
+            transaction_id=prior.transaction_id,
             subtitle_sha256=subtitle_sha256,
-            candidate=candidate,
+            record=prior,
         )
-        if _canonical_json(payload) != _canonical_json(_preparation_payload(preparation)):
-            raise MaterializationError(
-                "persisted materialization Candidate differs from exact current preparation",
-                reason_code="materialization_journal_conflict",
+
+    def _stage_record(
+        self,
+        plan: MaterializationPlan,
+        *,
+        command: ApprovedCutCommand,
+        context: EditorialCutContext,
+        transaction_id: str,
+        timeline: PlanTimeline,
+        preview_path: Path,
+        subtitle_path: Path,
+    ) -> PlanRecord:
+        try:
+            return self._records.stage(
+                plan,
+                editorial_master_id=context.editorial_master_id,
+                winner_id=command.winner_id,
+                tight_cut_id=context.tight_cut_id,
+                transaction_id=transaction_id,
+                timeline=timeline,
+                preview_path=preview_path,
+                subtitle_path=subtitle_path,
             )
-        return preparation
+        except PlanRecordError as error:
+            raise MaterializationError(
+                f"preview_ready transaction cannot record its exact plan: {error}",
+                reason_code="plan_record_staging_failed",
+            ) from error
 
 
-def _candidate_from_prior_payload(
-    value: object,
-    *,
-    command: ApprovedCutCommand,
-    plan: MaterializationPlan,
-    context: EditorialCutContext,
-    transaction_id: str,
-    episode_root: Path,
-    subtitle_path: Path,
-    preview_path: Path,
-) -> StagedReleaseCandidate:
-    if not isinstance(value, dict):
-        raise MaterializationError(
-            "persisted materialization Candidate is invalid",
-            reason_code="materialization_journal_conflict",
-        )
-    try:
-        preview = _artifact_from_receipt(value.get("preview"))
-        subtitle = _artifact_from_receipt(value.get("subtitle"))
-    except ReleaseLifecycleError as error:
-        raise MaterializationError(
-            "persisted materialization Candidate artifacts are invalid",
-            reason_code="materialization_journal_conflict",
-        ) from error
-    _verify_prior_artifact(
-        preview,
-        expected_path=preview_path,
-        episode_root=episode_root,
+def _transaction_timeline(transaction: ResolveTransaction) -> PlanTimeline:
+    """The timeline this plan was actually laid onto—the work copy, not canonical."""
+
+    return PlanTimeline(
+        name=transaction.workspace.work.name,
+        uid=transaction.workspace.work.uid,
     )
-    _verify_prior_artifact(
-        subtitle,
-        expected_path=subtitle_path,
-        episode_root=episode_root,
-    )
-    candidate_core = {
-        "episode_id": plan.episode_id,
-        "cut_id": plan.cut_id,
-        "format": plan.format,
-        "command_id": plan.command_id,
-        "run_id": plan.run_id,
-        "editorial_master_id": context.editorial_master_id,
-        "winner_id": command.winner_id,
-        "tight_cut_id": context.tight_cut_id,
-        "director_acceptance_id": plan.director_acceptance_id,
-        "dp_acceptance_id": plan.dp_acceptance_id,
-        "visual_acceptance_id": plan.visual_acceptance_id,
-        "materialization_plan": asdict(plan),
-        "preview": asdict(preview),
-        "subtitle": asdict(subtitle),
-        "preview_ready_transaction_id": transaction_id,
-    }
-    candidate_id = f"candidate-{hashlib.sha256(_canonical_json(candidate_core)).hexdigest()[:24]}"
-    candidate = _mint_staged_release_candidate(
-        candidate_id=candidate_id,
-        episode_id=plan.episode_id,
-        cut_id=plan.cut_id,
-        format=plan.format,
-        command_id=plan.command_id,
-        run_id=plan.run_id,
-        editorial_master_id=context.editorial_master_id,
-        winner_id=command.winner_id,
-        tight_cut_id=context.tight_cut_id,
-        director_acceptance_id=plan.director_acceptance_id,
-        dp_acceptance_id=plan.dp_acceptance_id,
-        visual_acceptance_id=plan.visual_acceptance_id,
-        materialization_plan=plan,
-        preview=preview,
-        subtitle=subtitle,
-        preview_ready_transaction_id=transaction_id,
-    )
-    if _canonical_json(value) != _canonical_json(asdict(candidate)):
-        raise MaterializationError(
-            "persisted materialization Candidate identity differs",
-            reason_code="materialization_journal_conflict",
-        )
-    if (
-        preview.duration_sec is None
-        or abs(preview.duration_sec - context.duration_sec) > 1e-6
-        or subtitle.sha256 != hashlib.sha256(_render_srt(context)).hexdigest()
-    ):
-        raise MaterializationError(
-            "persisted materialization Candidate artifacts differ",
-            reason_code="materialization_journal_conflict",
-        )
-    return candidate
 
 
-def _verify_prior_artifact(
-    artifact: ReleaseArtifact,
-    *,
-    expected_path: Path,
-    episode_root: Path,
-) -> None:
-    root = Path(episode_root).resolve()
-    expected = Path(expected_path).resolve()
-    try:
-        relative = expected.relative_to(root).as_posix()
-        # Streamed: this runs on resume against the same ~1 GB preview.
-        size, digest = _measure(expected)
-    except (OSError, ValueError) as error:
-        raise MaterializationError(
-            "persisted materialization artifact is unavailable",
-            reason_code="materialization_journal_conflict",
-        ) from error
-    if artifact.path != relative or not size or artifact.bytes != size or artifact.sha256 != digest:
-        raise MaterializationError(
-            "persisted materialization artifact bytes differ",
-            reason_code="materialization_journal_conflict",
-        )
+def _inspected_timeline(transaction: Mapping[str, object]) -> PlanTimeline | None:
+    value = transaction.get("timeline")
+    if not isinstance(value, Mapping):
+        return None
+    name = value.get("name")
+    uid = value.get("uid")
+    if not isinstance(name, str) or not isinstance(uid, str) or not name or not uid:
+        return None
+    return PlanTimeline(name=name, uid=uid)
 
 
 def _validate_prepared_transaction(
@@ -632,82 +541,6 @@ def _validate_prepared_transaction(
             "Resolve preview codec, duration, or object contract differs",
             reason_code="preview_probe_failed",
         )
-
-
-def _preparation_payload(preparation: MaterializationPreparation) -> dict[str, object]:
-    return {
-        "command_id": preparation.command_id,
-        "run_id": preparation.run_id,
-        "plan_id": preparation.plan_id,
-        "status": preparation.status,
-        "transaction_id": preparation.transaction_id,
-        "subtitle_sha256": preparation.subtitle_sha256,
-        "candidate": asdict(preparation.candidate),
-    }
-
-
-def _read_materialization_journal(path: Path) -> dict[str, object] | None:
-    staging = path.with_name(f".{path.name}.staging")
-    if staging.exists():
-        raise MaterializationError(
-            "incomplete materialization journal exists",
-            reason_code="materialization_journal_incomplete",
-        )
-    if not path.exists():
-        return None
-    try:
-        document = json.loads(path.read_bytes())
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise MaterializationError(
-            "materialization journal is unreadable",
-            reason_code="materialization_journal_invalid",
-        ) from error
-    if (
-        not isinstance(document, dict)
-        or set(document) != {"schema", "payload_sha256", "payload"}
-        or document.get("schema") != "nakama.finished-cut-materialization.v1"
-        or not isinstance(document.get("payload"), dict)
-    ):
-        raise MaterializationError(
-            "materialization journal schema is invalid",
-            reason_code="materialization_journal_invalid",
-        )
-    payload = cast(dict[str, object], document["payload"])
-    if document.get("payload_sha256") != hashlib.sha256(_canonical_json(payload)).hexdigest():
-        raise MaterializationError(
-            "materialization journal checksum differs",
-            reason_code="materialization_journal_invalid",
-        )
-    return payload
-
-
-def _write_materialization_journal(path: Path, payload: dict[str, object]) -> None:
-    envelope = {
-        "schema": "nakama.finished-cut-materialization.v1",
-        "payload_sha256": hashlib.sha256(_canonical_json(payload)).hexdigest(),
-        "payload": payload,
-    }
-    encoded = _canonical_json(envelope) + b"\n"
-    staging = path.with_name(f".{path.name}.staging")
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with staging.open("xb") as handle:
-            handle.write(encoded)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(staging, path)
-        if path.read_bytes() != encoded:
-            raise MaterializationError(
-                "materialization journal bytes differ after atomic replace",
-                reason_code="materialization_journal_invalid",
-            )
-    except OSError as error:
-        raise MaterializationError(
-            "materialization journal could not persist atomically",
-            reason_code="materialization_journal_write_failed",
-        ) from error
-    finally:
-        staging.unlink(missing_ok=True)
 
 
 def _preview_matches_timeline(

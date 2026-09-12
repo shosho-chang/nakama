@@ -24,16 +24,8 @@ from ._codex_semantic import (
 )
 from ._commands import CommandRejectedError
 from ._correction import RunInspection
-from ._cutover import (
-    AtomicDeploymentPointerAdapter,
-    CutoverStatus,
-    FilesystemReleaseCutoverAdapter,
-    GlobalCutover,
-    GlobalCutoverError,
-    GlobalCutoverJournal,
-)
 from ._derived_assets import DerivedAssetBuilder
-from ._engine import FinishedCutProduction, _current_inspection
+from ._engine import FinishedCutProduction
 from ._hyperframes_renderer import (
     PinnedHyperFramesRuntime,
     SubprocessRenderProcessRunner,
@@ -43,16 +35,15 @@ from ._materialization_fusion import (
     ResolveCanonicalTimelineAuthority,
     VerifiedEditorialMasterContractCache,
 )
-from ._persistence import AtomicCutoverJournalStore, AtomicResolveTransactionStore
+from ._persistence import AtomicResolveTransactionStore
+from ._plan_record import PlanRecordStore
 from ._policy import FormatPolicy
 from ._records import (
     FinishedCutInspection,
-    StagedReleaseCandidate,
     StageName,
     StageRequest,
     Status,
 )
-from ._release import FinishedCutReleaseLifecycle, ReleaseLifecycleError
 from ._resolve import ResolveTransactionManager, TimelineIdentity
 from ._resolve_davinci import (
     DaVinciResolveTimelineAdapter,
@@ -73,7 +64,7 @@ from ._resolve_fusion import (
 )
 from ._semantic import DurableSemanticAdapter, SemanticAdapter
 from ._store import (
-    CurrentReleaseIndex,
+    PlanRecordIndex,
     _FilesystemProductionStore,
     _FilesystemSemanticDispatchLedger,
 )
@@ -128,30 +119,6 @@ class ProductionResolveConfiguration:
         object.__setattr__(self, "staging_root", Path(self.staging_root).resolve())
 
 
-@dataclass(frozen=True, slots=True)
-class ProductionCutoverConfiguration:
-    """Pinned three-cut order and deployment authority for one cutover."""
-
-    fixed_cut_order: tuple[str, ...]
-    target_deployment_id: str
-    deployment_state_path: Path
-
-    def __post_init__(self) -> None:
-        if (
-            len(self.fixed_cut_order) != 3
-            or len(set(self.fixed_cut_order)) != 3
-            or any(not _opaque_identity(cut_id) for cut_id in self.fixed_cut_order)
-        ):
-            raise ValueError("production cutover requires three exact unique cut identities")
-        if not _opaque_identity(self.target_deployment_id):
-            raise ValueError("production cutover target deployment identity is invalid")
-        object.__setattr__(
-            self,
-            "deployment_state_path",
-            Path(self.deployment_state_path).resolve(),
-        )
-
-
 class ResolveFacadeFactory(Protocol):
     def __call__(
         self,
@@ -169,31 +136,6 @@ class ProductionResolvePorts:
     editorial_master_verifier: Callable[..., object] | None = None
 
 
-class _ProductionCutoverCoordinator(Protocol):
-    def run(
-        self,
-        cutover_id: str,
-        candidates: tuple[StagedReleaseCandidate, ...],
-    ) -> GlobalCutoverJournal: ...
-
-
-class _ConfiguredGlobalCutover:
-    def __init__(self, cutover: GlobalCutover, *, target_deployment_id: str) -> None:
-        self._cutover = cutover
-        self._target_deployment_id = target_deployment_id
-
-    def run(
-        self,
-        cutover_id: str,
-        candidates: tuple[StagedReleaseCandidate, ...],
-    ) -> GlobalCutoverJournal:
-        return self._cutover.run(
-            cutover_id,
-            candidates=candidates,
-            target_deployment_id=self._target_deployment_id,
-        )
-
-
 @dataclass(frozen=True, slots=True)
 class ProductionDependencies:
     """Internal Adapter selection for the production seams that actually vary."""
@@ -201,11 +143,10 @@ class ProductionDependencies:
     asset_resolver: AssetResolver
     semantic_adapter: SemanticAdapter
     derived_asset_builder: DerivedAssetBuilder | None = None
-    current_release_index: CurrentReleaseIndex | None = None
+    plan_records: PlanRecordIndex | None = None
     long_policy: FormatPolicy | None = None
     materialization: MaterializationCoordinator | None = None
     materialization_unavailable_reason: str = "resolve_materialization_not_connected"
-    cutover: _ProductionCutoverCoordinator | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -221,18 +162,6 @@ class ProductionStatusView:
     reason_code: str | None = None
 
 
-@dataclass(frozen=True, slots=True)
-class ProductionCutoverStatusView:
-    """Narrow operator view of one completed or resumed global cutover."""
-
-    cutover_id: str
-    episode_id: str
-    state: CutoverStatus
-    release_ids: tuple[str, ...]
-    manifest_id: str
-    deployment_id: str
-
-
 class FinishedCutProductionApplication:
     """Deep episode-scoped Interface over registration and production advancement."""
 
@@ -246,7 +175,6 @@ class FinishedCutProductionApplication:
         run_store_root: Path,
         materialization: MaterializationCoordinator | None,
         materialization_unavailable_reason: str | None,
-        cutover: _ProductionCutoverCoordinator | None = None,
     ) -> None:
         self._episode_id = episode_id
         self._authority = authority
@@ -255,7 +183,6 @@ class FinishedCutProductionApplication:
         self._run_store_root = run_store_root
         self._materialization = materialization
         self._materialization_unavailable_reason = materialization_unavailable_reason
-        self._cutover = cutover
 
     @classmethod
     def open(
@@ -285,7 +212,7 @@ class FinishedCutProductionApplication:
             derived_asset_builder=dependencies.derived_asset_builder,
             context_resolver=ApprovedCutAuthorityContextResolver(authority),
             long_policy=dependencies.long_policy,
-            current_release_index=dependencies.current_release_index,
+            plan_records=dependencies.plan_records,
         )
         return cls(
             episode_id=episode_id,
@@ -299,7 +226,6 @@ class FinishedCutProductionApplication:
                 if dependencies.materialization is None
                 else None
             ),
-            cutover=dependencies.cutover,
         )
 
     def register_approved_cut(self, registration: ApprovedCutRegistration) -> str:
@@ -333,11 +259,11 @@ class FinishedCutProductionApplication:
 
     def request_revision(
         self,
-        current_release_ref: str,
+        current_plan_ref: str,
         event_id: str,
         feedback: str,
     ) -> str:
-        return self._production.request_revision(current_release_ref, event_id, feedback)
+        return self._production.request_revision(current_plan_ref, event_id, feedback)
 
     def inspect_run(self, command_id: str) -> RunInspection:
         self._reject_cross_episode_approved_cut(command_id)
@@ -356,41 +282,6 @@ class FinishedCutProductionApplication:
     def retry_failed_dispatch(self, command_id: str) -> str:
         self._reject_cross_episode_approved_cut(command_id)
         return self._production.retry_failed_dispatch(command_id)
-
-    def cutover(
-        self,
-        cutover_id: str,
-        command_ids: tuple[str, ...],
-    ) -> ProductionCutoverStatusView:
-        if (
-            len(command_ids) != 3
-            or len(set(command_ids)) != 3
-            or any(not _opaque_identity(command_id) for command_id in command_ids)
-        ):
-            raise GlobalCutoverError("cutover requires three exact unique command identities")
-        if self._materialization is None or self._cutover is None:
-            raise GlobalCutoverError("production cutover is not configured")
-        candidates: list[StagedReleaseCandidate] = []
-        for command_id in command_ids:
-            self._reject_cross_episode_approved_cut(command_id)
-            candidates.append(self._materialization.prepare(command_id).candidate)
-        journal = self._cutover.run(cutover_id, tuple(candidates))
-        if (
-            journal.status != "completed"
-            or journal.episode_id != self._episode_id
-            or len(journal.releases) != 3
-            or journal.unpublished_index is None
-            or journal.unpublished_index.episode_id != self._episode_id
-        ):
-            raise GlobalCutoverError("global cutover did not return one completed episode index")
-        return ProductionCutoverStatusView(
-            cutover_id=journal.cutover_id,
-            episode_id=journal.episode_id,
-            state=journal.status,
-            release_ids=tuple(release.release_id for release in journal.releases),
-            manifest_id=journal.unpublished_index.index_id,
-            deployment_id=journal.target_deployment_id,
-        )
 
     def inspect_current(self) -> FinishedCutInspection:
         return self._production.inspect_current(self._episode_id)
@@ -508,64 +399,27 @@ class _CurrentRequestPacketMaterializer:
         ).materialize(request)
 
 
-class _InspectionOnlyTransactions:
-    def inspect_transaction(self, transaction_id: str):
-        raise ReleaseLifecycleError(
-            f"transaction inspection is unavailable during dark install: {transaction_id}"
-        )
-
-
-def _inspection_only_probe(_path: Path):
-    raise ReleaseLifecycleError("preview probing is unavailable during dark install")
-
-
-class CurrentReleaseReader:
-    """Read-only exact-current access for an inbound adapter such as Bridge.
+class PlanRecordReader:
+    """Read-only access to one episode's plan records, for Bridge and publish.
 
     Bridge must not compose semantic workers, renderers or Resolve just to read a
-    reviewable Release, but it must also not re-derive the projection itself: the
+    reviewable cut, but it must also not re-derive the projection itself: the
     inspection here is the same one ``FinishedCutProduction.inspect_current``
     returns, so the two cannot drift.
     """
 
     def __init__(self, episode_root: str | Path) -> None:
-        self._index = _EpisodeCurrentReleaseIndex(
-            FinishedCutReleaseLifecycle(
-                Path(episode_root),
-                transactions=_InspectionOnlyTransactions(),
-                preview_probe=_inspection_only_probe,
-            ),
-            episode_id="",
-        )
+        # 沒有交易與探測接縫的 `PlanRecordStore` 就是唯讀的：`stage` 會擋，
+        # 讀取不需要任何外部依賴。
+        self._records = PlanRecordStore(episode_root)
 
     def inspect_current(self, episode_id: str) -> FinishedCutInspection:
-        return _current_inspection(episode_id, self._index)
+        return self._records.inspect(episode_id)
 
 
-def build_current_release_reader(episode_root: str | Path) -> CurrentReleaseReader:
+def build_plan_record_reader(episode_root: str | Path) -> PlanRecordReader:
     """Public read-only entry point for the finished-cut review surface."""
-    return CurrentReleaseReader(episode_root)
-
-
-class _EpisodeCurrentReleaseIndex:
-    def __init__(self, lifecycle: FinishedCutReleaseLifecycle, *, episode_id: str) -> None:
-        self._lifecycle = lifecycle
-        self._episode_id = episode_id
-
-    def inspect_current(self, episode_id: str):
-        return self._lifecycle.inspect_current(episode_id)
-
-    def resolve_exact_current(self, release_id: str):
-        try:
-            releases = self._lifecycle.inspect_current(self._episode_id)
-        except ReleaseLifecycleError as error:
-            if error.reason == "missing":
-                return None
-            raise
-        return next(
-            (release for release in releases if release.release_id == release_id),
-            None,
-        )
+    return PlanRecordReader(episode_root)
 
 
 class _ActiveStorePreRenderedCatalog(PreRenderedAssetCatalog):
@@ -655,7 +509,7 @@ def _build_resolve_materialization_composition(
     ports: ProductionResolvePorts,
 ) -> tuple[
     MaterializationCoordinator,
-    FinishedCutReleaseLifecycle,
+    PlanRecordStore,
     ResolveTransactionManager,
 ]:
     episode_root = (paths.episodes_root / episode_id).resolve()
@@ -703,7 +557,7 @@ def _build_resolve_materialization_composition(
             paths.runtime_root / "episodes" / episode_id / "resolve-transactions"
         ),
     )
-    lifecycle = FinishedCutReleaseLifecycle(
+    records = PlanRecordStore(
         episode_root,
         transactions=transactions,
         preview_probe=lambda path: _preview_probe_mapping(probe, path),
@@ -718,10 +572,10 @@ def _build_resolve_materialization_composition(
         ),
         assets=assets,
         transactions=transactions,
-        releases=lifecycle,
+        records=records,
         episode_root=episode_root,
     )
-    return coordinator, lifecycle, transactions
+    return coordinator, records, transactions
 
 
 RESOLVE_BINDING_SCHEMA = "nakama.finished_cut_resolve_binding.v1"
@@ -785,12 +639,9 @@ def build_production_application(
     previewer: InspectionPreviewer | None = None,
     resolve_configuration: ProductionResolveConfiguration | None = None,
     resolve_ports: ProductionResolvePorts | None = None,
-    cutover_configuration: ProductionCutoverConfiguration | None = None,
 ) -> FinishedCutProductionApplication:
     """Compose the sole production path through verified offline Long media Adapters."""
 
-    if cutover_configuration is not None and resolve_configuration is None:
-        raise ValueError("production cutover requires exact Resolve configuration")
     episode_root = paths.episodes_root / episode_id
     assets = ActiveAssetStore.open(
         episode_root / "highlights" / "assets-v2",
@@ -814,51 +665,21 @@ def build_production_application(
         ledger=_FilesystemSemanticDispatchLedger(run_store_root),
     )
     if resolve_configuration is None:
-        lifecycle = FinishedCutReleaseLifecycle(
-            episode_root,
-            transactions=_InspectionOnlyTransactions(),
-            preview_probe=_inspection_only_probe,
-        )
+        records = PlanRecordStore(episode_root)
         materialization = None
         materialization_reason = "resolve_binding_not_configured"
-        production_cutover = None
     else:
-        materialization, lifecycle, transactions = _build_resolve_materialization_composition(
-            paths=paths,
-            episode_id=episode_id,
-            assets=assets,
-            run_store_root=run_store_root,
-            configuration=resolve_configuration,
-            ports=resolve_ports or ProductionResolvePorts(),
+        materialization, records, _transactions = (
+            _build_resolve_materialization_composition(
+                paths=paths,
+                episode_id=episode_id,
+                assets=assets,
+                run_store_root=run_store_root,
+                configuration=resolve_configuration,
+                ports=resolve_ports or ProductionResolvePorts(),
+            )
         )
         materialization_reason = None
-        production_cutover = None
-        if cutover_configuration is not None:
-            bound_cut_ids = tuple(cut.cut_id for cut in resolve_configuration.binding.cuts)
-            if len(bound_cut_ids) != 3 or set(bound_cut_ids) != set(
-                cutover_configuration.fixed_cut_order
-            ):
-                raise ValueError("cutover order does not match three exact Resolve cut bindings")
-            cutover_root = paths.runtime_root / "episodes" / episode_id / "cutovers"
-            release_cutover = FilesystemReleaseCutoverAdapter(
-                lifecycle=lifecycle,
-                episode_id=episode_id,
-                rollback_root=cutover_root / "pointer-snapshots",
-            )
-            production_cutover = _ConfiguredGlobalCutover(
-                GlobalCutover(
-                    resolve=transactions,
-                    sealer=release_cutover,
-                    current_index=release_cutover,
-                    deployment=AtomicDeploymentPointerAdapter(
-                        cutover_configuration.deployment_state_path,
-                        target_deployment_id=(cutover_configuration.target_deployment_id),
-                    ),
-                    journals=AtomicCutoverJournalStore(cutover_root / "journals"),
-                    fixed_cut_order=cutover_configuration.fixed_cut_order,
-                ),
-                target_deployment_id=cutover_configuration.target_deployment_id,
-            )
     return FinishedCutProductionApplication.open(
         paths,
         episode_id=episode_id,
@@ -866,15 +687,11 @@ def build_production_application(
             asset_resolver=assets,
             semantic_adapter=semantic,
             derived_asset_builder=media,
-            current_release_index=_EpisodeCurrentReleaseIndex(
-                lifecycle,
-                episode_id=episode_id,
-            ),
+            plan_records=records,
             materialization=materialization,
             materialization_unavailable_reason=(
                 materialization_reason or "resolve_materialization_not_connected"
             ),
-            cutover=production_cutover,
         ),
     )
 

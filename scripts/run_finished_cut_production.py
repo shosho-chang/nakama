@@ -20,7 +20,6 @@ from agents.brook.script_video.finished_cut_production import (  # noqa: E402
     CueAnchor,
     CutSourceRange,
     FinishedCutProductionApplication,
-    ProductionCutoverConfiguration,
     ProductionPaths,
     ProductionResolveConfiguration,
     ResolveCutBinding,
@@ -41,7 +40,6 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--episodes-root", required=True, type=Path)
     parser.add_argument("--episode-id", required=True)
     parser.add_argument("--resolve-config", type=Path)
-    parser.add_argument("--cutover-config", type=Path)
     parser.add_argument(
         "--semantic-worker",
         choices=("codex", "handoff"),
@@ -65,7 +63,7 @@ def _parser() -> argparse.ArgumentParser:
     status = commands.add_parser("status")
     status.add_argument("command_id")
     revision = commands.add_parser("request-revision")
-    revision.add_argument("current_release_ref")
+    revision.add_argument("current_plan_ref")
     revision.add_argument("event_id")
     revision.add_argument("feedback")
     inspect_run = commands.add_parser("inspect-run")
@@ -77,9 +75,6 @@ def _parser() -> argparse.ArgumentParser:
     correction.add_argument("feedback")
     dispatch_recovery = commands.add_parser("retry-failed-dispatch")
     dispatch_recovery.add_argument("command_id")
-    cutover = commands.add_parser("cutover")
-    cutover.add_argument("cutover_id")
-    cutover.add_argument("command_ids", nargs=3)
     return parser
 
 
@@ -107,13 +102,6 @@ def main(
         if configuration.locator.episode_id != args.episode_id:
             raise ValueError("Resolve configuration belongs to another episode")
         factory_options["resolve_configuration"] = configuration
-    if args.cutover_config is not None:
-        if args.resolve_config is None:
-            raise ValueError("cutover configuration requires exact Resolve configuration")
-        payload = json.loads(args.cutover_config.read_text(encoding="utf-8"))
-        factory_options["cutover_configuration"] = _cutover_configuration(payload)
-    if args.operation == "cutover" and args.cutover_config is None:
-        raise ValueError("cutover operation requires pinned cutover configuration")
     application = factory(paths, args.episode_id, **factory_options)
     if args.operation == "register-approved-cut":
         payload = json.loads(args.input.read_text(encoding="utf-8"))
@@ -128,7 +116,7 @@ def main(
         return 0
     if args.operation == "request-revision":
         command_id = application.request_revision(
-            args.current_release_ref,
+            args.current_plan_ref,
             args.event_id,
             args.feedback,
         )
@@ -149,9 +137,6 @@ def main(
     if args.operation == "retry-failed-dispatch":
         request_id = application.retry_failed_dispatch(args.command_id)
         _print({"request_id": request_id})
-        return 0
-    if args.operation == "cutover":
-        _print(asdict(application.cutover(args.cutover_id, tuple(args.command_ids))))
         return 0
     raise AssertionError("unreachable Finished Cut operation")
 
@@ -298,20 +283,6 @@ def _resolve_configuration(value: object) -> ProductionResolveConfiguration:
             "editorial_master_content_hash",
         ),
         staging_root=Path(_config_string(row, "staging_root")),
-    )
-
-
-def _cutover_configuration(value: object) -> ProductionCutoverConfiguration:
-    row = _object(value, "cutover configuration")
-    _exact_fields(
-        row,
-        {"fixed_cut_order", "target_deployment_id", "deployment_state_path"},
-        "cutover configuration",
-    )
-    return ProductionCutoverConfiguration(
-        fixed_cut_order=_string_list(row, "fixed_cut_order"),
-        target_deployment_id=_config_string(row, "target_deployment_id"),
-        deployment_state_path=Path(_config_string(row, "deployment_state_path")),
     )
 
 

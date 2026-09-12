@@ -211,23 +211,24 @@
           </div>
           {% endif %}
 
-          {% set release = cut.release_truth %}
+          {% set record = cut.release_truth %}
           <section class="visual-truth visual-truth--ready" aria-labelledby="visual-truth-{{ cut.cut_id }}">
             <header class="visual-truth__head">
               <div>
-                <p class="visual-truth__eyebrow sho-mono">FINISHED CUT RELEASE V3</p>
+                <p class="visual-truth__eyebrow sho-mono">FINISHED CUT PLAN RECORD</p>
                 <h3 id="visual-truth-{{ cut.cut_id }}">Current semantic events</h3>
               </div>
-              <span class="visual-truth__status sho-mono">{{ release.status_label }}</span>
+              <span class="visual-truth__status sho-mono">{{ record.status_label }}</span>
             </header>
             <dl class="visual-truth__revisions sho-mono">
-              <div><dt>RELEASE</dt><dd>{{ release.release_id }}</dd></div>
-              <div><dt>EVENTS</dt><dd>{{ release.events|length }}</dd></div>
+              <div><dt>PLAN</dt><dd>{{ record.plan_id }}</dd></div>
+              <div><dt>TIMELINE</dt><dd>{{ record.timeline or "（未記錄）" }}</dd></div>
+              <div><dt>EVENTS</dt><dd>{{ record.events|length }}</dd></div>
             </dl>
             <details class="visual-truth__details">
-              <summary>查看 sealed Release 的語意事件</summary>
+              <summary>查看這份紀錄的語意事件</summary>
               <ol class="visual-truth__events">
-                {% for event in release.events %}
+                {% for event in record.events %}
                 <li class="visual-event">
                   <header class="visual-event__head">
                     <div><span class="visual-event__index sho-mono">{{ '%02d'|format(loop.index) }}</span><strong>{{ event.event_id }}</strong></div>
