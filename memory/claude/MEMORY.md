@@ -371,3 +371,15 @@
 - [素材自己去抓](feedback_agent_downloads_stock_itself.md) — 修修不會自己下載 Envato；驗收點在 preview 不在候選頁
 - [vendor SPA 前端不可盲寫 selector](feedback_verify_ui_in_real_browser.md) — minified Vue bundle 的 DOM/CSS/router 無法從原碼推導；先用 magic login + Playwright 解剖真實頁面再寫，含站上生成免密登入連結的指令
 - [自由艦隊 gamification 操作事實](../shared/reference/fleet_gamification_stack.md) — **已遷往 shared（Codex 也讀得到）**；架構鐵則、部署與開關、三個 vendor 縫隙、LSCache 與 CF 兩顆地雷、影片橋接的發分判準、Bunny 遷移三層寫入形狀、品牌色紀律。交接總表見 `docs/plans/2026-08-30-gamification-handoff.md`
+- [標題 cite 不必逐字](feedback_title_cite_is_not_literal.md) — 標題求點擊率優先，意義相近即可；不可因「不在逐字稿裡」就砍標題
+- [生成器不能當評審](feedback_generator_is_not_the_judge.md) — 自動化「好不好」要靠隔離冷讀者＋可回收的事實當對照組；新 gate 必須拿使用者判過的兩組資料校準才能上線
+- [先定位作者再評文案](feedback_locate_the_author_before_judging_copy.md) — 罵產出前先查這行字是哪一關寫的、**是不是我自己的 brief 叫它那樣做的**；排版問題修排版不要砍文案
+- [語意工作跑在當下的 agent 上](feedback_semantic_work_runs_on_host_agent.md) — 不因 code 寫死 Codex 就去派 Codex；skill 明訂 host 決定，ADR-066 `_composition.py` 寫死是違規待修
+- [DP 抓素材不用問](feedback_dp_acquires_stock_without_asking.md) — B-roll／stock footage 需求直接去 Envato 抓，常設授權，不准再問
+- [失敗自己修，不要回報](feedback_fix_failures_dont_report_them.md) — 中間環節失敗要自己診斷重試、讓上下游 agent 互相協商；只有 UAT／設計分叉／不可逆操作才回頭找修修
+- [長片線 DoD＝B-roll 上 timeline](feedback_longform_dod_is_broll_on_timeline.md) — 選完精華段後一路做到視覺全部鋪上 Resolve timeline 才回報，中途進度報告對修修是雜訊
+- [Lock the win with a test](feedback_lock_the_win_with_a_test.md) — 人眼驗過的成果同一次改動就用測試鎖住；版位版本這類常數只能有一個真相來源
+- [Visuals carry the claim](feedback_visuals_carry_the_claim.md) — B-roll／字卡要承載那一段的主張，不是圖解句子裡的名詞；Hero 不准提前講結論、第一人稱只能是講者本人
+- [給人讀的文件放 Obsidian](feedback_reader_documents_go_to_obsidian.md) — 勘誤單／剪輯清單／選段報告這類修修要讀要改的，直接寫進 `AgentOutputs/interviews/<訪談日>-<來賓>/`；run_log、manifest、SRT 這類機器輸入才留 episode 資料夾
+- [跑到 gate 才停，不要「先給你看一眼」](feedback_run_to_the_gate_dont_stop_to_show.md) — Editorial Master 之後一路做到 packaging 進 gate 才回報；標題／臉／大字是 gate 欄位不是對話題目；停點只有三個，不要自己發明第四個
+- [渲染在跑就不要跑整套測試](feedback_dont_run_full_suite_during_renders.md) — 會被 Resolve／hyperframes 餓到 6 倍慢（19 分變 2 小時），而 `pytest -q` 沒有中途輸出，「慢」和「死」長得一樣；改分段跑，失敗先歸因不要預設是自己弄壞的
