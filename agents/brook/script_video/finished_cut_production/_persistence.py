@@ -15,6 +15,7 @@ from ._cutover import (
     PointerSnapshot,
     UnpublishedReleaseIndex,
 )
+from ._projection import PERSISTED_COMPONENT_LANES
 from ._records import (
     EventRecord,
     FinishedCutRelease,
@@ -315,13 +316,8 @@ def _component_payload(component: ProjectedComponent) -> dict[str, Any]:
 
 def _component_from_payload(payload: Mapping[str, Any]) -> ProjectedComponent:
     lane = _required_string(payload, "lane")
-    if lane not in {
-        "b_roll",
-        "identity_card",
-        "hero_title",
-        "fullscreen_transition",
-        "visual_effect",
-    }:
+    # 含退役 lane——既有 run JSON 還帶著。名單本體在 `_projection`。
+    if lane not in PERSISTED_COMPONENT_LANES:
         raise PersistenceError("Finished Cut component lane is invalid")
     return _mint_projected_component(
         component_id=_required_string(payload, "component_id"),

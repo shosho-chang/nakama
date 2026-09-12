@@ -34,6 +34,10 @@ from ._long_visual_renderer import (
     LongVisualRenderRequest,
     RenderedLongVisual,
 )
+from ._projection import (
+    ASSET_KIND_BY_IMPLEMENTATION,
+    MEDIA_SUFFIX_BY_IMPLEMENTATION,
+)
 
 _NEUTRAL_PASSTHROUGH = frozenset({"stock_video", "photo", "non_editorial_clip"})
 _BROWSER_ROLES = {
@@ -374,11 +378,7 @@ class LongDerivedAssetBuilder:
             return None
         if request_item != current_item:
             return None
-        expected_kind = {
-            "stock_video": AssetKind.STOCK,
-            "photo": AssetKind.PHOTO,
-            "non_editorial_clip": AssetKind.NON_EDITORIAL_CLIP,
-        }[instruction.implementation_kind]
+        expected_kind = ASSET_KIND_BY_IMPLEMENTATION[instruction.implementation_kind]
         if resolution.record.kind is not expected_kind:
             return None
         if instruction.implementation_kind == "stock_video" and (
@@ -435,15 +435,8 @@ class LongDerivedAssetBuilder:
         recipe_identity = instruction.recipe_identity
         if recipe_identity is None or instruction.source_asset_ref is not None:
             return None
-        expected_kind = {
-            "fullscreen_transition": AssetKind.CHAPTER_RENDER,
-            "hero_title": AssetKind.TITLE_RENDER,
-            "identity_card": AssetKind.CONCEPT_RENDER,
-            "visual_effect": AssetKind.CONCEPT_RENDER,
-        }[instruction.implementation_kind]
-        expected_suffix = (
-            ".mp4" if instruction.implementation_kind == "fullscreen_transition" else ".mov"
-        )
+        expected_kind = ASSET_KIND_BY_IMPLEMENTATION[instruction.implementation_kind]
+        expected_suffix = MEDIA_SUFFIX_BY_IMPLEMENTATION[instruction.implementation_kind]
         try:
             resolution = self._store.find_exact_recipe(recipe_identity)
             if resolution is None:

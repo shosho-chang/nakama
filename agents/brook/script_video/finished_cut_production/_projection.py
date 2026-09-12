@@ -1,79 +1,267 @@
-"""Canonical active visual vocabulary for Finished Cut Production.
+"""視覺詞彙的**唯一**宣告（ADR-069 階段 1）。
 
-Historical Release receipts may contain retired values, but they are deliberately
-absent from this module so no current worker, acceptance, plan, or materializer can
-discover or mint them through the production vocabulary.
+## 為什麼是一份
+
+同一套詞彙本來在 9 個地方各自宣告一次：這裡、`_release.allowed_projection`、
+`_resolve_fusion._LANE_TRACKS`、`_derived_assets` 的 generated／passthrough 兩個
+frozenset、`_visual_assets` 的兩張 `expected_kind` 對照、`_worker_packet`、`_policy`、
+`_long_visual_renderer._RECIPES` 的 key、`_persistence._component_from_payload` 的
+lane 集合。任何一份漏改就是一批測試紅，而且錯誤訊息指向的是「渲染器對不上版位」
+這種離根因很遠的地方。
+
+2026-09-09 版位版本就是這樣裂成兩個真相來源，害 27 個測試一起紅（6d464d19 把
+`LAYOUT_VERSIONS` 收進來，是這條路的第一步）。2026-09-12 一個三行規則能講清楚的
+brand badge 撞上四道各自封閉的契約，兩個回合、零行可用程式碼——那四道門並不是
+四個不同的檢查，是同一張表的四份副本。
+
+所以：**`VOCABULARY` 是唯一宣告，其餘全部從它推導。** 新增一種視覺元素只改這個檔。
+
+## 退役詞彙
+
+`retired=True` 的條目**不可被 worker 提案、不進現役投影集合**，只為了讓既有的
+Release receipt 與已完結的 run JSON 讀得回來。ADR-069 階段 2 會在歸檔那些 run
+之後把它們整批刪掉。
 """
 
 from __future__ import annotations
 
-from typing import Literal
+from dataclasses import dataclass
+from typing import Literal, get_args
 
+from ._assets import AssetKind
+
+#: 型別層的 lane 白名單。**這是型別不是資料**，所以無法從 `VOCABULARY` 推導；
+#: `test_finished_cut_layout_versions.py` 鎖住它與 `VOCABULARY` 一致。
 ComponentLane = Literal[
     "b_roll",
     "identity_card",
     "hero_title",
     "fullscreen_transition",
-    # 已退役（見下方 _WORKER_PROJECTION_COMBINATIONS）。留在型別裡只為了讓既有
-    # Release receipt 讀得回來，不代表現役詞彙。
+    # 已退役，僅為既有 receipt／run 保留（見模組 docstring）。
     "visual_effect",
 ]
 
-_WORKER_PROJECTION_COMBINATIONS = (
-    ("chapter", "fullscreen_transition", "fullscreen_transition"),
-    ("hero_title", "hero_title", "hero_title"),
-    ("b_roll", "stock_video", "b_roll"),
-    ("b_roll", "photo", "b_roll"),
-    ("b_roll", "non_editorial_clip", "b_roll"),
-    ("b_roll", "person_inset", "b_roll"),
-    ("identity_card", "identity_card", "identity_card"),
-    # ⛔ visual_effect 於 2026-09-08 退役，比照 supporting_title。
-    #
-    # 它是 ADR-066 的第一個 commit（2a5edf12，2026-08-29）憑空造出來的第六個語意
-    # 類別，用來頂替同日退役的 supporting_title。頻道的創意手冊
-    # （.claude/skills/longform-cut/SKILL.md）列的長片視覺語彙只有六種：滿版轉場卡、
-    # 品牌 badge、來賓名牌、論文第一頁卡、Hero 大字卡、Stock Video——沒有這一項，
-    # 整個 .claude/skills/ 裡 grep 不到一次。
-    #
-    # 沒有設計就沒有規格：它在 _PLACEMENT_DURATION_CEILINGS_SEC 裡連條目都沒有，
-    # 所以一張卡可以掛 9.77 秒；渲染成 44px 無底字卡，比 hero_title 更小、在另一條
-    # 軌上，看起來像跑掉的字幕。Director 的 intent 寫「適合圖像化呈現而非直接實拍」，
-    # 實作卻只給一行字——名字承諾一個視覺，交出來的是字幕。
-    #
-    # 這幾拍該用 B-roll 或 Hero 大字卡。歷史 Release 仍讀得回來（見上方 docstring）。
-)
-_ACTIVE_PROJECTION_COMBINATIONS = frozenset(
-    (*_WORKER_PROJECTION_COMBINATIONS, ("b_roll", "camera_correction", "b_roll"))
-)
-_ACTIVE_SEMANTIC_KINDS = frozenset(
-    {row[0] for row in _ACTIVE_PROJECTION_COMBINATIONS} | {"intentional_aroll"}
-)
-_ACTIVE_COMPONENT_LANES = (
-    "b_roll",
-    "identity_card",
-    "hero_title",
-    "fullscreen_transition",
-)
+
+@dataclass(frozen=True, slots=True)
+class ImplementationSpec:
+    """一種視覺實作的全部屬性。每個欄位都是某個下游本來自己宣告一份的東西。"""
+
+    #: Director 提案時用的語意類別。
+    semantic_kind: str
+    #: 投影到哪一條 lane（`_records.ProjectedComponent.lane`）。
+    lane: str
+    #: Resolve 上的 video track。V1 是 owner 的剪輯，機器只用 2–7。
+    track_index: int
+    #: True = 由 core 依配方算出來的（字卡、轉場卡）；False = 直接用取得的素材。
+    generated: bool
+    #: 發佈進 Active Store 時的資產類別；`camera_correction` 不產資產所以是 None。
+    asset_kind: AssetKind | None
+    #: 版位版本。只有 `generated` 的才有；renderer 與指令兩邊都讀這一份。
+    layout_version: str | None
+    #: 產出的檔案後綴。滿版轉場卡是不透明 mp4，其餘字卡要 alpha 所以是 mov。
+    media_suffix: str | None
+    #: worker（Director／DP）可以提案嗎？`camera_correction` 只有 core 能鑄。
+    worker_selectable: bool
+    #: 已退役：不進現役集合，只為讀得回既有 receipt。
+    retired: bool = False
+
+    @property
+    def projection(self) -> tuple[str, str, str]:
+        """`(semantic_kind, implementation_kind, lane)` 三元組裡的頭尾。"""
+        return (self.semantic_kind, "", self.lane)
 
 
-#: 每個渲染實作目前的版位版本。**這是唯一的真相來源。**
-#:
-#: 2026-09-09：版本號本來散在兩個地方——`_engine._LAYOUT_VERSIONS` 決定指令的
-#: geometry，`_long_visual_renderer._RECIPES` 決定渲染器接受什麼，而渲染器對不上就
-#: 直接丟 `long visual geometry does not match its canonical layout`。9-08 把 hero
-#: bump 到 v2 時只改了其中一邊的下游，測試 fixture 又各自寫死 `hero_title:v1`，於是
-#: 27 個測試一起紅。版本住在契約層，兩邊都 import，就不會再有這種漂移。
-LAYOUT_VERSIONS: dict[str, str] = {
-    "fullscreen_transition": "v4",
+VOCABULARY: dict[str, ImplementationSpec] = {
+    "fullscreen_transition": ImplementationSpec(
+        semantic_kind="chapter",
+        lane="fullscreen_transition",
+        track_index=6,
+        generated=True,
+        asset_kind=AssetKind.CHAPTER_RENDER,
+        layout_version="v4",
+        media_suffix=".mp4",
+        worker_selectable=True,
+    ),
     # hero_title v2：2026-09-08 從 44px 無底字卡改回定版 punch_card_wide tier1
     #   ＋ paper 配方（紙卡、96px、只在標點斷行）。
-    "hero_title": "v2",
+    "hero_title": ImplementationSpec(
+        semantic_kind="hero_title",
+        lane="hero_title",
+        track_index=3,
+        generated=True,
+        asset_kind=AssetKind.TITLE_RENDER,
+        layout_version="v2",
+        media_suffix=".mov",
+        worker_selectable=True,
+    ),
     # identity_card v2：2026-09-08 從 ADR-066 自創的 identity_plaque 36px 置中藥丸，
     #   改回定版 chapter_label_wide align:left + style:paper（左下紙卡＋手繪橘豎筆觸
     #   ＋姓名 50px／頭銜 29px）。
-    "identity_card": "v2",
-    # 已退役，僅為歷史 Release receipt 保留。
-    "visual_effect": "v1",
+    "identity_card": ImplementationSpec(
+        semantic_kind="identity_card",
+        lane="identity_card",
+        track_index=4,
+        generated=True,
+        asset_kind=AssetKind.CONCEPT_RENDER,
+        layout_version="v2",
+        media_suffix=".mov",
+        worker_selectable=True,
+    ),
+    "stock_video": ImplementationSpec(
+        semantic_kind="b_roll",
+        lane="b_roll",
+        track_index=2,
+        generated=False,
+        asset_kind=AssetKind.STOCK,
+        layout_version=None,
+        media_suffix=None,
+        worker_selectable=True,
+    ),
+    "photo": ImplementationSpec(
+        semantic_kind="b_roll",
+        lane="b_roll",
+        track_index=2,
+        generated=False,
+        asset_kind=AssetKind.PHOTO,
+        layout_version=None,
+        media_suffix=None,
+        worker_selectable=True,
+    ),
+    "non_editorial_clip": ImplementationSpec(
+        semantic_kind="b_roll",
+        lane="b_roll",
+        track_index=2,
+        generated=False,
+        asset_kind=AssetKind.NON_EDITORIAL_CLIP,
+        layout_version=None,
+        media_suffix=None,
+        worker_selectable=True,
+    ),
+    "person_inset": ImplementationSpec(
+        semantic_kind="b_roll",
+        lane="b_roll",
+        track_index=2,
+        generated=True,
+        asset_kind=AssetKind.COMPOSITE,
+        layout_version="v1",
+        media_suffix=".mov",
+        worker_selectable=True,
+    ),
+    # core-only：worker 提案不出來，由 core 鑄。
+    "camera_correction": ImplementationSpec(
+        semantic_kind="b_roll",
+        lane="b_roll",
+        track_index=2,
+        generated=False,
+        asset_kind=None,
+        layout_version=None,
+        media_suffix=None,
+        worker_selectable=False,
+    ),
+    # ⛔ 2026-09-08 退役，比照 supporting_title。它是 ADR-066 第一個 commit
+    # （2a5edf12）憑空造出來的第六個語意類別，用來頂替同日退役的 supporting_title。
+    # 頻道的創意手冊列的長片視覺語彙裡沒有這一項，整個 `.claude/skills/` grep 不到
+    # 一次。沒有設計就沒有規格：它在 `_PLACEMENT_DURATION_CEILINGS_SEC` 裡連條目都
+    # 沒有，所以一張卡可以掛 9.77 秒，渲染成 44px 無底字卡看起來像跑掉的字幕。
+    "visual_effect": ImplementationSpec(
+        semantic_kind="visual_effect",
+        lane="visual_effect",
+        track_index=7,
+        generated=True,
+        asset_kind=AssetKind.CONCEPT_RENDER,
+        layout_version="v1",
+        media_suffix=".mov",
+        worker_selectable=False,
+        retired=True,
+    ),
+}
+
+#: 只存在於既有 Release receipt 裡的投影三元組（沒有 lane track、不在 `VOCABULARY`）。
+#: reader 要寬鬆、writer 要嚴格——這是刻意的不對稱。
+RETIRED_RELEASE_PROJECTIONS: frozenset[tuple[str, str, str]] = frozenset(
+    {("supporting_title", "supporting_title", "supporting_title")}
+)
+
+#: 不投影成 component 的語意類別（Director 刻意不配畫面）。
+_INTENTIONAL_AROLL = "intentional_aroll"
+
+
+def _spec_items(*, retired: bool | None = None) -> tuple[tuple[str, ImplementationSpec], ...]:
+    return tuple(
+        (kind, spec)
+        for kind, spec in VOCABULARY.items()
+        if retired is None or spec.retired is retired
+    )
+
+
+# --------------------------------------------------------------------------
+# 以下全部從 VOCABULARY 推導。**不要在任何下游另外宣告一份。**
+# --------------------------------------------------------------------------
+
+#: worker（Director／DP）可以提案的投影三元組。
+_WORKER_PROJECTION_COMBINATIONS: tuple[tuple[str, str, str], ...] = tuple(
+    (spec.semantic_kind, kind, spec.lane)
+    for kind, spec in _spec_items(retired=False)
+    if spec.worker_selectable
+)
+
+#: 現役的全部投影三元組（worker 可提案的 ＋ core-only）。
+_ACTIVE_PROJECTION_COMBINATIONS: frozenset[tuple[str, str, str]] = frozenset(
+    (spec.semantic_kind, kind, spec.lane) for kind, spec in _spec_items(retired=False)
+)
+
+#: Release reader 接受的投影三元組（現役 ＋ 退役，含只在 receipt 裡的）。
+RELEASE_PROJECTIONS: frozenset[tuple[str, str, str]] = (
+    frozenset((spec.semantic_kind, kind, spec.lane) for kind, spec in VOCABULARY.items())
+    | RETIRED_RELEASE_PROJECTIONS
+)
+
+_ACTIVE_SEMANTIC_KINDS: frozenset[str] = frozenset(
+    {spec.semantic_kind for _kind, spec in _spec_items(retired=False)} | {_INTENTIONAL_AROLL}
+)
+
+#: 順序取自 `ComponentLane` 的宣告順序，不是 `VOCABULARY` 的——它會被寫進 worker
+#: 的 response schema enum（`_codex_semantic.py:789`），順序變了 schema bytes 就變了。
+_ACTIVE_LANES = frozenset(spec.lane for _kind, spec in _spec_items(retired=False))
+_ACTIVE_COMPONENT_LANES: tuple[str, ...] = tuple(
+    lane for lane in get_args(ComponentLane) if lane in _ACTIVE_LANES
+)
+
+#: 持久化 reader 接受的 lane（含退役——既有 run JSON 還帶著）。
+PERSISTED_COMPONENT_LANES: frozenset[str] = frozenset(
+    spec.lane for _kind, spec in VOCABULARY.items()
+)
+
+#: lane → Resolve video track。V1 是 owner 的剪輯，機器只寫 2–7。
+LANE_TRACKS: dict[str, int] = {spec.lane: spec.track_index for _kind, spec in VOCABULARY.items()}
+
+#: 由 core 依配方算出來的實作（字卡、轉場卡、person inset composite）。
+GENERATED_IMPLEMENTATIONS: frozenset[str] = frozenset(
+    kind for kind, spec in VOCABULARY.items() if spec.generated
+)
+
+#: 直接使用取得素材、不經渲染的實作。
+NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS: frozenset[str] = frozenset(
+    kind for kind, spec in VOCABULARY.items() if not spec.generated and spec.asset_kind is not None
+)
+
+#: 實作 → Active Store 資產類別。`camera_correction` 不產資產，不在表裡。
+ASSET_KIND_BY_IMPLEMENTATION: dict[str, AssetKind] = {
+    kind: spec.asset_kind for kind, spec in VOCABULARY.items() if spec.asset_kind is not None
+}
+
+#: 實作 → 產出檔案後綴（只有 generated 的才有）。
+MEDIA_SUFFIX_BY_IMPLEMENTATION: dict[str, str] = {
+    kind: spec.media_suffix
+    for kind, spec in VOCABULARY.items()
+    if spec.generated and spec.media_suffix is not None
+}
+
+#: 每個渲染實作目前的版位版本。指令的 geometry 與渲染器接受的配方都讀這一份。
+LAYOUT_VERSIONS: dict[str, str] = {
+    kind: spec.layout_version
+    for kind, spec in VOCABULARY.items()
+    if spec.layout_version is not None
 }
 
 
@@ -103,8 +291,8 @@ def _event_has_active_projection(
 ) -> bool:
     if intentional_aroll:
         return (
-            semantic_kind == "intentional_aroll"
-            and implementation_kind == "intentional_aroll"
+            semantic_kind == _INTENTIONAL_AROLL
+            and implementation_kind == _INTENTIONAL_AROLL
             and lane is None
         )
     return lane is not None and _is_active_projection(

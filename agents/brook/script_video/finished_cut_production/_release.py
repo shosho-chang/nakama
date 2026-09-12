@@ -10,6 +10,7 @@ from dataclasses import asdict
 from pathlib import Path, PurePosixPath
 from typing import Callable, Mapping, Protocol, cast
 
+from ._projection import RELEASE_PROJECTIONS
 from ._records import (
     ComponentLane,
     EventRecord,
@@ -637,19 +638,9 @@ def _component_from_receipt(value: object) -> ProjectedComponent:
     semantic_kind = _required_string(value, "semantic_kind")
     implementation_kind = _required_string(value, "implementation_kind")
     lane = _required_string(value, "lane")
-    allowed_projection = {
-        ("chapter", "fullscreen_transition", "fullscreen_transition"),
-        ("hero_title", "hero_title", "hero_title"),
-        ("supporting_title", "supporting_title", "supporting_title"),
-        ("b_roll", "stock_video", "b_roll"),
-        ("b_roll", "photo", "b_roll"),
-        ("b_roll", "non_editorial_clip", "b_roll"),
-        ("b_roll", "person_inset", "b_roll"),
-        ("b_roll", "camera_correction", "b_roll"),
-        ("identity_card", "identity_card", "identity_card"),
-        ("visual_effect", "visual_effect", "visual_effect"),
-    }
-    if (semantic_kind, implementation_kind, lane) not in allowed_projection:
+    # reader 比 writer 寬鬆（含退役詞彙）——那是刻意的，既有 receipt 要讀得回來。
+    # 名單本體在 `_projection.RELEASE_PROJECTIONS`，這裡不再抄一份。
+    if (semantic_kind, implementation_kind, lane) not in RELEASE_PROJECTIONS:
         raise ReleaseLifecycleError("FinishedCutRelease component projection kinds are invalid")
     t0 = value.get("t0")
     t1 = value.get("t1")

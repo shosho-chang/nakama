@@ -13,6 +13,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
+from ._projection import LANE_TRACKS
 from ._resolve import ResolveTransactionError, TimelineIdentity
 from ._resolve_davinci import (
     RenderRequest,
@@ -26,13 +27,8 @@ from ._resolve_davinci import (
 from ._timeline_apply import TimelinePlacement
 
 _DERIVED_VIDEO_TRACKS = range(2, 8)
-_LANE_TRACKS = {
-    "b_roll": 2,
-    "hero_title": 3,
-    "identity_card": 4,
-    "fullscreen_transition": 6,
-    "visual_effect": 7,
-}
+#: lane → video track。名單本體在 `_projection.VOCABULARY`，不在這裡抄第二份。
+_LANE_TRACKS = LANE_TRACKS
 
 
 @dataclass(frozen=True, slots=True)

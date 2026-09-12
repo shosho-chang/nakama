@@ -13,21 +13,19 @@ from dataclasses import dataclass
 from typing import Literal, Protocol
 
 from ._assets import WorkerCatalogItem
-from ._projection import ComponentLane, _is_active_projection
+from ._projection import (
+    GENERATED_IMPLEMENTATIONS,
+    NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS,
+    ComponentLane,
+    _is_active_projection,
+)
 
 BuildStatus = Literal["ready", "pending", "failed"]
 BuildScope = Literal["full_stage", "event_retry"]
 CutFormat = Literal["long", "short"]
-_GENERATED_IMPLEMENTATIONS = frozenset(
-    {
-        "fullscreen_transition",
-        "hero_title",
-        "person_inset",
-        "identity_card",
-        "visual_effect",
-    }
-)
-_NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS = frozenset({"stock_video", "photo", "non_editorial_clip"})
+#: 名單本體在 `_projection.VOCABULARY` 的 `generated` 欄位。
+_GENERATED_IMPLEMENTATIONS = GENERATED_IMPLEMENTATIONS
+_NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS = NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
 MAX_FULLSCREEN_TRANSITION_SHOW_SEC = 4.0
 MAX_TITLE_OR_IDENTITY_SHOW_SEC = 8.0
 MAX_ASSET_BACKED_BROLL_SHOW_SEC = 12.0
