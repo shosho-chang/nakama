@@ -19,7 +19,10 @@ import pytest
 
 from agents.brook.script_video.finished_cut_production import (
     _derived_assets,
+    _engine,
+    _policy,
     _resolve_fusion,
+    _visual_assets,
 )
 from agents.brook.script_video.finished_cut_production._long_visual_renderer import (
     _RECIPES,
@@ -28,6 +31,7 @@ from agents.brook.script_video.finished_cut_production._projection import (
     _ACTIVE_COMPONENT_LANES,
     _ACTIVE_PROJECTION_COMBINATIONS,
     _WORKER_PROJECTION_COMBINATIONS,
+    ASSET_BACKED_IMPLEMENTATIONS,
     ASSET_KIND_BY_IMPLEMENTATION,
     GENERATED_IMPLEMENTATIONS,
     LANE_TRACKS,
@@ -36,6 +40,7 @@ from agents.brook.script_video.finished_cut_production._projection import (
     NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS,
     PERSISTED_COMPONENT_LANES,
     RELEASE_PROJECTIONS,
+    SOURCE_ASSET_KIND_BY_IMPLEMENTATION,
     VOCABULARY,
     ComponentLane,
     layout_identity,
@@ -153,3 +158,28 @@ def test_no_active_implementation_is_half_declared(implementation_kind: str) -> 
         assert MEDIA_SUFFIX_BY_IMPLEMENTATION[implementation_kind] == spec.media_suffix
     if spec.asset_kind is not None:
         assert ASSET_KIND_BY_IMPLEMENTATION[implementation_kind] is spec.asset_kind
+
+
+def test_engine_asset_kind_maps_are_the_vocabulary_not_copies() -> None:
+    """階段 1 漏掉的兩份就在 `_engine`。
+
+    `source` 是 worker 挑進來的素材類別，`asset_kind` 是成品的類別——person_inset
+    挑 PHOTO、產 COMPOSITE，所以是兩張表，不是同一張抄兩次。
+    """
+    assert _engine._ASSET_KIND_BY_IMPLEMENTATION is SOURCE_ASSET_KIND_BY_IMPLEMENTATION
+    assert _engine._FINAL_ASSET_KIND_BY_IMPLEMENTATION is ASSET_KIND_BY_IMPLEMENTATION
+    assert _engine._NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS is NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
+
+
+def test_passthrough_set_is_the_vocabulary_in_both_builders() -> None:
+    assert _visual_assets._NEUTRAL_PASSTHROUGH is NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
+
+
+def test_policy_visual_coverage_set_is_the_vocabulary() -> None:
+    assert _policy.VISUAL_COVERAGE_BROLL_IMPLEMENTATIONS is ASSET_BACKED_IMPLEMENTATIONS
+
+
+def test_asset_backed_implementations_are_exactly_those_with_a_source_kind() -> None:
+    """`person_inset` 吃素材但不是 passthrough——這條分界別再弄丟。"""
+    assert ASSET_BACKED_IMPLEMENTATIONS == set(SOURCE_ASSET_KIND_BY_IMPLEMENTATION)
+    assert NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS < ASSET_BACKED_IMPLEMENTATIONS

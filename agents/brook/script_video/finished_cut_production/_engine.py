@@ -13,7 +13,6 @@ from uuid import uuid4
 
 from ._assets import (
     AssetContractError,
-    AssetKind,
     AssetResolver,
     InMemoryAssetResolver,
     WorkerSelectionCatalog,
@@ -57,6 +56,9 @@ from ._policy import (
 )
 from ._projection import (
     _WORKER_PROJECTION_COMBINATIONS,
+    ASSET_KIND_BY_IMPLEMENTATION,
+    NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS,
+    SOURCE_ASSET_KIND_BY_IMPLEMENTATION,
     _event_has_active_projection,
     _is_active_semantic_kind,
     layout_identity,
@@ -106,23 +108,12 @@ from ._store import (
 )
 
 _ALLOWED_PROJECTION = frozenset(_WORKER_PROJECTION_COMBINATIONS)
-_ASSET_KIND_BY_IMPLEMENTATION = {
-    "stock_video": AssetKind.STOCK,
-    "photo": AssetKind.PHOTO,
-    "person_inset": AssetKind.PHOTO,
-    "non_editorial_clip": AssetKind.NON_EDITORIAL_CLIP,
-}
-_FINAL_ASSET_KIND_BY_IMPLEMENTATION = {
-    "stock_video": AssetKind.STOCK,
-    "photo": AssetKind.PHOTO,
-    "non_editorial_clip": AssetKind.NON_EDITORIAL_CLIP,
-    "fullscreen_transition": AssetKind.CHAPTER_RENDER,
-    "hero_title": AssetKind.TITLE_RENDER,
-    "person_inset": AssetKind.COMPOSITE,
-    "identity_card": AssetKind.CONCEPT_RENDER,
-    "visual_effect": AssetKind.CONCEPT_RENDER,
-}
-_NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS = frozenset({"stock_video", "photo", "non_editorial_clip"})
+#: 三張表本來在這裡各自宣告一份（ADR-069 階段 1 漏掉的兩份就在這）。名單本體在
+#: `_projection.VOCABULARY`——`source` 是 worker 挑進來的素材類別，`asset_kind` 是
+#: 成品的類別，person_inset 兩者不同（挑 PHOTO、產 COMPOSITE）。
+_ASSET_KIND_BY_IMPLEMENTATION = SOURCE_ASSET_KIND_BY_IMPLEMENTATION
+_FINAL_ASSET_KIND_BY_IMPLEMENTATION = ASSET_KIND_BY_IMPLEMENTATION
+_NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS = NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
 
 
 @dataclass(slots=True)

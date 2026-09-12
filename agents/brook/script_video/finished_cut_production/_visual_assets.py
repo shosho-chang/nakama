@@ -37,9 +37,11 @@ from ._long_visual_renderer import (
 from ._projection import (
     ASSET_KIND_BY_IMPLEMENTATION,
     MEDIA_SUFFIX_BY_IMPLEMENTATION,
+    NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS,
 )
 
-_NEUTRAL_PASSTHROUGH = frozenset({"stock_video", "photo", "non_editorial_clip"})
+#: 名單本體在 `_projection.VOCABULARY`。
+_NEUTRAL_PASSTHROUGH = NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
 _BROWSER_ROLES = {
     "fullscreen_transition": "chapter",
     "hero_title": "hero_title",

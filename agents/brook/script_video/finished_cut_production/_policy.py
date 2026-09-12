@@ -27,6 +27,7 @@ from typing import Literal, Protocol
 
 from ._context import EditorialCutContext
 from ._derived_assets import _PLACEMENT_DURATION_CEILINGS_SEC
+from ._projection import ASSET_BACKED_IMPLEMENTATIONS
 
 PolicyStatus = Literal["accepted", "accepted_with_warnings", "needs_review"]
 PolicyDiagnosticCode = Literal[
@@ -90,9 +91,8 @@ LONG_MIN_DISTINCT_STOCK_VIDEO_EVENTS = 3
 SHORT_MAX_DURATION_SEC = 60.0
 SHORT_MAX_TITLE_LIKE_CARDS = 2
 TITLE_LIKE_LANES = frozenset({"hero_title", "fullscreen_transition"})
-VISUAL_COVERAGE_BROLL_IMPLEMENTATIONS = frozenset(
-    {"stock_video", "photo", "non_editorial_clip", "person_inset"}
-)
+#: 吃取得素材的實作。名單本體在 `_projection.VOCABULARY`（`source_asset_kind` 非空）。
+VISUAL_COVERAGE_BROLL_IMPLEMENTATIONS = ASSET_BACKED_IMPLEMENTATIONS
 
 
 class PolicyComponent(Protocol):
