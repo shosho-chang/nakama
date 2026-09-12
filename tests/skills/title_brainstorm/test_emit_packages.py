@@ -60,9 +60,18 @@ _SHORT_TITLE = [
 ]
 
 
+#: Step 2 的整份關鍵字研究。該集第一支要帶，之後幾支讀 `<packaging_dir>/keywords.json`。
+_KEYWORDS = {
+    "episode": "20260723-xieboran",
+    "method": "YouTube Data API 直查 + 人工數對題數",
+    "keywords": [{"term": "大腦外包", "opportunity": 8, "cite": "L274"}],
+}
+
+
 def _long_input(episode: str = "20260723-xieboran") -> dict:
     return {
         "episode": episode,
+        "keywords": _KEYWORDS,
         "cut_id": "punch-L1",
         "format": "long",
         "information_origin": "full_text",
@@ -78,6 +87,7 @@ def _long_input(episode: str = "20260723-xieboran") -> dict:
 def _short_input(episode: str = "20260723-xieboran") -> dict:
     return {
         "episode": episode,
+        "keywords": _KEYWORDS,
         "cut_id": "short-S1",
         "format": "short",
         "information_origin": "one_liner",
@@ -352,3 +362,59 @@ class TestTracePerCut:
         emit_mod.emit(_long_input(), packaging_dir)
 
         assert json.loads(legacy.read_text(encoding="utf-8")) == {"cut_id": "full", "keep": True}
+
+
+class TestKeywordsCache:
+    """`keywords.json` 是整集共用的關鍵字研究，第一支寫、後面幾支讀。
+
+    skill 的 Step 2 本來就這樣寫，但寫檔責任在 agent 身上、沒有任何 deterministic
+    保證：20260901 蘇予昕 整集跑完一份都沒有，20260721 呂冠緯 跑到第二支才補上。
+    一集 1 支完整節目 + 3 支長精華 + 3 支短片，關鍵字查詢因此重複到 7 次。
+    """
+
+    def test_first_cut_writes_the_cache(self, tmp_path):
+        result = emit_mod.emit(_long_input(), tmp_path)
+        cache = tmp_path / "keywords.json"
+
+        assert result["keywords_cache"] == "written"
+        assert json.loads(cache.read_text(encoding="utf-8")) == _KEYWORDS
+        assert str(cache) in result["files"]
+
+    def test_second_cut_reuses_it_and_needs_no_keywords_of_its_own(self, tmp_path):
+        emit_mod.emit(_long_input(), tmp_path)
+        second = _short_input()
+        del second["keywords"]
+
+        result = emit_mod.emit(second, tmp_path)
+
+        assert result["keywords_cache"] == "reused"
+        assert json.loads((tmp_path / "keywords.json").read_text(encoding="utf-8")) == _KEYWORDS
+
+    def test_a_cut_with_no_cache_and_no_keywords_fails_loud(self, tmp_path):
+        payload = _long_input()
+        del payload["keywords"]
+
+        with pytest.raises(ValueError, match="keywords.json"):
+            emit_mod.emit(payload, tmp_path)
+
+        # 擋下來就是擋下來——不可以留下半套的 packages.json。
+        assert not (tmp_path / "packages.json").exists()
+
+    def test_a_second_research_pass_does_not_overwrite_the_cache(self, tmp_path):
+        """快取就是為了不要每支重查；第二支又帶研究進來是浪費，不是更新。"""
+        emit_mod.emit(_long_input(), tmp_path)
+        second = _short_input()
+        second["keywords"] = {"keywords": [{"term": "重查出來的別的東西"}]}
+
+        result = emit_mod.emit(second, tmp_path)
+
+        assert result["keywords_cache"] == "reused"
+        assert json.loads((tmp_path / "keywords.json").read_text(encoding="utf-8")) == _KEYWORDS
+
+    def test_an_empty_keywords_object_is_not_a_cache(self, tmp_path):
+        """`{}` 是「我沒做 Step 2」，不是「研究結果是空的」。"""
+        payload = _long_input()
+        payload["keywords"] = {}
+
+        with pytest.raises(ValueError, match="keywords.json"):
+            emit_mod.emit(payload, tmp_path)
