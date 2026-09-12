@@ -81,16 +81,25 @@ def chapters_from_broll(broll_items: list[dict]) -> list[tuple[float, str]]:
     return [(0.0, "開場")] + marks
 
 
-def _registration_path(cut_id: str) -> Path:
-    """核准剪輯的登錄檔——ADR-066 的 runtime store，不是 episode 目錄。"""
+def _registration_paths(episode_id: str, cut_id: str) -> tuple[Path, ...]:
+    """核准剪輯登錄檔的查找順序——ADR-066 的 runtime store，不是 episode 目錄。
+
+    `cut_id` 是 miner **每集各自**產生的（`punch-L03` 這一集有，20260901 蘇予昕
+    那集也有），所以扁平的 `registrations/<cut_id>.json` 跨集必然撞名——而且不會
+    報錯，因為檔案存在、schema 也對，章節表就這樣安靜地接到別集去。2026-09-12
+    補上 episode 這一層；舊的扁平檔仍然讀得到，但下面會核對 payload 的
+    `episode_id`，不是自己那一集就不採。
+    """
     from shared.config import get_runtime_data_dir
 
     root = os.environ.get("NAKAMA_FINISHED_CUT_RUNTIME", "").strip()
-    base = Path(root) if root else get_runtime_data_dir() / "finished-cut-runtime"
-    return base / "registrations" / f"{cut_id}.json"
+    base = (
+        Path(root) if root else get_runtime_data_dir() / "finished-cut-runtime"
+    ) / "registrations"
+    return (base / episode_id / f"{cut_id}.json", base / f"{cut_id}.json")
 
 
-def chapters_from_registration(cut_id: str) -> list[tuple[float, str]]:
+def chapters_from_registration(episode_id: str, cut_id: str) -> list[tuple[float, str]]:
     """分章 = 核准剪輯 `sections` 裡標了轉場卡的那幾節，前加 00:00 開場。
 
     規則跟 `chapters_from_broll` 一模一樣（轉場卡 + 開場），只是問對了來源。
@@ -101,12 +110,21 @@ def chapters_from_registration(cut_id: str) -> list[tuple[float, str]]:
     只採 `transition_before` 為真的節：末節常常沒有轉場卡，而它的 `chapter_title`
     是整段摘要（實測 punch-L02/L03 末節都是七十幾字的段落），當章節名會很難看。
     """
-    path = _registration_path(cut_id)
-    if not path.is_file():
-        return []
-    try:
-        payload = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    payload = None
+    for path in _registration_paths(episode_id, cut_id):
+        if not path.is_file():
+            continue
+        try:
+            candidate = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        # 撿到的檔必須自己說它是這一集的。沒有 `episode_id` 的 payload 一律不採——
+        # 「看起來對」不是來歷，寧可沒有章節也不要接到別集的時間軸。
+        if not isinstance(candidate, dict) or candidate.get("episode_id") != episode_id:
+            continue
+        payload = candidate
+        break
+    if payload is None:
         return []
     if not payload.get("human_approved"):
         return []  # 沒過人審的規劃不是分章來源
@@ -135,7 +153,7 @@ def resolve_chapters(episode_dir: Path, cut_id: str) -> list[tuple[float, str]]:
     episode_dir = Path(episode_dir)
     if load_timeline_map(episode_dir) is not None:
         return release_chapters(episode_dir, cut_id)
-    registered = chapters_from_registration(cut_id)
+    registered = chapters_from_registration(episode_dir.name, cut_id)
     if registered:
         return registered
     broll_path = episode_dir / "highlights" / "tighten" / f"{cut_id}_broll.json"

@@ -140,8 +140,13 @@ transaction 的身分，所以不會覆蓋上一版的產物。
 實務上目前不會遇到——Release 封存是 ADR-066 的另一個階段，這條線還沒接上
 （20260901 蘇予昕 全碟 0 個 sealed Release、0 個 current pointer）。
 
-真的要整支重來才用重新登錄：把 `registrations/<cut>.json` 的 `approved_at` 換一個
+真的要整支重來才用重新登錄：把 `registrations/<episode>/<cut>.json` 的 `approved_at` 換一個
 新時間即可（command_id 是整份 payload 的雜湊）。
+
+登錄檔放在 **`registrations/<episode_id>/<cut_id>.json`**——`cut_id` 是每集各自
+產生的，`punch-L03` 不只一集有。舊的扁平 `registrations/<cut_id>.json` 還讀得到，
+但只有 payload 的 `episode_id` 對得上那一集才採用（章節查詢 `resolve_chapters`
+會核對）。
 
 ## ⛔ 已停用：Stage 5 Long Highlight orchestrator（ADR-065）
 

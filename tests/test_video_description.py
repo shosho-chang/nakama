@@ -62,11 +62,23 @@ def test_chapters_too_few_returns_empty():
     assert chapters_from_broll(items) == []
 
 
-def _write_registration(tmp_path, cut_id, sections, *, approved=True):
-    d = tmp_path / "registrations"
+_EPISODE = "20260901 蘇予昕"
+
+
+def _write_registration(tmp_path, cut_id, sections, *, approved=True, episode=_EPISODE, flat=False):
+    """寫一份登錄檔。`flat=True` 寫成舊的扁平路徑（撞名那一版）。"""
+    d = tmp_path / "registrations" / ("" if flat else episode)
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{cut_id}.json").write_text(
-        json.dumps({"cut_id": cut_id, "human_approved": approved, "sections": sections}),
+        json.dumps(
+            {
+                "episode_id": episode,
+                "cut_id": cut_id,
+                "human_approved": approved,
+                "sections": sections,
+            },
+            ensure_ascii=False,
+        ),
         encoding="utf-8",
     )
     return tmp_path
@@ -90,7 +102,7 @@ def test_chapters_come_from_the_approved_registration(tmp_path, monkeypatch):
     )
     monkeypatch.setenv("NAKAMA_FINISHED_CUT_RUNTIME", str(tmp_path))
 
-    assert chapters_from_registration("punch-L09") == [
+    assert chapters_from_registration(_EPISODE, "punch-L09") == [
         (0.0, "開場"),
         (52.6, "第一個線索"),
         (107.8, "情緒像粽子"),
@@ -109,7 +121,7 @@ def test_registration_without_human_approval_is_not_a_chapter_source(tmp_path, m
     )
     monkeypatch.setenv("NAKAMA_FINISHED_CUT_RUNTIME", str(tmp_path))
 
-    assert chapters_from_registration("punch-L09") == []
+    assert chapters_from_registration(_EPISODE, "punch-L09") == []
 
 
 def test_chosen_package_follows_approval():
@@ -229,3 +241,72 @@ def test_load_footer_strips_html_comments():
     out = load_footer()
     assert "<!--" not in out
     assert "-->" not in out
+
+
+def test_same_cut_id_in_two_episodes_does_not_cross_over(tmp_path, monkeypatch):
+    """`punch-L03` 這一集有，蘇予昕那集也有——扁平檔名讓章節表安靜地接到別集去。"""
+    _write_registration(
+        tmp_path,
+        "punch-L03",
+        [
+            {"t0": 52.6, "transition_before": True, "transition_title": "蘇予昕的第一章"},
+            {"t0": 107.8, "transition_before": True, "transition_title": "蘇予昕的第二章"},
+        ],
+    )
+    _write_registration(
+        tmp_path,
+        "punch-L03",
+        [
+            {"t0": 31.0, "transition_before": True, "transition_title": "呂冠緯的第一章"},
+            {"t0": 88.0, "transition_before": True, "transition_title": "呂冠緯的第二章"},
+        ],
+        episode="20260721 呂冠緯",
+    )
+    monkeypatch.setenv("NAKAMA_FINISHED_CUT_RUNTIME", str(tmp_path))
+
+    assert chapters_from_registration("20260901 蘇予昕", "punch-L03") == [
+        (0.0, "開場"),
+        (52.6, "蘇予昕的第一章"),
+        (107.8, "蘇予昕的第二章"),
+    ]
+    assert chapters_from_registration("20260721 呂冠緯", "punch-L03") == [
+        (0.0, "開場"),
+        (31.0, "呂冠緯的第一章"),
+        (88.0, "呂冠緯的第二章"),
+    ]
+
+
+def test_legacy_flat_registration_is_read_when_it_is_this_episode(tmp_path, monkeypatch):
+    """既有的三個扁平檔（都是蘇予昕的）不需要搬家就還讀得到。"""
+    _write_registration(
+        tmp_path,
+        "punch-L04",
+        [
+            {"t0": 12.0, "transition_before": True, "transition_title": "A"},
+            {"t0": 44.0, "transition_before": True, "transition_title": "B"},
+        ],
+        flat=True,
+    )
+    monkeypatch.setenv("NAKAMA_FINISHED_CUT_RUNTIME", str(tmp_path))
+
+    assert chapters_from_registration(_EPISODE, "punch-L04") == [
+        (0.0, "開場"),
+        (12.0, "A"),
+        (44.0, "B"),
+    ]
+
+
+def test_legacy_flat_registration_of_another_episode_is_not_borrowed(tmp_path, monkeypatch):
+    """扁平檔沒有 episode 這一層，所以只能靠 payload 自報——對不上就不採。"""
+    _write_registration(
+        tmp_path,
+        "punch-L04",
+        [
+            {"t0": 12.0, "transition_before": True, "transition_title": "A"},
+            {"t0": 44.0, "transition_before": True, "transition_title": "B"},
+        ],
+        flat=True,
+    )
+    monkeypatch.setenv("NAKAMA_FINISHED_CUT_RUNTIME", str(tmp_path))
+
+    assert chapters_from_registration("20260721 呂冠緯", "punch-L04") == []
