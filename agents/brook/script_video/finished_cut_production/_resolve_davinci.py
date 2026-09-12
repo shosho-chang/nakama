@@ -10,6 +10,8 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
+from shared.quiet_subprocess import quiet_kwargs
+
 from ._records import MaterializationPlan
 from ._resolve import (
     CommitReceipt,
@@ -161,6 +163,7 @@ class SubprocessFFprobeRunner:
                 text=True,
                 timeout=timeout_sec,
                 check=False,
+                **quiet_kwargs(),
             )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise ResolveTransactionError(f"ffprobe process failed: {exc}") from exc

@@ -13,6 +13,9 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol
 
+from shared.quiet_subprocess import quiet_kwargs
+from shared.render_windows import hide_render_windows
+
 from ._long_visual_renderer import (
     BrowserRenderResult,
     LongVisualRecipe,
@@ -177,18 +180,24 @@ class SubprocessRenderProcessRunner:
         cwd: Path | None,
         timeout_sec: float,
     ) -> RenderProcessResult:
+        # `quiet_kwargs()` 只擋得住我們直接建立的那個 node；chrome-headless-shell 自己
+        # 生的一批子行程各自帶一個 console 視窗，任何 creationflags 與 desktop 隔離都
+        # 管不到（量測表在 shared/render_windows.py）。所以另外掛一個 WinEvent hook，
+        # 視窗一顯示就藏。
         try:
-            process = subprocess.run(
-                arguments,
-                cwd=cwd,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout_sec,
-                check=False,
-                shell=False,
-            )
+            with hide_render_windows():
+                process = subprocess.run(
+                    arguments,
+                    cwd=cwd,
+                    capture_output=True,
+                    text=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=timeout_sec,
+                    check=False,
+                    shell=False,
+                    **quiet_kwargs(),
+                )
         except (OSError, subprocess.TimeoutExpired) as exc:
             raise HyperFramesRenderError("render process could not complete") from exc
         return RenderProcessResult(
