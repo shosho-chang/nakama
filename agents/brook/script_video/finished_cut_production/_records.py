@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal
 
 from ._assets import WorkerCatalogItem
+from ._brand_badge import BrandBadgeOverlay, derive_brand_badge_overlays
 from ._context import CueAnchor, EditorialCutContext, VisualPlacement
 from ._derived_assets import BuiltComponentAsset, DerivedAssetBuildRequest
 from ._policy import PolicyDiagnostic
@@ -289,6 +290,9 @@ class MaterializationPlan:
     visual_acceptance_id: str
     events: tuple[EventRecord, ...]
     components: tuple[ProjectedComponent, ...]
+    duration_sec: float
+    #: 結構性覆蓋層：不經語意流、由規則推導。目前只有品牌 badge。
+    brand_badge_overlays: tuple[BrandBadgeOverlay, ...]
 
     def __init__(
         self,
@@ -305,6 +309,8 @@ class MaterializationPlan:
         visual_acceptance_id: str,
         events: tuple[EventRecord, ...],
         components: tuple[ProjectedComponent, ...] = (),
+        duration_sec: float = 0.0,
+        brand_badge_overlays: tuple[BrandBadgeOverlay, ...] = (),
     ) -> None:
         if _authority is not _PLAN_AUTHORITY:
             raise TypeError("MaterializationPlan can be minted only by Finished Cut Production")
@@ -320,6 +326,8 @@ class MaterializationPlan:
             ("visual_acceptance_id", visual_acceptance_id),
             ("events", events),
             ("components", components),
+            ("duration_sec", duration_sec),
+            ("brand_badge_overlays", brand_badge_overlays),
         ):
             object.__setattr__(self, name, value)
 
@@ -337,6 +345,7 @@ def _mint_materialization_plan(
     visual_acceptance_id: str,
     events: tuple[EventRecord, ...],
     components: tuple[ProjectedComponent, ...] = (),
+    duration_sec: float = 0.0,
 ) -> MaterializationPlan:
     if any(
         event.semantic_kind
@@ -369,6 +378,14 @@ def _mint_materialization_plan(
         visual_acceptance_id=visual_acceptance_id,
         events=events,
         components=components,
+        duration_sec=duration_sec,
+        # 品牌 badge 由規則推導，不接受呼叫端傳入——落點只有一個真相來源，
+        # 而且 rehydrate 舊 plan 時會用同一條規則算出同一組結果，不會漂移。
+        brand_badge_overlays=derive_brand_badge_overlays(
+            components=components,
+            duration_sec=duration_sec,
+            format=format,
+        ),
     )
 
 
