@@ -183,14 +183,14 @@ def test_build_description_four_blocks():
         ["Science 2010"],
         "——\n訂閱頻道",
     )
-    assert out.index("hook") < out.index("⏱ 00:00 開場") < out.index("本集引用")
+    assert out.index("hook") < out.index("00:00 開場") < out.index("本集引用")
     assert "・Science 2010" in out
     assert out.rstrip().endswith("訂閱頻道")
 
 
 def test_build_description_short_form_omits_empty_blocks():
     out = build_description("hook。", [], [], "footer")
-    assert "⏱" not in out
+    assert "00:00" not in out
     assert "本集引用" not in out
     assert out == "hook。\n\nfooter"
 
@@ -436,3 +436,21 @@ def test_youtube_hard_rules_are_enforced_at_the_schema(tmp_path, mutation, match
 
     with pytest.raises(ValueError, match=match):
         vd.chapters_from_authored(tmp_path, "full")
+
+
+def test_every_chapter_line_starts_with_its_timestamp():
+    """YouTube 靠行首的時間戳認章節，認不出來就整份靜靜地不生效。
+
+    舊版在時間戳前面掛了一個 `⏱`。多數情況下仍然解析得出來，但那是在賭平台的
+    寬容度——而失敗的樣子是「描述看起來很正常，章節就是沒出現」，不會有任何提示。
+    修修 2026-09-12 裁決改成時間戳開頭。
+    """
+    out = build_description(
+        "hook。",
+        [(0.0, "開場"), (318.0, "第二章"), (3836.0, "第三章")],
+        [],
+        "footer",
+    )
+    lines = [ln for ln in out.splitlines() if ln and ln[0].isdigit()]
+
+    assert lines == ["00:00 開場", "05:18 第二章", "1:03:56 第三章"]

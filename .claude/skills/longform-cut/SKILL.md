@@ -582,7 +582,7 @@ category／implementation component 分類，不可只看它來自哪個 JSON：
 - 刪掉「這一段會從 A 一路談到 B」等自我導覽句；章節已負責導航。
 - 每段只推進一件事；用具體人物、作品、數字與動作取代抽象形容詞。
 - 不得捏造獨特性或動機；沒有逐字稿證據就不寫。
-- description 固定結構：1–2 個短段 hook（約 200–300 個繁中字）→ `⏱` 章節 →
+- description 固定結構：1–2 個短段 hook（約 200–300 個繁中字）→ 章節（**時間戳在行首**，YouTube 認不出來會整份靜靜地不生效）→
   可選的公開來源 → 精簡固定 footer。footer 一律讀
   `agents/usopp/templates/video_description_footer.md`，禁止在 prompt 裡複製舊版。
 - `packages.json.citations` 可包含內部 provenance，但 SRT/VTT/JSON 路徑、vault 路徑、

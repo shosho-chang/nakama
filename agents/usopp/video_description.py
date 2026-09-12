@@ -3,7 +3,7 @@
 描述欄四段結構（修修 2026-08-27 收旂）：
 
     ┌─ 變動（LLM 產、修修在審核頁改）  hook 1–4 個短段
-    ├─ 變動（長片才有）              ⏱ 分章（從轉場卡自動生成）
+    ├─ 變動（長片才有）              分章時間戳（行首，YouTube 才認得）
     ├─ 變動（僅人類可讀的公開 source citations） 本集引用
     └─ 固定（templates/video_description_footer.md，精簡共用版）
 
@@ -268,7 +268,10 @@ def build_description(
     """四段組裝。空段整段省略（短片無分章；沒引用就沒有「本集引用」）。"""
     blocks = [hook.strip()]
     if chapters:
-        blocks.append("\n".join(f"⏱ {fmt_ts(t)} {title}" for t, title in chapters))
+        # **時間戳必須在行首。** YouTube 靠它認章節，而且認不出來的時候整份靜靜地
+        # 不生效，不會有任何提示。舊版在前面掛了一個 `⏱`，雖然多數情況仍然解析得
+        # 出來，但那是在拿修修的影片賭平台的寬容度——沒有理由賭（2026-09-12 裁決）。
+        blocks.append("\n".join(f"{fmt_ts(t)} {title}" for t, title in chapters))
     visible_citations = public_citations(list(citations))
     if visible_citations:
         blocks.append("本集引用：\n" + "\n".join(f"・{c}" for c in visible_citations))

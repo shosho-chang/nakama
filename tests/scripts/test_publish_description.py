@@ -106,7 +106,7 @@ def test_description_draft_happy_path_is_written_to_release(tmp_path, monkeypatc
 
     assert result["state"] == "ready"
     assert target["description"].startswith("我和謝伯讓從睡眠如何影響記憶談起")
-    assert "⏱ 00:00 開場" in target["description"]
+    assert "00:00 開場" in target["description"]
     assert target["error"] is None
     assert "睡眠如何改變記憶" in prompts[0]
 
