@@ -19,9 +19,8 @@ from ._resolve import (
 
 _TRANSACTION_SCHEMA = "nakama.finished-cut-resolve-transaction.v1"
 _IDENTITY_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]*$")
-_TRANSACTION_STATUSES = frozenset(
-    {"preview_ready", "committed", "compensated", "rolled_back", "rollback_failed"}
-)
+#: 只有一個狀態到得了——見 `_resolve.ResolveTransactionStatus`。
+_TRANSACTION_STATUSES = frozenset({"preview_ready"})
 
 
 class PersistenceError(ValueError):
@@ -113,9 +112,6 @@ def _transaction_payload(transaction: ResolveTransaction) -> dict[str, Any]:
             "audio_codec": transaction.preview.audio_codec,
         },
         "subtitle_path": str(transaction.subtitle_path),
-        "transaction_receipt_id": transaction.transaction_receipt_id,
-        "rollback_ref": transaction.rollback_ref,
-        "backup_retained": transaction.backup_retained,
     }
 
 
@@ -133,11 +129,9 @@ def _transaction_from_payload(payload: Mapping[str, Any]) -> ResolveTransaction:
     audio_codec = preview_payload.get("audio_codec")
     if audio_codec is not None and not isinstance(audio_codec, str):
         raise PersistenceError("transaction preview audio codec is invalid")
-    receipt_id = _optional_string(payload, "transaction_receipt_id")
-    rollback_ref = _optional_string(payload, "rollback_ref")
-    backup_retained = payload.get("backup_retained")
-    if not isinstance(backup_retained, bool):
-        raise PersistenceError("transaction backup-retained flag is invalid")
+    # ADR-069 之前的紀錄還帶著 transaction_receipt_id／rollback_ref／
+    # backup_retained 三格（封存鏈用的）。那三格現在沒有人填也沒有人讀，
+    # 讀回來時直接略過——既有檔案照樣載得進來。
     return ResolveTransaction(
         transaction_id=_required_string(payload, "transaction_id"),
         episode_id=_required_string(payload, "episode_id"),
@@ -162,9 +156,6 @@ def _transaction_from_payload(payload: Mapping[str, Any]) -> ResolveTransaction:
             audio_codec=audio_codec,
         ),
         subtitle_path=Path(_required_string(payload, "subtitle_path")),
-        transaction_receipt_id=receipt_id,
-        rollback_ref=rollback_ref,
-        backup_retained=backup_retained,
     )
 
 

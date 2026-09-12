@@ -33,9 +33,14 @@ _RECORD_KEYS = {
     "height",
     "duration_sec",
     "recipe_identity",
-    "release_ids",
     "compact_receipt",
 }
+
+#: ADR-069 之前每一筆紀錄都存著 `release_ids`（「哪個已封存的 Release 用了這份
+#: 素材」）。實測 322 筆沒有一筆非空——`bind_release` 在生產線上從未被呼叫過，
+#: 而它要回答的那個問題隨封存鏈一起退役了。既有 index 照樣讀得回來，下一次
+#: publish 重寫整份時這個鍵就會消失。
+_LEGACY_RECORD_KEYS = {"release_ids"}
 
 
 class ActiveAssetStoreError(AssetContractError):
@@ -51,7 +56,6 @@ class ActiveAssetPublication:
     height: int | None = None
     duration_sec: float | None = None
     recipe_identity: str | None = None
-    release_ids: frozenset[str] = frozenset()
     compact_receipt: CompactAssetReceipt | None = None
 
     def __post_init__(self) -> None:
@@ -121,7 +125,6 @@ class ActiveAssetStore:
             height=publication.height,
             duration_sec=publication.duration_sec,
             recipe_identity=publication.recipe_identity,
-            release_ids=publication.release_ids,
             compact_receipt=compact_receipt,
         )
         prior = self._by_digest.get(digest)
@@ -138,18 +141,11 @@ class ActiveAssetStore:
                 record.recipe_identity is not None
                 and prior.recipe_identity is not None
                 and record.recipe_identity != prior.recipe_identity
-                and replace(record, recipe_identity=prior.recipe_identity)
-                == replace(prior, release_ids=record.release_ids)
+                and replace(record, recipe_identity=prior.recipe_identity) == prior
             ):
                 return self._resolve_record(prior)
-            if replace(prior, release_ids=record.release_ids) != record:
+            if prior != record:
                 raise ActiveAssetStoreError("content digest already has conflicting asset metadata")
-            merged_release_ids = prior.release_ids | record.release_ids
-            if merged_release_ids != prior.release_ids:
-                prior = self._replace_record(
-                    prior,
-                    replace(prior, release_ids=merged_release_ids),
-                )
             return self._resolve_record(prior)
         if record.recipe_identity is not None and record.recipe_identity in self._by_recipe:
             raise ActiveAssetStoreError("recipe identity already resolves to different content")
@@ -205,22 +201,6 @@ class ActiveAssetStore:
 
     def resolve_active_asset(self, reference: str) -> ResolvedAsset:
         return self._resolve_record(self._record_for_reference(reference))
-
-    def resolve_for_release(self, release_id: str, reference: str) -> ResolvedAsset:
-        record = self._record_for_reference(reference)
-        if release_id not in record.release_ids:
-            raise ActiveAssetStoreError("asset reference is not bound to this Release")
-        return self._resolve_record(record)
-
-    def bind_release(self, reference: str, *, release_id: str) -> ResolvedAsset:
-        if not isinstance(release_id, str) or not release_id.strip():
-            raise ActiveAssetStoreError("Release identity is empty")
-        record = self._record_for_reference(reference)
-        if release_id in record.release_ids:
-            return self._resolve_record(record)
-        updated_record = replace(record, release_ids=record.release_ids | {release_id})
-        self._replace_record(record, updated_record)
-        return self._resolve_record(updated_record)
 
     def _replace_record(self, prior: AssetRecord, updated_record: AssetRecord) -> AssetRecord:
         updated = tuple(
@@ -331,7 +311,7 @@ def _read_index(path: Path, *, episode_id: str) -> tuple[AssetRecord, ...]:
     rows = payload.get("records")
     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
         raise ActiveAssetStoreError("Active Asset Store records are invalid")
-    if any(set(row) != _RECORD_KEYS for row in rows):
+    if any(set(row) - _LEGACY_RECORD_KEYS != _RECORD_KEYS for row in rows):
         raise ActiveAssetStoreError("Active Asset Store record fields are invalid")
     try:
         return tuple(
@@ -344,7 +324,6 @@ def _read_index(path: Path, *, episode_id: str) -> tuple[AssetRecord, ...]:
                 height=_optional_integer(row, "height"),
                 duration_sec=_optional_number(row, "duration_sec"),
                 recipe_identity=_optional_string(row, "recipe_identity"),
-                release_ids=frozenset(_string_list(row, "release_ids")),
                 compact_receipt=_compact_receipt_from_dict(row.get("compact_receipt")),
             )
             for row in rows
@@ -366,7 +345,6 @@ def _write_index(path: Path, *, episode_id: str, records: tuple[AssetRecord, ...
                 "height": record.height,
                 "duration_sec": record.duration_sec,
                 "recipe_identity": record.recipe_identity,
-                "release_ids": sorted(record.release_ids),
                 "compact_receipt": _compact_receipt_to_dict(record.compact_receipt),
             }
             for record in records

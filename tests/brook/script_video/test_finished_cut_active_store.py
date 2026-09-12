@@ -170,40 +170,12 @@ def test_byte_identical_publish_is_idempotent_across_store_reopen(tmp_path: Path
     assert first.path is not None
     assert first.path.read_bytes() == b"deterministic hero media"
 
-    reopened.bind_release(first.record.reference, release_id="release-001")
-    after_release_bind = ActiveAssetStore.open(
-        store_root,
-        episode_id="episode-001",
-    ).publish(publication)
-    assert after_release_bind.record.release_ids == frozenset({"release-001"})
-
-
-def test_semantic_asset_is_hidden_from_fresh_dp_but_rebuilds_bound_release(
-    tmp_path: Path,
-) -> None:
-    source = tmp_path / "chapter.mp4"
-    source.write_bytes(b"chapter media")
-    store_root = tmp_path / "assets-v2"
-    store = ActiveAssetStore.open(store_root, episode_id="episode-001")
-    published = store.publish(
-        ActiveAssetPublication(
-            source_path=source,
-            kind=AssetKind.CHAPTER_RENDER,
-            recipe_identity="recipe:chapter:current",
-        )
-    )
-
-    assert store.worker_selection_catalog().items() == ()
-    with pytest.raises(ActiveAssetStoreError, match="Release"):
-        store.resolve_for_release("release-001", published.record.reference)
-
-    store.bind_release(published.record.reference, release_id="release-001")
-    reopened = ActiveAssetStore.open(store_root, episode_id="episode-001")
-
-    assert reopened.resolve_for_release("release-001", published.record.reference).path == (
-        published.path
-    )
-    assert reopened.worker_selection_catalog().items() == ()
+    # 原本這裡還順手驗「綁定 Release 之後再 publish 一次，綁定不會被蓋掉」。
+    # `release_ids` 隨封存鏈退役（實測 322 筆紀錄沒有一筆非空），剩下的是
+    # idempotence 本身：同一份內容 publish 幾次都是同一筆紀錄。
+    assert ActiveAssetStore.open(store_root, episode_id="episode-001").publish(
+        publication
+    ) == first
 
 
 def test_neutral_acquisition_metadata_survives_index_reopen(tmp_path: Path) -> None:
@@ -394,3 +366,31 @@ def test_reopen_rejects_a_path_field_even_with_a_recomputed_index_checksum(
 
     with pytest.raises(ActiveAssetStoreError, match="record fields"):
         ActiveAssetStore.open(store_root, episode_id="episode-001")
+
+
+def test_a_semantic_asset_stays_hidden_from_a_fresh_dp_across_reopen() -> None:
+    """這一支原本還順手測了「綁定 Release 之後解得回來」。
+
+    ADR-069 階段 4 之後那半段沒有意義了（`bind_release` 沒有生產呼叫端，實測 322 筆
+    紀錄沒有一筆非空），但**語意素材不能出現在 worker 的候選清單**這件事照樣要守——
+    它擋的是「DP 把自己產的字卡當成外部素材再挑一次」。
+    """
+    import tempfile
+
+    with tempfile.TemporaryDirectory() as raw:
+        tmp_path = Path(raw)
+        source = tmp_path / "chapter.mp4"
+        source.write_bytes(b"chapter media")
+        store_root = tmp_path / "assets-v2"
+        store = ActiveAssetStore.open(store_root, episode_id="episode-001")
+        store.publish(
+            ActiveAssetPublication(
+                source_path=source,
+                kind=AssetKind.CHAPTER_RENDER,
+                recipe_identity="recipe:chapter:current",
+            )
+        )
+
+        assert store.worker_selection_catalog().items() == ()
+        reopened = ActiveAssetStore.open(store_root, episode_id="episode-001")
+        assert reopened.worker_selection_catalog().items() == ()

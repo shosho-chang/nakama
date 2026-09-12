@@ -5,19 +5,18 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
 from ._records import MaterializationPlan
 
-ResolveTransactionStatus = Literal[
-    "preview_ready",
-    "committed",
-    "compensated",
-    "rolled_back",
-    "rollback_failed",
-]
+#: 一筆交易只有一個狀態。ADR-069 之前還有 committed／compensated／rolled_back／
+#: rollback_failed 四個，它們只有 `_cutover` 到得了；封存鏈退役之後沒有任何路徑能
+#: 把一筆交易推離 `preview_ready`，那四個狀態就只是四個到不了的字串。
+#:
+#: 留著這個欄位是因為它讓落盤的紀錄自我描述（「這份檔案描述一次做完的準備」）。
+ResolveTransactionStatus = Literal["preview_ready"]
 
 
 class ResolveTransactionError(ValueError):
@@ -52,16 +51,6 @@ class PreviewRender:
 
 
 @dataclass(frozen=True, slots=True)
-class CommitReceipt:
-    transaction_id: str
-    cut_id: str
-    work_uid: str
-    transaction_receipt_id: str
-    rollback_ref: str
-    backup_retained: bool
-
-
-@dataclass(frozen=True, slots=True)
 class ResolveTransaction:
     transaction_id: str
     episode_id: str
@@ -74,9 +63,6 @@ class ResolveTransaction:
     baseline: TimelineSnapshot
     preview: PreviewRender
     subtitle_path: Path
-    transaction_receipt_id: str | None = None
-    rollback_ref: str | None = None
-    backup_retained: bool = False
 
 
 class TimelineAdapter(Protocol):
@@ -98,21 +84,6 @@ class TimelineAdapter(Protocol):
     def render_preview(self, work: TimelineIdentity, output: Path) -> PreviewRender: ...
 
     def rollback(self, workspace: TimelineWorkspace) -> None: ...
-
-    def commit(
-        self,
-        workspace: TimelineWorkspace,
-        *,
-        transaction_id: str,
-        cut_id: str,
-        retain_backup: bool,
-    ) -> CommitReceipt: ...
-
-    def compensate(
-        self,
-        workspace: TimelineWorkspace,
-        receipt: CommitReceipt,
-    ) -> None: ...
 
 
 class ResolveTransactionStore(Protocol):
@@ -293,41 +264,6 @@ class ResolveTransactionManager:
             raise ResolveTransactionError(f"transaction persistence failed: {exc}") from exc
         return transaction
 
-    def commit(self, transaction_id: str, *, expected_cut_id: str) -> CommitReceipt:
-        transaction = self._exact_transaction(transaction_id, expected_cut_id)
-        if transaction.status == "committed":
-            return _commit_receipt(transaction)
-        if transaction.status != "preview_ready":
-            raise ResolveTransactionError(
-                f"transaction cannot commit from status: {transaction.status}"
-            )
-        receipt = self._adapter.commit(
-            transaction.workspace,
-            transaction_id=transaction.transaction_id,
-            cut_id=transaction.cut_id,
-            retain_backup=True,
-        )
-        if (
-            receipt.transaction_id != transaction.transaction_id
-            or receipt.cut_id != transaction.cut_id
-            or receipt.work_uid != transaction.workspace.work.uid
-            or not receipt.transaction_receipt_id
-            or not receipt.rollback_ref
-            or receipt.backup_retained is not True
-        ):
-            raise ResolveTransactionError(
-                "Resolve commit receipt does not bind the exact transaction and retained backup"
-            )
-        committed = replace(
-            transaction,
-            status="committed",
-            transaction_receipt_id=receipt.transaction_receipt_id,
-            rollback_ref=receipt.rollback_ref,
-            backup_retained=True,
-        )
-        self._store.save(committed)
-        return receipt
-
     def find_prepared(self, plan: MaterializationPlan) -> ResolveTransaction | None:
         """這個 plan 已經有一筆做完的交易嗎——不看現在的 canonical 是誰。
 
@@ -365,40 +301,7 @@ class ResolveTransactionManager:
                 "name": transaction.workspace.work.name,
                 "uid": transaction.workspace.work.uid,
             },
-            "transaction_receipt_id": transaction.transaction_receipt_id,
-            "rollback_ref": transaction.rollback_ref,
-            "backup_retained": transaction.backup_retained,
         }
-
-    def compensating_rollback(
-        self,
-        transaction_id: str,
-        *,
-        expected_cut_id: str,
-    ) -> ResolveTransaction:
-        transaction = self._exact_transaction(transaction_id, expected_cut_id)
-        if transaction.status == "compensated":
-            return transaction
-        if transaction.status not in {"committed", "rollback_failed"}:
-            raise ResolveTransactionError(
-                f"transaction cannot compensate from status: {transaction.status}"
-            )
-        receipt = _commit_receipt(transaction)
-        try:
-            self._adapter.compensate(transaction.workspace, receipt)
-            restored = self._adapter.snapshot(transaction.canonical)
-            if restored != transaction.baseline:
-                raise ResolveTransactionError(
-                    "compensation did not restore the original Timeline snapshot"
-                )
-        except Exception as exc:
-            self._store.save(replace(transaction, status="rollback_failed"))
-            raise ResolveTransactionError(
-                f"committed transaction compensation failed: {exc}"
-            ) from exc
-        compensated = replace(transaction, status="compensated")
-        self._store.save(compensated)
-        return compensated
 
     def _exact_transaction(
         self,
@@ -456,18 +359,3 @@ def _validate_preview(preview: PreviewRender) -> None:
         raise ResolveTransactionError("preview duration is not positive and finite")
 
 
-def _commit_receipt(transaction: ResolveTransaction) -> CommitReceipt:
-    if (
-        transaction.transaction_receipt_id is None
-        or transaction.rollback_ref is None
-        or not transaction.backup_retained
-    ):
-        raise ResolveTransactionError("committed transaction has no retained-backup receipt")
-    return CommitReceipt(
-        transaction_id=transaction.transaction_id,
-        cut_id=transaction.cut_id,
-        work_uid=transaction.workspace.work.uid,
-        transaction_receipt_id=transaction.transaction_receipt_id,
-        rollback_ref=transaction.rollback_ref,
-        backup_retained=True,
-    )

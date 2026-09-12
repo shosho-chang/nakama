@@ -1005,7 +1005,7 @@ def test_render_timeout_stops_job_and_deletes_queue_entry(tmp_path: Path) -> Non
     assert project.render_events[-3:] == ["poll", "stop", "delete"]
 
 
-def test_full_typed_transaction_commits_and_compensates_to_exact_original_baseline(
+def test_a_prepared_transaction_leaves_the_original_baseline_in_its_backup(
     tmp_path: Path,
 ) -> None:
     master_video = _TimelineItem(
@@ -1074,22 +1074,24 @@ def test_full_typed_transaction_commits_and_compensates_to_exact_original_baseli
         preview_path=tmp_path / "preview.mp4",
         subtitle_path=subtitle_path,
     )
-    receipt = manager.commit(transaction.transaction_id, expected_cut_id="punch-L04")
-    compensated = manager.compensating_rollback(
-        transaction.transaction_id,
-        expected_cut_id="punch-L04",
-    )
-
-    assert receipt.backup_retained is True
-    assert compensated.status == "compensated"
-    assert facade.timeline_identities() == (binding.cuts[0].canonical,)
-    restored = facade.timeline_state(binding.cuts[0].canonical.uid)
-    assert [item.item_id for item in restored.items] == [
+    # ADR-069 第 20 點：這一支原本驗 commit → compensate 的往返，而那條路只有
+    # `_cutover` 到得了，隨封存鏈一起退役。真正的安全網從來不是那段程式，是
+    # **備份 timeline**——`prepare` 把原本的 canonical 改名成 `__fcp_backup__…`
+    # 留在專案裡，修修在 Resolve 裡換回來比任何自動路徑都直接。所以要守的是
+    # 「備份裡放的就是動手之前那一條」。
+    backup = transaction.workspace.backup
+    assert backup.name.startswith("__fcp_backup__")
+    assert backup.uid == binding.cuts[0].canonical.uid
+    assert backup in facade.timeline_identities()
+    preserved = facade.timeline_state(backup.uid)
+    assert [item.item_id for item in preserved.items] == [
         "master-video",
         "old-derived",
         "master-audio",
         "subtitle",
     ]
+    # 而衍生軌是鋪在 work 那一條上，不是鋪在備份上。
+    assert transaction.workspace.work.uid != backup.uid
 
 
 def test_typed_transaction_rejects_subtitle_drift_before_preview_ready(

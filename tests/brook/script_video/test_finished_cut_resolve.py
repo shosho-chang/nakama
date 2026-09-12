@@ -12,7 +12,6 @@ from agents.brook.script_video.finished_cut_production._records import (
     _mint_materialization_plan,
 )
 from agents.brook.script_video.finished_cut_production._resolve import (
-    CommitReceipt,
     PreviewRender,
     ResolveTransactionError,
     ResolveTransactionManager,
@@ -96,39 +95,6 @@ class _InMemoryTimelineAdapter:
             visuals = self.timelines[workspace.backup.uid]["visuals"]
             assert isinstance(visuals, list)
             visuals.append("corrupted-after-rollback")
-
-    def commit(
-        self,
-        workspace: TimelineWorkspace,
-        *,
-        transaction_id: str,
-        cut_id: str,
-        retain_backup: bool,
-    ) -> CommitReceipt:
-        self.commit_calls.append(transaction_id)
-        return CommitReceipt(
-            transaction_id=transaction_id,
-            cut_id=cut_id,
-            work_uid=workspace.work.uid,
-            transaction_receipt_id=f"receipt-{transaction_id}",
-            rollback_ref=f"timeline:{workspace.backup.uid}",
-            backup_retained=retain_backup,
-        )
-
-    def compensate(
-        self,
-        workspace: TimelineWorkspace,
-        receipt: CommitReceipt,
-    ) -> None:
-        assert receipt.backup_retained
-        self.compensation_calls.append(receipt.transaction_id)
-        self.timelines.pop(workspace.work.uid, None)
-        self.timelines[workspace.backup.uid]["name"] = workspace.canonical.name
-        if self.corrupt_compensation:
-            visuals = self.timelines[workspace.backup.uid]["visuals"]
-            assert isinstance(visuals, list)
-            visuals.append("corrupted-after-restore")
-
 
 def _plan(cut_id: str = "value-L01") -> MaterializationPlan:
     event = EventRecord(
@@ -215,92 +181,6 @@ def test_probe_failure_rolls_back_duplicate_work(tmp_path: Path) -> None:
     assert set(adapter.timelines) == {"canonical-uid"}
 
 
-def test_commit_retains_backup_and_exposes_release_receipt(tmp_path: Path) -> None:
-    adapter = _InMemoryTimelineAdapter()
-    manager = ResolveTransactionManager(adapter)
-    transaction = manager.prepare(
-        _plan(),
-        canonical=TimelineIdentity(name="Episode Master", uid="canonical-uid"),
-        preview_path=tmp_path / "preview.mp4",
-        subtitle_path=tmp_path / "review.srt",
-    )
-
-    receipt = manager.commit(
-        transaction.transaction_id,
-        expected_cut_id="value-L01",
-    )
-
-    assert receipt.backup_retained is True
-    assert receipt.rollback_ref == "timeline:canonical-uid"
-    assert adapter.commit_calls == [transaction.transaction_id]
-    assert manager.inspect_transaction(transaction.transaction_id) == {
-        "transaction_id": transaction.transaction_id,
-        "cut_id": "value-L01",
-        # plan record 要記「鋪到了哪一條 timeline」，唯讀視圖因此帶著 work 那一條。
-        "timeline": {
-            "name": transaction.workspace.work.name,
-            "uid": transaction.workspace.work.uid,
-        },
-        "status": "committed",
-        "transaction_receipt_id": receipt.transaction_receipt_id,
-        "rollback_ref": receipt.rollback_ref,
-        "backup_retained": True,
-    }
-
-
-def test_committed_transaction_can_compensate_from_retained_backup(tmp_path: Path) -> None:
-    adapter = _InMemoryTimelineAdapter()
-    manager = ResolveTransactionManager(adapter)
-    transaction = manager.prepare(
-        _plan(),
-        canonical=TimelineIdentity(name="Episode Master", uid="canonical-uid"),
-        preview_path=tmp_path / "preview.mp4",
-        subtitle_path=tmp_path / "review.srt",
-    )
-    manager.commit(transaction.transaction_id, expected_cut_id="value-L01")
-
-    compensated = manager.compensating_rollback(
-        transaction.transaction_id,
-        expected_cut_id="value-L01",
-    )
-
-    assert compensated.status == "compensated"
-    assert adapter.compensation_calls == [transaction.transaction_id]
-    assert set(adapter.timelines) == {"canonical-uid"}
-    assert adapter.timelines["canonical-uid"]["name"] == "Episode Master"
-
-
-@pytest.mark.parametrize(
-    ("transaction_id", "cut_id"),
-    [
-        ("wrong-transaction", "value-L01"),
-        (None, "wrong-cut"),
-    ],
-)
-def test_wrong_transaction_or_cut_identity_cannot_commit(
-    tmp_path: Path,
-    transaction_id: str | None,
-    cut_id: str,
-) -> None:
-    adapter = _InMemoryTimelineAdapter()
-    manager = ResolveTransactionManager(adapter)
-    transaction = manager.prepare(
-        _plan(),
-        canonical=TimelineIdentity(name="Episode Master", uid="canonical-uid"),
-        preview_path=tmp_path / "preview.mp4",
-        subtitle_path=tmp_path / "review.srt",
-    )
-
-    with pytest.raises(ResolveTransactionError, match="identity"):
-        manager.commit(
-            transaction_id or transaction.transaction_id,
-            expected_cut_id=cut_id,
-        )
-
-    assert adapter.commit_calls == []
-    assert manager.inspect_transaction(transaction.transaction_id)["status"] == "preview_ready"
-
-
 def test_prepare_retry_reuses_exact_preview_ready_transaction(tmp_path: Path) -> None:
     adapter = _InMemoryTimelineAdapter()
     manager = ResolveTransactionManager(adapter)
@@ -318,27 +198,6 @@ def test_prepare_retry_reuses_exact_preview_ready_transaction(tmp_path: Path) ->
     assert second == first
     assert adapter.duplicate_calls == 1
     assert adapter.applied_uids == [first.workspace.work.uid]
-
-
-def test_compensation_requires_exact_original_timeline_snapshot(tmp_path: Path) -> None:
-    adapter = _InMemoryTimelineAdapter()
-    manager = ResolveTransactionManager(adapter)
-    transaction = manager.prepare(
-        _plan(),
-        canonical=TimelineIdentity(name="Episode Master", uid="canonical-uid"),
-        preview_path=tmp_path / "preview.mp4",
-        subtitle_path=tmp_path / "review.srt",
-    )
-    manager.commit(transaction.transaction_id, expected_cut_id="value-L01")
-    adapter.corrupt_compensation = True
-
-    with pytest.raises(ResolveTransactionError, match="original Timeline snapshot"):
-        manager.compensating_rollback(
-            transaction.transaction_id,
-            expected_cut_id="value-L01",
-        )
-
-    assert manager.inspect_transaction(transaction.transaction_id)["status"] == "rollback_failed"
 
 
 def test_prepare_failure_requires_exact_original_timeline_rollback(tmp_path: Path) -> None:

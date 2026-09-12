@@ -320,14 +320,11 @@ ADR-066 的核心決策是對的，是實作超標。否決。
    安靜錯了很久的東西。
 
 7. **`_resolve.commit` / `compensating_rollback` 成為不可達碼。** `_cutover` 是
-   它們唯一的呼叫端（grep 實測）。本階段沒有刪它們：交易狀態機與
-   `__fcp_backup__` 的保留策略是階段 5「身分碼收斂」要一起看的東西，拆開改
-   會讓兩邊都半途。留著的代價是 `ResolveTransactionStatus` 有四個今天到不了的
-   狀態——記在這裡，不要當成還有人在用。
+   它們唯一的呼叫端（grep 實測）。階段 4 先不動，因為 `__fcp_backup__` 的保留
+   策略要跟後面的階段一起看；**七個階段做完之後回來刪掉了**，見第 20 點。
 
 8. **`ActiveAssetStore.bind_release` / `resolve_for_release` 沒有生產呼叫端。**
-   它們回答的是「哪個已封存的 Release 用了這份素材」。同樣不在本階段動手，
-   理由同上：那是素材存活期的問題，跟紀錄層分開處理才看得清楚。
+   它們回答的是「哪個已封存的 Release 用了這份素材」。同樣在第 20 點一起刪。
 
 ## 階段 5 實作時的一處修正（2026-09-12）
 
@@ -459,6 +456,46 @@ ADR-066 的核心決策是對的，是實作超標。否決。
     原文（`<del>`）本來套 muted，實測 light 只有 4.43:1——而那正是修修判斷「改寫
     對不對」時要讀的字，不是裝飾。改回正常文字色、只把刪除線染 muted：16.45 /
     15.14。
+
+## 七階段之後：把不可達碼刪掉（2026-09-12）
+
+20. **第 7、8 點那兩坨刪了，`__fcp_backup__` 一個字都沒動。**
+
+    卡住的那個問題是「commit 沒了，備份 timeline 怎麼辦」。去讀 code 才發現它不是
+    問題：`commit` 呼叫 adapter 時 `retain_backup=True` 是寫死的，adapter 收到
+    `False` 會直接 raise。**備份本來就是永久保留的**，commit 只是在耐久紀錄上蓋
+    一個「這筆交易結帳了」的章，而那個章現在沒有人讀（plan record 才是紀錄）。
+    所以刪掉 commit 不改變備份的任何行為——`prepare` 照樣把 canonical 改名成
+    `__fcp_backup__<cut>__<txn>`、照樣留在專案裡。
+
+    `compensating_rollback` 是自動的 undo。它不可達，而不可達的程式提供的安全
+    是零；真正的安全網是那條備份 timeline，它就在 canonical 旁邊，修修在 Resolve
+    裡手動換回來比任何自動路徑都直接。
+
+    刪除清單：`ResolveTransactionManager.commit` / `compensating_rollback`、
+    `TimelineAdapter` 的 `commit` / `compensate`、`DaVinciResolveTimelineAdapter`
+    的同兩支與 `_receipt`、`CommitReceipt`、`_commit_receipt`、
+    `ResolveTransaction` 的 `transaction_receipt_id` / `rollback_ref` /
+    `backup_retained` 三格，以及 `ResolveTransactionStatus` 那四個到不了的狀態
+    （只剩 `preview_ready`）。
+
+21. **素材那組是用真實資料證明的，不是用 grep。** `bind_release` 除了它自己的
+    單元測試沒有任何呼叫端，但那只證明「程式裡沒人叫它」。真正的證據在磁碟上：
+
+    | episode | 資產紀錄 | 其中 `release_ids` 非空的 |
+    |---|---|---|
+    | 20260721 呂冠緯 | 83 | **0** |
+    | 20260901 蘇予昕 | 239 | **0** |
+
+    322 筆紀錄，每一筆都存著這個欄位，沒有一筆有值。刪掉 `release_ids`、
+    `bind_release`、`resolve_for_release`，`_RECORD_KEYS` 的精確比對改成容忍這個
+    舊鍵（`_LEGACY_RECORD_KEYS`）——既有 index 照樣讀得回來，下一次 publish 重寫
+    整份時它就消失。刪完實際打開那兩份 index 驗過：83 / 239 筆都載得進來，
+    worker 候選 52 / 25 支不變。
+
+    順帶把兩支被連帶刪到一半的測試救回來：`prepare` 失敗後的 rollback（那條路
+    還活著，只是名字裡有 rollback）與「語意素材對新 DP 隱形」（它原本順手也驗了
+    Release 綁定，只有後半該走）。
 
 ## Review record
 

@@ -43,7 +43,6 @@ from agents.brook.script_video.finished_cut_production._records import (
     _ProductionRun,
 )
 from agents.brook.script_video.finished_cut_production._resolve import (
-    CommitReceipt,
     PreviewRender,
     ResolveTransactionError,
     ResolveTransactionManager,
@@ -169,37 +168,6 @@ class _TimelineAdapter:
 
     def rollback(self, workspace: TimelineWorkspace) -> None:
         self.rollbacks += 1
-
-    def commit(
-        self,
-        workspace: TimelineWorkspace,
-        *,
-        transaction_id: str,
-        cut_id: str,
-        retain_backup: bool,
-    ) -> CommitReceipt:
-        raise AssertionError("materialization must never commit")
-
-    def compensate(self, workspace: TimelineWorkspace, receipt: CommitReceipt) -> None:
-        raise AssertionError("materialization must never compensate")
-
-
-class _CommittingTimelineAdapter(_TimelineAdapter):
-    def commit(
-        self,
-        workspace: TimelineWorkspace,
-        *,
-        transaction_id: str,
-        cut_id: str,
-        retain_backup: bool,
-    ) -> CommitReceipt:
-        assert retain_backup is True
-        return CommitReceipt(
-            transaction_id=transaction_id,
-            cut_id=cut_id,
-            work_uid=workspace.work.uid,
-            backup_retained=True,
-        )
 
 
 class _BadPreviewAdapter(_TimelineAdapter):

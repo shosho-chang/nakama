@@ -8,7 +8,6 @@ from agents.brook.script_video.finished_cut_production._persistence import (
     PersistenceError,
 )
 from agents.brook.script_video.finished_cut_production._resolve import (
-    CommitReceipt,
     PreviewRender,
     ResolveTransaction,
     ResolveTransactionManager,
@@ -42,27 +41,6 @@ class _DurableTimelineAdapter:
     def rollback(self, *args: object, **kwargs: object) -> None:
         raise AssertionError("rollback is not used by this test")
 
-    def commit(
-        self,
-        workspace: TimelineWorkspace,
-        *,
-        transaction_id: str,
-        cut_id: str,
-        retain_backup: bool,
-    ) -> CommitReceipt:
-        return CommitReceipt(
-            transaction_id=transaction_id,
-            cut_id=cut_id,
-            work_uid=workspace.work.uid,
-            transaction_receipt_id=f"receipt-{transaction_id}",
-            rollback_ref=f"resolve:{workspace.backup.uid}:{transaction_id}",
-            backup_retained=retain_backup,
-        )
-
-    def compensate(self, workspace: TimelineWorkspace, receipt: CommitReceipt) -> None:
-        self.compensated.append(receipt.transaction_id)
-
-
 class _RestartResolve:
     def __init__(self) -> None:
         self.statuses = {
@@ -83,19 +61,6 @@ class _RestartResolve:
             "cut_id": self.cut_ids[transaction_id],
             "status": self.statuses[transaction_id],
         }
-
-    def commit(self, transaction_id: str, *, expected_cut_id: str) -> CommitReceipt:
-        assert self.cut_ids[transaction_id] == expected_cut_id
-        self.commit_calls.append(transaction_id)
-        self.statuses[transaction_id] = "committed"
-        return CommitReceipt(
-            transaction_id=transaction_id,
-            cut_id=expected_cut_id,
-            work_uid=f"work-{transaction_id}",
-            transaction_receipt_id=f"receipt-{transaction_id}",
-            rollback_ref=f"backup-{transaction_id}",
-            backup_retained=True,
-        )
 
     def compensating_rollback(
         self,
@@ -165,44 +130,7 @@ def test_restarted_transaction_manager_inspects_durable_preview_ready_state(
         # `status == "committed"`——全機器從來沒有一筆 commit 過。
         "timeline": {"name": "Episode Master", "uid": "work-uid"},
         "status": "preview_ready",
-        "transaction_receipt_id": None,
-        "rollback_ref": None,
-        "backup_retained": False,
     }
-
-
-def test_committed_and_compensated_transaction_states_survive_manager_restarts(
-    tmp_path: Path,
-) -> None:
-    root = tmp_path / "transactions"
-    initial = _transaction()
-    AtomicResolveTransactionStore(root).save(initial)
-    adapter = _DurableTimelineAdapter(initial.baseline)
-
-    committing_process = ResolveTransactionManager(
-        adapter,
-        store=AtomicResolveTransactionStore(root),
-    )
-    committing_process.commit(initial.transaction_id, expected_cut_id=initial.cut_id)
-
-    committed_process = ResolveTransactionManager(
-        adapter,
-        store=AtomicResolveTransactionStore(root),
-    )
-    assert committed_process.inspect_transaction(initial.transaction_id)["status"] == "committed"
-    committed_process.compensating_rollback(
-        initial.transaction_id,
-        expected_cut_id=initial.cut_id,
-    )
-
-    compensated_process = ResolveTransactionManager(
-        adapter,
-        store=AtomicResolveTransactionStore(root),
-    )
-    assert compensated_process.inspect_transaction(initial.transaction_id)["status"] == (
-        "compensated"
-    )
-    assert adapter.compensated == [initial.transaction_id]
 
 
 @pytest.mark.parametrize("failure_kind", ["partial", "corrupt"])

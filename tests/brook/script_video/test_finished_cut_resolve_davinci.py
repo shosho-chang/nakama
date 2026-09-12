@@ -1,7 +1,7 @@
 import ast
 import hashlib
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -419,94 +419,6 @@ def test_davinci_preview_uses_h264_aac_render_and_checked_probe(tmp_path: Path) 
     assert probe.inspected == [output]
 
 
-def test_davinci_committed_transaction_retains_backup_and_can_compensate(
-    tmp_path: Path,
-) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 5))
-    assets = []
-    for index, reference in enumerate(refs, start=1):
-        path = tmp_path / f"asset-{index}.mov"
-        path.write_bytes(f"asset-{index}".encode())
-        assets.append(PreRenderedAsset(reference=reference, path=path))
-    binding = _binding()
-    facade = _ResolveFacade(binding)
-    adapter = DaVinciResolveTimelineAdapter(
-        facade=facade,
-        probe=_Probe(),
-        binding=binding,
-        assets=PreRenderedAssetCatalog(assets),
-    )
-    canonical = binding.cuts[0].canonical
-    baseline = adapter.snapshot(canonical)
-    workspace = adapter.duplicate(canonical, transaction_id="resolve-compensate")
-    adapter.apply_plan(workspace.work, _plan(refs))
-
-    receipt = adapter.commit(
-        workspace,
-        transaction_id="resolve-compensate",
-        cut_id="value-L01",
-        retain_backup=True,
-    )
-
-    assert receipt.backup_retained is True
-    assert workspace.backup in facade.timeline_identities()
-
-    adapter.compensate(workspace, receipt)
-
-    assert adapter.snapshot(canonical) == baseline
-    assert workspace.work not in facade.timeline_identities()
-    assert canonical in facade.timeline_identities()
-
-
-def test_wrong_commit_or_compensation_identity_performs_no_resolve_mutation(
-    tmp_path: Path,
-) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 5))
-    assets = []
-    for index, reference in enumerate(refs, start=1):
-        path = tmp_path / f"asset-{index}.mov"
-        path.write_bytes(f"asset-{index}".encode())
-        assets.append(PreRenderedAsset(reference=reference, path=path))
-    binding = _binding()
-    facade = _ResolveFacade(binding)
-    adapter = DaVinciResolveTimelineAdapter(
-        facade=facade,
-        probe=_Probe(),
-        binding=binding,
-        assets=PreRenderedAssetCatalog(assets),
-    )
-    workspace = adapter.duplicate(
-        binding.cuts[0].canonical,
-        transaction_id="resolve-exact",
-    )
-    before_wrong_commit = tuple(facade.mutations)
-
-    with pytest.raises(ResolveTransactionError, match="exact cut transaction"):
-        adapter.commit(
-            workspace,
-            transaction_id="resolve-wrong",
-            cut_id="value-L01",
-            retain_backup=True,
-        )
-
-    assert tuple(facade.mutations) == before_wrong_commit
-    receipt = adapter.commit(
-        workspace,
-        transaction_id="resolve-exact",
-        cut_id="value-L01",
-        retain_backup=True,
-    )
-    before_wrong_compensation = tuple(facade.mutations)
-
-    with pytest.raises(ResolveTransactionError, match="exact transaction backup"):
-        adapter.compensate(
-            workspace,
-            replace(receipt, transaction_id="resolve-wrong"),
-        )
-
-    assert tuple(facade.mutations) == before_wrong_compensation
-
-
 def test_failed_preview_probe_rolls_back_duplicate_and_restores_canonical(
     tmp_path: Path,
 ) -> None:
@@ -614,70 +526,6 @@ def test_ffprobe_adapter_returns_stream_and_decode_contract(tmp_path: Path) -> N
     assert runner.calls[0][1] == 30.0
     assert runner.calls[1][0][0] == "ffmpeg"
     assert runner.calls[1][1] == 120.0
-
-
-def test_production_adapter_transaction_restarts_commit_and_compensate_from_store(
-    tmp_path: Path,
-) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 5))
-    assets = []
-    for index, reference in enumerate(refs, start=1):
-        path = tmp_path / f"asset-{index}.mov"
-        path.write_bytes(f"asset-{index}".encode())
-        assets.append(PreRenderedAsset(reference=reference, path=path))
-    output = tmp_path / "preview" / "value-L01.mp4"
-    binding = _binding()
-    facade = _ResolveFacade(binding)
-    adapter = DaVinciResolveTimelineAdapter(
-        facade=facade,
-        probe=_Probe(
-            MediaProbeResult(
-                path=output,
-                duration_sec=481.5,
-                video_codec="h264",
-                audio_codec="aac",
-            )
-        ),
-        binding=binding,
-        assets=PreRenderedAssetCatalog(assets),
-    )
-    store_root = tmp_path / "transactions"
-    first_process = ResolveTransactionManager(
-        adapter,
-        store=AtomicResolveTransactionStore(store_root),
-    )
-    transaction = first_process.prepare(
-        _plan(refs),
-        canonical=binding.cuts[0].canonical,
-        preview_path=output,
-        subtitle_path=tmp_path / "subtitles" / "value-L01.srt",
-    )
-
-    committing_process = ResolveTransactionManager(
-        adapter,
-        store=AtomicResolveTransactionStore(store_root),
-    )
-    committing_process.commit(transaction.transaction_id, expected_cut_id="value-L01")
-    compensating_process = ResolveTransactionManager(
-        adapter,
-        store=AtomicResolveTransactionStore(store_root),
-    )
-    assert compensating_process.inspect_transaction(transaction.transaction_id)["status"] == (
-        "committed"
-    )
-    compensating_process.compensating_rollback(
-        transaction.transaction_id,
-        expected_cut_id="value-L01",
-    )
-
-    final_process = ResolveTransactionManager(
-        adapter,
-        store=AtomicResolveTransactionStore(store_root),
-    )
-    assert final_process.inspect_transaction(transaction.transaction_id)["status"] == (
-        "compensated"
-    )
-    assert facade.timeline_identities() == (binding.cuts[0].canonical,)
 
 
 def test_transaction_persistence_failure_rolls_back_open_resolve_workspace(

@@ -14,7 +14,6 @@ from shared.quiet_subprocess import quiet_kwargs
 
 from ._records import MaterializationPlan
 from ._resolve import (
-    CommitReceipt,
     PreviewRender,
     ResolveTransactionError,
     TimelineIdentity,
@@ -416,50 +415,6 @@ class DaVinciResolveTimelineAdapter:
         self._exact_timeline(workspace.canonical)
         self._facade.save_project()
 
-    def commit(
-        self,
-        workspace: TimelineWorkspace,
-        *,
-        transaction_id: str,
-        cut_id: str,
-        retain_backup: bool,
-    ) -> CommitReceipt:
-        if not retain_backup:
-            raise ResolveTransactionError("Finished Cut commit must retain its rollback backup")
-        self._validate_open_workspace(workspace, transaction_id=transaction_id, cut_id=cut_id)
-        receipt = self._receipt(workspace, transaction_id=transaction_id, cut_id=cut_id)
-        self._facade.save_project()
-        return receipt
-
-    def compensate(self, workspace: TimelineWorkspace, receipt: CommitReceipt) -> None:
-        self._assert_project()
-        expected = self._receipt(
-            workspace,
-            transaction_id=receipt.transaction_id,
-            cut_id=receipt.cut_id,
-        )
-        if receipt != expected:
-            raise ResolveTransactionError(
-                "Resolve compensation receipt does not bind exact transaction backup"
-            )
-        identities = self._facade.timeline_identities()
-        already_restored = (
-            workspace.work.uid not in {identity.uid for identity in identities}
-            and workspace.canonical in identities
-        )
-        if already_restored:
-            return
-        self._validate_open_workspace(
-            workspace,
-            transaction_id=receipt.transaction_id,
-            cut_id=receipt.cut_id,
-        )
-        self._facade.delete_timeline(workspace.work.uid)
-        self._exact_timeline(workspace.backup)
-        self._facade.rename_timeline(workspace.backup.uid, workspace.canonical.name)
-        self._exact_timeline(workspace.canonical)
-        self._facade.save_project()
-
     def _assert_project(self) -> None:
         actual = self._facade.project_identity()
         expected = ResolveProjectIdentity(
@@ -537,35 +492,6 @@ class DaVinciResolveTimelineAdapter:
         self._exact_timeline(workspace.work)
         self._exact_timeline(workspace.backup)
         return cut
-
-    def _receipt(
-        self,
-        workspace: TimelineWorkspace,
-        *,
-        transaction_id: str,
-        cut_id: str,
-    ) -> CommitReceipt:
-        core = {
-            "episode_id": self._binding.episode_id,
-            "project_uid": self._binding.project_uid,
-            "cut_id": cut_id,
-            "transaction_id": transaction_id,
-            "work_uid": workspace.work.uid,
-            "backup_uid": workspace.backup.uid,
-        }
-        identity = _fingerprint(core)[:24]
-        return CommitReceipt(
-            transaction_id=transaction_id,
-            cut_id=cut_id,
-            work_uid=workspace.work.uid,
-            transaction_receipt_id=f"resolve-receipt-{identity}",
-            rollback_ref=(
-                f"resolve-backup:{self._binding.project_uid}:"
-                f"{workspace.backup.uid}:{transaction_id}"
-            ),
-            backup_retained=True,
-        )
-
 
 def _fingerprint(value: object) -> str:
     encoded = json.dumps(

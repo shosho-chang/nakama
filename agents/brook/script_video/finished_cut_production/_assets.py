@@ -8,7 +8,7 @@ acquisition media to a fresh DP request.
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from enum import Enum
 from math import isfinite
@@ -164,7 +164,6 @@ class AssetRecord:
     height: int | None = None
     duration_sec: float | None = None
     recipe_identity: str | None = None
-    release_ids: frozenset[str] = field(default_factory=frozenset)
     compact_receipt: CompactAssetReceipt | None = None
 
     def __post_init__(self) -> None:
@@ -199,8 +198,6 @@ class AssetRecord:
                 )
             if self.kind is AssetKind.PHOTO and self.duration_sec is not None:
                 raise AssetContractError("photo acquisition duration must be absent")
-        if any(not release_id.strip() for release_id in self.release_ids):
-            raise AssetContractError("release identity must not be empty")
         if self.compact_receipt is not None:
             if self.compact_receipt.media_sha256 != self.digest:
                 raise AssetContractError("compact receipt media digest differs from asset")
@@ -270,7 +267,6 @@ class AssetResolver(Protocol):
 
     def resolve_active_asset(self, reference: str) -> ResolvedAsset: ...
 
-    def resolve_for_release(self, release_id: str, reference: str) -> ResolvedAsset: ...
 
     def resolve_exact_recipe(self, recipe_identity: str) -> ResolvedAsset: ...
 
@@ -358,15 +354,6 @@ class InMemoryAssetResolver:
             self._by_recipe[record.recipe_identity] = record
         return ResolvedAsset(record=record)
 
-    def resolve_for_release(self, release_id: str, reference: str) -> ResolvedAsset:
-        try:
-            record = self._by_reference[reference]
-        except KeyError as error:
-            raise AssetContractError("asset reference is not in the active store") from error
-        if release_id not in record.release_ids:
-            raise AssetContractError("asset reference is not bound to this Release")
-        return ResolvedAsset(record=record)
-
     def resolve_exact_recipe(self, recipe_identity: str) -> ResolvedAsset:
         try:
             record = self._by_recipe[recipe_identity]
@@ -398,13 +385,6 @@ class ContentAddressedAssetResolver:
 
     def resolve_active_asset(self, reference: str) -> ResolvedAsset:
         resolution = self._index.resolve_active_asset(reference)
-        return ResolvedAsset(
-            record=resolution.record,
-            path=self._object_path(resolution.record),
-        )
-
-    def resolve_for_release(self, release_id: str, reference: str) -> ResolvedAsset:
-        resolution = self._index.resolve_for_release(release_id, reference)
         return ResolvedAsset(
             record=resolution.record,
             path=self._object_path(resolution.record),
