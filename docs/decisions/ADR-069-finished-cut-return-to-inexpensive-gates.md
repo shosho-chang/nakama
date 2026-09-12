@@ -398,6 +398,39 @@ ADR-066 的核心決策是對的，是實作超標。否決。
     得上。第三道因此拿到自己的 code `asset_digest_mismatch`——它跟「reference
     綁錯」（`final_asset_identity_mismatch`）出事時的處置完全不同，不該共用一個名字。
 
+## 階段 6 的範圍拆分（2026-09-12）
+
+14. **diff 的資料源只有一個：run 的驗收歷史。** 一開始想從 plan record 的前後兩份
+    去比，但 plan record 之間沒有先後——staging 目錄是 content-addressed，不帶時
+    間，也不記前一份是誰。唯一有順序的是 `_ProductionRun.accepted_stage_history`
+    （append 上去的），所以 diff 算在 `_correction._project_run_inspection` 裡，
+    跟著 `RunInspection` 一起出來。
+
+    「這一輪」＝走得最遠那一關（director → dp → visual_review）的最後一次驗收；
+    「上一輪」＝同一關裡最後一次**已被取代**的驗收。第一輪沒有上一輪，全部標
+    `added`。
+
+15. **多加一格 `uniform_shift_sec`。** ADR 原本只要求列出「第幾秒、哪種卡、原文→
+    新文」。實作時回去看 2026-09-09 punch-L04 那次才發現：逐條列出來救不了那個
+    案子——34 個 event 每一條都是「移動 4.25 秒」，而 3 秒的位移在剪輯上完全正常，
+    人不會逐條去比對它們是否恰好相等。所以由機器講出結論：**每一個移動過的 event
+    位移都相同**時，把那個常數報出來。一個 event 被搬是判斷，34 個被搬同樣的距離
+    不是。
+
+    它刻意對「只有一個 event 移動」與「移動之外還有改寫」都不亮——亮了就沒有人
+    會再相信這一格。
+
+16. **Bridge 那一頁的接線與這一段分開。** 成品審核頁（`finished_review.html`）的
+    event 不是直接讀 plan record，而是走
+    `highlights/review/<cut>/events.json` → `build_finished_review_manifest.py` →
+    manifest → 模板。要把 diff 帶上那一頁，得動 manifest builder 與模板，而依
+    repo 的 UI 紀律，那一步要在跑起來的 Bridge 上實際走一次 golden path 才算完成
+    （CI green 與 pytest 不算）。
+
+    所以這個 commit 只到「diff 這個事實被算出來、被測住、而且讀得到」——
+    `run_finished_cut_production.py inspect-run <command_id>` 現在就會印出
+    `event_diff` 與 `uniform_shift_sec`。頁面呈現另開一次，連同瀏覽器實走。
+
 ## Review record
 
 - **v1 三方審查（2026-09-12）**：創作者視角、cost×risk×complexity 審計、ADR-066 原作者辯護——三方一致「改了再簽」。審計重算數字並指出 v1 標「留」但該砍的七項；辯護人對 v1 標「砍」的八項各給出今天就會發生的失敗情境（`source_range_drift`、活字幕軌、master content hash、`_current_chain_is_exact`、retry base、ledger 三態、canonical 精確匹配、素材 bytes），並指出 journal 的承擔理由對錯對象。整合報告在該 session 的 `ADR-069-panel-report.md`。

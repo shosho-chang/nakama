@@ -218,6 +218,7 @@ def test_public_module_does_not_expose_private_authority_constructors() -> None:
         "ResolveDatabaseIdentity",
         "ResolveProjectBinding",
         "ResolveProjectLocator",
+        "RunEventDiff",
         "RunEventInspection",
         "RunInspection",
         "RunPolicyDiagnostic",

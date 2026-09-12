@@ -28,6 +28,7 @@ from ._composition import (
 )
 from ._context import CanonicalSection, CueAnchor, CutSourceRange
 from ._correction import (
+    RunEventDiff,
     RunEventInspection,
     RunInspection,
     RunPolicyDiagnostic,
@@ -69,6 +70,7 @@ __all__ = [
     "ResolveDatabaseIdentity",
     "ResolveProjectBinding",
     "ResolveProjectLocator",
+    "RunEventDiff",
     "RunEventInspection",
     "RunInspection",
     "RunPolicyDiagnostic",
