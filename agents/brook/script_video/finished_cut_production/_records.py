@@ -13,7 +13,7 @@ from ._policy import PolicyDiagnostic
 from ._projection import ComponentLane, _event_has_active_projection, _is_active_projection
 
 if TYPE_CHECKING:
-    from ._correction import _PreReleaseCorrection
+    from ._correction import RunEventDiff, _PreReleaseCorrection
 
 Status = Literal["pending", "needs_review", "review_ready", "failed"]
 StageName = Literal["director", "dp", "visual_review"]
@@ -376,6 +376,11 @@ class CutView:
     subtitle: ArtifactView
     events: tuple[EventView, ...]
     components: tuple[ComponentView, ...]
+    #: 這一輪 vs 上一輪（ADR-069 階段 6）。第一輪、或 ADR-069 之前的紀錄為空。
+    event_diff: tuple[RunEventDiff, ...] = ()
+    event_diff_previous_acceptance_id: str | None = None
+    #: 有值代表整份被平移同一個常數——那是機器產物，不是剪輯判斷。
+    uniform_shift_sec: float | None = None
 
 
 @dataclass(frozen=True, slots=True)

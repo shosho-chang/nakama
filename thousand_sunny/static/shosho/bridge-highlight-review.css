@@ -338,3 +338,107 @@
   .visual-candidate dl > div,
   .visual-audit > div { grid-template-columns: 1fr; }
 }
+
+/* ── 這一輪 vs 上一輪（ADR-069 階段 6）─────────────────────────────────── */
+
+/* 三格 readout（PLAN / TIMELINE / EVENTS）。固定兩欄會讓第三格單獨落一列；
+   但光是 auto-fit 又會在很寬的容器上排出第四個空格（資料只有三格），所以上限
+   鎖在三欄寬（3 × 15rem + gap），窄容器照樣自己折成 2 欄或 1 欄。 */
+.visual-truth__revisions {
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  max-width: 47rem;
+}
+
+/* 整份平移是這一塊唯一需要「一眼看到」的東西：34 個 event 逐條看都合理，
+   只有放在一起才看得出它是機器產物。所以只有它用 warning 軟填色，
+   其餘一律 hairline。 */
+.visual-shift {
+  align-items: baseline;
+  background: color-mix(in oklch, var(--sho-warning) 12%, transparent);
+  /* `--sho-warning` 原色在 light 主題上對比只有 2.3:1（實測），邊框與標籤都不合格；
+     dark 主題反而很夠。往 `--sho-text` 混就自動是主題感知的：light 的文字是深色 →
+     amber 變深，dark 的文字是亮色 → amber 變亮，兩邊都往離自己的底色更遠的方向走。 */
+  border-left: 2px solid color-mix(in oklch, var(--sho-warning) 65%, var(--sho-text));
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-2);
+  line-height: 1.6;
+  margin: var(--sho-s-3) 0 0;
+  padding: var(--sho-s-2) var(--sho-s-3);
+}
+
+.visual-shift__label {
+  color: color-mix(in oklch, var(--sho-warning) 45%, var(--sho-text));
+  flex: 0 0 auto;
+}
+
+.visual-diff { margin: var(--sho-s-3) 0 0; }
+
+.visual-diff__head {
+  align-items: baseline;
+  color: var(--sho-muted);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-2);
+  margin: 0 0 var(--sho-s-2);
+}
+
+.visual-diff__empty { color: var(--sho-muted); margin: 0; }
+
+.visual-diff__rows {
+  display: grid;
+  gap: 0;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* 這一塊住在一個窄側欄裡（實測 459px），而 viewport 是 1440——所以不能用 viewport
+   media query 決定要不要折欄，那個條件永遠不會成立。改成本質上就會換行的 flex：
+   不管容器多寬都對，也不必再知道 viewport 有多寬。 */
+.visual-diff__row {
+  align-items: baseline;
+  border-top: 1px solid var(--sho-line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-1) var(--sho-s-3);
+  line-height: 1.6;
+  padding: var(--sho-s-2) 0;
+}
+
+.visual-diff__row:first-child { border-top: 0; }
+
+.visual-diff__at {
+  color: var(--sho-text-2);
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.visual-diff__kind { color: var(--sho-muted); flex: 0 0 auto; }
+
+.visual-diff__changes {
+  align-items: baseline;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-1);
+}
+
+/* 原文 → 新文 自己佔一整行：字卡文字會長，跟時間戳擠在同一行會被壓成一條。 */
+.visual-diff__text {
+  align-items: baseline;
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: var(--sho-s-2);
+}
+
+/* 原文是修修判斷「改寫對不對」時真正要讀的字，不是裝飾——所以不套 muted
+   （實測 light 主題只有 4.43:1，secondary 的 AA 門檻是 4.5）。刪除線本身
+   就是「這是舊的」的訊號，顏色不必再說第二次。 */
+.visual-diff__text del {
+  text-decoration-color: var(--sho-muted);
+  text-decoration-thickness: 1px;
+}
+.visual-diff__text ins { text-decoration: none; }
+.visual-diff__arrow { color: var(--sho-muted); flex: 0 0 auto; }
+.visual-diff__id { color: var(--sho-muted); flex: 0 0 auto; margin-left: auto; }

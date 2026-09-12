@@ -97,6 +97,11 @@ class ReviewCutView:
     subtitle: ReviewArtifactView
     events: tuple[ReviewEventView, ...]
     components: tuple[ReviewComponentView, ...]
+    #: 這一輪 vs 上一輪（ADR-069 階段 6）。型別由模組給，adapter 不重新投影——
+    #: 自己再投影一次的那份就是會悄悄漂掉的那份。
+    event_diff: tuple[object, ...] = ()
+    event_diff_previous_acceptance_id: str | None = None
+    uniform_shift_sec: float | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,6 +158,9 @@ class FinishedCutReviewAdapter:
                 subtitle=_artifact_view(cut.subtitle),
                 events=tuple(_event_view(event) for event in cut.events),
                 components=tuple(_component_view(component) for component in cut.components),
+                event_diff=cut.event_diff,
+                event_diff_previous_acceptance_id=cut.event_diff_previous_acceptance_id,
+                uniform_shift_sec=cut.uniform_shift_sec,
             )
             for cut in inspection.cuts
         )

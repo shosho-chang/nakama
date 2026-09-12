@@ -198,13 +198,14 @@ def _review_format(value: str) -> str:
     return normalized
 
 
-def _visual_time_range(t0: object, t1: object) -> str:
-    def stamp(value: object) -> str:
-        seconds = float(value)
-        minutes, remainder = divmod(seconds, 60)
-        return f"{int(minutes):02d}:{remainder:06.3f}"
+def _visual_time_stamp(value: object) -> str:
+    seconds = float(value)
+    minutes, remainder = divmod(seconds, 60)
+    return f"{int(minutes):02d}:{remainder:06.3f}"
 
-    return f"{stamp(t0)}–{stamp(t1)}"
+
+def _visual_time_range(t0: object, t1: object) -> str:
+    return f"{_visual_time_stamp(t0)}–{_visual_time_stamp(t1)}"
 
 
 def _finished_cut_event_view(cut: dict[str, Any]) -> dict[str, object]:
@@ -212,18 +213,26 @@ def _finished_cut_event_view(cut: dict[str, Any]) -> dict[str, object]:
 
     plan_id = cut.get("plan_id")
     if plan_id is None:
-        # Short 走 run_short_review 的 packet，沒有 sealed Release，也沒有語意 event。
+        # Short 走 run_short_review 的 packet，沒有 plan record，也沒有語意 event。
         return {
             "status": "review_packet",
             "status_label": "SHORT REVIEW PACKET",
             "plan_id": None,
+            "timeline": "",
             "events": [],
+            "event_diff": [],
+            "event_diff_previous_acceptance_id": None,
+            "uniform_shift_sec": None,
         }
     return {
-        "status": "sealed_current",
-        "status_label": "FINISHED CUT RELEASE · SEALED CURRENT",
+        "status": "plan_record_current",
+        "status_label": "PLAN RECORD · CURRENT",
         "plan_id": plan_id,
+        "timeline": cut.get("timeline") or "",
         "events": cut.get("events") or [],
+        "event_diff": cut.get("event_diff") or [],
+        "event_diff_previous_acceptance_id": cut.get("event_diff_previous_acceptance_id"),
+        "uniform_shift_sec": cut.get("uniform_shift_sec"),
     }
 
 
@@ -310,6 +319,35 @@ def _release_component(component: Any) -> dict[str, Any]:
     }
 
 
+#: diff 的變動種類 → 給人看的中文。模板不做翻譯——它只排版。
+_EVENT_CHANGE_LABELS = {
+    "added": "新增",
+    "removed": "刪除",
+    "moved": "移動",
+    "retitled": "改寫",
+    "recast": "換卡種",
+}
+
+
+def _release_event_diff(row: Any) -> dict[str, Any]:
+    """一列 diff：第幾秒、哪種卡、原文→新文。"""
+
+    return {
+        "event_id": row.event_id,
+        "changes": [_EVENT_CHANGE_LABELS.get(change, change) for change in row.changes],
+        "change_codes": list(row.changes),
+        "at": _visual_time_stamp(row.t0),
+        "previous_at": (
+            None if row.previous_t0 is None else _visual_time_stamp(row.previous_t0)
+        ),
+        "implementation_kind": row.implementation_kind,
+        "display": row.display,
+        "previous_display": row.previous_display,
+        "retitled": "retitled" in row.changes,
+        "shift_sec": row.shift_sec,
+    }
+
+
 def _release_event(event: Any) -> dict[str, Any]:
     return {
         "event_id": event.event_id,
@@ -389,6 +427,7 @@ def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
             raise _manifest_error(f"{cut.cut_id} preview duration is unavailable")
         components = [_release_component(component) for component in cut.components]
         events = [_release_event(event) for event in cut.events]
+        event_diff = [_release_event_diff(row) for row in cut.event_diff]
         stock_video_count = sum(
             component["lane"] == "b_roll" and component["implementation_kind"] == "stock_video"
             for component in components
@@ -398,12 +437,16 @@ def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
                 "plan_id": cut.plan_id,
                 "cut_id": cut.cut_id,
                 "format": cut.format,
+                "timeline": cut.timeline,
                 "title": cut.cut_id,
                 "artifacts": {
                     "preview": _release_artifact(cut.preview),
                     "subtitles": _release_artifact(cut.subtitle),
                 },
                 "events": events,
+                "event_diff": event_diff,
+                "event_diff_previous_acceptance_id": cut.event_diff_previous_acceptance_id,
+                "uniform_shift_sec": cut.uniform_shift_sec,
                 "components": components,
                 "review_components": components,
                 "component_counts": {

@@ -15,6 +15,7 @@ from typing import Literal, Protocol
 from ._assets import AssetContractError, AssetKind, AssetResolver, ResolvedAsset
 from ._commands import ApprovedCutCommand, _is_authoritative_approved_cut
 from ._context import EditorialCutContext
+from ._correction import RunEventDiff, _event_diff, _latest_round, _uniform_shift
 from ._plan_record import (
     PLAN_RECORD_FILENAME,
     PlanRecord,
@@ -181,6 +182,10 @@ class MaterializationCoordinator:
             context,
         )
         record_path = subtitle_path.parent / PLAN_RECORD_FILENAME
+        # 這一輪 vs 上一輪要在**鑄紀錄的這一刻**算完：run 的驗收歷史現在就在手上，
+        # 而 Bridge 那條讀取路徑刻意沒有 run store 的依賴。算出來往下傳，不放實例
+        # 欄位——那會在不同 command 之間殘留。
+        round_diff = _round_diff(view)
         try:
             prior_record = read_plan_record_at(record_path)
         except PlanRecordError as error:
@@ -201,6 +206,7 @@ class MaterializationCoordinator:
                 subtitle_path=subtitle_path,
                 preview_path=preview_path,
                 record_path=record_path,
+                round_diff=round_diff,
             )
         try:
             inspections = self._canonical_authority.inspect(
@@ -247,6 +253,7 @@ class MaterializationCoordinator:
                 subtitle_path=subtitle_path,
                 preview_path=preview_path,
                 record_path=record_path,
+                round_diff=round_diff,
             )
         subtitle_sha256 = _stage_review_subtitle(subtitle_path, context)
         try:
@@ -281,6 +288,7 @@ class MaterializationCoordinator:
             timeline=_transaction_timeline(transaction),
             preview_path=preview_path,
             subtitle_path=subtitle_path,
+            round_diff=round_diff,
         )
         write_plan_record(record_path, record)
         return MaterializationPreparation(
@@ -304,6 +312,7 @@ class MaterializationCoordinator:
         subtitle_path: Path,
         preview_path: Path,
         record_path: Path,
+        round_diff: tuple[tuple[RunEventDiff, ...], str | None, float | None],
     ) -> MaterializationPreparation:
         """把一筆已經做完、但帳沒結成的交易接回來。
 
@@ -365,6 +374,7 @@ class MaterializationCoordinator:
             timeline=_transaction_timeline(transaction),
             preview_path=preview_path,
             subtitle_path=subtitle_path,
+            round_diff=round_diff,
         )
         write_plan_record(record_path, record)
         return MaterializationPreparation(
@@ -387,6 +397,7 @@ class MaterializationCoordinator:
         subtitle_path: Path,
         preview_path: Path,
         record_path: Path,
+        round_diff: tuple[tuple[RunEventDiff, ...], str | None, float | None],
     ) -> MaterializationPreparation:
         """Return the same preparation this plan already produced, or refuse.
 
@@ -434,6 +445,7 @@ class MaterializationCoordinator:
             timeline=timeline or prior.timeline,
             preview_path=preview_path,
             subtitle_path=subtitle_path,
+            round_diff=round_diff,
         )
         if not prior.timeline.name and not prior.timeline.uid and timeline is not None:
             # ADR-069 之前的紀錄沒有記 timeline（那時候要從交易反查，而反查要求
@@ -466,6 +478,7 @@ class MaterializationCoordinator:
         timeline: PlanTimeline,
         preview_path: Path,
         subtitle_path: Path,
+        round_diff: tuple[tuple[RunEventDiff, ...], str | None, float | None],
     ) -> PlanRecord:
         try:
             return self._records.stage(
@@ -477,6 +490,9 @@ class MaterializationCoordinator:
                 timeline=timeline,
                 preview_path=preview_path,
                 subtitle_path=subtitle_path,
+                event_diff=round_diff[0],
+                event_diff_previous_acceptance_id=round_diff[1],
+                uniform_shift_sec=round_diff[2],
             )
         except PlanRecordError as error:
             raise MaterializationError(
@@ -1004,3 +1020,32 @@ def _subtitle_text(properties: tuple[tuple[str, object], ...]) -> str | None:
         return None
     text = decoded.get("Text") if isinstance(decoded, dict) else None
     return text if isinstance(text, str) else None
+
+
+def _round_diff(view: object) -> tuple[tuple[RunEventDiff, ...], str | None, float | None]:
+    """這一輪 vs 上一輪，算在鑄出 plan record 的那一刻。
+
+    「輪」只有一個有順序的來源：`accepted_stage_history` 是 append 上去的。plan
+    record 之間沒有先後可言——staging 目錄是 content-addressed，不帶時間也不記前一
+    份是誰——所以這件事必須在還拿得到 run 的時候算完，存進紀錄。
+    """
+
+    current = tuple(getattr(view, "accepted_stages", ()) or ())
+    history = tuple(getattr(view, "accepted_stage_history", ()) or ())
+    this_round = _latest_round(current)
+    if this_round is None:
+        return (), None, None
+    current_ids = {stage.acceptance_id for stage in current}
+    last_round = _latest_round(
+        tuple(
+            stage
+            for stage in history
+            if stage.acceptance_id not in current_ids and stage.stage == this_round.stage
+        )
+    )
+    diff = _event_diff(this_round.events, () if last_round is None else last_round.events)
+    return (
+        diff,
+        None if last_round is None else last_round.acceptance_id,
+        _uniform_shift(diff),
+    )

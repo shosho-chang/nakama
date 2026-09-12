@@ -35,7 +35,13 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _ready_inspection(episode: Path) -> tuple[FinishedCutInspection, Path]:
+def _ready_inspection(
+    episode: Path,
+    *,
+    event_diff: tuple = (),
+    event_diff_previous_acceptance_id: str | None = None,
+    uniform_shift_sec: float | None = None,
+) -> tuple[FinishedCutInspection, Path]:
     review = episode / "highlights" / "review"
     cut_dir = review / "value-L03"
     cut_dir.mkdir(parents=True)
@@ -121,6 +127,9 @@ def _ready_inspection(episode: Path) -> tuple[FinishedCutInspection, Path]:
         ),
         events=(event,),
         components=(hero, *stock_components),
+        event_diff=event_diff,
+        event_diff_previous_acceptance_id=event_diff_previous_acceptance_id,
+        uniform_shift_sec=uniform_shift_sec,
     )
     return (
         FinishedCutInspection(episode_id=episode.name, state="ready", cuts=(cut,)),
@@ -241,6 +250,9 @@ def test_v3_board_projects_release_events_component_ranges_and_does_not_preload(
     assert response.status_code == 200
     assert "FINISHED CUT PLAN RECORD" in response.text
     assert "plan-L03" in response.text
+    # 要 render 哪一條 timeline 是發布線唯一真正需要的那一格；它一路從 plan record
+    # 走到頁面上，中間少接一段就會顯示「（未記錄）」而沒有人發現。
+    assert "長3 - value-L03（緊·導播）" in response.text
     assert "下一個黃金年代是什麼？" in response.text
     assert "61.0" in response.text
     assert 'id="review-player" controls preload="none"' in response.text
@@ -620,3 +632,99 @@ def test_lightweight_review_app_mounts_gate_without_full_agent_surfaces(monkeypa
     assert "/bridge/highlights/{episode_slug}/finished/media/{cut_id}" in paths
     assert "/login" in paths
     assert TestClient(review_app.app).get("/healthz").json()["surface"] == "finished-review"
+
+
+def _moved(event_id: str, t0: float, shift: float):
+    from agents.brook.script_video.finished_cut_production import RunEventDiff
+
+    return RunEventDiff(
+        event_id=event_id,
+        changes=("moved",),
+        t0=t0,
+        implementation_kind="fullscreen_transition",
+        display="轉折",
+        previous_display="轉折",
+        previous_t0=t0 - shift,
+        shift_sec=shift,
+    )
+
+
+def test_the_board_says_it_out_loud_when_the_whole_round_moved_by_one_constant(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """ADR-069 階段 6：34 個 event 同一個位移，逐條看不出來，整份看才看得出來。
+
+    2026-09-09 punch-L04 就是這樣過關的：每一條「移動 4.25 秒」都完全正常，而沒有人
+    會逐條比對那 34 個位移恰好相等。所以這一頁要把結論講出來。
+    """
+
+    episode = tmp_path / "20260901 蘇予昕"
+    diff = tuple(_moved(f"event-{index}", 10.0 * index, 4.25) for index in range(34))
+    inspection, _ = _ready_inspection(
+        episode,
+        event_diff=diff,
+        event_diff_previous_acceptance_id="acceptance-previous",
+        uniform_shift_sec=4.25,
+    )
+    client, _inspector, _ = _client(monkeypatch, tmp_path, inspection)
+
+    body = client.get(
+        f"/bridge/highlights/{episode.name}/finished",
+        cookies=_auth_cookie(),
+    ).text
+
+    assert "整份平移" in body
+    assert "+4.250" in body
+    assert "34" in body
+    assert "acceptance-previous" in body
+
+
+def test_the_board_says_the_first_round_has_nothing_to_compare(monkeypatch, tmp_path) -> None:
+    # 空 diff 有兩種意思，不能共用一句話：第一輪沒有上一輪，vs 有上一輪但沒動。
+    episode = tmp_path / "20260901 蘇予昕"
+    inspection, _ = _ready_inspection(episode)
+    client, _inspector, _ = _client(monkeypatch, tmp_path, inspection)
+
+    body = client.get(
+        f"/bridge/highlights/{episode.name}/finished",
+        cookies=_auth_cookie(),
+    ).text
+
+    assert "這是第一輪，沒有可比的上一輪" in body
+    assert "整份平移" not in body
+
+
+def test_a_rewritten_chapter_card_shows_the_old_text_and_the_new_text(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from agents.brook.script_video.finished_cut_production import RunEventDiff
+
+    episode = tmp_path / "20260901 蘇予昕"
+    inspection, _ = _ready_inspection(
+        episode,
+        event_diff=(
+            RunEventDiff(
+                event_id="event-chapter",
+                changes=("retitled",),
+                t0=180.0,
+                implementation_kind="fullscreen_transition",
+                display="退休不會解脫",
+                previous_display="退休不會解脫的幻覺",
+                previous_t0=180.0,
+            ),
+        ),
+        event_diff_previous_acceptance_id="acceptance-previous",
+    )
+    client, _inspector, _ = _client(monkeypatch, tmp_path, inspection)
+
+    body = client.get(
+        f"/bridge/highlights/{episode.name}/finished",
+        cookies=_auth_cookie(),
+    ).text
+
+    assert "退休不會解脫的幻覺" in body
+    assert "退休不會解脫<" in body or "退休不會解脫\n" in body or "退休不會解脫 " in body
+    assert "改寫" in body
+    assert "03:00.000" in body

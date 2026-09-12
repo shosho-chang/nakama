@@ -420,16 +420,45 @@ ADR-066 的核心決策是對的，是實作超標。否決。
     它刻意對「只有一個 event 移動」與「移動之外還有改寫」都不亮——亮了就沒有人
     會再相信這一格。
 
-16. **Bridge 那一頁的接線與這一段分開。** 成品審核頁（`finished_review.html`）的
-    event 不是直接讀 plan record，而是走
+16. **Bridge 那一頁的 event 根本沒有資料源，而不是「接線比較深」。** 一開始以為
+    成品審核頁（`finished_review.html`）的 event 走
     `highlights/review/<cut>/events.json` → `build_finished_review_manifest.py` →
-    manifest → 模板。要把 diff 帶上那一頁，得動 manifest builder 與模板，而依
-    repo 的 UI 紀律，那一步要在跑起來的 Bridge 上實際走一次 golden path 才算完成
-    （CI green 與 pytest 不算）。
+    manifest → 模板，於是先把頁面呈現排到後面。實際去讀才發現長片那條路走的是
+    `highlight_review._load_finished_manifest`，它**直接讀 plan record**；而它組
+    出來的 cut row 從來沒有 `plan_id`，所以 `_finished_cut_event_view` 對每一支
+    cut 都落在 `plan_id is None` 那一支——
+    **「FINISHED CUT RELEASE V3」那一整塊一直是空的。**
 
-    所以這個 commit 只到「diff 這個事實被算出來、被測住、而且讀得到」——
-    `run_finished_cut_production.py inspect-run <command_id>` 現在就會印出
-    `event_diff` 與 `uniform_shift_sec`。頁面呈現另開一次，連同瀏覽器實走。
+    跟第 6、11 點同一個模式：看起來在顯示真相的介面，其實沒有資料。所以階段 6
+    不是「加一個 diff 到那一塊」，是先讓那一塊有內容。
+
+17. **diff 算在鑄紀錄的那一刻，存進 plan record。** 「輪」只有一個有順序的來源：
+    `accepted_stage_history` 是 append 上去的。plan record 之間沒有先後——staging
+    目錄是 content-addressed，不帶時間也不記前一份是誰。而 Bridge 那條讀取路徑
+    刻意沒有 run store 的依賴，所以不能等到有人要看的時候才算。
+
+    `_materialization.prepare` 現在在鑄 plan record 時一起算完 diff，存進紀錄；
+    Bridge 只是把它排版。ADR-069 之前的 v1 紀錄沒有這一格，讀回來是空 diff，
+    頁面上讀作「第一輪，沒有可比的上一輪」——那不是謊。
+
+18. **瀏覽器實走抓到四件 pytest 抓不到的事**（這就是 UI 紀律要求它的理由）：
+
+    | 看到的 | 真正的問題 |
+    |---|---|
+    | `TIMELINE （未記錄）` | 階段 4 把 `timeline` 加進 `CutView` 與模板，卻沒接進 manifest 的 cut row——那一格一直是空的。補測試鎖住 |
+    | readout 在寬容器排出第四個空格 | `auto-fit` 對只有三格的資料會多排一欄。上限鎖三欄 |
+    | 34 列每列多一行空白 | 沒有文字的卡（B-roll）也排了「原文→新文」那一行，正好讓最需要被掃讀的案子最難掃。列表高度 3100px → 1682px |
+    | diff 列在 459px 側欄裡擠成多行 | 我用 **viewport** media query 決定折欄，而容器只有 459px、viewport 是 1440——那個條件永遠不會成立。改成本質上會換行的 flex |
+
+19. **對比是量出來的，不是看出來的。** `--sho-warning` 原色在 light 主題上：標籤
+    2.09:1、邊框 2.31:1，兩個都不合格（dark 主題反而很夠，所以螢幕上看起來是對
+    的）。改成往 `--sho-text` 混——那個混法本身就是主題感知的：light 的文字是深色
+    → amber 變深，dark 的文字是亮色 → amber 變亮，兩邊都往離自己底色更遠的方向
+    走。修後 6.62 / 9.33（標籤）、4.72 / 9.70（邊框）。
+
+    原文（`<del>`）本來套 muted，實測 light 只有 4.43:1——而那正是修修判斷「改寫
+    對不對」時要讀的字，不是裝飾。改回正常文字色、只把刪除線染 muted：16.45 /
+    15.14。
 
 ## Review record
 

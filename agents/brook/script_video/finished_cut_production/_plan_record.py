@@ -46,6 +46,7 @@ from pathlib import Path
 from typing import Literal, Protocol, cast
 
 from ._codec import RecordCodec, RecordCodecError
+from ._correction import RunEventDiff
 from ._projection import RELEASE_PROJECTIONS
 from ._records import (
     ArtifactView,
@@ -122,6 +123,14 @@ class PlanRecord:
     events: tuple[EventRecord, ...]
     components: tuple[ProjectedComponent, ...]
     status: Literal["review_ready"] = "review_ready"
+    #: 這一輪 vs 上一輪（ADR-069 階段 6）。算的時機是**鑄出這份紀錄的那一刻**——
+    #: 那時 run 的驗收歷史還在手上；等到有人要看的時候才算，就得再去翻 run store，
+    #: 而 Bridge 那條讀取路徑刻意沒有那個依賴。
+    event_diff: tuple[RunEventDiff, ...] = ()
+    #: 拿來比的上一輪是哪一次驗收。第一輪為 None。
+    event_diff_previous_acceptance_id: str | None = None
+    #: 每一個移動過的 event 位移都相同時的那個常數。見 `_correction._uniform_shift`。
+    uniform_shift_sec: float | None = None
 
 
 def _rehydrate_recorded_component(value: object) -> ProjectedComponent:
@@ -179,6 +188,9 @@ class PlanRecordStore:
         timeline: PlanTimeline,
         preview_path: Path,
         subtitle_path: Path,
+        event_diff: tuple[RunEventDiff, ...] = (),
+        event_diff_previous_acceptance_id: str | None = None,
+        uniform_shift_sec: float | None = None,
     ) -> PlanRecord:
         """Measure the two artifacts and mint the record for this prepared plan."""
 
@@ -224,6 +236,9 @@ class PlanRecordStore:
             subtitle=self._artifact(Path(subtitle_path)),
             events=plan.events,
             components=plan.components,
+            event_diff=event_diff,
+            event_diff_previous_acceptance_id=event_diff_previous_acceptance_id,
+            uniform_shift_sec=uniform_shift_sec,
         )
 
     def verify_artifacts(self, record: PlanRecord) -> None:
@@ -432,6 +447,8 @@ def _lift_v1_payload(payload: Mapping[str, object]) -> dict:
     lifted["transaction_id"] = candidate.get("preview_ready_transaction_id")
     lifted["timeline"] = {"name": "", "uid": ""}
     lifted["status"] = "review_ready"
+    # v1 沒有 diff（那時候還沒有這個欄位）。欄位自己的預設值接手：空 diff 在
+    # 頁面上讀作「這一輪沒有可比的上一輪」，跟第一輪一樣，不是謊。
     return lifted
 
 
@@ -446,6 +463,9 @@ def plan_record_cut_view(record: PlanRecord) -> CutView:
         subtitle=_artifact_view(record.subtitle),
         events=tuple(_event_view(event) for event in record.events),
         components=tuple(_component_view(component) for component in record.components),
+        event_diff=record.event_diff,
+        event_diff_previous_acceptance_id=record.event_diff_previous_acceptance_id,
+        uniform_shift_sec=record.uniform_shift_sec,
     )
 
 
