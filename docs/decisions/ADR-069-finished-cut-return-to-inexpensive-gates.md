@@ -1,6 +1,6 @@
 # ADR-069: Finished Cut Production 回到 ADR-066 自己說的 inexpensive structural gates
 
-- **Status**: **Accepted** — owner 簽核 2026-09-12（三項裁決：放棄封存 Release、person_inset 整刪、`chapter_transition_projection_mismatch` 升回 blocking）
+- **Status**: **Implemented** — owner 簽核 2026-09-12（三項裁決：放棄封存 Release、person_inset 整刪、`chapter_transition_projection_mismatch` 升回 blocking）；七個階段於 2026-09-12 全部落地（`d70fab40` → `38aac9e6`），實作 21,547 → 15,784 行、raise 991 → 633、40 檔 → 31 檔。實作中發現的 22 處修正與判斷見文末〈實作中發現〉各節——其中第 6、11、16 點是三個「介面看起來在顯示真相，實際上沒有資料」的真實缺陷，第 22 點是唯一一條量完之後判斷**不該執行**的。
 - **Date**: 2026-09-12（v1）→ 2026-09-12（v2，三方審查後）
 - **Owner**: Brook / Podcast Stage 5
 - **Stage**: 5 Multi-channel Production
@@ -496,6 +496,42 @@ ADR-066 的核心決策是對的，是實作超標。否決。
     順帶把兩支被連帶刪到一半的測試救回來：`prepare` 失敗後的 rollback（那條路
     還活著，只是名字裡有 rollback）與「語意素材對新 DP 隱形」（它原本順手也驗了
     Release 綁定，只有後半該走）。
+
+22. **階段 2 的「歸檔 89 個 run 後刪退役詞彙」——建議不要做。** 這是唯一一條我量完
+    之後認為不該執行的。
+
+    先把數字擺出來。實測兩集的 run store：
+
+    | episode | runs | 含 `visual_effect` |
+    |---|---|---|
+    | 20260721 呂冠緯 | 3 | 0 |
+    | 20260901 蘇予昕 | 62 | **39** |
+
+    而那 39 個的狀態是 `needs_review` 37 個、`pending` 2 個——**沒有一個是
+    `review_ready`**。也就是說它們不是「39 份要保存的成品歷史」，是 39 份
+    **被拒絕的提案紀錄**：worker 提了 `visual_effect`（已退役的軌），run 就地被擋。
+    `visual_effect` 在那些列裡出現的位置是 event 的 `semantic_kind`／
+    `implementation_kind`／`lane`。
+
+    現在看這筆交易：
+
+    * **得到**：`VOCABULARY` 少一筆 `retired=True`、`ComponentLane` 少一個值、
+      `RELEASE_PROJECTIONS` 少一組。約三行。
+    * **付出**：搬動修修正在工作的那一集裡 62 列中的 39 列生產資料。搬錯的話那
+      一集的語意歷史就毀了，而它沒有備份機制。
+
+    更重要的是：**`retired=True` 不是債，它就是階段 1 設計出來處理這件事的機制。**
+    ADR-069 自己把 `retired` 做進 `VOCABULARY`，正是為了讓退役詞彙讀得回來而不必
+    動歷史資料。為了拿掉三行而去搬 39 列生產資料，方向剛好跟這份 ADR 的主張相反
+    ——那是「為了讓表格看起來乾淨而付出真實風險」。
+
+    所以：`visual_effect` 與 `supporting_title` 留在詞彙表裡，標著 `retired=True`。
+    真正要守的那條規則已經有測試（`_mint_projected_component` 擋 writer、
+    `RELEASE_PROJECTIONS` 讓 reader 寬鬆），退役詞彙進不了新的成品。
+
+    要改變這個判斷的條件很明確：等 20260901 蘇予昕 這一集整個結束、不會再有人
+    `advance` 那 39 個 command 的時候，整份 `authority.json` 歸檔掉再刪詞彙——
+    那時候成本才真的接近零。
 
 ## Review record
 
