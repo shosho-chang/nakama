@@ -25,9 +25,9 @@ from agents.brook.script_video.editorial_master import (
     EditorialMasterRequest,
 )
 from agents.brook.script_video.finished_cut_production import (
-    build_current_release_reader,
+    build_plan_record_reader,
 )
-from agents.usopp.publish_timeline import export_matches_current_release, packaging_cut_id
+from agents.usopp.publish_timeline import export_matches_plan_record, packaging_cut_id
 from scripts.packaging_manifest import load_manifest, stage_parallel_jobs
 from shared.background_job import atomic_job_write, job_expired, load_job, new_job
 from shared.config import get_db_path, get_vault_path
@@ -198,32 +198,41 @@ def _review_format(value: str) -> str:
     return normalized
 
 
-def _visual_time_range(t0: object, t1: object) -> str:
-    def stamp(value: object) -> str:
-        seconds = float(value)
-        minutes, remainder = divmod(seconds, 60)
-        return f"{int(minutes):02d}:{remainder:06.3f}"
+def _visual_time_stamp(value: object) -> str:
+    seconds = float(value)
+    minutes, remainder = divmod(seconds, 60)
+    return f"{int(minutes):02d}:{remainder:06.3f}"
 
-    return f"{stamp(t0)}–{stamp(t1)}"
+
+def _visual_time_range(t0: object, t1: object) -> str:
+    return f"{_visual_time_stamp(t0)}–{_visual_time_stamp(t1)}"
 
 
 def _finished_cut_event_view(cut: dict[str, Any]) -> dict[str, object]:
-    """Project only semantic events carried by the sealed current Release."""
+    """Project only the semantic events this cut's plan record carries."""
 
-    release_id = cut.get("release_id")
-    if release_id is None:
-        # Short 走 run_short_review 的 packet，沒有 sealed Release，也沒有語意 event。
+    plan_id = cut.get("plan_id")
+    if plan_id is None:
+        # Short 走 run_short_review 的 packet，沒有 plan record，也沒有語意 event。
         return {
             "status": "review_packet",
             "status_label": "SHORT REVIEW PACKET",
-            "release_id": None,
+            "plan_id": None,
+            "timeline": "",
             "events": [],
+            "event_diff": [],
+            "event_diff_previous_acceptance_id": None,
+            "uniform_shift_sec": None,
         }
     return {
-        "status": "sealed_current",
-        "status_label": "FINISHED CUT RELEASE · SEALED CURRENT",
-        "release_id": release_id,
+        "status": "plan_record_current",
+        "status_label": "PLAN RECORD · CURRENT",
+        "plan_id": plan_id,
+        "timeline": cut.get("timeline") or "",
         "events": cut.get("events") or [],
+        "event_diff": cut.get("event_diff") or [],
+        "event_diff_previous_acceptance_id": cut.get("event_diff_previous_acceptance_id"),
+        "uniform_shift_sec": cut.get("uniform_shift_sec"),
     }
 
 
@@ -281,7 +290,7 @@ def _require_final_qa_clear(episode_dir: Path, cut_id: str) -> None:
         )
 
 
-_CURRENT_RELEASE_INSPECTOR_FACTORY = build_current_release_reader
+_PLAN_RECORD_INSPECTOR_FACTORY = build_plan_record_reader
 
 
 def _release_artifact(artifact: Any) -> dict[str, Any]:
@@ -307,6 +316,35 @@ def _release_component(component: Any) -> dict[str, Any]:
         "t1": component.t1,
         "asset_ref": component.asset_ref,
         "actions": [{"value": action, "label": _ACTION_LABELS[action]} for action in actions],
+    }
+
+
+#: diff 的變動種類 → 給人看的中文。模板不做翻譯——它只排版。
+_EVENT_CHANGE_LABELS = {
+    "added": "新增",
+    "removed": "刪除",
+    "moved": "移動",
+    "retimed": "改長度",
+    "retitled": "改寫",
+    "recast": "換卡種",
+    "reshot": "換素材",
+}
+
+
+def _release_event_diff(row: Any) -> dict[str, Any]:
+    """一列 diff：第幾秒、哪種卡、原文→新文。"""
+
+    return {
+        "event_id": row.event_id,
+        "changes": [_EVENT_CHANGE_LABELS.get(change, change) for change in row.changes],
+        "change_codes": list(row.changes),
+        "at": _visual_time_stamp(row.t0),
+        "previous_at": (None if row.previous_t0 is None else _visual_time_stamp(row.previous_t0)),
+        "implementation_kind": row.implementation_kind,
+        "display": row.display,
+        "previous_display": row.previous_display,
+        "retitled": "retitled" in row.changes,
+        "shift_sec": row.shift_sec,
     }
 
 
@@ -369,7 +407,7 @@ def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
     """Project only the exact current v3 Release index into the Bridge view model."""
 
     episode_dir = _episode_dir(episode_slug)
-    review = FinishedCutReviewAdapter(_CURRENT_RELEASE_INSPECTOR_FACTORY(episode_dir)).load(
+    review = FinishedCutReviewAdapter(_PLAN_RECORD_INSPECTOR_FACTORY(episode_dir)).load(
         episode_slug
     )
     if review.state is ReviewState.MISSING:
@@ -389,21 +427,26 @@ def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
             raise _manifest_error(f"{cut.cut_id} preview duration is unavailable")
         components = [_release_component(component) for component in cut.components]
         events = [_release_event(event) for event in cut.events]
+        event_diff = [_release_event_diff(row) for row in cut.event_diff]
         stock_video_count = sum(
             component["lane"] == "b_roll" and component["implementation_kind"] == "stock_video"
             for component in components
         )
         cuts.append(
             {
-                "release_id": cut.release_id,
+                "plan_id": cut.plan_id,
                 "cut_id": cut.cut_id,
                 "format": cut.format,
+                "timeline": cut.timeline,
                 "title": cut.cut_id,
                 "artifacts": {
                     "preview": _release_artifact(cut.preview),
                     "subtitles": _release_artifact(cut.subtitle),
                 },
                 "events": events,
+                "event_diff": event_diff,
+                "event_diff_previous_acceptance_id": cut.event_diff_previous_acceptance_id,
+                "uniform_shift_sec": cut.uniform_shift_sec,
                 "components": components,
                 "review_components": components,
                 "component_counts": {
@@ -845,7 +888,7 @@ def _finished_revision_jobs(
         authority = {
             "episode_id": manifest["episode_id"],
             "source_manifest_sha256": manifest["_sha256"],
-            "release_id": row["release_id"],
+            "plan_id": row["plan_id"],
             "cut_id": row["cut_id"],
             "event_id": row["event_id"],
             "feedback": feedback,
@@ -907,18 +950,23 @@ def _verified_editorial_master(episode_dir: Path):
     return master
 
 
-def _context(episode_slug: str) -> dict:
+#: 選段 gate 的頁面標題。格式的合法性由既有的 `_review_format` 判（同一模組上方，
+#: 初剪 review 也在用）——重複定義一份會把它整個蓋掉（2026-09-10 我實際踩過）。
+_REVIEW_FORMAT_LABELS = {"long": "長精華", "short": "短影片"}
+
+
+def _context(episode_slug: str, review_format: str = "long") -> dict:
     episode_dir = _episode_dir(episode_slug)
     _verified_editorial_master(episode_dir)
     highlights_dir = episode_dir / "highlights"
     try:
-        rows = collect(highlights_dir, "long")
-        feedback_audit = load_review_feedback(highlights_dir)
+        rows = collect(highlights_dir, review_format)
+        feedback_audit = load_review_feedback(highlights_dir, review_format)
     except HighlightDataError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     shown = rows[:_MAX_CANDIDATES]
     if not shown:
-        raise HTTPException(status_code=422, detail="no long-form candidates available")
+        raise HTTPException(status_code=422, detail=f"no {review_format}-form candidates available")
     latest = feedback_audit["decisions"][-1] if feedback_audit["decisions"] else {}
     latest_feedback = latest.get("feedback", {}) if isinstance(latest, dict) else {}
     if not isinstance(latest_feedback, dict):
@@ -951,6 +999,8 @@ def _context(episode_slug: str) -> dict:
         "decision_count": len(feedback_audit["decisions"]),
         "finished_review_ready": finished_manifest is not None,
         "asset_version": _SHOSHO_ASSET_VERSION,
+        "review_format": review_format,
+        "review_format_label": _REVIEW_FORMAT_LABELS[review_format],
     }
 
 
@@ -964,11 +1014,12 @@ async def highlight_review_board(
     request: Request,
     episode_slug: str,
     saved: bool = False,
+    format: str = "long",
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
         return RedirectResponse(f"/login?next=/bridge/highlights/{episode_slug}", status_code=302)
-    context = _context(episode_slug)
+    context = _context(episode_slug, _review_format(format))
     context["saved"] = saved
     return _templates.TemplateResponse(request, "highlight_review.html", context)
 
@@ -987,11 +1038,13 @@ async def highlight_review_media(
 async def highlight_review_decide(
     request: Request,
     episode_slug: str,
+    format: str = "long",
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/highlights", status_code=302)
-    context = _context(episode_slug)
+    review_format = _review_format(format)
+    context = _context(episode_slug, review_format)
     form = await request.form()
     selected_ids = [str(value) for value in form.getlist("candidate_id")]
     selection_order = [value for value in str(form.get("selection_order", "")).split(",") if value]
@@ -1005,7 +1058,8 @@ async def highlight_review_decide(
         selected_ids = selection_order
     if len(selected_ids) != 3 or len(set(selected_ids)) != 3:
         raise HTTPException(
-            status_code=400, detail="select exactly three distinct long-form candidates"
+            status_code=400,
+            detail=f"select exactly three distinct {review_format}-form candidates",
         )
     by_id = {row["id"]: row for row in context["rows"]}
     unknown = [candidate_id for candidate_id in selected_ids if candidate_id not in by_id]
@@ -1043,7 +1097,10 @@ async def highlight_review_decide(
     # candidates document cannot be copied into winners.json through that gap.
     _verified_editorial_master(episode_dir)
     highlights_dir = episode_dir / "highlights"
-    _stage_parallel_work_plan(episode_dir, selected_ids, by_id, dry_run=True)
+    # packaging-plan 是長片的東西：它排的兩個 branch 之一就是封面／標題。短片不做
+    # 封面（修修 2026-09-10 裁定），所以短片線在這裡沒有東西要排。
+    if review_format == "long":
+        _stage_parallel_work_plan(episode_dir, selected_ids, by_id, dry_run=True)
     try:
         # Validate and prepare every input before either durable write. Each write
         # itself is atomic; the audit entry preserves earlier decisions.
@@ -1052,17 +1109,23 @@ async def highlight_review_decide(
             context["rows"],
             selected_ids,
             picked_by="修修 (Bridge highlight review gate)",
+            fmt=review_format,
         )
         append_review_feedback(
             highlights_dir,
             selected_ids=selected_ids,
             feedback=feedback,
             overridden_veto_ids=sorted(vetoed),
+            fmt=review_format,
         )
-        _stage_parallel_work_plan(episode_dir, selected_ids, by_id)
+        if review_format == "long":
+            _stage_parallel_work_plan(episode_dir, selected_ids, by_id)
     except HighlightDataError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
-    return RedirectResponse(f"/bridge/highlights/{episode_slug}?saved=1", status_code=303)
+    # 長片的網址一個字都不變（`format` 的預設就是 long），短片才帶參數回來——
+    # 存完之後要回到剛剛那一頁，不是永遠彈回長片。
+    suffix = "" if review_format == "long" else f"&format={review_format}"
+    return RedirectResponse(f"/bridge/highlights/{episode_slug}?saved=1{suffix}", status_code=303)
 
 
 @page_router.get("/{episode_slug}/finished", response_class=HTMLResponse)
@@ -1231,7 +1294,7 @@ def _start_publish_prep(episode_dir: Path, cut_id: str) -> None:
     if (
         current
         and current.get("status") == "rendered"
-        and export_matches_current_release(episode_dir, cut_id, current)
+        and export_matches_plan_record(episode_dir, cut_id, current)
     ):
         return
     if running is not None and running.poll() is None:
@@ -1428,7 +1491,7 @@ async def finished_review_save(
                     status_code=400, detail=f"move time is outside {cut['cut_id']} duration"
                 )
         row: dict[str, Any] = {
-            "release_id": cut.get("release_id"),
+            "plan_id": cut.get("plan_id"),
             "cut_id": cut["cut_id"],
             "component_id": component_id,
             "event_id": component.get("event_id"),

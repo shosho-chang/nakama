@@ -35,7 +35,13 @@ def _sha(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
-def _ready_inspection(episode: Path) -> tuple[FinishedCutInspection, Path]:
+def _ready_inspection(
+    episode: Path,
+    *,
+    event_diff: tuple = (),
+    event_diff_previous_acceptance_id: str | None = None,
+    uniform_shift_sec: float | None = None,
+) -> tuple[FinishedCutInspection, Path]:
     review = episode / "highlights" / "review"
     cut_dir = review / "value-L03"
     cut_dir.mkdir(parents=True)
@@ -52,7 +58,7 @@ def _ready_inspection(episode: Path) -> tuple[FinishedCutInspection, Path]:
             {
                 "schema": "nakama.finished_cut_review_manifest.v3",
                 "episode_id": episode.name,
-                "releases": [{"release_id": "release-L03"}],
+                "releases": [{"plan_id": "plan-L03"}],
             },
             ensure_ascii=False,
             sort_keys=True,
@@ -103,9 +109,10 @@ def _ready_inspection(episode: Path) -> tuple[FinishedCutInspection, Path]:
         for index in range(1, 4)
     )
     cut = CutView(
-        release_id="release-L03",
+        plan_id="plan-L03",
         cut_id="value-L03",
         format="long",
+        timeline="長3 - value-L03（緊·導播）",
         preview=ArtifactView(
             reference=preview.relative_to(episode).as_posix(),
             bytes=preview.stat().st_size,
@@ -120,6 +127,9 @@ def _ready_inspection(episode: Path) -> tuple[FinishedCutInspection, Path]:
         ),
         events=(event,),
         components=(hero, *stock_components),
+        event_diff=event_diff,
+        event_diff_previous_acceptance_id=event_diff_previous_acceptance_id,
+        uniform_shift_sec=uniform_shift_sec,
     )
     return (
         FinishedCutInspection(episode_id=episode.name, state="ready", cuts=(cut,)),
@@ -144,7 +154,7 @@ def _client(
     inspector = _FakeInspector(inspection)
     monkeypatch.setattr(
         review_module,
-        "_CURRENT_RELEASE_INSPECTOR_FACTORY",
+        "_PLAN_RECORD_INSPECTOR_FACTORY",
         lambda _episode_dir: inspector,
     )
     app = FastAPI()
@@ -172,7 +182,7 @@ def test_missing_current_is_404_and_never_falls_back_to_historical_manifest(
     inspection = FinishedCutInspection(
         episode_id=episode.name,
         state="missing",
-        error_code="current_release_missing",
+        error_code="plan_record_missing",
     )
     client, inspector, _ = _client(monkeypatch, tmp_path, inspection)
 
@@ -194,12 +204,12 @@ def test_production_inspector_itself_ignores_historical_manifests(tmp_path: Path
         '{"schema":"nakama.finished_cut_review_manifest.v2"}',
         encoding="utf-8",
     )
-    from agents.brook.script_video.finished_cut_production import build_current_release_reader
+    from agents.brook.script_video.finished_cut_production import build_plan_record_reader
 
-    inspection = build_current_release_reader(episode).inspect_current(episode.name)
+    inspection = build_plan_record_reader(episode).inspect_current(episode.name)
 
     assert inspection.state == "missing"
-    assert inspection.error_code == "current_release_missing"
+    assert inspection.error_code == "plan_record_missing"
 
 
 def test_invalid_current_is_explicit_and_not_rendered(
@@ -211,7 +221,7 @@ def test_invalid_current_is_explicit_and_not_rendered(
     inspection = FinishedCutInspection(
         episode_id=episode.name,
         state="invalid",
-        error_code="current_release_invalid",
+        error_code="plan_record_invalid",
     )
     client, _, _ = _client(monkeypatch, tmp_path, inspection)
 
@@ -221,7 +231,7 @@ def test_invalid_current_is_explicit_and_not_rendered(
     )
 
     assert response.status_code == 422
-    assert "current_release_invalid" in response.json()["detail"]
+    assert "plan_record_invalid" in response.json()["detail"]
 
 
 def test_v3_board_projects_release_events_component_ranges_and_does_not_preload(
@@ -238,8 +248,11 @@ def test_v3_board_projects_release_events_component_ranges_and_does_not_preload(
     )
 
     assert response.status_code == 200
-    assert "FINISHED CUT RELEASE V3" in response.text
-    assert "release-L03" in response.text
+    assert "FINISHED CUT PLAN RECORD" in response.text
+    assert "plan-L03" in response.text
+    # 要 render 哪一條 timeline 是發布線唯一真正需要的那一格；它一路從 plan record
+    # 走到頁面上，中間少接一段就會顯示「（未記錄）」而沒有人發現。
+    assert "長3 - value-L03（緊·導播）" in response.text
     assert "下一個黃金年代是什麼？" in response.text
     assert "61.0" in response.text
     assert 'id="review-player" controls preload="none"' in response.text
@@ -301,7 +314,7 @@ def test_save_writes_event_scoped_v3_revision_queue(
     assert payload["schema"] == "nakama.finished_cut_review_feedback.v3"
     job = payload["revisions"][0]["revision_jobs"][0]
     assert job["contract"] == "finished-cut-production-revision.v3"
-    assert job["release_id"] == "release-L03"
+    assert job["plan_id"] == "plan-L03"
     assert job["event_id"] == "event-hero"
     assert job["status"] == "queued"
     assert job["command_id"] is None
@@ -565,6 +578,27 @@ def test_short_review_view_discovers_packets_and_exposes_short_component_lanes(
     assert media.content == (packet / "短1_preview.mp4").read_bytes()
 
 
+def test_a_short_packet_does_not_pretend_to_have_a_plan_record(client, finished_episode):
+    """短片線不走 finished cut production，所以它沒有 plan record。
+
+    版面照長片排下去的話，PLAN 那一格會印出字面的 `None`（Jinja 對 Python 的 None
+    就是這樣），而輪次比對那一塊會寫著「這是第一輪，沒有可比的上一輪」——一支根本
+    沒有輪次概念的 cut 被說成第一輪。兩句都不是真的。
+    """
+    _, episode, _ = finished_episode
+    _write_short_packet(episode)
+
+    response = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished?format=short",
+        cookies=_auth_cookie(),
+    )
+
+    assert response.status_code == 200
+    assert "<dd>None</dd>" not in response.text
+    assert "這是第一輪，沒有可比的上一輪" not in response.text
+    assert "沒有 plan record" in response.text
+
+
 def test_short_review_feedback_is_append_only_and_separate_from_long_feedback(
     client, finished_episode
 ):
@@ -619,3 +653,99 @@ def test_lightweight_review_app_mounts_gate_without_full_agent_surfaces(monkeypa
     assert "/bridge/highlights/{episode_slug}/finished/media/{cut_id}" in paths
     assert "/login" in paths
     assert TestClient(review_app.app).get("/healthz").json()["surface"] == "finished-review"
+
+
+def _moved(event_id: str, t0: float, shift: float):
+    from agents.brook.script_video.finished_cut_production import RunEventDiff
+
+    return RunEventDiff(
+        event_id=event_id,
+        changes=("moved",),
+        t0=t0,
+        implementation_kind="fullscreen_transition",
+        display="轉折",
+        previous_display="轉折",
+        previous_t0=t0 - shift,
+        shift_sec=shift,
+    )
+
+
+def test_the_board_says_it_out_loud_when_the_whole_round_moved_by_one_constant(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    """ADR-069 階段 6：34 個 event 同一個位移，逐條看不出來，整份看才看得出來。
+
+    2026-09-09 punch-L04 就是這樣過關的：每一條「移動 4.25 秒」都完全正常，而沒有人
+    會逐條比對那 34 個位移恰好相等。所以這一頁要把結論講出來。
+    """
+
+    episode = tmp_path / "20260901 蘇予昕"
+    diff = tuple(_moved(f"event-{index}", 10.0 * index, 4.25) for index in range(34))
+    inspection, _ = _ready_inspection(
+        episode,
+        event_diff=diff,
+        event_diff_previous_acceptance_id="acceptance-previous",
+        uniform_shift_sec=4.25,
+    )
+    client, _inspector, _ = _client(monkeypatch, tmp_path, inspection)
+
+    body = client.get(
+        f"/bridge/highlights/{episode.name}/finished",
+        cookies=_auth_cookie(),
+    ).text
+
+    assert "整份平移" in body
+    assert "+4.250" in body
+    assert "34" in body
+    assert "acceptance-previous" in body
+
+
+def test_the_board_says_the_first_round_has_nothing_to_compare(monkeypatch, tmp_path) -> None:
+    # 空 diff 有兩種意思，不能共用一句話：第一輪沒有上一輪，vs 有上一輪但沒動。
+    episode = tmp_path / "20260901 蘇予昕"
+    inspection, _ = _ready_inspection(episode)
+    client, _inspector, _ = _client(monkeypatch, tmp_path, inspection)
+
+    body = client.get(
+        f"/bridge/highlights/{episode.name}/finished",
+        cookies=_auth_cookie(),
+    ).text
+
+    assert "這是第一輪，沒有可比的上一輪" in body
+    assert "整份平移" not in body
+
+
+def test_a_rewritten_chapter_card_shows_the_old_text_and_the_new_text(
+    monkeypatch,
+    tmp_path,
+) -> None:
+    from agents.brook.script_video.finished_cut_production import RunEventDiff
+
+    episode = tmp_path / "20260901 蘇予昕"
+    inspection, _ = _ready_inspection(
+        episode,
+        event_diff=(
+            RunEventDiff(
+                event_id="event-chapter",
+                changes=("retitled",),
+                t0=180.0,
+                implementation_kind="fullscreen_transition",
+                display="退休不會解脫",
+                previous_display="退休不會解脫的幻覺",
+                previous_t0=180.0,
+            ),
+        ),
+        event_diff_previous_acceptance_id="acceptance-previous",
+    )
+    client, _inspector, _ = _client(monkeypatch, tmp_path, inspection)
+
+    body = client.get(
+        f"/bridge/highlights/{episode.name}/finished",
+        cookies=_auth_cookie(),
+    ).text
+
+    assert "退休不會解脫的幻覺" in body
+    assert "退休不會解脫<" in body or "退休不會解脫\n" in body or "退休不會解脫 " in body
+    assert "改寫" in body
+    assert "03:00.000" in body

@@ -1,4 +1,4 @@
-"""Private, fail-closed coordination from an exact plan to a staged Candidate."""
+"""Private, fail-closed coordination from an exact plan to a recorded preview."""
 
 from __future__ import annotations
 
@@ -7,25 +7,26 @@ import json
 import math
 import os
 import re
-from dataclasses import asdict, dataclass
+from collections.abc import Mapping
+from dataclasses import asdict, dataclass, replace
 from pathlib import Path
-from typing import Literal, Protocol, cast
+from typing import Literal, Protocol
 
 from ._assets import AssetContractError, AssetKind, AssetResolver, ResolvedAsset
 from ._commands import ApprovedCutCommand, _is_authoritative_approved_cut
 from ._context import EditorialCutContext
-from ._records import (
-    MaterializationPlan,
-    ReleaseArtifact,
-    StagedReleaseCandidate,
-    _mint_staged_release_candidate,
+from ._correction import RunEventDiff, _round_event_diff
+from ._digest import file_digest
+from ._plan_record import (
+    PLAN_RECORD_FILENAME,
+    PlanRecord,
+    PlanRecordError,
+    PlanRecordStore,
+    PlanTimeline,
+    read_plan_record_at,
+    write_plan_record,
 )
-from ._release import (
-    FinishedCutReleaseLifecycle,
-    ReleaseLifecycleError,
-    _artifact_from_receipt,
-    _measure,
-)
+from ._records import AcceptedStage, MaterializationPlan
 from ._resolve import (
     ResolveTransaction,
     ResolveTransactionError,
@@ -66,7 +67,7 @@ class CanonicalTimelineInspection:
 
 @dataclass(frozen=True, slots=True)
 class MaterializationPreparation:
-    """Private, uncommitted result of an exact preview-ready preparation."""
+    """The result of one exact preview-ready preparation, plus its record."""
 
     command_id: str
     run_id: str
@@ -74,7 +75,7 @@ class MaterializationPreparation:
     status: Literal["preview_ready"]
     transaction_id: str
     subtitle_sha256: str
-    candidate: StagedReleaseCandidate
+    record: PlanRecord
 
 
 class _CanonicalTimelineAuthority(Protocol):
@@ -97,14 +98,14 @@ class MaterializationCoordinator:
         canonical_authority: _CanonicalTimelineAuthority,
         assets: AssetResolver,
         transactions: ResolveTransactionManager,
-        releases: FinishedCutReleaseLifecycle,
+        records: PlanRecordStore,
         episode_root: Path,
     ) -> None:
         self._run_store = run_store
         self._canonical_authority = canonical_authority
         self._assets = assets
         self._transactions = transactions
-        self._releases = releases
+        self._records = records
         self._episode_root = Path(episode_root)
 
     def prepare(self, command_id: str) -> MaterializationPreparation:
@@ -160,7 +161,6 @@ class MaterializationCoordinator:
                 "command, plan, and Editorial Cut Context do not share one authority chain",
                 reason_code="authority_chain_mismatch",
             )
-        _validate_context_contract(context)
         if (
             view.command_id != command_id
             or plan.command_id != command_id
@@ -182,16 +182,32 @@ class MaterializationCoordinator:
             plan,
             context,
         )
-        journal_path = subtitle_path.parent / "materialization.json"
-        prior_journal = _read_materialization_journal(journal_path)
-        if prior_journal is not None:
-            return self._reopen_prior_preparation(
-                prior_journal,
+        record_path = subtitle_path.parent / PLAN_RECORD_FILENAME
+        # 這一輪 vs 上一輪要在**鑄紀錄的這一刻**算完：run 的驗收歷史現在就在手上，
+        # 而 Bridge 那條讀取路徑刻意沒有 run store 的依賴。算出來往下傳，不放實例
+        # 欄位——那會在不同 command 之間殘留。
+        round_diff = _round_diff(view)
+        try:
+            prior_record = read_plan_record_at(record_path)
+        except PlanRecordError as error:
+            raise MaterializationError(
+                f"persisted plan record is unusable: {error}",
+                reason_code=(
+                    "materialization_journal_incomplete"
+                    if error.reason == "incomplete"
+                    else "materialization_journal_invalid"
+                ),
+            ) from error
+        if prior_record is not None:
+            return self._reopen_prior_record(
+                prior_record,
                 command=command,
                 plan=plan,
                 context=context,
                 subtitle_path=subtitle_path,
                 preview_path=preview_path,
+                record_path=record_path,
+                round_diff=round_diff,
             )
         try:
             inspections = self._canonical_authority.inspect(
@@ -206,21 +222,40 @@ class MaterializationCoordinator:
                 reason_code=(
                     reason_code
                     if isinstance(reason_code, str) and reason_code
-                    else "canonical_authority_failed"
+                    else "resolve_binding_mismatch"
                 ),
             ) from error
         if not inspections:
             raise MaterializationError(
                 "canonical Timeline UID is unknown",
-                reason_code="canonical_timeline_unknown",
+                reason_code="resolve_binding_mismatch",
             )
         if len(inspections) != 1:
             raise MaterializationError(
                 "canonical Timeline UID is ambiguous",
-                reason_code="canonical_timeline_ambiguous",
+                reason_code="resolve_binding_mismatch",
             )
         inspection = inspections[0]
         _validate_editorial_base(inspection, context)
+        # 這一步要等 canonical 綁定驗過才做：交易層是 Timeline 的門，read-only
+        # preflight 沒過之前不碰它（`test_exact_uid_binding_rejects_unknown_or_
+        # ambiguous_canonical_before_assets` 釘的就是這個順序）。
+        resumable = self._transactions.find_prepared(plan)
+        if resumable is not None:
+            # 這個 plan 的交易已經做完了，只是後面某一步失敗、`materialization.json`
+            # 沒寫成。不要再開一次交易——canonical 現在就是上一次的 work，再
+            # duplicate 一次會把衍生軌疊第二層。
+            return self._resume_prepared_transaction(
+                resumable,
+                command=command,
+                plan=plan,
+                context=context,
+                inspection=inspection,
+                subtitle_path=subtitle_path,
+                preview_path=preview_path,
+                record_path=record_path,
+                round_diff=round_diff,
+            )
         subtitle_sha256 = _stage_review_subtitle(subtitle_path, context)
         try:
             transaction = self._transactions.prepare(
@@ -231,8 +266,11 @@ class MaterializationCoordinator:
                 expected_baseline=inspection.baseline,
             )
         except ResolveTransactionError as error:
+            # 把底層訊息帶出來。只回 `resolve_prepare_failed` 的話，操作的人手上
+            # 沒有任何線索——Resolve 那一層的失敗理由（軌數不足、媒體對不上、
+            # 算圖佇列拒絕…）全被吞掉，只能逐一猜。
             raise MaterializationError(
-                "Resolve transaction could not prepare the exact plan",
+                f"Resolve transaction could not prepare the exact plan: {error}",
                 reason_code="resolve_prepare_failed",
             ) from error
         _validate_prepared_transaction(
@@ -243,52 +281,82 @@ class MaterializationCoordinator:
             subtitle_path=subtitle_path,
             context=context,
         )
-        try:
-            candidate = self._releases.stage_candidate(
-                plan,
-                editorial_master_id=context.editorial_master_id,
-                winner_id=command.winner_id,
-                tight_cut_id=context.tight_cut_id,
-                transaction_id=transaction.transaction_id,
-                preview_path=preview_path,
-                subtitle_path=subtitle_path,
-            )
-        except ReleaseLifecycleError as error:
-            raise MaterializationError(
-                "preview_ready transaction cannot stage its exact Candidate",
-                reason_code="candidate_staging_failed",
-            ) from error
-        preparation = MaterializationPreparation(
+        record = self._stage_record(
+            plan,
+            command=command,
+            context=context,
+            transaction_id=transaction.transaction_id,
+            timeline=_transaction_timeline(transaction),
+            preview_path=preview_path,
+            subtitle_path=subtitle_path,
+            round_diff=round_diff,
+        )
+        write_plan_record(record_path, record)
+        return MaterializationPreparation(
             command_id=command_id,
             run_id=plan.run_id,
             plan_id=plan.plan_id,
             status="preview_ready",
             transaction_id=transaction.transaction_id,
             subtitle_sha256=subtitle_sha256,
-            candidate=candidate,
+            record=record,
         )
-        payload = _preparation_payload(preparation)
-        _write_materialization_journal(journal_path, payload)
-        return preparation
 
-    def _reopen_prior_preparation(
+    def _resume_prepared_transaction(
         self,
-        payload: dict[str, object],
+        transaction: ResolveTransaction,
         *,
         command: ApprovedCutCommand,
         plan: MaterializationPlan,
         context: EditorialCutContext,
+        inspection: CanonicalTimelineInspection,
         subtitle_path: Path,
         preview_path: Path,
+        record_path: Path,
+        round_diff: tuple[tuple[RunEventDiff, ...], str | None, float | None],
     ) -> MaterializationPreparation:
-        transaction_id = payload.get("transaction_id")
+        """把一筆已經做完、但帳沒結成的交易接回來。
+
+        `_transaction_id` 把 canonical 的名字與 UID 算進去，而交易成功那一刻
+        canonical 就換人了（work 頂上原名）。所以同一個 plan 重跑 `prepare`
+        必然算出另一個 id、必然 `load` 落空、必然從已經套用過的 timeline 再
+        duplicate 一次——衍生軌疊第二層。只要交易之後任何一步失敗，那個 run
+        以前就永遠結不了帳（20260721 punch-L03 卡在 preview 探測）。
+
+        這條路只做交易之後**還沒做完**的事：確認輸出物還在、量成品、把 plan
+        record 補上。不碰 Resolve。
+
+        `transaction.canonical` 與 `inspection.canonical` 刻意不比對——那兩者
+        本來就該不一樣，正是「交易已經生效」的證據。plan_id 與 plan_fingerprint
+        的相符由 `find_prepared` 保證，計畫一改就不會走到這裡。
+        """
+        if transaction.status != "preview_ready":
+            raise MaterializationError(
+                "resumable materialization transaction is not preview_ready",
+                reason_code="materialization_journal_conflict",
+            )
         if (
-            not isinstance(transaction_id, str)
-            or re.fullmatch(r"resolve-[0-9a-f]{24}", transaction_id) is None
+            transaction.episode_id != plan.episode_id
+            or transaction.cut_id != plan.cut_id
+            or transaction.plan_id != plan.plan_id
+            or transaction.subtitle_path != subtitle_path
+            or transaction.preview.path != preview_path
         ):
             raise MaterializationError(
-                "persisted materialization transaction identity is invalid",
-                reason_code="materialization_journal_conflict",
+                "resumable transaction does not bind the exact plan and artifacts",
+                reason_code="preview_transaction_mismatch",
+            )
+        preview = transaction.preview
+        if (
+            preview.video_codec.lower() not in {"h264", "avc1"}
+            or preview.audio_codec is None
+            or preview.audio_codec.lower() != "aac"
+            or not _preview_matches_timeline(preview.duration_sec, inspection)
+            or not preview.path.is_file()
+        ):
+            raise MaterializationError(
+                "Resolve preview codec, duration, or object contract differs",
+                reason_code="preview_probe_failed",
             )
         try:
             subtitle_payload = subtitle_path.read_bytes()
@@ -298,191 +366,176 @@ class MaterializationCoordinator:
                 reason_code="materialization_journal_conflict",
             ) from error
         subtitle_sha256 = hashlib.sha256(subtitle_payload).hexdigest()
-        _verify_srt_bytes(
-            subtitle_payload,
-            context,
-            expected_digest=subtitle_sha256,
+        _verify_srt_bytes(subtitle_payload, context, expected_digest=subtitle_sha256)
+        record = self._stage_record(
+            plan,
+            command=command,
+            context=context,
+            transaction_id=transaction.transaction_id,
+            timeline=_transaction_timeline(transaction),
+            preview_path=preview_path,
+            subtitle_path=subtitle_path,
+            round_diff=round_diff,
         )
+        write_plan_record(record_path, record)
+        return MaterializationPreparation(
+            command_id=command.command_id,
+            run_id=plan.run_id,
+            plan_id=plan.plan_id,
+            status="preview_ready",
+            transaction_id=transaction.transaction_id,
+            subtitle_sha256=subtitle_sha256,
+            record=record,
+        )
+
+    def _reopen_prior_record(
+        self,
+        prior: PlanRecord,
+        *,
+        command: ApprovedCutCommand,
+        plan: MaterializationPlan,
+        context: EditorialCutContext,
+        subtitle_path: Path,
+        preview_path: Path,
+        record_path: Path,
+        round_diff: tuple[tuple[RunEventDiff, ...], str | None, float | None],
+    ) -> MaterializationPreparation:
+        """Return the same preparation this plan already produced, or refuse.
+
+        重進入的守則只有一條：**同一個 plan 只能有一份紀錄**。所以這裡不是「相信
+        磁碟上那份」，而是把事實重新量一遍（字幕 bytes、preview bytes、交易狀態），
+        算出這一刻**應該**是什麼樣子，再跟磁碟上那份逐欄位比。相等就回傳，不等就
+        停——那代表有人動過成品，或者 plan 換了但紀錄沒換。
+
+        ADR-069 之前這裡還有一條 `committed` 分支，用來重建「交易已封存、不能再
+        stage」的 Candidate。封存鏈退役之後沒有任何路徑會 commit，那條分支連同它
+        的 payload 重建器一起刪掉——留著只會讓人以為系統還有第二種狀態。
+        """
+
         try:
-            transaction = self._transactions.inspect_transaction(transaction_id)
+            subtitle_payload = subtitle_path.read_bytes()
+        except OSError as error:
+            raise MaterializationError(
+                "persisted materialization subtitle is unavailable",
+                reason_code="materialization_journal_conflict",
+            ) from error
+        subtitle_sha256 = hashlib.sha256(subtitle_payload).hexdigest()
+        _verify_srt_bytes(subtitle_payload, context, expected_digest=subtitle_sha256)
+        try:
+            transaction = self._transactions.inspect_transaction(prior.transaction_id)
         except ResolveTransactionError as error:
             raise MaterializationError(
                 "persisted materialization transaction is unavailable",
                 reason_code="materialization_journal_conflict",
             ) from error
-        status = transaction.get("status")
         if (
-            transaction.get("transaction_id") != transaction_id
+            transaction.get("transaction_id") != prior.transaction_id
             or transaction.get("cut_id") != plan.cut_id
-            or status not in {"preview_ready", "committed"}
-            or (
-                status == "committed"
-                and (
-                    not isinstance(transaction.get("transaction_receipt_id"), str)
-                    or not transaction.get("transaction_receipt_id")
-                    or not isinstance(transaction.get("rollback_ref"), str)
-                    or not transaction.get("rollback_ref")
-                    or transaction.get("backup_retained") is not True
-                )
-            )
+            or transaction.get("status") != "preview_ready"
         ):
             raise MaterializationError(
                 "persisted materialization transaction is not exact",
                 reason_code="materialization_journal_conflict",
             )
-        if status == "preview_ready":
-            try:
-                candidate = self._releases.stage_candidate(
-                    plan,
-                    editorial_master_id=context.editorial_master_id,
-                    winner_id=command.winner_id,
-                    tight_cut_id=context.tight_cut_id,
-                    transaction_id=transaction_id,
-                    preview_path=preview_path,
-                    subtitle_path=subtitle_path,
-                )
-            except ReleaseLifecycleError as error:
-                raise MaterializationError(
-                    "persisted materialization Candidate is not exact",
-                    reason_code="materialization_journal_conflict",
-                ) from error
-        else:
-            candidate = _candidate_from_prior_payload(
-                payload.get("candidate"),
-                command=command,
-                plan=plan,
-                context=context,
-                transaction_id=transaction_id,
-                episode_root=self._episode_root,
-                subtitle_path=subtitle_path,
-                preview_path=preview_path,
+        timeline = _inspected_timeline(transaction)
+        fresh = self._stage_record(
+            plan,
+            command=command,
+            context=context,
+            transaction_id=prior.transaction_id,
+            timeline=timeline or prior.timeline,
+            preview_path=preview_path,
+            subtitle_path=subtitle_path,
+            round_diff=round_diff,
+        )
+        # `timeline` 與這一輪的 diff 都是**鑄紀錄那一刻算出來的旁註**，不是 plan
+        # 的身分。ADR-069 之前的紀錄兩樣都沒有：v1 沒有 timeline 欄位（那時要從交易
+        # 反查，而反查要求 `status == "committed"`，所以永遠查不到），也沒有 diff
+        # 欄位。拿整個 dataclass 去比，等於判定磁碟上每一份舊紀錄都跟現在衝突——
+        # 而重進入這條路正是為了那些舊紀錄存在的。缺的旁註補上去、改寫成 v2，
+        # 比對只剩身分與成品。
+        upgraded = replace(
+            prior,
+            timeline=prior.timeline if prior.timeline.name else fresh.timeline,
+            event_diff=prior.event_diff or fresh.event_diff,
+            event_diff_previous_acceptance_id=(
+                prior.event_diff_previous_acceptance_id or fresh.event_diff_previous_acceptance_id
+            ),
+            uniform_shift_sec=(
+                prior.uniform_shift_sec
+                if prior.uniform_shift_sec is not None
+                else fresh.uniform_shift_sec
+            ),
+        )
+        if upgraded != prior:
+            prior = upgraded
+            write_plan_record(record_path, prior)
+        if prior != fresh:
+            raise MaterializationError(
+                "persisted plan record differs from exact current preparation",
+                reason_code="materialization_journal_conflict",
             )
-        preparation = MaterializationPreparation(
+        return MaterializationPreparation(
             command_id=command.command_id,
             run_id=plan.run_id,
             plan_id=plan.plan_id,
             status="preview_ready",
-            transaction_id=transaction_id,
+            transaction_id=prior.transaction_id,
             subtitle_sha256=subtitle_sha256,
-            candidate=candidate,
+            record=prior,
         )
-        if _canonical_json(payload) != _canonical_json(_preparation_payload(preparation)):
-            raise MaterializationError(
-                "persisted materialization Candidate differs from exact current preparation",
-                reason_code="materialization_journal_conflict",
+
+    def _stage_record(
+        self,
+        plan: MaterializationPlan,
+        *,
+        command: ApprovedCutCommand,
+        context: EditorialCutContext,
+        transaction_id: str,
+        timeline: PlanTimeline,
+        preview_path: Path,
+        subtitle_path: Path,
+        round_diff: tuple[tuple[RunEventDiff, ...], str | None, float | None],
+    ) -> PlanRecord:
+        try:
+            return self._records.stage(
+                plan,
+                editorial_master_id=context.editorial_master_id,
+                winner_id=command.winner_id,
+                tight_cut_id=context.tight_cut_id,
+                transaction_id=transaction_id,
+                timeline=timeline,
+                preview_path=preview_path,
+                subtitle_path=subtitle_path,
+                event_diff=round_diff[0],
+                event_diff_previous_acceptance_id=round_diff[1],
+                uniform_shift_sec=round_diff[2],
             )
-        return preparation
+        except PlanRecordError as error:
+            raise MaterializationError(
+                f"preview_ready transaction cannot record its exact plan: {error}",
+                reason_code="plan_record_staging_failed",
+            ) from error
 
 
-def _candidate_from_prior_payload(
-    value: object,
-    *,
-    command: ApprovedCutCommand,
-    plan: MaterializationPlan,
-    context: EditorialCutContext,
-    transaction_id: str,
-    episode_root: Path,
-    subtitle_path: Path,
-    preview_path: Path,
-) -> StagedReleaseCandidate:
-    if not isinstance(value, dict):
-        raise MaterializationError(
-            "persisted materialization Candidate is invalid",
-            reason_code="materialization_journal_conflict",
-        )
-    try:
-        preview = _artifact_from_receipt(value.get("preview"))
-        subtitle = _artifact_from_receipt(value.get("subtitle"))
-    except ReleaseLifecycleError as error:
-        raise MaterializationError(
-            "persisted materialization Candidate artifacts are invalid",
-            reason_code="materialization_journal_conflict",
-        ) from error
-    _verify_prior_artifact(
-        preview,
-        expected_path=preview_path,
-        episode_root=episode_root,
+def _transaction_timeline(transaction: ResolveTransaction) -> PlanTimeline:
+    """The timeline this plan was actually laid onto—the work copy, not canonical."""
+
+    return PlanTimeline(
+        name=transaction.workspace.work.name,
+        uid=transaction.workspace.work.uid,
     )
-    _verify_prior_artifact(
-        subtitle,
-        expected_path=subtitle_path,
-        episode_root=episode_root,
-    )
-    candidate_core = {
-        "episode_id": plan.episode_id,
-        "cut_id": plan.cut_id,
-        "format": plan.format,
-        "command_id": plan.command_id,
-        "run_id": plan.run_id,
-        "editorial_master_id": context.editorial_master_id,
-        "winner_id": command.winner_id,
-        "tight_cut_id": context.tight_cut_id,
-        "director_acceptance_id": plan.director_acceptance_id,
-        "dp_acceptance_id": plan.dp_acceptance_id,
-        "visual_acceptance_id": plan.visual_acceptance_id,
-        "materialization_plan": asdict(plan),
-        "preview": asdict(preview),
-        "subtitle": asdict(subtitle),
-        "preview_ready_transaction_id": transaction_id,
-    }
-    candidate_id = f"candidate-{hashlib.sha256(_canonical_json(candidate_core)).hexdigest()[:24]}"
-    candidate = _mint_staged_release_candidate(
-        candidate_id=candidate_id,
-        episode_id=plan.episode_id,
-        cut_id=plan.cut_id,
-        format=plan.format,
-        command_id=plan.command_id,
-        run_id=plan.run_id,
-        editorial_master_id=context.editorial_master_id,
-        winner_id=command.winner_id,
-        tight_cut_id=context.tight_cut_id,
-        director_acceptance_id=plan.director_acceptance_id,
-        dp_acceptance_id=plan.dp_acceptance_id,
-        visual_acceptance_id=plan.visual_acceptance_id,
-        materialization_plan=plan,
-        preview=preview,
-        subtitle=subtitle,
-        preview_ready_transaction_id=transaction_id,
-    )
-    if _canonical_json(value) != _canonical_json(asdict(candidate)):
-        raise MaterializationError(
-            "persisted materialization Candidate identity differs",
-            reason_code="materialization_journal_conflict",
-        )
-    if (
-        preview.duration_sec is None
-        or abs(preview.duration_sec - context.duration_sec) > 1e-6
-        or subtitle.sha256 != hashlib.sha256(_render_srt(context)).hexdigest()
-    ):
-        raise MaterializationError(
-            "persisted materialization Candidate artifacts differ",
-            reason_code="materialization_journal_conflict",
-        )
-    return candidate
 
 
-def _verify_prior_artifact(
-    artifact: ReleaseArtifact,
-    *,
-    expected_path: Path,
-    episode_root: Path,
-) -> None:
-    root = Path(episode_root).resolve()
-    expected = Path(expected_path).resolve()
-    try:
-        relative = expected.relative_to(root).as_posix()
-        # Streamed: this runs on resume against the same ~1 GB preview.
-        size, digest = _measure(expected)
-    except (OSError, ValueError) as error:
-        raise MaterializationError(
-            "persisted materialization artifact is unavailable",
-            reason_code="materialization_journal_conflict",
-        ) from error
-    if artifact.path != relative or not size or artifact.bytes != size or artifact.sha256 != digest:
-        raise MaterializationError(
-            "persisted materialization artifact bytes differ",
-            reason_code="materialization_journal_conflict",
-        )
+def _inspected_timeline(transaction: Mapping[str, object]) -> PlanTimeline | None:
+    value = transaction.get("timeline")
+    if not isinstance(value, Mapping):
+        return None
+    name = value.get("name")
+    uid = value.get("uid")
+    if not isinstance(name, str) or not isinstance(uid, str) or not name or not uid:
+        return None
+    return PlanTimeline(name=name, uid=uid)
 
 
 def _validate_prepared_transaction(
@@ -514,7 +567,7 @@ def _validate_prepared_transaction(
         or preview.audio_codec is None
         or preview.audio_codec.lower() != "aac"
         or not math.isfinite(preview.duration_sec)
-        or abs(preview.duration_sec - context.duration_sec) > 1.0 / inspection.timeline_frame_rate
+        or not _preview_matches_timeline(preview.duration_sec, inspection)
         or not preview.path.is_file()
     ):
         raise MaterializationError(
@@ -523,80 +576,50 @@ def _validate_prepared_transaction(
         )
 
 
-def _preparation_payload(preparation: MaterializationPreparation) -> dict[str, object]:
-    return {
-        "command_id": preparation.command_id,
-        "run_id": preparation.run_id,
-        "plan_id": preparation.plan_id,
-        "status": preparation.status,
-        "transaction_id": preparation.transaction_id,
-        "subtitle_sha256": preparation.subtitle_sha256,
-        "candidate": asdict(preparation.candidate),
-    }
+def _preview_matches_timeline(
+    preview_duration_sec: float, inspection: CanonicalTimelineInspection
+) -> bool:
+    """輸出檔的長度要對著**它渲染自的那條 timeline** 比，不是對著 context 的浮點秒數和。
 
+    preview 是從 timeline 渲出來的，timeline 才是它的參照。context.duration_sec 是
+    ApprovedCut `source_ranges` 的浮點和，跟 timeline 之間本來就容許一格
+    （`_validate_editorial_base` 已經單獨把關過）；再讓 preview 隔著它去比，等於要
+    preview 同時吸收兩層量化誤差，而第二層根本不是它造成的。
 
-def _read_materialization_journal(path: Path) -> dict[str, object] | None:
-    staging = path.with_name(f".{path.name}.staging")
-    if staging.exists():
-        raise MaterializationError(
-            "incomplete materialization journal exists",
-            reason_code="materialization_journal_incomplete",
-        )
-    if not path.exists():
-        return None
-    try:
-        document = json.loads(path.read_bytes())
-    except (OSError, UnicodeError, json.JSONDecodeError) as error:
-        raise MaterializationError(
-            "materialization journal is unreadable",
-            reason_code="materialization_journal_invalid",
-        ) from error
+    20260721 punch-L03：timeline 16347 格、context 544.865s、preview 544.917333s。
+    preview 比 timeline 多出的 0.017s 是 AAC 尾巴（一個 1024-sample frame ≈ 21ms，
+    mp4 的容器長度取影像與聲音的較大者）——對 timeline 差 1 格，對 context 差 2 格。
+    整條物化就卡在一個它管不到的誤差上。
+    """
+    fps = inspection.timeline_frame_rate
+    state = inspection.state
+    timeline_frames = state.end_frame - state.start_frame
     if (
-        not isinstance(document, dict)
-        or set(document) != {"schema", "payload_sha256", "payload"}
-        or document.get("schema") != "nakama.finished-cut-materialization.v1"
-        or not isinstance(document.get("payload"), dict)
+        not math.isfinite(preview_duration_sec)
+        or not math.isfinite(fps)
+        or fps <= 0
+        or timeline_frames <= 0
     ):
-        raise MaterializationError(
-            "materialization journal schema is invalid",
-            reason_code="materialization_journal_invalid",
-        )
-    payload = cast(dict[str, object], document["payload"])
-    if document.get("payload_sha256") != hashlib.sha256(_canonical_json(payload)).hexdigest():
-        raise MaterializationError(
-            "materialization journal checksum differs",
-            reason_code="materialization_journal_invalid",
-        )
-    return payload
+        return False
+    return abs(round(preview_duration_sec * fps) - timeline_frames) <= 1
 
 
-def _write_materialization_journal(path: Path, payload: dict[str, object]) -> None:
-    envelope = {
-        "schema": "nakama.finished-cut-materialization.v1",
-        "payload_sha256": hashlib.sha256(_canonical_json(payload)).hexdigest(),
-        "payload": payload,
-    }
-    encoded = _canonical_json(envelope) + b"\n"
-    staging = path.with_name(f".{path.name}.staging")
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with staging.open("xb") as handle:
-            handle.write(encoded)
-            handle.flush()
-            os.fsync(handle.fileno())
-        os.replace(staging, path)
-        if path.read_bytes() != encoded:
-            raise MaterializationError(
-                "materialization journal bytes differ after atomic replace",
-                reason_code="materialization_journal_invalid",
-            )
-    except OSError as error:
-        raise MaterializationError(
-            "materialization journal could not persist atomically",
-            reason_code="materialization_journal_write_failed",
-        ) from error
-    finally:
-        staging.unlink(missing_ok=True)
+def _within_one_frame(measured_sec: float, expected_sec: float, fps: float) -> bool:
+    """「差不超過一格」——兩邊都先取格數再比，不混用單位。
+
+    ApprovedCut 的 `source_ranges` 是秒，剪輯卻活在格線上：每個邊界最多帶半格的
+    表示誤差，段數一多就累積。拿 frame-exact 的量測（timeline 長度、輸出檔長度）
+    去比這個浮點和、卻用「一格」當容忍度，等於讓表示誤差把容忍度吃掉。
+
+    20260721 punch-L03：59 段，timeline 16347 格、`source_ranges` 量化後 16346 格
+    ——內容就只差一格，本來該過；可是浮點和額外帶了 0.0017 秒，舊式子算成 1.05 格
+    而擋下，而且 timeline 與 preview 兩處各擋一次。
+
+    規則一字不改（仍然是「差超過一格就擋」），只是改用格來表述。
+    """
+    if not math.isfinite(measured_sec) or not math.isfinite(fps) or fps <= 0:
+        return False
+    return abs(round(measured_sec * fps) - round(expected_sec * fps)) <= 1
 
 
 def _canonical_json(value: object) -> bytes:
@@ -692,7 +715,7 @@ def _render_srt(context: EditorialCutContext) -> bytes:
         ):
             raise MaterializationError(
                 "current cue timing or text cannot produce a review subtitle",
-                reason_code="subtitle_contract_drift",
+                reason_code="protected_track_drift",
             )
         blocks.append(
             f"{index}\n{_srt_timestamp(start_ms)} --> {_srt_timestamp(end_ms)}\n{cue.text}"
@@ -701,7 +724,7 @@ def _render_srt(context: EditorialCutContext) -> bytes:
     if not blocks:
         raise MaterializationError(
             "current cue authority is empty",
-            reason_code="subtitle_contract_drift",
+            reason_code="protected_track_drift",
         )
     return ("\n\n".join(blocks) + "\n").encode("utf-8")
 
@@ -710,7 +733,7 @@ def _cue_milliseconds(value: float) -> int:
     if isinstance(value, bool) or not math.isfinite(value) or value < 0:
         raise MaterializationError(
             "current cue time is invalid",
-            reason_code="subtitle_contract_drift",
+            reason_code="protected_track_drift",
         )
     return round(value * 1000)
 
@@ -765,7 +788,11 @@ def _validate_final_assets(plan: MaterializationPlan, assets: AssetResolver) -> 
                     "component final asset is unavailable in the Active Store",
                     reason_code="final_asset_unavailable",
                 ) from error
-            if resolved.record.reference != reference or resolved.record.compact_receipt is None:
+            # 這裡本來還要求「一定有收據」——那是 `_active_store` 那道門的第二份。
+            # 收據降成紀錄之後（修修 2026-09-13），這一層只問它自己該問的：Active
+            # Store 回來的那筆，是不是我要的那一筆。bytes 對不對由下面的
+            # `asset_digest_mismatch` 管，那才是真的在保護素材沒被換掉。
+            if resolved.record.reference != reference:
                 raise MaterializationError(
                     "Active Store result does not bind the exact component reference",
                     reason_code="final_asset_identity_mismatch",
@@ -777,10 +804,13 @@ def _validate_final_assets(plan: MaterializationPlan, assets: AssetResolver) -> 
                     reason_code="final_asset_unavailable",
                 )
             try:
-                if not path.is_file() or _file_sha256(path) != resolved.record.digest:
+                if not path.is_file() or file_digest(path) != resolved.record.digest:
+                    # ADR-069 階段 7：bytes 對不上要有自己的名字。它跟「references
+                    # 綁錯」是兩件不同的事——後者是接線錯了，這一條是**同名的檔案
+                    # 被換過**，也就是收據簡化之後唯一還在保護素材來歷的那道鎖。
                     raise MaterializationError(
                         "component object bytes differ from its Active Store digest",
-                        reason_code="final_asset_identity_mismatch",
+                        reason_code="asset_digest_mismatch",
                     )
             except OSError as error:
                 raise MaterializationError(
@@ -789,6 +819,13 @@ def _validate_final_assets(plan: MaterializationPlan, assets: AssetResolver) -> 
                 ) from error
             verified[reference] = resolved
         if component.implementation_kind == "stock_video":
+            # 這裡本來要求**恰好** 16:9（`width * 9 == height * 16`）。ADR-069 階段 2
+            # 的模組 docstring 自己寫著這條該砍，舉的例子就是它擋掉一支 4096×2160 的
+            # DCI 4K——那支放進 16:9 timeline 只是縮放，畫面完全正常。砍的時候砍到的
+            # 是 `_policy` 那一份，這一份留下來了，而且是更嚴的版本。
+            #
+            # 留下的只有「必須是橫的」：直的素材放進 16:9 會只剩中間一條，那是真的
+            # 會做出壞成品。選片那一關（`_visual_assets`）用同一條規則。
             width = resolved.record.width
             height = resolved.record.height
             if (
@@ -796,74 +833,11 @@ def _validate_final_assets(plan: MaterializationPlan, assets: AssetResolver) -> 
                 or type(width) is not int
                 or type(height) is not int
                 or width <= height
-                or width * 9 != height * 16
             ):
                 raise MaterializationError(
-                    "Stock component is not native 16:9 landscape",
+                    "Stock component is not native landscape",
                     reason_code="stock_not_landscape_16_9",
                 )
-
-
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
-
-
-def _validate_context_contract(context: EditorialCutContext) -> None:
-    if (
-        not math.isfinite(context.duration_sec)
-        or context.duration_sec <= 0
-        or not context.source_ranges
-        or not context.cues
-    ):
-        raise MaterializationError(
-            "Editorial Cut Context duration, ranges, or cues are invalid",
-            reason_code="authority_chain_mismatch",
-        )
-    source_total = 0.0
-    previous_source_end = -1.0
-    for source in context.source_ranges:
-        if (
-            not math.isfinite(source.t0)
-            or not math.isfinite(source.t1)
-            or source.t0 < 0
-            or source.t0 >= source.t1
-            or source.t0 < previous_source_end
-        ):
-            raise MaterializationError(
-                "Editorial Cut Context source ranges are invalid",
-                reason_code="authority_chain_mismatch",
-            )
-        source_total += source.t1 - source.t0
-        previous_source_end = source.t1
-    if not math.isclose(source_total, context.duration_sec, rel_tol=0.0, abs_tol=1e-6):
-        raise MaterializationError(
-            "Editorial Cut Context source ranges do not equal its duration",
-            reason_code="authority_chain_mismatch",
-        )
-    cue_ids: set[str] = set()
-    previous_cue_end = -1.0
-    for cue in context.cues:
-        if (
-            not cue.cue_id
-            or cue.cue_id in cue_ids
-            or not cue.text
-            or not math.isfinite(cue.t0)
-            or not math.isfinite(cue.t1)
-            or cue.t0 < previous_cue_end
-            or cue.t0 < 0
-            or cue.t0 >= cue.t1
-            or cue.t1 > context.duration_sec
-        ):
-            raise MaterializationError(
-                "Editorial Cut Context cue contract is invalid",
-                reason_code="authority_chain_mismatch",
-            )
-        cue_ids.add(cue.cue_id)
-        previous_cue_end = cue.t1
 
 
 def _validate_editorial_base(
@@ -878,7 +852,7 @@ def _validate_editorial_base(
     ):
         raise MaterializationError(
             "canonical Timeline inspection belongs to another cut",
-            reason_code="canonical_identity_mismatch",
+            reason_code="resolve_binding_mismatch",
         )
     if (
         re.fullmatch(r"[0-9a-f]{64}", inspection.editorial_master_content_hash) is None
@@ -886,12 +860,12 @@ def _validate_editorial_base(
     ):
         raise MaterializationError(
             "Editorial Cut Context does not bind the verified ADR-064 receipt",
-            reason_code="editorial_master_content_identity_mismatch",
+            reason_code="editorial_master_mismatch",
         )
     if re.fullmatch(r"[0-9a-f]{64}", inspection.editorial_master_media_sha256) is None:
         raise MaterializationError(
             "verified ADR-064 Master media identity is invalid",
-            reason_code="editorial_master_media_drift",
+            reason_code="editorial_master_mismatch",
         )
     master_duration = inspection.editorial_master_duration_sec
     if (
@@ -901,7 +875,7 @@ def _validate_editorial_base(
     ):
         raise MaterializationError(
             "verified ADR-064 Master duration is invalid",
-            reason_code="editorial_master_duration_invalid",
+            reason_code="editorial_master_mismatch",
         )
     if any(source.t1 > master_duration + 1e-6 for source in context.source_ranges):
         raise MaterializationError(
@@ -921,16 +895,16 @@ def _validate_editorial_base(
     ):
         raise MaterializationError(
             "canonical Timeline frame rate differs from the Editorial Master",
-            reason_code="frame_rate_drift",
+            reason_code="protected_track_drift",
         )
     state = inspection.state
-    if state.end_frame <= state.start_frame or (
-        abs((state.end_frame - state.start_frame) / timeline_fps - context.duration_sec)
-        > 1.0 / timeline_fps
+    actual_frames = state.end_frame - state.start_frame
+    if actual_frames <= 0 or not _within_one_frame(
+        actual_frames / timeline_fps, context.duration_sec, timeline_fps
     ):
         raise MaterializationError(
             "canonical Timeline duration differs by more than one frame",
-            reason_code="timeline_duration_drift",
+            reason_code="resolve_binding_mismatch",
         )
 
     protected_tracks = tuple(
@@ -983,14 +957,23 @@ def _validate_editorial_base(
     for items in base_tracks:
         record_cursor = state.start_frame
         for item, source in zip(items, context.source_ranges, strict=True):
-            duration = source.t1 - source.t0
-            expected_record_end = record_cursor + round(duration * timeline_fps)
-            expected_source_in = round(source.t0 * master_fps)
-            expected_source_out = round(source.t1 * master_fps)
+            # 秒→影格要用**截斷**，跟 timeline 實際被切開的方式一致。
+            #
+            # 這裡本來用 `round`，於是每個落在半格以上的邊界都會多算一格：
+            # punch-L03 六段裡有三段對不上（1593.364s → floor 47800、round 47801），
+            # 一路報 `protected_track_drift`，可是 timeline 跟 ApprovedCut 其實描述的是
+            # 同一個剪點。字幕軌 377 條逐格對得上、只有 source_ranges 對不上，就是
+            # 這個量化方式不一致造成的，不是資料真的漂了。
+            #
+            # 記錄端的長度直接取來源長度：上面已經驗過 timeline 與 Master 同幀率，
+            # 沒有變速，兩者必然相等；再獨立算一次只會再引入一次量化誤差。
+            expected_source_in = int(source.t0 * master_fps)
+            expected_source_out = int(source.t1 * master_fps)
+            expected_record_end = record_cursor + (expected_source_out - expected_source_in)
             if item.media_digest != inspection.editorial_master_media_sha256:
                 raise MaterializationError(
                     "protected V1 or audio media is not the ADR-064 Master",
-                    reason_code="editorial_master_media_drift",
+                    reason_code="editorial_master_mismatch",
                 )
             if (
                 item.start_frame != record_cursor
@@ -1000,13 +983,16 @@ def _validate_editorial_base(
             ):
                 raise MaterializationError(
                     "protected V1 or audio source range differs from ApprovedCut",
-                    reason_code="source_range_drift",
+                    reason_code="protected_track_drift",
                 )
             record_cursor = expected_record_end
-        if record_cursor != state.end_frame:
+        # 允許差一格：timeline 的結束影格是**所有軌道**的最大值，字幕軌常常比
+        # 影音多壓一格（punch-L02 的字幕收在 16541、V1 與音軌都收在 16540）。
+        # 那一格不是覆蓋缺口，是字幕尾巴。少一格以上、或影音反而超出，仍然擋下。
+        if not 0 <= state.end_frame - record_cursor <= 1:
             raise MaterializationError(
                 "protected V1 or audio record spans do not cover the exact cut",
-                reason_code="source_range_drift",
+                reason_code="protected_track_drift",
             )
 
     subtitle_items = tuple(
@@ -1018,17 +1004,24 @@ def _validate_editorial_base(
     if len(subtitle_items) != len(context.cues):
         raise MaterializationError(
             "protected subtitle cue count differs from tight context",
-            reason_code="subtitle_contract_drift",
+            reason_code="protected_track_drift",
         )
     for item, cue in zip(subtitle_items, context.cues, strict=True):
+        # 時間允許差一格，文字必須逐字相同。
+        #
+        # cue 的秒數乘上幀率常常正好落在 .5（punch-L02 有五處：207.75s × 30 = 6232.5），
+        # 這時「進位到哪一邊」在 Python 與 Resolve 之間沒有共識——Python 的 round 是
+        # 銀行家捨入、Resolve 又要讓相鄰字幕首尾相接，兩邊各自合理但答案差一格。
+        # 一格是 33 毫秒，字幕看不出來；真正對錯位的字幕差距遠大於一格。
+        # 文字不放寬：字幕內容錯了就是錯了。
         if (
-            item.start_frame != state.start_frame + round(cue.t0 * timeline_fps)
-            or item.end_frame != state.start_frame + round(cue.t1 * timeline_fps)
+            abs(item.start_frame - (state.start_frame + round(cue.t0 * timeline_fps))) > 1
+            or abs(item.end_frame - (state.start_frame + round(cue.t1 * timeline_fps))) > 1
             or _subtitle_text(item.properties) != cue.text
         ):
             raise MaterializationError(
                 "protected subtitle timing or text differs from tight context",
-                reason_code="subtitle_contract_drift",
+                reason_code="protected_track_drift",
             )
 
 
@@ -1046,3 +1039,25 @@ def _subtitle_text(properties: tuple[tuple[str, object], ...]) -> str | None:
         return None
     text = decoded.get("Text") if isinstance(decoded, dict) else None
     return text if isinstance(text, str) else None
+
+
+class _RunRounds(Protocol):
+    """走過的驗收輪次——算 diff 只要這兩格。"""
+
+    accepted_stages: tuple[AcceptedStage, ...]
+    accepted_stage_history: tuple[AcceptedStage, ...]
+
+
+def _round_diff(view: _RunRounds) -> tuple[tuple[RunEventDiff, ...], str | None, float | None]:
+    """這一輪 vs 上一輪，算在鑄出 plan record 的那一刻。
+
+    「輪」只有一個有順序的來源：`accepted_stage_history` 是 append 上去的。plan
+    record 之間沒有先後可言——staging 目錄是 content-addressed，不帶時間也不記前一
+    份是誰——所以這件事必須在還拿得到 run 的時候算完，存進紀錄。
+
+    這裡直接讀欄位，不用 `getattr(..., ())` 兜底：欄位改名時要當場 AttributeError，
+    不是安靜地算出一份空 diff，讓頁面寫著「這是第一輪」。那種無聲的空畫面正是
+    ADR-069 階段 6 一開始要修的東西。
+    """
+
+    return _round_event_diff(view.accepted_stages, view.accepted_stage_history)

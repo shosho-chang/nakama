@@ -52,7 +52,7 @@ _JOB_FIELDS = frozenset(
         "error",
         "episode_id",
         "source_manifest_sha256",
-        "release_id",
+        "plan_id",
         "cut_id",
         "event_id",
         "feedback",
@@ -75,7 +75,7 @@ class ProductionApplication(Protocol):
 
     def request_revision(
         self,
-        current_release_ref: str,
+        current_plan_ref: str,
         event_id: str,
         feedback: str,
     ) -> str: ...
@@ -115,7 +115,17 @@ def _command_id(value: object) -> bool:
 
 
 def _validate_job(value: object, *, episode_id: str) -> dict[str, object]:
-    if not isinstance(value, dict) or set(value) != _JOB_FIELDS:
+    if not isinstance(value, dict):
+        raise RuntimeError("Finished Cut revision job fields are invalid")
+    # ADR-069 之前這一格叫 `release_id`。改名當下已經排進佇列的單子還躺在 feedback
+    # 檔裡，鍵名對不上會被判成「欄位無效」而永遠卡住——那不是壞掉的單子，是還沒
+    # 改名的單子。就地換成新名字；`_update_job` 會把正規化過的這一份寫回去，檔案
+    # 本身也就遷移完了。這條跟 `publish_timeline` 與 `_active_store` 的舊鍵相容是
+    # 同一個決定，當時漏了這裡。
+    value = dict(value)
+    if "release_id" in value and "plan_id" not in value:
+        value["plan_id"] = value.pop("release_id")
+    if set(value) != _JOB_FIELDS:
         raise RuntimeError("Finished Cut revision job fields are invalid")
     if value.get("contract") != _JOB_CONTRACT:
         raise RuntimeError("Finished Cut revision job contract is invalid")
@@ -131,7 +141,7 @@ def _validate_job(value: object, *, episode_id: str) -> dict[str, object]:
     status = value.get("status")
     if status not in _JOB_STATUSES:
         raise RuntimeError("Finished Cut revision status is invalid")
-    for key in ("release_id", "cut_id", "event_id"):
+    for key in ("plan_id", "cut_id", "event_id"):
         if not _opaque(value.get(key)):
             raise RuntimeError(f"Finished Cut revision {key} is invalid")
     if not _sha256(value.get("source_manifest_sha256")):
@@ -451,7 +461,7 @@ def run_revision_job(
             return False
         try:
             command_id = application.request_revision(
-                str(job["release_id"]),
+                str(job["plan_id"]),
                 str(job["event_id"]),
                 str(job["feedback"]),
             )

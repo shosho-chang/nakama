@@ -33,7 +33,7 @@ timeline」接手。長片線見 `longform-cut`——兩線 script 入口已分�
 | `editorial-master/v1/EDITORIAL-MASTER.json` | 沒有正式 master，整條線不成立 |
 | `editorial-master/v1/conform-map.v1.json` | 詞級刀全部停用（詞的時間戳在來源時鐘上，要投影到 Master 時鐘才敢下刀） |
 | `subs/words.json` | **詞級**時間戳。走 memo dual-audit 的集數只有句級（實測中位 1.90s），抓不出口吃／贅音。缺的話 `--detect` 只產得出 pause 刀，而且**不會報錯** |
-| `assets/bgm/*.wav` ＋ `.acquisition.json` | Step 7 沒有音樂可放 |
+| ~~`assets/bgm/<track>.wav`~~ | **不再是前置**：Step 7 自己會從共用庫 `E:\data\music` 取（mp3 自動轉檔進該集）。集內已經有同名檔就用集內那份 |
 
 補 words.json（GPU，**agent 自己跑**，不要叫修修跑）：
 
@@ -174,6 +174,19 @@ py -3.10 scripts/run_shortform_titles.py <episode> --id <cid> --validate-only
 
 ## Step 5 — 素材（B-roll ＋ 開場 LOGO）
 
+**抓授權檔一定要走 `app.envato.com`，不是 `elements.envato.com`**（2026-09-10 血淚）。
+elements 的品項頁永遠不進 `document_idle`（預覽影片一直播），claude-in-chrome 的
+`find`／`read_page`／`screenshot` 全是注入型工具，一律 45 秒逾時；我因此誤判成
+「Envato 自動化壞了」並建議人工下載，修修回「我是永遠不會接受人工下載素材」——
+他是對的，app 網域秒回。實測可用型式：
+
+- 搜尋＋方向篩選：`https://app.envato.com/search?itemType=stock-video&term=<詞>&filter.orientation=Vertical`
+- 品項頁：`https://app.envato.com/search/stock-video/<uuid>`（右欄直接列 Vertical／1080x1920，下載前就驗得掉方向）
+- Download 按**一次** → 跳「Automatically licensed」→ 檔案落到 `E:\` 根目錄
+
+陷阱：搜尋結果縮圖有 hover 控制項，點 link ref 常常點到它；可靠做法是 `read_page`
+取 href 的 uuid 再直接 navigate。Elements MCP 回的短碼網址只能拿來挑概念。
+
 ```bash
 py -3.10 scripts/run_shortform_broll.py <episode> --id <cid> --validate-only
 ```
@@ -183,7 +196,9 @@ py -3.10 scripts/run_shortform_broll.py <episode> --id <cid> --validate-only
 意圖層 `<cid>_broll.json` 由 **shortform-director** 決定落點、**shortform-dp**
 找片回填 slug。gate（`shared/shortform_broll.py`）驗四件事：
 
-1. **授權**：`assets/broll/<slug>.acquisition.json` ＋ 檔案 SHA-256 對得上
+1. ~~授權~~：**已取消**（修修 2026-09-10：「我一點都不在意」）。Envato Elements
+   下載當下就把 Item License 註冊到帳號，同一個頻道使用不需要再取得。有收據就
+   當來歷驗到底，沒有也放行
 2. **直式**：`height > width`
 3. **落點對齊那句話**：`source_cues` 宣告對哪幾句，t0/t1 必須包在那幾句的時間裡（容差 0.35s）
 4. **不衝突**：不蓋 punch 區間、不壓開場上下分割
@@ -198,13 +213,42 @@ gate 會擋。回頭改 `<cid>_broll.json` 的 t0/t1，不要調 gate。
 開場 LOGO 是 structural item（`{"kind":"badge","slug":"brand-logo-opener"}`），
 **不需要授權收據**（自家品牌資產）。先產 badge：
 
+**透明主檔在 `E:\data\animation`**（修修 2026-09-10 指路）。以前 skill 只寫
+「deliverables 的」而沒寫在哪，2026-09-10 我因此整組找不到，三支短片沒有開場動畫。
+目前是 v13：
+
 ```bash
-py -3.10 scripts/build_brand_logo_badge.py <episode> --source "<...>_alpha_prores4444.mov" --width 440 --seam-offset 30
+python scripts/build_brand_logo_badge.py "<episode>" --source "E:/data/animation/podcast_rounded_card_white_fast_full_fade_in_out_v13_alpha_prores4444.mov" --width 440 --seam-offset 30
 ```
 
-用 deliverables 的 `*_alpha_prores4444.mov`（透明主檔），不要 `*_preview_*.mp4`
-（MP4 不支援透明）。底邊貼在接縫上方，不要跨接縫——下半格主持人的臉幾乎從接縫
-就開始（耳機頂端約 y=980）。
+用 `*_alpha_prores4444.mov`（透明主檔），不要 `*_preview_*.mp4`（MP4 不支援透明），
+也不要 `*_alpha.webm`。這支是純 ffmpeg、**不碰 Resolve**，用一般 python 就行。
+
+出來是 1080×1920 ProRes 4444（yuva444p12le）、2.93 秒，卡片 440×360 落在
+(320,622)–(760,982)。底邊貼在接縫上方，不要跨接縫——下半格主持人的臉幾乎從接縫
+就開始（耳機頂端約 y=980）。`--seam-offset 30` 是修修調定的值，實測疊上開場幀
+剛好擦過他的髮際線上方。
+
+badge 進 recipe 是一筆 **structural row**（`emit_audited_recipe` 重生 recipe 時會保留）：
+
+```json
+{"kind": "badge", "slug": "brand-logo-opener", "t0": 0.0, "t1": 2.933}
+```
+
+**已經做完的短片要補 badge，用 `--structural-only`**：
+
+```bash
+py312 scripts/run_shortform_broll.py "<episode>" --id <cid> --structural-only
+```
+
+它跳過 Stock Video production gate、只碰 badge／namecard／機位修正自己那幾軌，
+B-roll 與字卡原封不動。沒有這個模式的話，補一個自家品牌動畫要重過一道**跟它完全
+無關**的素材稽核——而那道 gate 要 recipe 內嵌 `visual_materialization`（Director／DP／
+Audit 的投影），手寫的 recipe 沒有那個欄位，於是整件事卡死（2026-09-10 實際踩到）。
+
+⚠️ **入口是 `run_shortform_broll.py` 不是 `run_short_broll.py`**（ADR-067 命名：
+`run_short_*` 是長片線）。跑錯的話 `live_video_sources` 不會帶進去，三機導播的
+track 1 會被判成「不是 master 素材」。
 
 ## Step 6 — 音效
 
@@ -219,6 +263,8 @@ py -3.10 scripts/run_short_sfx.py <episode> --id <cid>
 - **語意音效層停用**（情緒音效容易用錯場合）；環境音（跟素材走的 diegetic 音）仍可用
 - 間距 <1.2s 只留優先級高的
 - 響度烘焙在素材端（`assets/sfx/*.wav`），不靠 Resolve clip gain——重跑才可重現
+- **不用再手抄素材**：那五個音效在共用庫 `E:\data\sfx`，集內缺了會自動取用
+  （`shared/asset_library.py`）。集內已經有同名檔就用集內那份，per-episode 覆寫永遠贏。
 
 ## Step 7 — 音樂
 
@@ -230,8 +276,15 @@ audio **track 4**（1 對白／2 SFX／3 環境／4 BGM）。烘焙到 **−43 L
 28 dB）——「感覺得到、聽不出來」，這個差距不需要 ducking。頭尾 fade、裁到片長、
 短於片長自動循環，全部烘在檔案端。
 
+`--track` 給**曲名**就好：集內 `assets/bgm/<name>.wav` 優先，沒有就從共用庫
+`E:\data\music` 取，mp3 會自動轉檔進集內（庫是 mp3，工具讀 wav）。庫的檔名帶
+Envato 流水號尾巴（`slow-edges-mum-child-main-version-48501-01-45.mp3`），
+給前綴就對得到。庫的分區：`short-punch` / `short-story` / `short-value` 對三個
+miner，長片用 `focus music`；**指名的家族優先，但其他家族也會找**——直接講曲名
+就行。
+
 選曲跟著**這支的內容**走，不是看 id 前綴——`punch-S07`（天堂裡的人想來人間
-受苦）是沉思不是明快，配的是 night-sky 不是 all-good-folks。新曲用
+受苦）是沉思不是明快，配的是 night-sky 不是 all-good-folks。庫裡沒有的新曲用
 `scripts/stage_bgm_track.py` 進 `assets/bgm/`，會一併寫 acquisition receipt——
 **`source_url` 不知道就寫 `null`，不要從檔名編一個出來**。
 
@@ -252,6 +305,16 @@ py -3.10 scripts/run_short_review.py <episode> --id <cid>
 **修完任何 JSON／素材都要再跑一次**——首航就抓到 titles 清場誤殺整條貼紙層。
 
 ---
+
+## 短片不做封面（修修 2026-09-10 裁定）
+
+短片沒有封面這一步，不要去跑 `thumbnail-brainstorm`，也不要因為 packaging 少了
+`packages[].thumbnail` 就以為缺東西——schema 對短片就是 `thumbnail: null`、
+`packages: []`（見 `title-brainstorm` 的長短片分流表）。Bridge 的選段 gate 在
+短片格式下也不排 `packaging-plan.json`，同一個理由。
+
+直式短片在 IG／Reels／Shorts 上是**直接播第一幀**，沒有一個 16:9 的縮圖位。
+替它做封面是替一個不存在的版位做圖。
 
 ## 軌道契約
 
@@ -280,7 +343,49 @@ py -3.10 scripts/run_short_review.py <episode> --id <cid>
 - **企劃腳本不要留在 scratchpad**：2026-08-30 實測把 punch-S02 的 20 句企劃
   用舊的一次性腳本蓋成 31 句。規格進 episode、工具進 repo。
 
-## 換段／改稿
+## 改動代價表（修修在 timeline 上說「這裡改一下」時查這張）
 
-改 `winners.short.json` → 重跑物化。改 cuts.json → 回 Step 1 `--apply`，然後
-**Step 2 之後全部重跑**（導播重建 timeline 會洗掉上層軌）。
+他不會用 pipeline 的語言講話，他會說「這句字卡改成 X」「這支 B-roll 換掉」
+「這裡多切一刀」。這張表把那句話翻成**要重跑到哪裡**——先查表再動手，不要憑印象
+從頭重跑，那是最貴的一種「小改」。
+
+| 他說的 | 動到的檔 | 要重跑 | 會洗掉什麼 | 量級 |
+|---|---|---|---|---|
+| 「換一支別的段落」 | `winners.short.json` | Step 2 → 8 全部 | 這支的一切 | 一支的全部成本 |
+| 「這裡多切一刀／這刀還原」 | `cuts.json` | Step 1 `--apply` → Step 2 → 8 | 字卡／素材／音效／BGM 全部 | 同上，**最貴** |
+| 「這句字卡文字改一下」 | 企劃 JSON 的該句 | Step 4（`run_shortform_titles.py`） | 只有 video 3 | 分鐘級 |
+| 「字卡整段重想」 | — | Step 3 → 4 | 只有 video 3 | 分鐘級 |
+| 「這支 B-roll 換掉／不要」 | broll spec 的該筆 | Step 5（`run_shortform_broll.py`） | 只有 video 2 該段 | 分鐘級 |
+| 「這個音效不對」 | sfx spec | Step 6 | 只有 audio 2 | 分鐘級 |
+| 「配樂換一首／太大聲」 | — | Step 7 `--track <name>` | 只有 audio 4 | 秒級 |
+| 「開場 LOGO 不要」 | — | Step 5 的 badge 段 | 只有 video 5 | 秒級 |
+| 「標題／描述改一下」 | packaging | 不碰 timeline | 無 | 秒級 |
+
+**唯一一條真正昂貴的分界線是 Step 2（導播）**：它整條重建 timeline，上層軌全部
+消失。所以「改刀」與「換段」是重做等級，其他每一項都只動它自己那一軌。
+
+判斷順序：先問「這是 Step 2 以上還是以下？」——以下的一律當成便宜的局部重跑，
+不要順手把整支重來。
+
+## Step 8 之後：交給發布線（不要停在這裡）
+
+**Step 8 產的 540×960 preview 是審片檔，不是成品。** 成品 render 在**發布線**，
+不在本冊——`scripts/publish_prep.py`（ADR-055 Slice 1）。它長短片都涵蓋，
+而且特別處理了短片：
+
+> Resolve render **燒不進**字幕（只出 sidecar）——但短片必須燒 → Resolve 出乾淨畫面，
+> ffmpeg 從 tight SRT 燒（字級按全解析放大）。落點 `highlights/exports/<cut>.mp4`，
+> 另存 `<cut>_clean.mp4` 供重燒。
+
+```bash
+python scripts/publish_prep.py "<episode>" [--cut <cut-id>]
+```
+
+跑完的語意是「**登錄了**」不是「發布了」：系統多了成品檔 ＋ 一筆 draft Release，
+等文案、等排程、等修修核准。之後依序是 packaging → `publish_description.py`
+→ `/bridge/publish/<ep>/<cut>` 核准並上傳。全圖見 ADR-055。
+
+> ⚠️ 2026-09-10 我自己在這裡誤判過：照本冊走到 Step 8 就以為做完了，還下結論說
+> 「短片線沒有匯出步驟、從來沒匯出過」。兩件都錯——20260805 林之晨 的三支短片就在
+> `releases` 表裡，路徑正是 `highlights/exports/*.mp4`。**檔案不在不代表步驟不存在**，
+> DB 才是 release 的 SoT（ADR-055 D3）。

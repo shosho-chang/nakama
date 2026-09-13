@@ -20,7 +20,8 @@ brainstorm skill：**輸出該發散、流程要固定**。
 
 **默認互動模式**（無 `--batch`）：完整 7 步，推導鏈列在對話，不寫任何檔案。  
 **批次模式**（`--batch <packaging_dir>`）：同樣完整執行 7 步，但：
-- Step 2 關鍵字：先檢查 `<packaging_dir>/keywords.json` 是否存在（per-集一次快取）；存在則讀取跳過網路查詢，不存在才執行 Step 2 全流程並把結果寫入 `<packaging_dir>/keywords.json`。
+- Step 2 關鍵字：先檢查 `<packaging_dir>/keywords.json` 是否存在（per-集一次快取）；**存在就讀它、跳過全部網路查詢**，不存在才跑 Step 2 全流程。
+  **落檔責任在 `emit_packages.py`，不是你**：把整份研究放進批次 JSON 的頂層 `keywords`，emit 會寫成 `<packaging_dir>/keywords.json`。缺檔又沒帶 `keywords` 會被擋下來——一集要跑 1 支完整節目 + 3 支長精華 + 3 支短片，靠人記得寫檔的結果是查了 7 次網路（20260901 蘇予昕 一份都沒有、20260721 呂冠緯 跑到第二支才補上）。要強制重查就先刪掉那個檔。
 - 長短片強制分流（見下方）。
 - Step 7 結束後呼叫 `python scripts/emit_packages.py <packaging_dir>` 並把推導結果以 JSON 送入 stdin；`VAULT_PATH` env 需已設。
 - 印 emit 摘要（`OK — N 條標題已驗證`）後結束，不再輸出對話。
@@ -83,6 +84,7 @@ Obsidian Interview 資料夾 `<VAULT_PATH>/AgentOutputs/interviews/<集數資料
   "aspect": "16:9",
   "citations": [],
   "brand_flags": [],
+  "keywords": { ... },
   "titles": [
     {
       "text": "...",
@@ -103,6 +105,9 @@ Obsidian Interview 資料夾 `<VAULT_PATH>/AgentOutputs/interviews/<集數資料
 }
 ```
 長片 titles 5 條（rank 1–5），rank 4–5 帶 `panel_note`；短片 titles 1 條。
+
+頂層 `keywords` 是 **Step 2 的整份研究**（該集第一支帶就好，之後幾支省略）；
+`title_trace.keywords` 是這一支**用到了哪幾個詞、為什麼**的紀錄，兩者不是同一個東西。
 
 ## 情緒 angle（點擊引擎）＋ 加乘器
 

@@ -18,8 +18,20 @@
 二輪：「現在遮到我的頭太多了」——跨在接縫上會蓋住下半格主持人的頭頂，
 下半格的臉幾乎從接縫就開始）。`--anchor seam-center` 是舊行為。
 
+**沒有上下分割開場的短片用 `--anchor free`**（20260721 呂冠緯 三支短片，
+`split_opener_sec=0.0`——第一個保留段太短，撐不起分割）。兩個 seam anchor 都是
+以接縫 y=960 為基準算出來的；沒有接縫時那個矩形會落在滿版談話鏡頭的臉正中央，
+實測正好蓋住主持人的嘴與下巴，踩的就是他 2026-08-30 講的同一件事。free 要自己給
+`--card-x/--card-y`（卡片左上角，畫布座標），因為乾淨落點取決於那一集主持人坐在
+畫面的哪一側——沒有跨集通用的常數，硬編一個只會在下一集再撞一次。
+
+定位時要同時避開三條帶：人臉、字卡帶（`run_short_titles` 的 `pos_y` 0.58–0.66，
+y≈1114–1267）、字幕帶（0.88 起）。
+
 用法：
     python scripts/build_brand_logo_badge.py <episode> --source <alpha.mov> [--width 440]
+    python scripts/build_brand_logo_badge.py <episode> --source <alpha.mov> \
+        --anchor free --card-x 600 --card-y 120
 """
 
 from __future__ import annotations
@@ -82,20 +94,52 @@ def _rounded_alpha(w: int, h: int, r: int) -> str:
     )
 
 
-def build(source: Path, out: Path, width: int, anchor: str, seam_offset: int = 0) -> Path:
-    (x0, y0, x1, y1), src_radius = _card_geometry(source)
-    crop_w, crop_h = x1 - x0, y1 - y0
-    card_w = width
-    card_h = round(card_w * crop_h / crop_w / 2) * 2
+def card_placement(
+    anchor: str,
+    card_w: int,
+    card_h: int,
+    *,
+    seam_offset: int = 0,
+    card_x: int | None = None,
+    card_y: int | None = None,
+) -> tuple[int, int]:
+    """卡片左上角在畫布裡的座標。純幾何，沒有 ffmpeg——所以測得起來。"""
     pad_x = (CANVAS_W - card_w) // 2
     if anchor == "seam-above":
         pad_y = SEAM_Y - SEAM_GAP - card_h + seam_offset
     elif anchor == "seam-center":
         pad_y = SEAM_Y - card_h // 2
+    elif anchor == "free":
+        if card_x is None or card_y is None:
+            raise SystemExit("--anchor free 要同時給 --card-x 與 --card-y")
+        pad_x, pad_y = card_x, card_y
     else:  # pragma: no cover - argparse 已限制
         raise SystemExit(f"未知的 anchor：{anchor}")
     if pad_y < 0:
         raise SystemExit(f"--width {card_w} 太大：卡片高 {card_h}px 放不進接縫上方")
+    if pad_x < 0 or pad_x + card_w > CANVAS_W or pad_y + card_h > CANVAS_H:
+        raise SystemExit(
+            f"卡片 {card_w}x{card_h} @({pad_x},{pad_y}) 超出畫布 {CANVAS_W}x{CANVAS_H}"
+        )
+    return pad_x, pad_y
+
+
+def build(
+    source: Path,
+    out: Path,
+    width: int,
+    anchor: str,
+    seam_offset: int = 0,
+    card_x: int | None = None,
+    card_y: int | None = None,
+) -> Path:
+    (x0, y0, x1, y1), src_radius = _card_geometry(source)
+    crop_w, crop_h = x1 - x0, y1 - y0
+    card_w = width
+    card_h = round(card_w * crop_h / crop_w / 2) * 2
+    pad_x, pad_y = card_placement(
+        anchor, card_w, card_h, seam_offset=seam_offset, card_x=card_x, card_y=card_y
+    )
 
     steps = [f"crop={crop_w}:{crop_h}:{x0}:{y0}", f"scale={card_w}:{card_h}:flags=lanczos"]
     if "a" not in _probe_pix_fmt(source):
@@ -154,11 +198,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--anchor",
-        choices=("seam-above", "seam-center"),
+        choices=("seam-above", "seam-center", "free"),
         default="seam-above",
-        help="seam-above＝底邊貼接縫上方（預設）；seam-center＝跨在接縫上",
+        help=(
+            "seam-above＝底邊貼接縫上方（預設）；seam-center＝跨在接縫上；"
+            "free＝自己給 --card-x/--card-y（沒有分割開場的短片用）"
+        ),
     )
+    parser.add_argument("--card-x", type=int, help="free：卡片左上角 x（畫布座標）")
+    parser.add_argument("--card-y", type=int, help="free：卡片左上角 y（畫布座標）")
     args = parser.parse_args(argv)
+    if args.anchor != "free" and (args.card_x is not None or args.card_y is not None):
+        raise SystemExit("--card-x/--card-y 只有 --anchor free 用得到")
     if not args.source.is_file():
         raise SystemExit(f"找不到 LOGO 動畫：{args.source}")
     if not 200 <= args.width <= CANVAS_W:
@@ -174,6 +225,8 @@ def main(argv: list[str] | None = None) -> int:
         args.width,
         args.anchor,
         args.seam_offset,
+        args.card_x,
+        args.card_y,
     )
     return 0
 

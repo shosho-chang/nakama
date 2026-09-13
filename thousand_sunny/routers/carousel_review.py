@@ -1071,6 +1071,61 @@ def _autorun_structured_job(episode_slug: str, job_id: str) -> None:
         logger.exception("carousel autorun crashed job=%s", job_id)
 
 
+def _episodes_root_or_none() -> Path | None:
+    """開機掃描用的 root 解析。跟 `_episode_dir` 不同，找不到就安靜放棄——
+    啟動掃描是加分項，不該讓沒設定 footage 磁碟的機器（例如 VPS）開不起來。
+    """
+    root_value = os.environ.get("PODCAST_EPISODES_ROOT", "").strip()
+    if not root_value:
+        return None
+    root = Path(root_value)
+    return root if root.is_dir() else None
+
+
+def sweep_queued_autorunnable_jobs() -> list[tuple[str, str]]:
+    """掃出所有還孤在 `queued` 的純結構化修正單。
+
+    建單當下觸發（`create_correction_job` 那個呼叫點）只涵蓋「Bridge 正開著而且
+    flag 已經開了」這一種情形。Bridge 沒開、flag 是事後才打開、或當機那段時間
+    建的單，就永遠沒有東西會來認領——UI 上只顯示「等待 agent 認領」，而現實中
+    沒有那個 agent。2026-09-10 實際發生過一次。
+
+    回傳 `(episode_slug, job_id)`，最舊的先。純讀取，不認領也不執行。
+    """
+    if not _autorun_enabled():
+        return []
+    root = _episodes_root_or_none()
+    if root is None:
+        return []
+    pending: list[tuple[datetime, str, str]] = []
+    for episode_dir in sorted(root.iterdir()):
+        package_root = episode_dir / "ig-carousel"
+        if not (package_root / "correction_jobs").is_dir():
+            continue
+        try:
+            jobs = list_jobs(package_root)
+        except (OSError, ValueError, ValidationError) as error:
+            # 一集的單壞掉不該讓其他集的孤兒也撿不起來。
+            logger.warning("carousel sweep skipped episode=%s: %s", episode_dir.name, error)
+            continue
+        for job in jobs:
+            if job.status != "queued" or not is_autorunnable(job):
+                continue
+            pending.append((job.created_at, episode_dir.name, job.job_id))
+    pending.sort(key=lambda row: (row[0], row[1], row[2]))
+    return [(slug, job_id) for _, slug, job_id in pending]
+
+
+def run_queued_autorun_sweep() -> None:
+    """開機時把孤兒單撿起來跑完。阻塞式——呼叫端負責丟到背景。"""
+    pending = sweep_queued_autorunnable_jobs()
+    if not pending:
+        return
+    logger.info("carousel autorun sweep picked up %s queued job(s)", len(pending))
+    for episode_slug, job_id in pending:
+        _autorun_structured_job(episode_slug, job_id)
+
+
 def _assert_current_manifest(form, manifest_sha256: str) -> None:
     if str(form.get("manifest_sha256", "")) != manifest_sha256:
         raise HTTPException(

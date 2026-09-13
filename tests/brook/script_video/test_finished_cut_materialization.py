@@ -32,18 +32,22 @@ from agents.brook.script_video.finished_cut_production._materialization import (
 from agents.brook.script_video.finished_cut_production._persistence import (
     AtomicResolveTransactionStore,
 )
+from agents.brook.script_video.finished_cut_production._plan_record import (
+    PlanRecordError,
+    PlanRecordStore,
+    PlanTimeline,
+    read_plan_record_at,
+    write_plan_record,
+)
 from agents.brook.script_video.finished_cut_production._records import (
+    EventRecord,
     MaterializationPlan,
+    _mint_accepted_stage,
     _mint_materialization_plan,
     _mint_projected_component,
     _ProductionRun,
 )
-from agents.brook.script_video.finished_cut_production._release import (
-    FinishedCutReleaseLifecycle,
-    ReleaseLifecycleError,
-)
 from agents.brook.script_video.finished_cut_production._resolve import (
-    CommitReceipt,
     PreviewRender,
     ResolveTransactionError,
     ResolveTransactionManager,
@@ -120,6 +124,10 @@ class _FailingTransactions:
     def __init__(self) -> None:
         self.calls: list[dict[str, object]] = []
 
+    def find_prepared(self, plan: object) -> object | None:
+        """沒有任何交易可以續跑——這個 fake 就是要讓 `prepare` 走全新那條路。"""
+        return None
+
     def prepare(self, plan: object, **arguments: object) -> object:
         self.calls.append({"plan": plan, **arguments})
         raise ResolveTransactionError("injected stop after subtitle staging")
@@ -166,39 +174,6 @@ class _TimelineAdapter:
     def rollback(self, workspace: TimelineWorkspace) -> None:
         self.rollbacks += 1
 
-    def commit(
-        self,
-        workspace: TimelineWorkspace,
-        *,
-        transaction_id: str,
-        cut_id: str,
-        retain_backup: bool,
-    ) -> CommitReceipt:
-        raise AssertionError("materialization must never commit")
-
-    def compensate(self, workspace: TimelineWorkspace, receipt: CommitReceipt) -> None:
-        raise AssertionError("materialization must never compensate")
-
-
-class _CommittingTimelineAdapter(_TimelineAdapter):
-    def commit(
-        self,
-        workspace: TimelineWorkspace,
-        *,
-        transaction_id: str,
-        cut_id: str,
-        retain_backup: bool,
-    ) -> CommitReceipt:
-        assert retain_backup is True
-        return CommitReceipt(
-            transaction_id=transaction_id,
-            cut_id=cut_id,
-            work_uid=workspace.work.uid,
-            transaction_receipt_id=f"receipt-{transaction_id}",
-            rollback_ref=f"backup-{transaction_id}",
-            backup_retained=True,
-        )
-
 
 class _BadPreviewAdapter(_TimelineAdapter):
     def __init__(
@@ -223,8 +198,8 @@ class _BadPreviewAdapter(_TimelineAdapter):
 
 
 class _FailingReleaseLifecycle:
-    def stage_candidate(self, *args: object, **kwargs: object) -> object:
-        raise ReleaseLifecycleError("injected crash before Candidate persistence")
+    def stage(self, *args: object, **kwargs: object) -> object:
+        raise PlanRecordError("injected crash before Candidate persistence")
 
 
 def _context(**changes: object) -> EditorialCutContext:
@@ -350,6 +325,11 @@ def _stored(
             status="review_ready",
             materialization_plan=plan or _plan(),
             editorial_context=context or _context(),
+            # 真的 run view 一定有這兩格（`_ProductionRun`），假的以前沒有——
+            # `_round_diff` 用 `getattr(..., ())` 兜底，所以這一整組測試從來沒有
+            # 真的走過輪次比對那段。假件要跟真件同形，破綻才會在這裡而不是線上。
+            accepted_stages=(),
+            accepted_stage_history=(),
         ),
     )
 
@@ -441,7 +421,7 @@ def test_missing_production_run_fails_before_any_materialization_side_effect(
         canonical_authority=_UnexpectedDependency(),
         assets=_UnexpectedDependency(),
         transactions=_UnexpectedDependency(),
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
 
@@ -479,7 +459,7 @@ def test_run_requires_review_ready_exact_plan_before_preflight(
         canonical_authority=_UnexpectedDependency(),
         assets=_UnexpectedDependency(),
         transactions=_UnexpectedDependency(),
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
 
@@ -497,10 +477,8 @@ def test_run_requires_review_ready_exact_plan_before_preflight(
         _stored(plan=_plan(run_id="run-other")),
         _stored(plan=_plan(episode_id="episode-other")),
         _stored(plan=_plan(cut_id="value-L01")),
-        _stored(plan=_plan(format="short")),
         _stored(context=_context(episode_id="episode-other")),
         _stored(context=_context(cut_id="value-L01")),
-        _stored(context=_context(format="short")),
         _stored(context=_context(editorial_master_id="c" * 64)),
         _stored(context=_context(tight_cut_id="tight-other")),
     ],
@@ -515,7 +493,7 @@ def test_plan_context_and_command_must_be_one_exact_authority_chain(
         canonical_authority=_UnexpectedDependency(),
         assets=_UnexpectedDependency(),
         transactions=_UnexpectedDependency(),
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
 
@@ -529,10 +507,10 @@ def test_plan_context_and_command_must_be_one_exact_authority_chain(
 @pytest.mark.parametrize(
     ("inspections", "reason_code"),
     [
-        ((), "canonical_timeline_unknown"),
+        ((), "resolve_binding_mismatch"),
         (
             (_canonical(), replace(_canonical(), canonical=TimelineIdentity("Other", "uid-2"))),
-            "canonical_timeline_ambiguous",
+            "resolve_binding_mismatch",
         ),
     ],
 )
@@ -547,7 +525,7 @@ def test_exact_uid_binding_rejects_unknown_or_ambiguous_canonical_before_assets(
         canonical_authority=authority,
         assets=_UnexpectedDependency(),
         transactions=_UnexpectedDependency(),
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
 
@@ -578,7 +556,7 @@ def test_receipt_content_identity_and_master_media_digest_are_distinct_authoriti
         canonical_authority=_CanonicalAuthority((inspection,)),
         assets=_UnexpectedDependency(),
         transactions=_FailingTransactions(),
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
 
@@ -596,14 +574,14 @@ def test_receipt_content_identity_and_master_media_digest_are_distinct_authoriti
                 _split_identity_canonical(),
                 editorial_master_content_hash=_LIN_EDITORIAL_MASTER_MEDIA_SHA256,
             ),
-            "editorial_master_content_identity_mismatch",
+            "editorial_master_mismatch",
         ),
         (
             replace(
                 _split_identity_canonical(),
                 editorial_master_media_sha256=_LIN_EDITORIAL_MASTER_CONTENT_HASH,
             ),
-            "editorial_master_media_drift",
+            "editorial_master_mismatch",
         ),
         (
             _replace_item(
@@ -611,7 +589,7 @@ def test_receipt_content_identity_and_master_media_digest_are_distinct_authoriti
                 "video-1",
                 media_digest=_LIN_EDITORIAL_MASTER_CONTENT_HASH,
             ),
-            "editorial_master_media_drift",
+            "editorial_master_mismatch",
         ),
     ],
 )
@@ -635,7 +613,7 @@ def test_content_hash_and_media_sha_cannot_be_swapped_or_forged(
         canonical_authority=_CanonicalAuthority((inspection,)),
         assets=_UnexpectedDependency(),
         transactions=_UnexpectedDependency(),
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
 
@@ -652,7 +630,7 @@ def test_source_ranges_must_fit_inside_the_verified_master_duration(tmp_path: Pa
         canonical_authority=_CanonicalAuthority((inspection,)),
         assets=_UnexpectedDependency(),
         transactions=_UnexpectedDependency(),
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
 
@@ -665,26 +643,26 @@ def test_source_ranges_must_fit_inside_the_verified_master_duration(tmp_path: Pa
 @pytest.mark.parametrize(
     ("inspection", "reason_code"),
     [
-        (replace(_canonical(), episode_id="episode-other"), "canonical_identity_mismatch"),
-        (replace(_canonical(), cut_id="value-L01"), "canonical_identity_mismatch"),
-        (replace(_canonical(), timeline_frame_rate=29.97), "frame_rate_drift"),
+        (replace(_canonical(), episode_id="episode-other"), "resolve_binding_mismatch"),
+        (replace(_canonical(), cut_id="value-L01"), "resolve_binding_mismatch"),
+        (replace(_canonical(), timeline_frame_rate=29.97), "protected_track_drift"),
         (
             replace(
                 _canonical(),
                 state=replace(_canonical().state, end_frame=_canonical().state.end_frame + 2),
             ),
-            "timeline_duration_drift",
+            "resolve_binding_mismatch",
         ),
         (
             _replace_item(_canonical(), "video-1", media_digest="d" * 64),
-            "editorial_master_media_drift",
+            "editorial_master_mismatch",
         ),
         (
             _replace_item(_canonical(), "audio-1", media_digest="d" * 64),
-            "editorial_master_media_drift",
+            "editorial_master_mismatch",
         ),
-        (_replace_item(_canonical(), "video-1", source_in_frame=3_001), "source_range_drift"),
-        (_replace_item(_canonical(), "audio-1", end_frame=100_799), "source_range_drift"),
+        (_replace_item(_canonical(), "video-1", source_in_frame=3_001), "protected_track_drift"),
+        (_replace_item(_canonical(), "audio-1", end_frame=100_799), "protected_track_drift"),
         (
             replace(
                 _canonical(),
@@ -697,10 +675,12 @@ def test_source_ranges_must_fit_inside_the_verified_master_duration(tmp_path: Pa
             ),
             "protected_track_drift",
         ),
-        (_replace_item(_canonical(), "subtitle-1", end_frame=86_461), "subtitle_contract_drift"),
+        # 差三格才算漂移：一格是 Python 與 Resolve 對 .5 邊界各自捨入的必然結果，
+        # 由 `_validate_context_contract` 的容忍度吸收（見 _materialization 的註解）。
+        (_replace_item(_canonical(), "subtitle-1", end_frame=86_463), "protected_track_drift"),
         (
             _replace_item(_canonical(), "subtitle-1", properties=(("Text", "錯字"),)),
-            "subtitle_contract_drift",
+            "protected_track_drift",
         ),
         (
             replace(
@@ -727,7 +707,7 @@ def test_editorial_master_base_drift_fails_before_asset_or_timeline_mutation(
         canonical_authority=_CanonicalAuthority((inspection,)),
         assets=_UnexpectedDependency(),
         transactions=_UnexpectedDependency(),
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
 
@@ -738,6 +718,40 @@ def test_editorial_master_base_drift_fails_before_asset_or_timeline_mutation(
     assert list(tmp_path.rglob("*")) == []
 
 
+@pytest.mark.parametrize(
+    "inspection",
+    [
+        # 字幕早一格／晚一格：Python 的銀行家捨入與 Resolve 讓相鄰字幕首尾相接，
+        # 在 .5 邊界上各自合理但差一格（punch-L02 有五處）。這一格必須放行。
+        _replace_item(_canonical(), "subtitle-1", end_frame=86_461),
+        _replace_item(_canonical(), "subtitle-1", end_frame=86_459),
+        _replace_item(_canonical(), "subtitle-1", start_frame=86_401),
+        # （影音差一格沒收到 timeline 結束影格的那條容忍度，這裡蓋不到：把 end_frame
+        #   往後推一格會先被「時長差超過一格」擋下，那是另一道檢查。它由 punch-L02
+        #   的實跑覆蓋——字幕收在 16541、影音收在 16540。）
+    ],
+)
+def test_one_frame_quantisation_gaps_are_not_drift(
+    tmp_path: Path,
+    inspection: CanonicalTimelineInspection,
+) -> None:
+    """差一格不算漂移——秒與影格之間的換算本來就沒有唯一答案。"""
+    coordinator = MaterializationCoordinator(
+        run_store=_RunStore(_stored()),
+        canonical_authority=_CanonicalAuthority((inspection,)),
+        assets=_AssetResolver({}),
+        transactions=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
+        episode_root=tmp_path,
+    )
+
+    # 一路走到 Resolve 交易那一步（被 preflight stub 擋下），代表三道量化檢查都放行了。
+    # 交易層第一個被碰到的是 `find_prepared`（先問「這個 plan 已經有做完的交易嗎」），
+    # 它跟舊的 `prepare` 一樣只會在通過全部 preflight 之後才發生。
+    with pytest.raises(AssertionError, match="must not be touched: find_prepared"):
+        coordinator.prepare("approved-cut:" + "a" * 32)
+
+
 def test_every_component_requires_an_exact_active_store_final_asset(tmp_path: Path) -> None:
     missing_ref = "asset-sha256:" + "e" * 64
     resolver = _AssetResolver({})
@@ -746,7 +760,7 @@ def test_every_component_requires_an_exact_active_store_final_asset(tmp_path: Pa
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=resolver,
         transactions=_UnexpectedDependency(),
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
 
@@ -768,7 +782,7 @@ def test_active_store_reference_and_object_digest_cannot_be_forged(tmp_path: Pat
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=resolver,
         transactions=_UnexpectedDependency(),
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
 
@@ -784,7 +798,7 @@ def test_assetless_component_and_changed_active_object_fail_closed(tmp_path: Pat
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=_AssetResolver({}),
         transactions=_UnexpectedDependency(),
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
     with pytest.raises(MaterializationError) as absent:
@@ -800,12 +814,15 @@ def test_assetless_component_and_changed_active_object_fail_closed(tmp_path: Pat
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=_AssetResolver({resolved.record.reference: resolved}),
         transactions=_UnexpectedDependency(),
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
     with pytest.raises(MaterializationError) as forged:
         changed.prepare("approved-cut:" + "a" * 32)
-    assert forged.value.reason_code == "final_asset_identity_mismatch"
+    # ADR-069 階段 7：同名的檔案 bytes 被換過有自己的名字。收據那邊的 URL profile
+    # 砍掉之後，這一條是唯一還在保護素材來歷的鎖，不該跟「reference 綁錯」共用一個
+    # code——出事的時候那兩件事要做的處置完全不同。
+    assert forged.value.reason_code == "asset_digest_mismatch"
 
 
 def test_vertical_stock_is_rejected_before_timeline_mutation(tmp_path: Path) -> None:
@@ -825,7 +842,7 @@ def test_vertical_stock_is_rejected_before_timeline_mutation(tmp_path: Path) -> 
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=resolver,
         transactions=_UnexpectedDependency(),
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
 
@@ -847,7 +864,7 @@ def test_current_cues_create_deterministic_utf8_srt_before_resolve_prepare(
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=_AssetResolver({resolved.record.reference: resolved}),
         transactions=transactions,
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
 
@@ -874,7 +891,7 @@ def test_conflicting_staged_srt_is_not_overwritten_or_sent_to_resolve(tmp_path: 
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=_AssetResolver({resolved.record.reference: resolved}),
         transactions=transactions,
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
     with pytest.raises(MaterializationError):
@@ -910,7 +927,7 @@ def test_success_stages_one_preview_ready_candidate_and_reopens_idempotently(
             adapter,
             store=AtomicResolveTransactionStore(transaction_root),
         )
-        lifecycle = FinishedCutReleaseLifecycle(
+        lifecycle = PlanRecordStore(
             tmp_path,
             transactions=manager,
             preview_probe=lambda path: {
@@ -926,7 +943,7 @@ def test_success_stages_one_preview_ready_candidate_and_reopens_idempotently(
             canonical_authority=authority,
             assets=assets,
             transactions=manager,
-            releases=lifecycle,
+            records=lifecycle,
             episode_root=tmp_path,
         )
 
@@ -938,21 +955,19 @@ def test_success_stages_one_preview_ready_candidate_and_reopens_idempotently(
     assert isinstance(first, MaterializationPreparation)
     assert first == second
     assert first.status == "preview_ready"
-    assert first.candidate.preview_ready_transaction_id == first.transaction_id
+    assert first.record.transaction_id == first.transaction_id
     assert (adapter.duplicates, adapter.applies, adapter.renders) == (1, 1, 1)
     assert journal_path.read_bytes() == journal_bytes
     assert not (
         tmp_path / "highlights" / "review" / "finished_review_manifest_current.json"
     ).exists()
-    with pytest.raises(ReleaseLifecycleError, match="missing"):
-        FinishedCutReleaseLifecycle(
-            tmp_path,
-            transactions=ResolveTransactionManager(
-                adapter,
-                store=AtomicResolveTransactionStore(transaction_root),
-            ),
-            preview_probe=lambda _: {"duration_sec": 480.0},
-        ).inspect_current("episode-1")
+    # ADR-069：`prepare` 留下的就是那一份 plan record，沒有第二個「上架」動作。
+    # 以前這裡斷言 current index 還是空的（封存要等 cutover 才發生）；pointer、
+    # manifest、封存鏈退役之後，能斷言的是「紀錄恰好一份，而且就是剛剛那一份」。
+    inspection = PlanRecordStore(tmp_path).inspect("episode-1")
+    assert inspection.state == "ready"
+    assert [cut.plan_id for cut in inspection.cuts] == [first.record.plan_id]
+    assert not list((tmp_path / "highlights" / "releases").rglob("*"))
 
 
 def test_reopen_uses_exact_preview_ready_journal_before_live_canonical_lookup(
@@ -975,7 +990,7 @@ def test_reopen_uses_exact_preview_ready_journal_before_live_canonical_lookup(
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=_AssetResolver({resolved.record.reference: resolved}),
         transactions=first_manager,
-        releases=FinishedCutReleaseLifecycle(
+        records=PlanRecordStore(
             tmp_path,
             transactions=first_manager,
             preview_probe=lambda _: {"duration_sec": 480.0},
@@ -992,7 +1007,7 @@ def test_reopen_uses_exact_preview_ready_journal_before_live_canonical_lookup(
         canonical_authority=_UnexpectedDependency(),  # type: ignore[arg-type]
         assets=_AssetResolver({resolved.record.reference: resolved}),
         transactions=reopened_manager,
-        releases=FinishedCutReleaseLifecycle(
+        records=PlanRecordStore(
             tmp_path,
             transactions=reopened_manager,
             preview_probe=lambda _: {"duration_sec": 480.0},
@@ -1001,56 +1016,6 @@ def test_reopen_uses_exact_preview_ready_journal_before_live_canonical_lookup(
     ).prepare("approved-cut:" + "a" * 32)
 
     assert reopened == first
-    assert (adapter.duplicates, adapter.applies, adapter.renders) == (1, 1, 1)
-
-
-def test_reopen_accepts_exact_committed_transaction_without_live_canonical_lookup(
-    tmp_path: Path,
-) -> None:
-    asset = tmp_path / "title.mov"
-    asset.write_bytes(b"title")
-    resolved = _resolved_asset(asset)
-    plan = _component_plan(resolved.record.reference)
-    stored = _stored(plan=plan)
-    adapter = _CommittingTimelineAdapter(tmp_path, baseline=_canonical().baseline)
-    transaction_root = tmp_path / "transactions"
-    first_manager = ResolveTransactionManager(
-        adapter,
-        store=AtomicResolveTransactionStore(transaction_root),
-    )
-    first = MaterializationCoordinator(
-        run_store=_RunStore(stored),
-        canonical_authority=_CanonicalAuthority((_canonical(),)),
-        assets=_AssetResolver({resolved.record.reference: resolved}),
-        transactions=first_manager,
-        releases=FinishedCutReleaseLifecycle(
-            tmp_path,
-            transactions=first_manager,
-            preview_probe=lambda _: {"duration_sec": 480.0},
-        ),
-        episode_root=tmp_path,
-    ).prepare("approved-cut:" + "a" * 32)
-    first_manager.commit(first.transaction_id, expected_cut_id=plan.cut_id)
-
-    reopened_manager = ResolveTransactionManager(
-        adapter,
-        store=AtomicResolveTransactionStore(transaction_root),
-    )
-    reopened = MaterializationCoordinator(
-        run_store=_RunStore(stored),
-        canonical_authority=_UnexpectedDependency(),  # type: ignore[arg-type]
-        assets=_AssetResolver({resolved.record.reference: resolved}),
-        transactions=reopened_manager,
-        releases=FinishedCutReleaseLifecycle(
-            tmp_path,
-            transactions=reopened_manager,
-            preview_probe=lambda _: {"duration_sec": 480.0},
-        ),
-        episode_root=tmp_path,
-    ).prepare("approved-cut:" + "a" * 32)
-
-    assert reopened == first
-    assert reopened_manager.inspect_transaction(first.transaction_id)["status"] == "committed"
     assert (adapter.duplicates, adapter.applies, adapter.renders) == (1, 1, 1)
 
 
@@ -1111,7 +1076,7 @@ def test_multi_range_editorial_base_reaches_transaction_preparation(tmp_path: Pa
         canonical_authority=_CanonicalAuthority((inspection,)),
         assets=_AssetResolver({resolved.record.reference: resolved}),
         transactions=transactions,
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
 
@@ -1133,7 +1098,7 @@ def test_baseline_change_after_read_only_inspection_has_zero_timeline_mutations(
         baseline=TimelineSnapshot("changed", "changed"),
     )
     manager = ResolveTransactionManager(adapter)
-    lifecycle = FinishedCutReleaseLifecycle(
+    lifecycle = PlanRecordStore(
         tmp_path,
         transactions=manager,
         preview_probe=lambda _: {"duration_sec": 480.0},
@@ -1143,7 +1108,7 @@ def test_baseline_change_after_read_only_inspection_has_zero_timeline_mutations(
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=_AssetResolver({resolved.record.reference: resolved}),
         transactions=manager,
-        releases=lifecycle,
+        records=lifecycle,
         episode_root=tmp_path,
     )
 
@@ -1176,7 +1141,7 @@ def test_preview_codec_duration_and_offline_fail_without_candidate(
         failure=failure,
     )
     manager = ResolveTransactionManager(adapter)
-    lifecycle = FinishedCutReleaseLifecycle(
+    lifecycle = PlanRecordStore(
         tmp_path,
         transactions=manager,
         preview_probe=lambda _: {"duration_sec": 480.0},
@@ -1186,7 +1151,7 @@ def test_preview_codec_duration_and_offline_fail_without_candidate(
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=_AssetResolver({resolved.record.reference: resolved}),
         transactions=manager,
-        releases=lifecycle,
+        records=lifecycle,
         episode_root=tmp_path,
     )
 
@@ -1217,12 +1182,12 @@ def test_restart_after_preview_ready_before_candidate_does_not_render_twice(
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=_AssetResolver({resolved.record.reference: resolved}),
         transactions=first_manager,
-        releases=_FailingReleaseLifecycle(),  # type: ignore[arg-type]
+        records=_FailingReleaseLifecycle(),  # type: ignore[arg-type]
         episode_root=tmp_path,
     )
     with pytest.raises(MaterializationError) as crashed:
         first.prepare("approved-cut:" + "a" * 32)
-    assert crashed.value.reason_code == "candidate_staging_failed"
+    assert crashed.value.reason_code == "plan_record_staging_failed"
 
     second_manager = ResolveTransactionManager(
         adapter,
@@ -1233,7 +1198,7 @@ def test_restart_after_preview_ready_before_candidate_does_not_render_twice(
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=_AssetResolver({resolved.record.reference: resolved}),
         transactions=second_manager,
-        releases=FinishedCutReleaseLifecycle(
+        records=PlanRecordStore(
             tmp_path,
             transactions=second_manager,
             preview_probe=lambda _: {"duration_sec": 480.0},
@@ -1255,17 +1220,17 @@ def test_restart_after_journal_write_failure_reuses_preview_ready_transaction(
     stored = _stored(plan=_component_plan(resolved.record.reference))
     adapter = _TimelineAdapter(tmp_path, baseline=_canonical().baseline)
     transaction_root = tmp_path / "transactions"
-    original_writer = materialization_module._write_materialization_journal
+    original_writer = materialization_module.write_plan_record
 
     def fail_once(path: Path, payload: dict[str, object]) -> None:
         raise MaterializationError("injected journal failure", reason_code="journal_crash")
 
-    monkeypatch.setattr(materialization_module, "_write_materialization_journal", fail_once)
+    monkeypatch.setattr(materialization_module, "write_plan_record", fail_once)
     manager = ResolveTransactionManager(
         adapter,
         store=AtomicResolveTransactionStore(transaction_root),
     )
-    lifecycle = FinishedCutReleaseLifecycle(
+    lifecycle = PlanRecordStore(
         tmp_path,
         transactions=manager,
         preview_probe=lambda _: {"duration_sec": 480.0},
@@ -1275,7 +1240,7 @@ def test_restart_after_journal_write_failure_reuses_preview_ready_transaction(
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=_AssetResolver({resolved.record.reference: resolved}),
         transactions=manager,
-        releases=lifecycle,
+        records=lifecycle,
         episode_root=tmp_path,
     )
     with pytest.raises(MaterializationError, match="injected journal failure"):
@@ -1283,7 +1248,7 @@ def test_restart_after_journal_write_failure_reuses_preview_ready_transaction(
 
     monkeypatch.setattr(
         materialization_module,
-        "_write_materialization_journal",
+        "write_plan_record",
         original_writer,
     )
     reopened_manager = ResolveTransactionManager(
@@ -1295,7 +1260,7 @@ def test_restart_after_journal_write_failure_reuses_preview_ready_transaction(
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=_AssetResolver({resolved.record.reference: resolved}),
         transactions=reopened_manager,
-        releases=FinishedCutReleaseLifecycle(
+        records=PlanRecordStore(
             tmp_path,
             transactions=reopened_manager,
             preview_probe=lambda _: {"duration_sec": 480.0},
@@ -1341,7 +1306,7 @@ def test_reopened_filesystem_run_store_supplies_exact_plan_and_context(tmp_path:
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=_AssetResolver({resolved.record.reference: resolved}),
         transactions=transactions,
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
 
@@ -1362,7 +1327,7 @@ def test_incomplete_candidate_journal_fails_before_transaction_reentry(tmp_path:
         canonical_authority=_CanonicalAuthority((_canonical(),)),
         assets=_AssetResolver({resolved.record.reference: resolved}),
         transactions=transactions,
-        releases=_UnexpectedDependency(),
+        records=_UnexpectedDependency(),
         episode_root=tmp_path,
     )
     with pytest.raises(MaterializationError):
@@ -1377,3 +1342,96 @@ def test_incomplete_candidate_journal_fails_before_transaction_reentry(tmp_path:
 
     assert raised.value.reason_code == "materialization_journal_incomplete"
     assert transactions.calls == []
+
+
+def test_a_pre_adr069_record_can_still_be_reopened(tmp_path: Path) -> None:
+    """ADR-069 之前的紀錄沒有 timeline、也沒有 diff——那不是衝突，是還沒補的旁註。
+
+    重進入這條路正是為了那些舊紀錄存在的（20260721 punch-L03 卡在 preview 探測之
+    後就再也結不了帳）。拿整個 dataclass 去比，會把磁碟上那六份 v1 紀錄每一份都
+    判成 `materialization_journal_conflict`——第一輪的 diff 一定非空（每個 event
+    都是 `added`），而 v1 紀錄的那一格永遠是空的。
+    """
+    asset = tmp_path / "title.mov"
+    asset.write_bytes(b"title")
+    resolved = _resolved_asset(asset)
+    event = EventRecord(
+        event_id="event-1",
+        master_cue_ids=("cue-1",),
+        text_hash="1" * 64,
+        intent="金句卡",
+        visual_status="approved",
+        t0=4.0,
+        t1=8.0,
+        section_id="section-1",
+        display="下一個黃金年代",
+        semantic_kind="hero_title",
+        implementation_kind="hero_title",
+        lane="hero_title",
+    )
+    plan = _component_plan(resolved.record.reference)
+    stage = _mint_accepted_stage(
+        acceptance_id="acceptance-visual-1",
+        run_id="run-1",
+        request_id="request-" + "1" * 32,
+        stage="visual_review",
+        attempt=1,
+        scope="full_stage",
+        event_id=None,
+        parent_acceptance_id=None,
+        events=(event,),
+    )
+    stored = _stored(plan=plan)
+    stored.view.accepted_stages = (stage,)
+    stored.view.accepted_stage_history = (stage,)
+    authority = _CanonicalAuthority((_canonical(),))
+    assets = _AssetResolver({resolved.record.reference: resolved})
+    adapter = _TimelineAdapter(tmp_path, baseline=_canonical().baseline)
+    transaction_root = tmp_path / "transactions"
+
+    def open_coordinator() -> MaterializationCoordinator:
+        manager = ResolveTransactionManager(
+            adapter,
+            store=AtomicResolveTransactionStore(transaction_root),
+        )
+        return MaterializationCoordinator(
+            run_store=_RunStore(stored),
+            canonical_authority=authority,
+            assets=assets,
+            transactions=manager,
+            records=PlanRecordStore(
+                tmp_path,
+                transactions=manager,
+                preview_probe=lambda path: {
+                    "duration_sec": 480.0,
+                    "video_codec": "h264",
+                    "audio_codec": "aac",
+                    "decode_ok": True,
+                    "offline_frame_count": 0,
+                },
+            ),
+            episode_root=tmp_path,
+        )
+
+    first = open_coordinator().prepare("approved-cut:" + "a" * 32)
+    assert first.record.event_diff  # 第一輪：每個 event 都是 added
+
+    # 把磁碟上那一份降級成「ADR-069 之前的樣子」：沒有 timeline、沒有 diff。
+    record_path = next((tmp_path / "highlights" / "staging").rglob("materialization.json"))
+    write_plan_record(
+        record_path,
+        replace(
+            first.record,
+            timeline=PlanTimeline(name="", uid=""),
+            event_diff=(),
+            event_diff_previous_acceptance_id=None,
+            uniform_shift_sec=None,
+        ),
+    )
+
+    second = open_coordinator().prepare("approved-cut:" + "a" * 32)
+
+    assert second.record.timeline.name == first.record.timeline.name
+    assert second.record.event_diff == first.record.event_diff
+    # 補完之後磁碟上那一份也升級了，不是每次重進入都要重算。
+    assert read_plan_record_at(record_path) == second.record

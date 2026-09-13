@@ -615,10 +615,14 @@ def _validate_model_evidence(
         raw_result["provider_output"],
         label=f"{label}.raw_result.provider_output",
     )
-    if not isinstance(transcript, str) or not transcript.strip():
+    if not isinstance(transcript, str):
         raise SubtitleReleaseError(f"{label} raw transcript is empty")
-    if not isinstance(segments, list) or not segments:
+    if not isinstance(segments, list):
         raise SubtitleReleaseError(f"{label} raw recognition segments are empty")
+    # Same rule as the evidence builder: a completed engine that heard silence is a
+    # real observation and stays auditable; only an inconsistent pair is malformed.
+    if bool(transcript.strip()) != bool(segments):
+        raise SubtitleReleaseError(f"{label} raw transcript and segments disagree")
     for index, segment in enumerate(segments):
         if not isinstance(segment, dict) or set(segment) != {
             "start_ms",
@@ -684,8 +688,11 @@ def _validate_model_evidence(
         for segment in segments
         if segment["end_ms"] > relative_target_start and segment["start_ms"] < relative_target_end
     )
-    if not target_observation.strip():
-        raise SubtitleReleaseError(f"{label} has no recognition over the target window")
+    # An empty observation is kept, not refused.  It means this engine heard no speech
+    # over the target window, which `_dual_asr_supported_candidate` turns into
+    # retain-Memo.  Refusing it here deadlocked the whole release instead
+    # (2026-09-10, 20260721 呂冠緯: Memo hallucinated four cues over the post-interview
+    # room tone, the audits filed them major, and there was nothing to hear).
     return {
         "file": _ref_payload(ref),
         "clip": _ref_payload(clip_ref),
@@ -1052,6 +1059,13 @@ def _dual_asr_supported_candidate(
 ) -> str | None:
     faster = _normalize_recognition_text(faster_observation)
     qwen = _normalize_recognition_text(qwen_observation)
+    # A provider that ran to completion and heard nothing over the target window is a
+    # valid *negative* observation, not a failure: Memo can hallucinate text over
+    # silence (trailing room tone is routine), and the text audits correctly file that
+    # as major risk.  Silence can never support a replacement, so fail it to
+    # retain-Memo explicitly rather than relying on an empty candidate never matching.
+    if not faster or not qwen:
+        return None
     supported = [
         candidate
         for candidate in _audit_candidates(unresolved_item)
@@ -2392,10 +2406,16 @@ def build_asr_evidence(
         raise SubtitleReleaseError("provider output binding or execution failed")
     provider_transcript = provider["transcript"]
     segments = provider["segments"]
-    if not isinstance(provider_transcript, str) or not provider_transcript.strip():
+    if not isinstance(provider_transcript, str):
         raise SubtitleReleaseError("provider output transcript is empty")
-    if not isinstance(segments, list) or not segments:
+    if not isinstance(segments, list):
         raise SubtitleReleaseError("provider output must contain non-empty segments")
+    # `completed` + `exit_code == 0` above already separate "the engine ran" from "the
+    # engine crashed".  A successful run that returns no speech is a real observation of
+    # silence and must stay auditable; only an *inconsistent* pair (text without
+    # segments, or segments without text) is malformed.
+    if bool(provider_transcript.strip()) != bool(segments):
+        raise SubtitleReleaseError("provider output transcript and segments disagree")
     if transcript is not None and transcript != provider_transcript:
         raise SubtitleReleaseError("transcript differs from provider output")
     if segments_json is not None:

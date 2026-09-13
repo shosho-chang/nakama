@@ -18,6 +18,7 @@ from run_transcript_prose import (  # noqa: E402
     _binds,
     _cue_speaker,
     _cue_word_ranges,
+    _drop_intro_outro_cues,
     _finish,
     _forward_fill,
     _parse_srt,
@@ -293,3 +294,88 @@ def test_forward_fill_carries_speaker_across_gaps():
 def test_forward_fill_leaves_leading_unknowns_alone():
     # 開頭就沒有證據 → 沒有人可承接，維持 None（由 build_paragraphs 丟棄）
     assert _forward_fill([None, None, 1]) == [None, None, 1]
+
+
+# --- 片頭片尾不得併入鄰近段落 -------------------------------------------------
+#
+# 片頭片尾沒有機位也沒有 mic 分軌，投影之後那些詞全部被丟掉，於是那幾個 cue 沒有
+# 任何講者證據——`_forward_fill` 與 `build_paragraphs` 都會讓它承接**前一個** cue
+# 的講者。片頭僥倖沒事（前面沒有「前一位」），片尾就把主持人錄的 outro 掛到來賓
+# 名下：2026-09-12 20260721 呂冠緯 的最後一段是「…以上就是冠緯以及均一教育平台的
+# 故事希望對你有幫助推薦大家可以…」，整段旁白都不是來賓講的。
+
+
+def _cmap(intro_outro: list[tuple[float, float]]) -> dict:
+    return {
+        "segments": [{"master_start_sec": 0.0, "master_end_sec": 1000.0, "source_start_sec": 0.0}],
+        "unconformable": [
+            {"master_start_sec": t0, "master_end_sec": t1, "origin": "intro_outro"}
+            for t0, t1 in intro_outro
+        ],
+    }
+
+
+def test_outro_cues_are_dropped_not_absorbed():
+    cues = [
+        (10.0, 12.0, "謝謝修修"),
+        (12.0, 14.0, "感謝"),
+        (14.0, 16.0, "以上就是冠緯以及均一教育平台的故事"),
+        (16.0, 18.0, "希望對你有幫助"),
+    ]
+    kept, numbers = _drop_intro_outro_cues(_cmap([(0.0, 5.0), (14.0, 30.0)]), cues)
+
+    # 主體收在「謝謝修修 感謝」，後面兩句 outro 旁白整段不見——不是改掛主持人，
+    # 是根本不屬於逐字稿（片頭片尾沒有機位，講者判定對它不成立）。
+    assert [text for _t0, _t1, text in kept] == ["謝謝修修", "感謝"]
+    assert numbers == [1, 2]
+
+
+def test_a_cue_straddling_the_cut_stays_when_most_of_it_is_body():
+    """判準是過半，不是碰到就丟——成品字幕可能剛好跨在剪接點上。"""
+    cues = [(10.0, 14.0, "主體最後一句")]
+    kept, numbers = _drop_intro_outro_cues(_cmap([(13.0, 30.0)]), cues)
+
+    assert kept == cues
+    assert numbers == [1]
+
+
+def test_cue_numbers_stay_addressable_to_the_original_srt():
+    """可疑 cue 報告指的是原始 SRT 的編號；拿掉片頭之後位置索引就不等於編號了。"""
+    cues = [
+        (0.0, 4.0, "片頭旁白"),
+        (10.0, 12.0, "第一句"),
+        (12.0, 14.0, "第二句"),
+    ]
+    kept, numbers = _drop_intro_outro_cues(_cmap([(0.0, 5.0)]), cues)
+
+    assert [text for _t0, _t1, text in kept] == ["第一句", "第二句"]
+    assert numbers == [2, 3]
+
+
+def test_without_any_intro_outro_every_cue_is_kept():
+    cues = [(0.0, 2.0, "一"), (2.0, 4.0, "二")]
+    kept, numbers = _drop_intro_outro_cues(_cmap([]), cues)
+
+    assert kept == cues
+    assert numbers == [1, 2]
+
+
+def test_the_outro_would_otherwise_land_on_the_previous_speaker():
+    """對照組：不先拿掉，片尾就是會被掛到最後一位講者身上。"""
+    cues = [
+        (10.0, 12.0, "謝謝修修"),
+        (14.0, 16.0, "以上就是冠緯以及均一教育平台的故事"),
+    ]
+    words = [{"start": 10.0, "end": 12.0, "word": "謝謝修修"}]
+    ranges = _cue_word_ranges(cues, words)
+    speakers = _forward_fill([_cue_speaker(idx, [1], words) for idx in ranges])
+    paragraphs = build_paragraphs(cues, speakers, ranges, words)
+
+    assert "均一教育平台" in paragraphs[-1][1]
+
+    kept, _numbers = _drop_intro_outro_cues(_cmap([(13.0, 30.0)]), cues)
+    kept_ranges = _cue_word_ranges(kept, words)
+    kept_speakers = _forward_fill([_cue_speaker(idx, [1], words) for idx in kept_ranges])
+    cleaned = build_paragraphs(kept, kept_speakers, kept_ranges, words)
+
+    assert all("均一教育平台" not in text for _spk, text in cleaned)

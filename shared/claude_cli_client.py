@@ -51,6 +51,7 @@ import time
 
 from shared.llm_observability import record_call
 from shared.log import get_logger
+from shared.quiet_subprocess import quiet_kwargs
 from shared.retry import with_retry
 
 logger = get_logger("nakama.claude_cli_client")
@@ -189,6 +190,7 @@ def _invoke(
             check=False,
             env=sub_env,
             cwd=sub_cwd,
+            **quiet_kwargs(),
         )
     finally:
         if tmp_system_path:

@@ -19,6 +19,7 @@ from ._assets import (
     WorkerCatalogItem,
     WorkerSelectionCatalog,
 )
+from ._digest import file_digest as _file_digest
 
 _INDEX_SCHEMA = "nakama.finished-cut-active-assets.v1"
 _NEUTRAL_KINDS = frozenset({AssetKind.STOCK, AssetKind.PHOTO, AssetKind.NON_EDITORIAL_CLIP})
@@ -33,9 +34,14 @@ _RECORD_KEYS = {
     "height",
     "duration_sec",
     "recipe_identity",
-    "release_ids",
     "compact_receipt",
 }
+
+#: ADR-069 之前每一筆紀錄都存著 `release_ids`（「哪個已封存的 Release 用了這份
+#: 素材」）。實測 322 筆沒有一筆非空——`bind_release` 在生產線上從未被呼叫過，
+#: 而它要回答的那個問題隨封存鏈一起退役了。既有 index 照樣讀得回來，下一次
+#: publish 重寫整份時這個鍵就會消失。
+_LEGACY_RECORD_KEYS = {"release_ids"}
 
 
 class ActiveAssetStoreError(AssetContractError):
@@ -51,7 +57,6 @@ class ActiveAssetPublication:
     height: int | None = None
     duration_sec: float | None = None
     recipe_identity: str | None = None
-    release_ids: frozenset[str] = frozenset()
     compact_receipt: CompactAssetReceipt | None = None
 
     def __post_init__(self) -> None:
@@ -93,15 +98,31 @@ class ActiveAssetStore:
         except OSError as exc:
             raise ActiveAssetStoreError("asset publication source is unreadable") from exc
         if publication.kind in _NEUTRAL_KINDS:
+            # 收據是**紀錄**，不是門。修修 2026-09-13：「我從來沒有要求要做這件事情
+            # ……我要的東西很簡單，就是很順暢地將一集節目推進到我要的結果。」
+            #
+            # 追這條規則的來歷：2026-08-26 `3905fc2c`（commit body 是空的）第一次
+            # 造出 acquisition receipt，2026-08-29 ADR-066 的 authority 核心把它變成
+            # publish 時的硬擋。沒有任何一次 owner 要求過。而它實際擋掉的是什麼——
+            # #1245 就是活生生的例子：Envato 併站之後，這道門讓當天買的素材登錄不
+            # 進來，除非偽造網址或把授權素材謊報成別的 source_class。
+            #
+            # 所以：有收據就照驗（`CompactAssetReceipt.__post_init__` 那一整圈照跑，
+            # 而且 sha256 必須對得上實際 bytes——那才是真的在保護來歷）；沒有收據就
+            # 存 None，照樣上片。
             compact_receipt = publication.compact_receipt
-            if compact_receipt is None or compact_receipt.origin != "neutral_acquisition":
-                raise ActiveAssetStoreError(
-                    "neutral asset publication requires acquisition provenance"
-                )
-            if compact_receipt.media_sha256 != digest or compact_receipt.media_bytes != media_bytes:
-                raise ActiveAssetStoreError(
-                    "neutral acquisition provenance differs from source content"
-                )
+            if compact_receipt is not None:
+                if compact_receipt.origin != "neutral_acquisition":
+                    raise ActiveAssetStoreError(
+                        "neutral asset provenance must describe an acquisition"
+                    )
+                if (
+                    compact_receipt.media_sha256 != digest
+                    or compact_receipt.media_bytes != media_bytes
+                ):
+                    raise ActiveAssetStoreError(
+                        "neutral acquisition provenance differs from source content"
+                    )
         else:
             if publication.compact_receipt is not None:
                 raise ActiveAssetStoreError(
@@ -121,19 +142,27 @@ class ActiveAssetStore:
             height=publication.height,
             duration_sec=publication.duration_sec,
             recipe_identity=publication.recipe_identity,
-            release_ids=publication.release_ids,
             compact_receipt=compact_receipt,
         )
         prior = self._by_digest.get(digest)
         if prior is not None:
-            if replace(prior, release_ids=record.release_ids) != record:
+            # 同一份 bytes 只能有一筆 record（content-addressed）。若新舊只差在
+            # `recipe_identity`，那不是衝突：兩個配方算出同一個畫面，本來就該共用
+            # 這份媒體。recipe identity 是快取鍵，不是內容的一部分。
+            #
+            # 舊 store 裡有一批 record 是用「含 run_id/event_id」的舊式 identity 發布的
+            # （見 `_engine._derived_asset_request` 的註解），重跑時算出的新 identity
+            # 對不上、重 render 又撞上同一個 digest。這裡不放行的話，那些集數永遠
+            # 建置不過去，而且錯誤訊息完全看不出原因。
+            if (
+                record.recipe_identity is not None
+                and prior.recipe_identity is not None
+                and record.recipe_identity != prior.recipe_identity
+                and replace(record, recipe_identity=prior.recipe_identity) == prior
+            ):
+                return self._resolve_record(prior)
+            if prior != record:
                 raise ActiveAssetStoreError("content digest already has conflicting asset metadata")
-            merged_release_ids = prior.release_ids | record.release_ids
-            if merged_release_ids != prior.release_ids:
-                prior = self._replace_record(
-                    prior,
-                    replace(prior, release_ids=merged_release_ids),
-                )
             return self._resolve_record(prior)
         if record.recipe_identity is not None and record.recipe_identity in self._by_recipe:
             raise ActiveAssetStoreError("recipe identity already resolves to different content")
@@ -190,22 +219,6 @@ class ActiveAssetStore:
     def resolve_active_asset(self, reference: str) -> ResolvedAsset:
         return self._resolve_record(self._record_for_reference(reference))
 
-    def resolve_for_release(self, release_id: str, reference: str) -> ResolvedAsset:
-        record = self._record_for_reference(reference)
-        if release_id not in record.release_ids:
-            raise ActiveAssetStoreError("asset reference is not bound to this Release")
-        return self._resolve_record(record)
-
-    def bind_release(self, reference: str, *, release_id: str) -> ResolvedAsset:
-        if not isinstance(release_id, str) or not release_id.strip():
-            raise ActiveAssetStoreError("Release identity is empty")
-        record = self._record_for_reference(reference)
-        if release_id in record.release_ids:
-            return self._resolve_record(record)
-        updated_record = replace(record, release_ids=record.release_ids | {release_id})
-        self._replace_record(record, updated_record)
-        return self._resolve_record(updated_record)
-
     def _replace_record(self, prior: AssetRecord, updated_record: AssetRecord) -> AssetRecord:
         updated = tuple(
             updated_record if item.digest == prior.digest else item for item in self._records
@@ -220,8 +233,7 @@ class ActiveAssetStore:
         return updated_record
 
     def _reindex(self) -> None:
-        if any(record.compact_receipt is None for record in self._records):
-            raise ActiveAssetStoreError("Active Asset Store record lacks compact provenance")
+        # 少一張收據不再是索引壞掉——見 `publish` 的註解。
         if len({record.digest for record in self._records}) != len(self._records):
             raise ActiveAssetStoreError("Active Asset Store index has duplicate content identity")
         recipe_ids = tuple(
@@ -315,7 +327,7 @@ def _read_index(path: Path, *, episode_id: str) -> tuple[AssetRecord, ...]:
     rows = payload.get("records")
     if not isinstance(rows, list) or any(not isinstance(row, dict) for row in rows):
         raise ActiveAssetStoreError("Active Asset Store records are invalid")
-    if any(set(row) != _RECORD_KEYS for row in rows):
+    if any(set(row) - _LEGACY_RECORD_KEYS != _RECORD_KEYS for row in rows):
         raise ActiveAssetStoreError("Active Asset Store record fields are invalid")
     try:
         return tuple(
@@ -328,7 +340,6 @@ def _read_index(path: Path, *, episode_id: str) -> tuple[AssetRecord, ...]:
                 height=_optional_integer(row, "height"),
                 duration_sec=_optional_number(row, "duration_sec"),
                 recipe_identity=_optional_string(row, "recipe_identity"),
-                release_ids=frozenset(_string_list(row, "release_ids")),
                 compact_receipt=_compact_receipt_from_dict(row.get("compact_receipt")),
             )
             for row in rows
@@ -350,7 +361,6 @@ def _write_index(path: Path, *, episode_id: str, records: tuple[AssetRecord, ...
                 "height": record.height,
                 "duration_sec": record.duration_sec,
                 "recipe_identity": record.recipe_identity,
-                "release_ids": sorted(record.release_ids),
                 "compact_receipt": _compact_receipt_to_dict(record.compact_receipt),
             }
             for record in records
@@ -376,14 +386,6 @@ def _write_index(path: Path, *, episode_id: str, records: tuple[AssetRecord, ...
 
 def _staging_path(path: Path) -> Path:
     return path.with_name(f".{path.name}.staging")
-
-
-def _file_digest(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _canonical_json(value: Mapping[str, Any]) -> bytes:
@@ -440,9 +442,9 @@ def _optional_number(payload: Mapping[str, Any], key: str) -> float | None:
     return float(value)
 
 
-def _compact_receipt_to_dict(receipt: CompactAssetReceipt | None) -> dict[str, object]:
+def _compact_receipt_to_dict(receipt: CompactAssetReceipt | None) -> dict[str, object] | None:
     if receipt is None:
-        raise ActiveAssetStoreError("Active Asset Store record lacks compact provenance")
+        return None
     result: dict[str, object] = {
         "origin": receipt.origin,
         "media_sha256": receipt.media_sha256,
@@ -463,7 +465,9 @@ def _compact_receipt_to_dict(receipt: CompactAssetReceipt | None) -> dict[str, o
     return result
 
 
-def _compact_receipt_from_dict(value: object) -> CompactAssetReceipt:
+def _compact_receipt_from_dict(value: object) -> CompactAssetReceipt | None:
+    if value is None:
+        return None
     if not isinstance(value, dict):
         raise ActiveAssetStoreError("Active Asset Store compact receipt is invalid")
     origin = value.get("origin")

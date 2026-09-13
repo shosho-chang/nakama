@@ -639,8 +639,8 @@ def test_review_shows_the_same_subtitle_the_uploader_will_send(tmp_path, monkeyp
 
     review_src = inspect.getsource(publish_review.publish_subs)
     upload_src = inspect.getsource(publish_upload)
-    assert "release_subtitle" in review_src
-    assert "release_subtitle" in upload_src
+    assert "plan_subtitle" in review_src
+    assert "plan_subtitle" in upload_src
 
 
 def test_thumbnail_response_refuses_to_be_cached_blind(tmp_path, monkeypatch):

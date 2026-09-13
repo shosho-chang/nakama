@@ -10,7 +10,10 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Literal, Protocol, TypeAlias
 
+from shared.quiet_subprocess import quiet_kwargs
+
 from ._assets import AssetContractError, AssetKind, AssetResolver, ResolvedAsset
+from ._derived_assets import max_readable_display_chars
 from ._policy import (
     LONG_MAX_HERO_TITLES,
     LONG_MAX_NONSTRUCTURAL_VISUAL_GAP_SEC,
@@ -19,8 +22,6 @@ from ._policy import (
     LONG_MIN_DURATION_SEC,
     LONG_TITLE_CLUSTER_MAX_CARDS,
     LONG_TITLE_CLUSTER_WINDOW_SEC,
-    SHORT_MAX_DURATION_SEC,
-    SHORT_MAX_TITLE_LIKE_CARDS,
 )
 from ._projection import _WORKER_PROJECTION_COMBINATIONS
 from ._records import EventRecord, StageName, StageRequest
@@ -67,7 +68,7 @@ class WorkerPacketScope:
     run_id: str
     episode_id: str
     cut_id: str
-    format: Literal["long", "short"]
+    format: Literal["long"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +136,7 @@ class SubprocessMediaPreviewProcessRunner:
                 stderr=subprocess.DEVNULL,
                 timeout=timeout_sec,
                 shell=False,
+                **quiet_kwargs(),
             )
         except (OSError, subprocess.TimeoutExpired) as error:
             raise WorkerPacketError("inspection preview process failed") from error
@@ -385,7 +387,7 @@ class ProductionWorkerPacketMaterializer:
     def _finish(self, request: StageRequest, packet: StagePacket) -> StagePacket:
         packet = replace(
             packet,
-            format_policy=expected_format_policy(request.format, request.stage),
+            format_policy=expected_format_policy(request.stage),
         )
         if len(packet.media) > self._limits.max_media_items:
             raise WorkerPacketError("worker packet exceeds its media item limit")
@@ -657,10 +659,7 @@ def worker_packet_document(request: StageRequest, packet: StagePacket) -> dict[s
     }
 
 
-def expected_format_policy(
-    format: Literal["long", "short"],
-    stage: StageName,
-) -> dict[str, JsonValue]:
+def expected_format_policy(stage: StageName) -> dict[str, JsonValue]:
     projection_combinations: list[JsonValue] = [
         {
             "semantic_kind": semantic_kind,
@@ -674,17 +673,6 @@ def expected_format_policy(
         "dp": "implement_current_events_using_only_catalog_references",
         "visual_review": "judge_each_final_rendered_component_from_inspection_bytes",
     }[stage]
-    if format == "short":
-        return {
-            "policy_id": "short_v1",
-            "stage": stage,
-            "stage_instruction": stage_instruction,
-            "projection_combinations": projection_combinations,
-            "constraints": {
-                "duration_max_sec": SHORT_MAX_DURATION_SEC,
-                "title_like_max_cards": SHORT_MAX_TITLE_LIKE_CARDS,
-            },
-        }
     return {
         "policy_id": "long_v2",
         "stage": stage,
@@ -697,6 +685,9 @@ def expected_format_policy(
                 "dangling_slash_allowed": False,
                 "orphan_line_allowed": False,
                 "ambiguous_fragment_allowed": False,
+                # 字卡撐到讀得完所需的秒數，不能撞破它自己的停留上限。
+                # 這個上限一直存在，但以前只在建置端爆——見 max_readable_display_chars。
+                "max_display_chars": max_readable_display_chars(),
             },
             "hero_title": {
                 "standalone_claim_only": True,
@@ -718,7 +709,6 @@ def expected_format_policy(
             "stock_min_distinct_asset_backed_events": LONG_MIN_DISTINCT_STOCK_VIDEO_EVENTS,
             "stock_native_landscape": True,
             "dp_catalog_references_only": True,
-            "person_inset_fullscreen": False,
             "single_paper_family": True,
             "orange_allowed": False,
             "ink_allowed": False,

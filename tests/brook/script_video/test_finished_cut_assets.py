@@ -22,7 +22,6 @@ def _neutral_asset(
     *,
     kind: AssetKind = AssetKind.STOCK,
     extension: str = ".mp4",
-    release_ids: frozenset[str] = frozenset(),
 ) -> AssetRecord:
     return AssetRecord(
         digest=_digest(seed),
@@ -32,7 +31,6 @@ def _neutral_asset(
         width=1920,
         height=1080,
         duration_sec=None if kind is AssetKind.PHOTO else 12.0,
-        release_ids=release_ids,
     )
 
 
@@ -63,7 +61,6 @@ def test_semantic_render_is_rebuildable_but_hidden_from_fresh_dp() -> None:
         extension=".mov",
         kind=AssetKind.TITLE_RENDER,
         recipe_identity="recipe:title:current-v1",
-        release_ids=frozenset({"release-1"}),
     )
     resolver = InMemoryAssetResolver([title])
     catalog = resolver.worker_selection_catalog()
@@ -71,9 +68,10 @@ def test_semantic_render_is_rebuildable_but_hidden_from_fresh_dp() -> None:
     assert catalog.items() == ()
     with pytest.raises(AssetContractError, match="worker catalog"):
         catalog.item(title.reference)
-    assert resolver.resolve_for_release("release-1", title.reference).record == title
-    with pytest.raises(AssetContractError, match="not bound to this Release"):
-        resolver.resolve_for_release("release-2", title.reference)
+    # 「對新 DP 隱形、但自己解得回來」——後半以前用 `resolve_for_release` 表達，
+    # 那一組隨封存鏈退役（實測 322 筆紀錄的 `release_ids` 沒有一筆非空）。要守的
+    # 是同一件事：語意素材不進 worker 候選清單，但模組自己拿得到。
+    assert resolver.resolve_active_asset(title.reference).record == title
 
 
 @pytest.mark.parametrize(
@@ -84,18 +82,17 @@ def test_semantic_render_is_rebuildable_but_hidden_from_fresh_dp() -> None:
         AssetKind.COMPOSITE,
     ],
 )
-def test_every_semantic_render_kind_is_release_only(kind: AssetKind) -> None:
+def test_every_semantic_render_kind_is_hidden_from_a_fresh_dp(kind: AssetKind) -> None:
     record = AssetRecord(
         digest=_digest(kind.value),
         extension=".mov",
         kind=kind,
         recipe_identity=f"recipe:{kind.value}:v1",
-        release_ids=frozenset({"release-1"}),
     )
     resolver = InMemoryAssetResolver([record])
 
     assert resolver.worker_selection_catalog().items() == ()
-    assert resolver.resolve_for_release("release-1", record.reference).record == record
+    assert resolver.resolve_active_asset(record.reference).record == record
 
 
 @pytest.mark.parametrize(
@@ -174,7 +171,7 @@ def test_core_reuses_semantic_bytes_only_for_the_exact_current_recipe() -> None:
 
 
 def test_filesystem_resolver_returns_the_content_addressed_object(tmp_path) -> None:
-    record = _neutral_asset("content-addressed-stock", release_ids=frozenset({"release-1"}))
+    record = _neutral_asset("content-addressed-stock")
     object_path = (
         tmp_path / "assets-v2" / "sha256" / record.digest[:2] / f"{record.digest}{record.extension}"
     )
@@ -182,7 +179,7 @@ def test_filesystem_resolver_returns_the_content_addressed_object(tmp_path) -> N
     object_path.write_bytes(b"media")
     resolver = ContentAddressedAssetResolver(tmp_path / "assets-v2", [record])
 
-    resolution = resolver.resolve_for_release("release-1", record.reference)
+    resolution = resolver.resolve_active_asset(record.reference)
 
     assert resolution.record == record
     assert resolution.path == object_path

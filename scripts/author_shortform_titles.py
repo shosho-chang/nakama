@@ -50,6 +50,22 @@ EMPHASIS_SHARE = 4
 TIER1_RANGE = (1, 3)
 
 
+#: 兩側都是拉丁字母或數字的空白——那是字與字之間真正的空白，不是斷行殘留。
+_WORD_GAP = re.compile(r"(?<=[0-9A-Za-z])[ \t]+(?=[0-9A-Za-z])")
+
+
+def join_cue_text(lines: list[str]) -> str:
+    """把 SRT 一格裡的多行接回一句話。
+
+    空白原則上要拿掉——中文句子裡的空白全是排版斷行的殘留，留著會在字卡上開一個洞。
+    但**兩邊都是拉丁字母或數字時必須留**：20260721 value-S03 的 cue 18 是
+    `Screen time`，舊的 `.replace(" ", "")` 把它黏成 `Screentime` 渲進字卡。
+    中文與數字之間（`我忘記 2025`）照舊拿掉，那是既有的版面慣例。
+    """
+    joined = " ".join(lines)
+    return _WORD_GAP.sub("\x00", joined).replace(" ", "").replace("\x00", " ")
+
+
 def parse_srt(path: Path) -> list[dict]:
     rows: list[dict] = []
     for block in re.split(r"\r?\n\r?\n", path.read_bytes().decode("utf-8-sig").strip()):
@@ -65,7 +81,7 @@ def parse_srt(path: Path) -> list[dict]:
                 "n": int(lines[0]),
                 "t0": round(g[0] * 60 + g[1] + g[2] / 1000, 3),
                 "t1": round(g[3] * 60 + g[4] + g[5] / 1000, 3),
-                "text": " ".join(lines[2:]).replace(" ", ""),
+                "text": join_cue_text(lines[2:]),
             }
         )
     return rows

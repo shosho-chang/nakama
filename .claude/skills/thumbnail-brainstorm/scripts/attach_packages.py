@@ -46,6 +46,49 @@ from shared.config import get_vault_path  # noqa: E402
 from shared.schemas.packaging import PackagesFileV1  # noqa: E402
 
 
+def _recipe_from_render_spec(spec: dict, *, episode_slug: str, vault_root: Path) -> dict | None:
+    """把「這張 PNG 是用什麼配方 render 的」寫進 package，gate 才預填得出來。
+
+    修修 2026-09-11 在 gate 上按〈組封面〉：「是可以選擇 cutout，但是中間的字是空的。」
+    原因是 attach 只把 `big_text` 寫進 **variants**，package 本身沒有 `render_recipe`；
+    gate 的預填來源正是 `package.render_recipe`，退路 `_legacy_reaction_recipe()` 又是
+    給 N2 精華卡用的、還硬寫 `big_text=[]`。所以 N1 完整節目走這條路，大字必定空白。
+
+    幾何一併存下來：`render_request.py` 有 geometry 就直接當 composition 變數用、不重解，
+    所以他在 gate 上只改一個字重出時，版位跟桌機這次做出來的完全一樣——不會因為
+    solver 重算而漂掉（本集的 y 就是實測內插調過的，solver 自己解不回來）。
+    """
+    render_spec = spec.get("render_spec")
+    if not render_spec:
+        return None
+    variables = (json.loads(Path(render_spec).read_text(encoding="utf-8")) or {}).get(
+        "variables"
+    ) or {}
+    if not variables.get("title_lines"):
+        return None
+    geometry_keys = (
+        "host_height_pct",
+        "host_x_pct",
+        "host_y_pct",
+        "guest_height_pct",
+        "guest_x_pct",
+        "guest_y_pct",
+    )
+    geometry = {k: float(variables[k]) for k in geometry_keys if k in variables}
+    return {
+        "composition": "thumbnail_full",
+        "title_rank": spec["title_rank"],
+        "host_cutout": to_vault_relative(spec["host_cutout"], vault_root),
+        "guest_cutout": to_vault_relative(spec["guest_cutout"], vault_root),
+        "big_text": list(variables["title_lines"]),
+        "highlight_text": variables.get("highlight_text", ""),
+        "title_max_width": int(variables.get("title_max_width", 580)),
+        "guest_credit": variables.get("guest_credit", ""),
+        "requested_at": datetime.now(timezone.utc).isoformat(),
+        **({"geometry": geometry} if len(geometry) == len(geometry_keys) else {}),
+    }
+
+
 def _atomic_copy(src: Path, dst: Path) -> None:
     dst.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(prefix=f".{dst.name}.", dir=dst.parent)
@@ -146,6 +189,9 @@ def attach(packaging_dir: Path, cut_id: str, episode_slug: str, specs: list[dict
                 "joint_pairing_id": spec["joint_pairing_id"],
                 "host_cutout": to_vault_relative(spec["host_cutout"], vault_root),
                 "guest_cutout": to_vault_relative(spec["guest_cutout"], vault_root),
+                "render_recipe": _recipe_from_render_spec(
+                    spec, episode_slug=episode_slug, vault_root=vault_root
+                ),
                 "variants": variants,
             }
         )
@@ -165,6 +211,14 @@ def attach(packaging_dir: Path, cut_id: str, episode_slug: str, specs: list[dict
         **data,
         "cuts": [c for c in data.get("cuts", []) if c.get("cut_id") not in pending],
     }
+    # 本支必須完整——這一步的**職責**就是把三個 package 配齊（`cut["packages"]`
+    # 是整組換掉，不是逐個追加）。以前這條靠 `CutV1` 的「剛好 3 個」順便擋住；
+    # 2026-09-10 那條放寬成「至多 3 個」之後（titles-only 草稿是合法中間態），
+    # 這裡就必須自己講明白，否則配了一個就落地，而且沒有人會發現。
+    if cut.get("format") == "long" and len(packages) != 3:
+        raise ValueError(
+            f"{cut_id} 是長片，attach 要一次配齊 3 個 package，這次收到 {len(packages)} 個"
+        )
     PackagesFileV1.model_validate(to_validate)  # 失敗即不落任何一份（含 PNG）
     if pending:
         print(f"[note] 尚未配封面的長片（本次不驗證）：{', '.join(pending)}", file=sys.stderr)

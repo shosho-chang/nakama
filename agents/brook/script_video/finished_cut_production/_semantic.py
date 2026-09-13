@@ -98,14 +98,14 @@ class DurableSemanticAdapter:
             outcome = SemanticDispatchOutcome(
                 request_id=request.request_id,
                 state="failed",
-                reason_code="semantic_dispatch_error",
+                reason_code="semantic_dispatch_failed",
                 diagnostic=str(error)[:512],
             )
         if outcome.state == "pending":
             outcome = SemanticDispatchOutcome(
                 request_id=request.request_id,
                 state="failed",
-                reason_code="semantic_dispatch_incomplete",
+                reason_code="semantic_dispatch_failed",
                 diagnostic="synchronous semantic worker returned no terminal outcome",
             )
         self.ledger.complete(request, outcome)

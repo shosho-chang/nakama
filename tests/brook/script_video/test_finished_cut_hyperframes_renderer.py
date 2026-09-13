@@ -21,11 +21,8 @@ from agents.brook.script_video.finished_cut_production._long_visual_renderer imp
     LongVisualRenderError,
     LongVisualRenderRequest,
 )
-from agents.brook.script_video.finished_cut_production._visual_assets import (
-    FaceSafePlacement,
-    FfmpegPersonInsetCompositor,
-    PersonInsetCompositeRequest,
-    build_long_visual_media_adapters,
+from agents.brook.script_video.finished_cut_production._projection import (
+    layout_identity,
 )
 
 
@@ -240,7 +237,7 @@ def test_alpha_hero_renders_as_prores_4444_mov_with_exact_process_contract(
             duration_sec=3.0,
             target_width=1920,
             target_height=1080,
-            layout_identity="hero_title:v1",
+            layout_identity=layout_identity("hero_title"),
         )
     )
 
@@ -308,7 +305,8 @@ def test_alpha_hero_renders_as_prores_4444_mov_with_exact_process_contract(
         str(hyperframes[1] / "encoded.mov"),
     )
     assert (hyperframes[2], ffmpeg[2], ffprobe[2]) == (90.0, 60.0, 30.0)
-    assert 'data-composition-id="long_visual"' in runner.html_documents[0]
+    # Hero 走定版 punch_card_wide，不是 ADR-066 自創的泛用 long_visual 版位。
+    assert 'data-composition-id="punch_card_wide"' in runner.html_documents[0]
     assert 'data-width="1920"' in runner.html_documents[0]
     assert 'data-height="1080"' in runner.html_documents[0]
     assert 'data-duration="3.000000"' in runner.html_documents[0]
@@ -407,7 +405,7 @@ def test_full_frame_chapter_uses_h264_mp4_without_alpha(tmp_path: Path) -> None:
             duration_sec=3.0,
             target_width=1920,
             target_height=1080,
-            layout_identity="fullscreen_transition:v4",
+            layout_identity=layout_identity("fullscreen_transition"),
         )
     )
 
@@ -459,7 +457,7 @@ def test_renderer_failures_publish_nothing_and_cleanup_unique_workspace(
                 duration_sec=3.0,
                 target_width=1920,
                 target_height=1080,
-                layout_identity="hero_title:v1",
+                layout_identity=layout_identity("hero_title"),
             )
         )
 
@@ -481,10 +479,10 @@ def test_every_generated_long_visual_role_uses_the_resolve_media_contract(
         )
     )
     roles = (
-        ("chapter", "fullscreen_transition:v4"),
-        ("hero_title", "hero_title:v1"),
-        ("identity_card", "identity_card:v1"),
-        ("visual_effect", "visual_effect:v1"),
+        ("chapter", layout_identity("fullscreen_transition")),
+        ("hero_title", layout_identity("hero_title")),
+        ("identity_card", layout_identity("identity_card")),
+        ("visual_effect", layout_identity("visual_effect")),
     )
 
     outputs = tuple(
@@ -522,54 +520,6 @@ def test_every_generated_long_visual_role_uses_the_resolve_media_contract(
     assert list((tmp_path / "workspaces").iterdir()) == []
 
 
-def test_private_factory_wires_title_and_person_inset_to_one_probed_process_seam(
-    tmp_path: Path,
-) -> None:
-    runner = _AdaptiveProcessRunner()
-    adapters = build_long_visual_media_adapters(
-        workspace_root=tmp_path / "workspaces",
-        render_output_root=tmp_path / "renders",
-        inset_output_root=tmp_path / "insets",
-        runtime=_pinned_runtime(tmp_path),
-        runner=runner,
-    )
-    title = adapters.title_renderer.render(
-        LongVisualRenderRequest(
-            recipe_identity="recipe:hero:factory",
-            event_id="event-hero",
-            role="hero_title",
-            display="真正的選擇",
-            duration_sec=3.0,
-            target_width=1920,
-            target_height=1080,
-            layout_identity="hero_title:v1",
-        )
-    )
-    portrait = tmp_path / "portrait.png"
-    portrait.write_bytes(b"portrait")
-    inset = adapters.person_inset_compositor.composite(
-        PersonInsetCompositeRequest(
-            render_identity="recipe:person:factory",
-            source_path=portrait,
-            target_width=1920,
-            target_height=1080,
-            duration_sec=3.0,
-            placement=FaceSafePlacement(
-                x_ratio=0.75,
-                y_ratio=0.24,
-                width_ratio=0.20,
-                height_ratio=0.42,
-                avoids_faces=True,
-            ),
-        )
-    )
-
-    assert title.media.path.suffix == ".mov"
-    assert inset.path.suffix == ".mov"
-    assert inset.has_alpha is True
-    assert [call[0][0] for call in runner.calls].count("ffprobe") == 2
-
-
 @pytest.mark.skipif(
     os.environ.get("NAKAMA_RUN_LOCAL_RENDER_SMOKE") != "1",
     reason="explicit local HyperFrames/ffmpeg smoke",
@@ -604,7 +554,7 @@ def test_real_pinned_hyperframes_and_ffmpeg_render_probe_in_temp_workspace(
             duration_sec=3.0,
             target_width=1920,
             target_height=1080,
-            layout_identity="fullscreen_transition:v4",
+            layout_identity=layout_identity("fullscreen_transition"),
         )
     )
 
@@ -648,7 +598,7 @@ def test_real_pinned_hyperframes_renders_prores_4444_alpha_hero(
             duration_sec=0.5,
             target_width=1920,
             target_height=1080,
-            layout_identity="hero_title:v1",
+            layout_identity=layout_identity("hero_title"),
         )
     )
 
@@ -656,52 +606,3 @@ def test_real_pinned_hyperframes_renders_prores_4444_alpha_hero(
     assert rendered.media.codec_name == "prores"
     assert rendered.media.pixel_format == "yuva444p12le"
     assert rendered.media.has_alpha is True
-
-
-@pytest.mark.skipif(
-    os.environ.get("NAKAMA_RUN_LOCAL_RENDER_SMOKE") != "1",
-    reason="explicit local HyperFrames/ffmpeg smoke",
-)
-def test_real_ffmpeg_person_inset_has_alpha_animation_and_cleans_workspace(
-    tmp_path: Path,
-) -> None:
-    from PIL import Image, ImageDraw
-
-    portrait = tmp_path / "synthetic-person.png"
-    canvas = Image.new("RGBA", (320, 480), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(canvas)
-    draw.ellipse((96, 24, 224, 152), fill=(238, 196, 162, 255))
-    draw.rounded_rectangle((56, 142, 264, 476), radius=56, fill=(41, 64, 87, 255))
-    canvas.save(portrait)
-    runner = SubprocessRenderProcessRunner()
-    probe = FfprobeGeneratedMediaProbe(runner=runner)
-    output_root = tmp_path / "person-insets"
-    result = FfmpegPersonInsetCompositor(
-        output_root=output_root,
-        runner=runner,
-        probe=probe,
-    ).composite(
-        PersonInsetCompositeRequest(
-            render_identity="recipe:person:real-local-alpha-smoke",
-            source_path=portrait,
-            target_width=1920,
-            target_height=1080,
-            duration_sec=0.5,
-            placement=FaceSafePlacement(
-                x_ratio=0.72,
-                y_ratio=0.12,
-                width_ratio=0.20,
-                height_ratio=0.50,
-                avoids_faces=True,
-            ),
-        )
-    )
-
-    inspected = probe.inspect(result.path)
-    assert (inspected.codec_name, inspected.pixel_format, inspected.has_alpha) == (
-        "prores",
-        "yuva444p12le",
-        True,
-    )
-    assert result.animated is True
-    assert not any(path.name.startswith(".person-inset-") for path in output_root.iterdir())

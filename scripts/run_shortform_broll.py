@@ -80,7 +80,14 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--id", required=True, help="winner id（如 punch-S02）")
     parser.add_argument("--stills", help="物化後渲樣張到此資料夾")
     parser.add_argument("--validate-only", action="store_true", help="只驗企劃，不連 Resolve")
+    parser.add_argument(
+        "--structural-only",
+        action="store_true",
+        help="只上 badge／guest-namecard／機位修正（不吃 Stock Video gate，不碰 B-roll 軌）",
+    )
     args = parser.parse_args(argv)
+    if args.validate_only and args.structural_only:
+        parser.error("--validate-only 與 --structural-only 不可同時使用")
 
     episode_dir = Path(args.episode)
     context = shortform_context(episode_dir, args.id)
@@ -100,6 +107,7 @@ def main(argv: list[str] | None = None) -> int:
             args.id,
             Path(args.stills) if args.stills else None,
             shortform=context,
+            structural_only=args.structural_only,
         )
     print(json.dumps(out, ensure_ascii=False, indent=1))
     return 0

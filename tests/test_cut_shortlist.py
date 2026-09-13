@@ -371,3 +371,247 @@ def test_renee_non_string_finding_field_fails_closed(episode):
 
     with pytest.raises(SystemExit, match="retention_risk must be a string"):
         shortlist.collect(episode / "highlights", "long")
+
+
+# --- 長短片分流（ADR-067）---------------------------------------------------
+# gate 一直只寫 winners.json，不分格式；而短片線 (`run_shortform_director.py`)
+# 讀的是 winners.short.json。挑短片會蓋掉長片的當選名單，而且短片線照樣沒有輸入。
+
+
+def _short_panel(hl: Path, ids: tuple[str, ...]) -> None:
+    """替這些短片候選補上分格式的盲審檔，綁 format digest。"""
+    from shared.highlight_shortlist import _format_digest
+
+    candidates = json.loads((hl / "candidates.json").read_text(encoding="utf-8"))["candidates"]
+    digest = _format_digest(candidates, "short")
+    for who in ("azhe", "kevin", "shufen"):
+        (hl / f"review_{who}.short.json").write_text(
+            json.dumps(
+                {
+                    "persona": who,
+                    "source_sha256": digest,
+                    "scores": [{"id": i, "total": 80} for i in ids],
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+    (hl / "lens_brand.short.json").write_text(
+        json.dumps(
+            {
+                "lens": "brand",
+                "source_sha256": digest,
+                "findings": [{"id": i, "severity": "", "issue": "", "mitigation": ""} for i in ids],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    (hl / "lens_renee.short.json").write_text(
+        json.dumps(
+            {
+                "lens": "renee",
+                "source_sha256": digest,
+                "findings": [
+                    {
+                        "id": i,
+                        "hook_risk": "",
+                        "retention_risk": "",
+                        "boundary_action": "keep",
+                    }
+                    for i in ids
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_short_pick_writes_its_own_file_and_leaves_long_winners_alone(episode):
+    hl = episode / "highlights"
+    _short_panel(hl, ("S1",))
+
+    long_rows = shortlist.collect(hl, "long")
+    shortlist.write_winners(hl, long_rows, ["A1", "B1"], fmt="long")
+    long_before = (hl / "winners.json").read_bytes()
+
+    short_rows = shortlist.collect(hl, "short")
+    out = shortlist.write_winners(hl, short_rows, ["S1"], fmt="short")
+
+    assert out.name == "winners.short.json"
+    assert [w["id"] for w in json.loads(out.read_text(encoding="utf-8"))["winners"]] == ["S1"]
+    # 長片那份一個 byte 都不能動——L2/L3 的成品線靠它。
+    assert (hl / "winners.json").read_bytes() == long_before
+
+
+def test_long_boundary_polish_does_not_invalidate_the_short_panel(episode):
+    """Step 2.5 動長片邊界，短片盤子不該跟著翻。
+
+    這正是 20260901 蘇予昕 卡住的原因：整檔 hash 把兩條線綁在一起，改一支長片
+    的 t_start，38 支沒被碰過的短片連同 panel 一起作廢。
+    """
+    hl = episode / "highlights"
+    _short_panel(hl, ("S1",))
+    assert [r["id"] for r in shortlist.collect(hl, "short")] == ["S1"]
+
+    doc = json.loads((hl / "candidates.json").read_text(encoding="utf-8"))
+    for candidate in doc["candidates"]:
+        if candidate["id"] == "A1":
+            candidate["t_start"] = 12.5
+            candidate["duration_sec"] = 487.5
+    (hl / "candidates.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+
+    assert [r["id"] for r in shortlist.collect(hl, "short")] == ["S1"]
+    # 長片自己那份仍然綁整檔，所以照樣會擋下來——不是把驗證放掉。
+    with pytest.raises(SystemExit, match="source_sha256"):
+        shortlist.collect(hl, "long")
+
+
+def test_short_panel_still_has_to_cover_every_short_candidate(episode):
+    hl = episode / "highlights"
+    doc = json.loads((hl / "candidates.json").read_text(encoding="utf-8"))
+    doc["candidates"].append(
+        {**_cand("S2", "G5", "第二支短片"), "format": "short", "duration_sec": 80.0}
+    )
+    (hl / "candidates.json").write_text(json.dumps(doc, ensure_ascii=False), encoding="utf-8")
+    _short_panel(hl, ("S1",))
+
+    with pytest.raises(SystemExit, match=r"review_azhe.short.json.*S2"):
+        shortlist.collect(hl, "short")
+
+
+def test_shorts_do_not_need_the_renee_lens(episode):
+    """Renee 只審長片——她的 persona 檔與 SKILL 的 reviewer 表都這樣寫。
+
+    gate 本來不分格式一律 required，等於要一份設計上不存在的檔；而且沒有 scoped
+    檔時會退回長片那份，把「這個格式沒有 Renee」報成「短片全缺」。
+    """
+    hl = episode / "highlights"
+    _short_panel(hl, ("S1",))
+    (hl / "lens_renee.short.json").unlink()
+
+    assert [r["id"] for r in shortlist.collect(hl, "short")] == ["S1"]
+    # 長片那份還在，而且照樣是必要的。
+    assert (hl / "lens_renee.json").is_file()
+
+
+def test_long_still_requires_the_renee_lens(episode):
+    hl = episode / "highlights"
+    (hl / "lens_renee.json").unlink()
+    with pytest.raises(SystemExit, match="lens_renee"):
+        shortlist.collect(hl, "long")
+
+
+def test_a_supplied_short_renee_lens_is_still_validated(episode):
+    """可以不給；給了就不能是壞的。"""
+    hl = episode / "highlights"
+    _short_panel(hl, ("S1",))
+    (hl / "lens_renee.short.json").write_text(
+        json.dumps({"lens": "renee", "source_sha256": "deadbeef", "findings": []}),
+        encoding="utf-8",
+    )
+    with pytest.raises(SystemExit, match="source_sha256"):
+        shortlist.collect(hl, "short")
+
+
+# --- 選段報告寫進 Vault -------------------------------------------------------
+# `highlights/` 是 footage 磁碟上的工作目錄，下一季開工時沒有人會去翻它。報告合
+# 併長短片，因為挑選時本來就要一起看。
+
+
+def test_report_merges_both_formats_and_records_the_picks(episode):
+    hl = episode / "highlights"
+    _short_panel(hl, ("S1",))
+    shortlist.write_winners(hl, shortlist.collect(hl, "long"), ["A1", "B1"], "long")
+
+    report = shortlist.render_vault_report(
+        "20260901 蘇予昕",
+        hl,
+        {"long": shortlist.collect(hl, "long"), "short": shortlist.collect(hl, "short")},
+    )
+    assert "## 長精華（format=long）" in report
+    assert "## 短影片（format=short）" in report
+    assert "已挑定：A1、B1" in report
+    assert "（尚未挑）" in report  # 短片還沒挑
+    # 落選的候選也要在，那才是下一季的參考值。
+    assert "群組一 低分" in report
+    assert "短片不該出現" in report
+    # 細節掛在該格式底下，不跟它平輩。
+    assert "### 各支 hook 與品牌 lens 細節" in report
+    assert "\n## 各支 hook" not in report
+
+
+def test_report_prints_a_stale_panel_instead_of_refusing(episode):
+    """gate 拒收過期綁定是對的；報告是唯讀歷史，拒印才是過嚴。"""
+    hl = episode / "highlights"
+    payload = json.loads((hl / "review_azhe.json").read_text(encoding="utf-8"))
+    payload["source_sha256"] = "0" * 64
+    (hl / "review_azhe.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(SystemExit, match="source_sha256"):
+        shortlist.collect(hl, "long")
+
+    rows, note = shortlist.collect_for_report(hl, "long")
+    assert [r["id"] for r in rows] == ["A1", "A2", "B1", "C1"]
+    assert "panel 綁定已過期" in note
+    report = shortlist.render_vault_report("ep", hl, {"long": rows}, {"long": note})
+    assert "⚠️ panel 綁定已過期" in report
+
+
+def test_report_names_the_missing_format_instead_of_leaving_a_blank(episode):
+    hl = episode / "highlights"
+    rows, note = shortlist.collect_for_report(hl, "short")
+    assert rows == []
+    assert "讀不到" in note
+    report = shortlist.render_vault_report("ep", hl, {"short": rows}, {"short": note})
+    assert "這一節沒有內容" in report
+
+
+def test_report_lands_in_the_guest_interview_folder(episode, monkeypatch, tmp_path):
+    vault = tmp_path / "vault"
+    (vault / "AgentOutputs" / "interviews" / "2026-08-31-蘇予昕").mkdir(parents=True)
+    (vault / "AgentOutputs" / "interviews" / "2026-08-31-蘇予昕" / "06-x.md").write_text(
+        "x", encoding="utf-8"
+    )
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    _short_panel(hl := episode / "highlights", ("S1",))
+    assert hl.is_dir()
+
+    target = episode / "20260901 蘇予昕"
+    target.mkdir()
+    (episode / "highlights").rename(target / "highlights")
+
+    written = shortlist.write_vault_report(target)
+    assert written is not None
+    assert written.name == "07-選段報告.md"
+    assert "選段報告" in written.read_text(encoding="utf-8")
+
+
+def test_an_unreachable_vault_warns_but_does_not_kill_the_run(episode, monkeypatch, capsys):
+    vault = episode / "no-such-vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    target = episode / "20260901 蘇予昕"
+    target.mkdir()
+    (episode / "highlights").rename(target / "highlights")
+
+    assert shortlist.write_vault_report(target) is None
+    assert "選段報告沒寫進 Vault" in capsys.readouterr().err
+
+
+def test_print_digest_matches_what_the_panel_files_must_bind_to(episode, capsys):
+    """盲審檔手算 digest 錯過兩次——尤其是 Step 2.5 打磨長片邊界之後拿到舊值。"""
+    from shared.highlight_shortlist import _format_digest
+
+    hl = episode / "highlights"
+    candidates = json.loads((hl / "candidates.json").read_text(encoding="utf-8"))["candidates"]
+    for fmt in ("long", "short"):
+        assert shortlist.main([str(episode), "--format", fmt, "--print-digest"]) == 0
+        assert capsys.readouterr().out.strip() == _format_digest(candidates, fmt)
+
+
+def test_print_digest_does_not_write_anything(episode):
+    hl = episode / "highlights"
+    before = {p.name for p in hl.iterdir()}
+    shortlist.main([str(episode), "--format", "long", "--print-digest"])
+    assert {p.name for p in hl.iterdir()} == before

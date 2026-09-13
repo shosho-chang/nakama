@@ -1,7 +1,7 @@
 import ast
 import hashlib
 from copy import deepcopy
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from pathlib import Path
 
 import pytest
@@ -197,7 +197,6 @@ def _plan(
         ("hero_title", "hero_title", "hero_title", "核心論點"),
         ("b_roll", "stock_video", "b_roll", "工作忙碌"),
         ("identity_card", "identity_card", "identity_card", "簡立峰博士"),
-        ("visual_effect", "visual_effect", "visual_effect", "焦點強調"),
     )
     event_refs = source_asset_refs or asset_refs
     events = tuple(
@@ -246,7 +245,7 @@ def _plan(
 def test_typed_components_project_to_distinct_derived_lanes_without_a_roll(
     tmp_path: Path,
 ) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 6))
+    refs = tuple(f"asset-{index}" for index in range(1, 5))
     assets = []
     for index, reference in enumerate(refs, start=1):
         path = tmp_path / f"asset-{index}.mov"
@@ -262,7 +261,6 @@ def test_typed_components_project_to_distinct_derived_lanes_without_a_roll(
         ("hero_title", "hero_title"),
         ("b_roll", "b_roll"),
         ("identity_card", "identity_card"),
-        ("visual_effect", "visual_effect"),
     )
     assert all(item.lane != "a_roll" for item in application.placements)
 
@@ -270,8 +268,8 @@ def test_typed_components_project_to_distinct_derived_lanes_without_a_roll(
 def test_timeline_projects_component_final_media_when_event_source_ref_differs(
     tmp_path: Path,
 ) -> None:
-    final_refs = tuple(f"asset-final-{index}" for index in range(1, 6))
-    source_refs = tuple(f"asset-source-{index}" for index in range(1, 6))
+    final_refs = tuple(f"asset-final-{index}" for index in range(1, 5))
+    source_refs = tuple(f"asset-source-{index}" for index in range(1, 5))
     assets = []
     for index, reference in enumerate(final_refs, start=1):
         path = tmp_path / f"final-{index}.mov"
@@ -291,7 +289,7 @@ def test_timeline_projects_component_final_media_when_event_source_ref_differs(
 def test_missing_component_final_media_fails_projection_before_application(
     tmp_path: Path,
 ) -> None:
-    final_refs = tuple(f"asset-final-{index}" for index in range(1, 6))
+    final_refs = tuple(f"asset-final-{index}" for index in range(1, 5))
     available = []
     for index, reference in enumerate(final_refs[:-1], start=1):
         path = tmp_path / f"final-{index}.mov"
@@ -308,7 +306,7 @@ def test_missing_component_final_media_fails_projection_before_application(
 def test_missing_final_media_fails_preflight_before_any_resolve_mutation(
     tmp_path: Path,
 ) -> None:
-    final_refs = tuple(f"asset-final-{index}" for index in range(1, 6))
+    final_refs = tuple(f"asset-final-{index}" for index in range(1, 5))
     available = []
     for index, reference in enumerate(final_refs[:-1], start=1):
         path = tmp_path / f"final-{index}.mov"
@@ -340,7 +338,7 @@ def test_missing_final_media_fails_preflight_before_any_resolve_mutation(
 def test_davinci_adapter_applies_every_typed_component_only_to_duplicate_work(
     tmp_path: Path,
 ) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 6))
+    refs = tuple(f"asset-{index}" for index in range(1, 5))
     assets = []
     for index, reference in enumerate(refs, start=1):
         path = tmp_path / f"asset-{index}.mov"
@@ -367,13 +365,12 @@ def test_davinci_adapter_applies_every_typed_component_only_to_duplicate_work(
         "hero_title",
         "b_roll",
         "identity_card",
-        "visual_effect",
     ]
     assert all("a-roll" not in entry for entry in facade.mutations)
 
 
 def test_davinci_preview_uses_h264_aac_render_and_checked_probe(tmp_path: Path) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 6))
+    refs = tuple(f"asset-{index}" for index in range(1, 5))
     assets = []
     for index, reference in enumerate(refs, start=1):
         path = tmp_path / f"asset-{index}.mov"
@@ -422,98 +419,10 @@ def test_davinci_preview_uses_h264_aac_render_and_checked_probe(tmp_path: Path) 
     assert probe.inspected == [output]
 
 
-def test_davinci_committed_transaction_retains_backup_and_can_compensate(
-    tmp_path: Path,
-) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 6))
-    assets = []
-    for index, reference in enumerate(refs, start=1):
-        path = tmp_path / f"asset-{index}.mov"
-        path.write_bytes(f"asset-{index}".encode())
-        assets.append(PreRenderedAsset(reference=reference, path=path))
-    binding = _binding()
-    facade = _ResolveFacade(binding)
-    adapter = DaVinciResolveTimelineAdapter(
-        facade=facade,
-        probe=_Probe(),
-        binding=binding,
-        assets=PreRenderedAssetCatalog(assets),
-    )
-    canonical = binding.cuts[0].canonical
-    baseline = adapter.snapshot(canonical)
-    workspace = adapter.duplicate(canonical, transaction_id="resolve-compensate")
-    adapter.apply_plan(workspace.work, _plan(refs))
-
-    receipt = adapter.commit(
-        workspace,
-        transaction_id="resolve-compensate",
-        cut_id="value-L01",
-        retain_backup=True,
-    )
-
-    assert receipt.backup_retained is True
-    assert workspace.backup in facade.timeline_identities()
-
-    adapter.compensate(workspace, receipt)
-
-    assert adapter.snapshot(canonical) == baseline
-    assert workspace.work not in facade.timeline_identities()
-    assert canonical in facade.timeline_identities()
-
-
-def test_wrong_commit_or_compensation_identity_performs_no_resolve_mutation(
-    tmp_path: Path,
-) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 6))
-    assets = []
-    for index, reference in enumerate(refs, start=1):
-        path = tmp_path / f"asset-{index}.mov"
-        path.write_bytes(f"asset-{index}".encode())
-        assets.append(PreRenderedAsset(reference=reference, path=path))
-    binding = _binding()
-    facade = _ResolveFacade(binding)
-    adapter = DaVinciResolveTimelineAdapter(
-        facade=facade,
-        probe=_Probe(),
-        binding=binding,
-        assets=PreRenderedAssetCatalog(assets),
-    )
-    workspace = adapter.duplicate(
-        binding.cuts[0].canonical,
-        transaction_id="resolve-exact",
-    )
-    before_wrong_commit = tuple(facade.mutations)
-
-    with pytest.raises(ResolveTransactionError, match="exact cut transaction"):
-        adapter.commit(
-            workspace,
-            transaction_id="resolve-wrong",
-            cut_id="value-L01",
-            retain_backup=True,
-        )
-
-    assert tuple(facade.mutations) == before_wrong_commit
-    receipt = adapter.commit(
-        workspace,
-        transaction_id="resolve-exact",
-        cut_id="value-L01",
-        retain_backup=True,
-    )
-    before_wrong_compensation = tuple(facade.mutations)
-
-    with pytest.raises(ResolveTransactionError, match="exact transaction backup"):
-        adapter.compensate(
-            workspace,
-            replace(receipt, transaction_id="resolve-wrong"),
-        )
-
-    assert tuple(facade.mutations) == before_wrong_compensation
-
-
 def test_failed_preview_probe_rolls_back_duplicate_and_restores_canonical(
     tmp_path: Path,
 ) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 6))
+    refs = tuple(f"asset-{index}" for index in range(1, 5))
     assets = []
     for index, reference in enumerate(refs, start=1):
         path = tmp_path / f"asset-{index}.mov"
@@ -619,74 +528,10 @@ def test_ffprobe_adapter_returns_stream_and_decode_contract(tmp_path: Path) -> N
     assert runner.calls[1][1] == 120.0
 
 
-def test_production_adapter_transaction_restarts_commit_and_compensate_from_store(
-    tmp_path: Path,
-) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 6))
-    assets = []
-    for index, reference in enumerate(refs, start=1):
-        path = tmp_path / f"asset-{index}.mov"
-        path.write_bytes(f"asset-{index}".encode())
-        assets.append(PreRenderedAsset(reference=reference, path=path))
-    output = tmp_path / "preview" / "value-L01.mp4"
-    binding = _binding()
-    facade = _ResolveFacade(binding)
-    adapter = DaVinciResolveTimelineAdapter(
-        facade=facade,
-        probe=_Probe(
-            MediaProbeResult(
-                path=output,
-                duration_sec=481.5,
-                video_codec="h264",
-                audio_codec="aac",
-            )
-        ),
-        binding=binding,
-        assets=PreRenderedAssetCatalog(assets),
-    )
-    store_root = tmp_path / "transactions"
-    first_process = ResolveTransactionManager(
-        adapter,
-        store=AtomicResolveTransactionStore(store_root),
-    )
-    transaction = first_process.prepare(
-        _plan(refs),
-        canonical=binding.cuts[0].canonical,
-        preview_path=output,
-        subtitle_path=tmp_path / "subtitles" / "value-L01.srt",
-    )
-
-    committing_process = ResolveTransactionManager(
-        adapter,
-        store=AtomicResolveTransactionStore(store_root),
-    )
-    committing_process.commit(transaction.transaction_id, expected_cut_id="value-L01")
-    compensating_process = ResolveTransactionManager(
-        adapter,
-        store=AtomicResolveTransactionStore(store_root),
-    )
-    assert compensating_process.inspect_transaction(transaction.transaction_id)["status"] == (
-        "committed"
-    )
-    compensating_process.compensating_rollback(
-        transaction.transaction_id,
-        expected_cut_id="value-L01",
-    )
-
-    final_process = ResolveTransactionManager(
-        adapter,
-        store=AtomicResolveTransactionStore(store_root),
-    )
-    assert final_process.inspect_transaction(transaction.transaction_id)["status"] == (
-        "compensated"
-    )
-    assert facade.timeline_identities() == (binding.cuts[0].canonical,)
-
-
 def test_transaction_persistence_failure_rolls_back_open_resolve_workspace(
     tmp_path: Path,
 ) -> None:
-    refs = tuple(f"asset-{index}" for index in range(1, 6))
+    refs = tuple(f"asset-{index}" for index in range(1, 5))
     assets = []
     for index, reference in enumerate(refs, start=1):
         path = tmp_path / f"asset-{index}.mov"

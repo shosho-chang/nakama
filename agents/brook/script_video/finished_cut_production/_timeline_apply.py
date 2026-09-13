@@ -7,10 +7,13 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 
-from ._projection import _ACTIVE_PROJECTION_COMBINATIONS
+from ._projection import _MINTABLE_PROJECTION_COMBINATIONS
 from ._records import ComponentLane, MaterializationPlan
 
-_ALLOWED_PROJECTIONS = _ACTIVE_PROJECTION_COMBINATIONS
+#: 鋪上 timeline 的那一刻，看的是「這張卡鋪不鋪得出來」——`VOCABULARY` 描述得出
+#: track、版位與 renderer 就鋪得出來，含退役的。退役擋的是新提案，不是既有的卡
+#: 再鋪一次；那道鎖在 worker 提案端（`_engine._ALLOWED_PROJECTION`）。
+_ALLOWED_PROJECTIONS = _MINTABLE_PROJECTION_COMBINATIONS
 
 
 class TimelineApplyError(ValueError):

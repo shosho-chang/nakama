@@ -5,19 +5,18 @@ from __future__ import annotations
 import hashlib
 import json
 import math
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
 from ._records import MaterializationPlan
 
-ResolveTransactionStatus = Literal[
-    "preview_ready",
-    "committed",
-    "compensated",
-    "rolled_back",
-    "rollback_failed",
-]
+#: 一筆交易只有一個狀態。ADR-069 之前還有 committed／compensated／rolled_back／
+#: rollback_failed 四個，它們只有 `_cutover` 到得了；封存鏈退役之後沒有任何路徑能
+#: 把一筆交易推離 `preview_ready`，那四個狀態就只是四個到不了的字串。
+#:
+#: 留著這個欄位是因為它讓落盤的紀錄自我描述（「這份檔案描述一次做完的準備」）。
+ResolveTransactionStatus = Literal["preview_ready"]
 
 
 class ResolveTransactionError(ValueError):
@@ -52,16 +51,6 @@ class PreviewRender:
 
 
 @dataclass(frozen=True, slots=True)
-class CommitReceipt:
-    transaction_id: str
-    cut_id: str
-    work_uid: str
-    transaction_receipt_id: str
-    rollback_ref: str
-    backup_retained: bool
-
-
-@dataclass(frozen=True, slots=True)
 class ResolveTransaction:
     transaction_id: str
     episode_id: str
@@ -74,9 +63,6 @@ class ResolveTransaction:
     baseline: TimelineSnapshot
     preview: PreviewRender
     subtitle_path: Path
-    transaction_receipt_id: str | None = None
-    rollback_ref: str | None = None
-    backup_retained: bool = False
 
 
 class TimelineAdapter(Protocol):
@@ -99,21 +85,6 @@ class TimelineAdapter(Protocol):
 
     def rollback(self, workspace: TimelineWorkspace) -> None: ...
 
-    def commit(
-        self,
-        workspace: TimelineWorkspace,
-        *,
-        transaction_id: str,
-        cut_id: str,
-        retain_backup: bool,
-    ) -> CommitReceipt: ...
-
-    def compensate(
-        self,
-        workspace: TimelineWorkspace,
-        receipt: CommitReceipt,
-    ) -> None: ...
-
 
 class ResolveTransactionStore(Protocol):
     """Durable seam used by the transaction Module across process restarts."""
@@ -121,6 +92,31 @@ class ResolveTransactionStore(Protocol):
     def load(self, transaction_id: str) -> ResolveTransaction | None: ...
 
     def save(self, transaction: ResolveTransaction) -> None: ...
+
+    def find_for_plan(
+        self,
+        *,
+        episode_id: str,
+        cut_id: str,
+        plan_id: str,
+        plan_fingerprint: str,
+    ) -> ResolveTransaction | None: ...
+
+
+def _matches_plan(
+    transaction: ResolveTransaction,
+    *,
+    episode_id: str,
+    cut_id: str,
+    plan_id: str,
+    plan_fingerprint: str,
+) -> bool:
+    return (
+        transaction.episode_id == episode_id
+        and transaction.cut_id == cut_id
+        and transaction.plan_id == plan_id
+        and transaction.plan_fingerprint == plan_fingerprint
+    )
 
 
 class _InMemoryResolveTransactionStore:
@@ -132,6 +128,27 @@ class _InMemoryResolveTransactionStore:
 
     def save(self, transaction: ResolveTransaction) -> None:
         self._transactions[transaction.transaction_id] = transaction
+
+    def find_for_plan(
+        self,
+        *,
+        episode_id: str,
+        cut_id: str,
+        plan_id: str,
+        plan_fingerprint: str,
+    ) -> ResolveTransaction | None:
+        matches = [
+            transaction
+            for transaction in self._transactions.values()
+            if _matches_plan(
+                transaction,
+                episode_id=episode_id,
+                cut_id=cut_id,
+                plan_id=plan_id,
+                plan_fingerprint=plan_fingerprint,
+            )
+        ]
+        return matches[0] if len(matches) == 1 else None
 
 
 class ResolveTransactionManager:
@@ -247,40 +264,27 @@ class ResolveTransactionManager:
             raise ResolveTransactionError(f"transaction persistence failed: {exc}") from exc
         return transaction
 
-    def commit(self, transaction_id: str, *, expected_cut_id: str) -> CommitReceipt:
-        transaction = self._exact_transaction(transaction_id, expected_cut_id)
-        if transaction.status == "committed":
-            return _commit_receipt(transaction)
-        if transaction.status != "preview_ready":
-            raise ResolveTransactionError(
-                f"transaction cannot commit from status: {transaction.status}"
-            )
-        receipt = self._adapter.commit(
-            transaction.workspace,
-            transaction_id=transaction.transaction_id,
-            cut_id=transaction.cut_id,
-            retain_backup=True,
+    def find_prepared(self, plan: MaterializationPlan) -> ResolveTransaction | None:
+        """這個 plan 已經有一筆做完的交易嗎——不看現在的 canonical 是誰。
+
+        `_transaction_id` 把 canonical 的名字與 UID 也算進去，而交易成功之後
+        canonical 就換人了（work 頂上原名、原本那條改名成 `__fcp_backup__…`）。
+        於是同一個 plan 重跑 `prepare` 一定算出**另一個** id，`load` 必然落空，
+        然後從已經套用過的 timeline 再 duplicate 一次、把衍生軌疊第二層。
+
+        只要交易之後任何一步失敗（20260721 punch-L03 卡在 preview 探測），那個 run
+        就永遠結不了帳。這支用 plan 的身分找回那筆交易，讓 `prepare` 在交易邊界上
+        真正冪等。plan_id 與 plan_fingerprint 都要相符——計畫一改就不該續用舊交易。
+        """
+        transaction = self._store.find_for_plan(
+            episode_id=plan.episode_id,
+            cut_id=plan.cut_id,
+            plan_id=plan.plan_id,
+            plan_fingerprint=_plan_fingerprint(plan),
         )
-        if (
-            receipt.transaction_id != transaction.transaction_id
-            or receipt.cut_id != transaction.cut_id
-            or receipt.work_uid != transaction.workspace.work.uid
-            or not receipt.transaction_receipt_id
-            or not receipt.rollback_ref
-            or receipt.backup_retained is not True
-        ):
-            raise ResolveTransactionError(
-                "Resolve commit receipt does not bind the exact transaction and retained backup"
-            )
-        committed = replace(
-            transaction,
-            status="committed",
-            transaction_receipt_id=receipt.transaction_receipt_id,
-            rollback_ref=receipt.rollback_ref,
-            backup_retained=True,
-        )
-        self._store.save(committed)
-        return receipt
+        if transaction is None or transaction.status not in {"preview_ready", "committed"}:
+            return None
+        return transaction
 
     def inspect_transaction(self, transaction_id: str) -> dict[str, object]:
         transaction = self._store.load(transaction_id)
@@ -290,40 +294,14 @@ class ResolveTransactionManager:
             "transaction_id": transaction.transaction_id,
             "cut_id": transaction.cut_id,
             "status": transaction.status,
-            "transaction_receipt_id": transaction.transaction_receipt_id,
-            "rollback_ref": transaction.rollback_ref,
-            "backup_retained": transaction.backup_retained,
+            # plan record 要記「鋪到了哪一條 timeline」。以前發布線得自己掃交易
+            # 目錄反查，而那條反查要求 `status == "committed"`——所以它從來沒回
+            # 過一個名字。這裡直接把 work 那一條交出去。
+            "timeline": {
+                "name": transaction.workspace.work.name,
+                "uid": transaction.workspace.work.uid,
+            },
         }
-
-    def compensating_rollback(
-        self,
-        transaction_id: str,
-        *,
-        expected_cut_id: str,
-    ) -> ResolveTransaction:
-        transaction = self._exact_transaction(transaction_id, expected_cut_id)
-        if transaction.status == "compensated":
-            return transaction
-        if transaction.status not in {"committed", "rollback_failed"}:
-            raise ResolveTransactionError(
-                f"transaction cannot compensate from status: {transaction.status}"
-            )
-        receipt = _commit_receipt(transaction)
-        try:
-            self._adapter.compensate(transaction.workspace, receipt)
-            restored = self._adapter.snapshot(transaction.canonical)
-            if restored != transaction.baseline:
-                raise ResolveTransactionError(
-                    "compensation did not restore the original Timeline snapshot"
-                )
-        except Exception as exc:
-            self._store.save(replace(transaction, status="rollback_failed"))
-            raise ResolveTransactionError(
-                f"committed transaction compensation failed: {exc}"
-            ) from exc
-        compensated = replace(transaction, status="compensated")
-        self._store.save(compensated)
-        return compensated
 
     def _exact_transaction(
         self,
@@ -379,20 +357,3 @@ def _validate_preview(preview: PreviewRender) -> None:
         raise ResolveTransactionError("preview audio codec is not AAC or absent")
     if not math.isfinite(preview.duration_sec) or preview.duration_sec <= 0:
         raise ResolveTransactionError("preview duration is not positive and finite")
-
-
-def _commit_receipt(transaction: ResolveTransaction) -> CommitReceipt:
-    if (
-        transaction.transaction_receipt_id is None
-        or transaction.rollback_ref is None
-        or not transaction.backup_retained
-    ):
-        raise ResolveTransactionError("committed transaction has no retained-backup receipt")
-    return CommitReceipt(
-        transaction_id=transaction.transaction_id,
-        cut_id=transaction.cut_id,
-        work_uid=transaction.workspace.work.uid,
-        transaction_receipt_id=transaction.transaction_receipt_id,
-        rollback_ref=transaction.rollback_ref,
-        backup_retained=True,
-    )

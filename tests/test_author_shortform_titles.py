@@ -105,3 +105,21 @@ def test_requires_plan_spec(tmp_path):
     (tmp_path / "highlights/tighten").mkdir(parents=True)
     with pytest.raises(SystemExit, match="缺企劃規格"):
         build(tmp_path, "punch-S99")
+
+
+def test_latin_word_gaps_survive_the_srt_line_join():
+    """`Screen time` 不可以被黏成 `Screentime`。
+
+    20260721 value-S03 的 cue 18 實際渲進字卡的就是 `Screentime`——舊的
+    `.replace(" ", "")` 把所有空白一視同仁地砍掉。中文句子裡的空白確實是斷行
+    殘留，但兩個拉丁字之間的空白是字的一部分。
+    """
+    from scripts.author_shortform_titles import join_cue_text
+
+    assert join_cue_text(["Screen time"]) == "Screen time"
+    assert join_cue_text(["Screen", "time"]) == "Screen time"
+    # 「AI」與「5」兩邊都是拉丁／數字，那個空白要留——`AI5` 會讀成一個產品名。
+    # 「5」與「分鐘」之間是拉丁對中文，照既有版面慣例拿掉。
+    assert join_cue_text(["AI 5 分鐘", "就可以看完一本書"]) == "AI 5分鐘就可以看完一本書"
+    assert join_cue_text(["我忘記 2025 還是 2026 的報告"]) == "我忘記2025還是2026的報告"
+    assert join_cue_text(["就很清楚已經", "不去定義"]) == "就很清楚已經不去定義"

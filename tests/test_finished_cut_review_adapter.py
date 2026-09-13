@@ -48,7 +48,8 @@ def _release(
     components: tuple[ComponentView, ...] = (),
 ) -> CutView:
     return CutView(
-        release_id=f"release-{cut_id}",
+        plan_id=f"plan-{cut_id}",
+        timeline=f"長x - {cut_id}（緊·導播）",
         cut_id=cut_id,
         format=format,
         preview=_artifact(
@@ -78,7 +79,7 @@ def test_missing_current_is_explicit_and_never_reads_a_historical_sentinel(
         FinishedCutInspection(
             episode_id="episode-001",
             state="missing",
-            error_code="current_release_missing",
+            error_code="plan_record_missing",
         )
     )
     adapter = FinishedCutReviewAdapter(inspector)
@@ -106,7 +107,7 @@ def test_corrupt_wrong_episode_and_release_digest_are_invalid(_scenario: str) ->
         FinishedCutInspection(
             episode_id="episode-001",
             state="invalid",
-            error_code="current_release_invalid",
+            error_code="plan_record_invalid",
         )
     )
     adapter = FinishedCutReviewAdapter(inspector)
@@ -117,7 +118,7 @@ def test_corrupt_wrong_episode_and_release_digest_are_invalid(_scenario: str) ->
     assert view.cuts == ()
     assert view.review_capability.enabled is False
     assert view.review_capability.reason == "current_invalid"
-    assert view.error == "current_release_invalid"
+    assert view.error == "plan_record_invalid"
 
 
 def test_v3_three_cut_release_index_projects_exact_artifacts() -> None:
@@ -153,23 +154,7 @@ def test_inspector_result_for_a_different_episode_is_invalid() -> None:
     assert view.state is ReviewState.INVALID
     assert view.cuts == ()
     assert view.review_capability.enabled is False
-    assert view.error == "current_release_invalid"
-
-
-def test_short_release_is_projected_without_a_virtual_manifest(tmp_path: Path) -> None:
-    legacy_packet = tmp_path / "highlights" / "review" / "KS1" / "events.json"
-    legacy_packet.parent.mkdir(parents=True)
-    legacy_packet.write_text('{"events":["must not be read"]}', encoding="utf-8")
-    inspector = _FakeInspector(_inspection(_release("KS1", duration_sec=58.0, format="short")))
-    adapter = FinishedCutReviewAdapter(inspector)
-
-    view = adapter.load("episode-001")
-
-    assert view.state is ReviewState.READY
-    assert view.cuts[0].format == "short"
-    assert view.cuts[0].preview.reference == "highlights/preview/KS1.mp4"
-    assert inspector.calls == ["episode-001"]
-    assert not (legacy_packet.parents[1] / "virtual_short_finished_review_manifest.json").exists()
+    assert view.error == "plan_record_invalid"
 
 
 def test_ready_projection_is_read_only_and_has_no_current_writer(tmp_path: Path) -> None:
@@ -217,10 +202,12 @@ def test_adapter_has_no_legacy_visual_pipeline_or_glob_dependency() -> None:
     assert "highlight_visual_pipeline" not in source
     assert "highlight_visual_pipeline" not in " ".join(imported_modules)
     assert "finished_cut_production._" not in source
+    # Bridge 只能拿公開的 view 型別；模組內部的紀錄與錯誤型別不准跨進來。
     assert {
-        "FinishedCutRelease",
+        "PlanRecord",
+        "PlanRecordError",
+        "PlanRecordStore",
         "ReleaseArtifact",
-        "ReleaseLifecycleError",
     }.isdisjoint(imported_modules)
     assert {"visual_pipeline_status", "verify_visual_pipeline", "glob"}.isdisjoint(called_names)
 
@@ -300,7 +287,7 @@ def test_event_anchors_and_typed_component_kinds_and_lanes_project_without_infer
             component_id="component-b-roll",
             event_id="event-support",
             semantic_kind="b_roll",
-            implementation_kind="person_inset",
+            implementation_kind="photo",
             lane="b_roll",
             display="簡立峰博士",
             t0=18.0,
@@ -418,7 +405,7 @@ def test_event_anchors_and_typed_component_kinds_and_lanes_project_without_infer
         ("chapter", "fullscreen_transition", "fullscreen_transition"),
         ("hero_title", "hero_title", "hero_title"),
         ("supporting_title", "supporting_title", "supporting_title"),
-        ("b_roll", "person_inset", "b_roll"),
+        ("b_roll", "photo", "b_roll"),
         ("identity_card", "identity_card", "identity_card"),
         ("visual_effect", "visual_effect", "visual_effect"),
     )
