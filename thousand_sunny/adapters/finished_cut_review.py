@@ -90,7 +90,7 @@ class ReviewComponentView:
 class ReviewCutView:
     plan_id: str
     cut_id: str
-    format: Literal["long", "short"]
+    format: Literal["long"]
     #: plan 鋪上去的那條 Resolve timeline。舊紀錄沒記，會是空字串。
     timeline: str
     preview: ReviewArtifactView

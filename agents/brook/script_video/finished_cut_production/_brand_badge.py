@@ -32,7 +32,7 @@ materialization 解析與驗檔；核心只負責算落點。
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Literal, Protocol
+from typing import Protocol
 
 __all__ = [
     "BRAND_BADGE_SLUG_SECONDS",
@@ -112,13 +112,12 @@ def derive_brand_badge_overlays(
     *,
     components: tuple[_PlacedComponent, ...],
     duration_sec: float,
-    format: Literal["long", "short"],
 ) -> tuple[BrandBadgeOverlay, ...]:
     """依手冊規則算出這一支片的 badge 落點。
 
-    短片線（ADR-067）有自己的品牌處理，不套這裡的規則。
+    本模組只產長片（ADR-067 之後短片線有自己的品牌處理），所以這裡沒有格式參數。
     """
-    if format != "long" or duration_sec <= 0:
+    if duration_sec <= 0:
         return ()
 
     transitions = sorted(

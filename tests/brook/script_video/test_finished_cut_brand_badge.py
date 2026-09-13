@@ -44,7 +44,7 @@ def test_opening_badge_and_one_per_transition() -> None:
         _component("tr-2", "fullscreen_transition", 107.9, 110.9),
     )
 
-    overlays = derive_brand_badge_overlays(components=components, duration_sec=693.1, format="long")
+    overlays = derive_brand_badge_overlays(components=components, duration_sec=693.1)
 
     # tr-1 收在 55.6s，名牌 55.8s 進場——badge 只剩 0.2 秒，塞不下任何一支，
     # 而且左下角會跟名牌撞在一起，所以那一段沒有 badge。
@@ -67,7 +67,7 @@ def test_opening_badge_is_dropped_when_the_namecard_enters_too_early() -> None:
         _component("tr-1", "fullscreen_transition", 52.6, 55.6),
     )
 
-    overlays = derive_brand_badge_overlays(components=components, duration_sec=693.1, format="long")
+    overlays = derive_brand_badge_overlays(components=components, duration_sec=693.1)
 
     assert [overlay.origin for overlay in overlays] == ["after_transition:tr-1"]
 
@@ -78,7 +78,7 @@ def test_badge_never_runs_into_the_next_transition_card() -> None:
         _component("tr-2", "fullscreen_transition", 18.0, 21.0),
     )
 
-    overlays = derive_brand_badge_overlays(components=components, duration_sec=693.1, format="long")
+    overlays = derive_brand_badge_overlays(components=components, duration_sec=693.1)
 
     # tr-1 之後只剩 5 秒（13.0 → 18.0），最短的 7.4s 也塞不下，所以那一段不放。
     # 開場 badge 不受影響——這一支沒有名牌，窗口就是完整的 7.4 秒。
@@ -88,18 +88,10 @@ def test_badge_never_runs_into_the_next_transition_card() -> None:
 def test_badge_is_clamped_by_the_end_of_the_cut() -> None:
     components = (_component("tr-1", "fullscreen_transition", 100.0, 103.0),)
 
-    overlays = derive_brand_badge_overlays(components=components, duration_sec=108.0, format="long")
+    overlays = derive_brand_badge_overlays(components=components, duration_sec=108.0)
 
     # 片長 108 秒，轉場卡 103 秒收掉，只剩 5 秒——放不下，那一段沒有 badge。
     assert [overlay.origin for overlay in overlays] == ["opening"]
-
-
-def test_short_format_has_its_own_brand_treatment() -> None:
-    components = (_component("tr-1", "fullscreen_transition", 10.0, 13.0),)
-
-    assert (
-        derive_brand_badge_overlays(components=components, duration_sec=90.0, format="short") == ()
-    )
 
 
 def test_overlay_rejects_invalid_timing() -> None:
@@ -125,7 +117,7 @@ def test_badge_never_shares_the_lower_left_with_the_namecard() -> None:
         _component("nc", "identity_card", 55.8, 61.8),
     )
 
-    overlays = derive_brand_badge_overlays(components=components, duration_sec=693.1, format="long")
+    overlays = derive_brand_badge_overlays(components=components, duration_sec=693.1)
 
     assert [overlay.origin for overlay in overlays] == ["opening"]
     assert overlays[0].t1 <= 55.8

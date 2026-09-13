@@ -92,7 +92,7 @@ class _PacketMaterializer:
         if self._packet.format_policy is None:
             return replace(
                 self._packet,
-                format_policy=expected_format_policy(request.format, request.stage),
+                format_policy=expected_format_policy(request.stage),
             )
         return self._packet
 
@@ -475,7 +475,7 @@ def test_director_dispatches_current_request_in_one_isolated_read_only_workspace
     assert schema_path.parent == call.cwd
     assert output_path.parent == call.cwd
     assert call.packet["request"]["request_id"] == request.request_id  # type: ignore[index]
-    assert call.packet["format_policy"] == expected_format_policy("long", "director")
+    assert call.packet["format_policy"] == expected_format_policy("director")
     assert "format_policy" in call.prompt
     assert "format_policy.editorial_brief" in call.prompt
     assert (

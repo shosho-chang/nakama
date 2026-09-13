@@ -109,7 +109,7 @@ class RunInspection:
     command_id: str
     episode_id: str
     cut_id: str
-    format: Literal["long", "short"]
+    format: Literal["long"]
     status: Status
     outstanding_stage: StageName | None
     outstanding_scope: RequestScope | None
@@ -207,7 +207,7 @@ def _project_run_inspection(
     command_id: str,
     episode_id: str,
     cut_id: str,
-    format: Literal["long", "short"],
+    format: Literal["long"],
     status: Status,
     outstanding_request: StageRequest | None,
     current_stages: tuple[AcceptedStage, ...],

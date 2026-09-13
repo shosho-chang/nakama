@@ -139,7 +139,7 @@ class StageRequest:
     command_id: str
     episode_id: str
     cut_id: str
-    format: Literal["long", "short"]
+    format: Literal["long"]
     stage: StageName
     attempt: int
     scope: RequestScope
@@ -183,7 +183,7 @@ class StageProposal:
     request_id: str
     episode_id: str
     cut_id: str
-    format: Literal["long", "short"]
+    format: Literal["long"]
     stage: StageName
     attempt: int
     scope: RequestScope
@@ -248,7 +248,7 @@ class MaterializationPlan:
     command_id: str
     episode_id: str
     cut_id: str
-    format: Literal["long", "short"]
+    format: Literal["long"]
     director_acceptance_id: str
     dp_acceptance_id: str
     visual_acceptance_id: str
@@ -267,7 +267,7 @@ def _mint_materialization_plan(
     command_id: str,
     episode_id: str,
     cut_id: str,
-    format: Literal["long", "short"],
+    format: Literal["long"],
     director_acceptance_id: str,
     dp_acceptance_id: str,
     visual_acceptance_id: str,
@@ -311,7 +311,6 @@ def _mint_materialization_plan(
         brand_badge_overlays=derive_brand_badge_overlays(
             components=components,
             duration_sec=duration_sec,
-            format=format,
         ),
     )
 
@@ -372,7 +371,7 @@ class CutView:
     #: 「這支 cut 是哪一份紀錄」的答案就是鑄出它的那個 plan。
     plan_id: str
     cut_id: str
-    format: Literal["long", "short"]
+    format: Literal["long"]
     #: plan 鋪上去的那條 Resolve timeline 顯示名。發布線靠它決定 render 哪一條；
     #: 舊紀錄沒有記，會是空字串。
     timeline: str

@@ -39,7 +39,7 @@ def test_the_limit_is_published_to_the_stage_policy():
         expected_format_policy,
     )
 
-    policy = expected_format_policy("long", "director")
+    policy = expected_format_policy("director")
     assert policy["editorial_brief"]["title_copy"]["max_display_chars"] == (
         max_readable_display_chars()
     )

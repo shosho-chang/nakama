@@ -494,7 +494,7 @@ def _dp_placement_candidates_are_valid(request: StageRequest) -> bool:
 
 def _packet_is_allowed(request: StageRequest, packet: StagePacket) -> bool:
     if packet.stage != request.stage or packet.format_policy != expected_format_policy(
-        request.format, request.stage
+        request.stage
     ):
         return False
     if request.stage == "director":
@@ -820,7 +820,7 @@ def _response_schema(stage: StageName) -> dict[str, JsonValue]:
         "request_id": {"type": "string"},
         "episode_id": {"type": "string"},
         "cut_id": {"type": "string"},
-        "format": {"enum": ["long", "short"]},
+        "format": {"enum": ["long"]},
         "stage": {"type": "string", "const": stage},
         "attempt": {"type": "integer", "minimum": 1},
         "scope": {"enum": ["full_stage", "event_retry"]},

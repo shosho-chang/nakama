@@ -6,7 +6,9 @@ import re
 from dataclasses import dataclass
 from typing import Literal
 
-Format = Literal["long", "short"]
+#: ADR-067 之後本模組只產長片；短片整條線走 `shortform-cut`。這裡不留第二個值，
+#: 就沒有任何地方需要「檢查它是不是 long」——型別已經說完了。
+Format = Literal["long"]
 _COMMAND_ID_RE = re.compile(r"^(?:approved-cut|targeted-revision):[0-9a-f]{32}$")
 
 
@@ -55,7 +57,7 @@ def _is_authoritative_approved_cut(command: ApprovedCutCommand, command_id: str)
     return (
         command.command_id == command_id
         and command_id.startswith("approved-cut:")
-        and command.format in {"long", "short"}
+        and command.format == "long"
         and all(_is_identity(value) for value in identities)
     )
 

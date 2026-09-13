@@ -166,7 +166,7 @@ def _registration(value: object) -> ApprovedCutRegistration:
     return ApprovedCutRegistration(
         episode_id=_string(row, "episode_id"),
         cut_id=_string(row, "cut_id"),
-        format=cast(Literal["long", "short"], _string(row, "format")),
+        format=cast(Literal["long"], _string(row, "format")),
         editorial_master_id=_string(row, "editorial_master_id"),
         winner_id=_string(row, "winner_id"),
         tight_cut_id=_string(row, "tight_cut_id"),

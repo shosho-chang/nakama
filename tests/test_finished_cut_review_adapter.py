@@ -157,22 +157,6 @@ def test_inspector_result_for_a_different_episode_is_invalid() -> None:
     assert view.error == "plan_record_invalid"
 
 
-def test_short_release_is_projected_without_a_virtual_manifest(tmp_path: Path) -> None:
-    legacy_packet = tmp_path / "highlights" / "review" / "KS1" / "events.json"
-    legacy_packet.parent.mkdir(parents=True)
-    legacy_packet.write_text('{"events":["must not be read"]}', encoding="utf-8")
-    inspector = _FakeInspector(_inspection(_release("KS1", duration_sec=58.0, format="short")))
-    adapter = FinishedCutReviewAdapter(inspector)
-
-    view = adapter.load("episode-001")
-
-    assert view.state is ReviewState.READY
-    assert view.cuts[0].format == "short"
-    assert view.cuts[0].preview.reference == "highlights/preview/KS1.mp4"
-    assert inspector.calls == ["episode-001"]
-    assert not (legacy_packet.parents[1] / "virtual_short_finished_review_manifest.json").exists()
-
-
 def test_ready_projection_is_read_only_and_has_no_current_writer(tmp_path: Path) -> None:
     current = tmp_path / "finished_review_manifest_current.json"
     current.write_bytes(b"sentinel current bytes")

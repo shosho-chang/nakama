@@ -19,10 +19,6 @@ from agents.brook.script_video.finished_cut_production._policy import (
     CutPolicyInput,
     LongV2Policy,
 )
-from agents.brook.script_video.finished_cut_production._worker_packet import (
-    WorkerPacketError,
-    expected_format_policy,
-)
 
 
 @dataclass(frozen=True, slots=True)
@@ -957,13 +953,3 @@ def test_bad_plan_validation_is_deterministic_and_has_no_semantic_retry_call() -
     assert first.status == "accepted_with_warnings"
     assert {"proposal_for", "advance", "request_revision"}.isdisjoint(calls)
     assert "SemanticAdapter" not in source
-
-
-def test_short_format_is_refused_rather_than_silently_given_a_policy() -> None:
-    """ADR-067 之後短片整條線走 `shortform-cut`，本模組只產長片。
-
-    store 裡 0 個 short run。靜靜地回一個 Short policy 只會讓錯誤在更深的地方、
-    以更難懂的形式出現（ADR-069 階段 2）。
-    """
-    with pytest.raises(WorkerPacketError, match="only produces the Long format"):
-        expected_format_policy("short", "director")

@@ -22,7 +22,7 @@ from ._projection import (
 
 BuildStatus = Literal["ready", "pending", "failed"]
 BuildScope = Literal["full_stage", "event_retry"]
-CutFormat = Literal["long", "short"]
+CutFormat = Literal["long"]
 #: 名單本體在 `_projection.VOCABULARY` 的 `generated` 欄位。
 _GENERATED_IMPLEMENTATIONS = GENERATED_IMPLEMENTATIONS
 _NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS = NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS

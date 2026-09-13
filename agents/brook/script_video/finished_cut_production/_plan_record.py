@@ -110,7 +110,7 @@ class PlanRecord:
     run_id: str
     episode_id: str
     cut_id: str
-    format: Literal["long", "short"]
+    format: Literal["long"]
     editorial_master_id: str
     winner_id: str
     tight_cut_id: str

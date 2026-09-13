@@ -203,7 +203,7 @@ class FinishedCutProduction:
                     existing.command,
                     base_record=base_record,
                 ),
-                format_policy=self._policy_for(existing.command.format),
+                format_policy=self._long_policy,
                 derived_asset_builder=self._derived_asset_builder,
                 asset_resolver=self._asset_resolver,
             )
@@ -311,7 +311,7 @@ class FinishedCutProduction:
             worker_catalog=worker_catalog,
             base_record=base_record,
             editorial_context=editorial_context,
-            format_policy=self._policy_for(command.format),
+            format_policy=self._long_policy,
             derived_asset_builder=self._derived_asset_builder,
             asset_resolver=self._asset_resolver,
         )
@@ -493,7 +493,7 @@ class FinishedCutProduction:
                     stored.command,
                     base_record=base_record,
                 ),
-                format_policy=self._policy_for(stored.command.format),
+                format_policy=self._long_policy,
                 derived_asset_builder=self._derived_asset_builder,
                 asset_resolver=self._asset_resolver,
             )
@@ -768,15 +768,6 @@ class FinishedCutProduction:
         ):
             raise CommandRejectedError("persisted Editorial Cut Context identity is invalid")
         return context
-
-    def _policy_for(self, format: str) -> FormatPolicy:
-        # ADR-067 之後短片整條線走 `shortform-cut`，本模組只產長片。store 裡 0 個
-        # short run；靜靜地回一個 Short policy 只會讓錯誤在更深的地方以更難懂的
-        # 形式出現。
-        if format != "long":
-            raise CommandRejectedError("Finished Cut Production only produces the Long format")
-        return self._long_policy
-
 
 @dataclass(slots=True)
 class _RunState:

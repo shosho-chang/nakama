@@ -68,7 +68,7 @@ class WorkerPacketScope:
     run_id: str
     episode_id: str
     cut_id: str
-    format: Literal["long", "short"]
+    format: Literal["long"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -387,7 +387,7 @@ class ProductionWorkerPacketMaterializer:
     def _finish(self, request: StageRequest, packet: StagePacket) -> StagePacket:
         packet = replace(
             packet,
-            format_policy=expected_format_policy(request.format, request.stage),
+            format_policy=expected_format_policy(request.stage),
         )
         if len(packet.media) > self._limits.max_media_items:
             raise WorkerPacketError("worker packet exceeds its media item limit")
@@ -659,10 +659,7 @@ def worker_packet_document(request: StageRequest, packet: StagePacket) -> dict[s
     }
 
 
-def expected_format_policy(
-    format: Literal["long", "short"],
-    stage: StageName,
-) -> dict[str, JsonValue]:
+def expected_format_policy(stage: StageName) -> dict[str, JsonValue]:
     projection_combinations: list[JsonValue] = [
         {
             "semantic_kind": semantic_kind,
@@ -676,9 +673,6 @@ def expected_format_policy(
         "dp": "implement_current_events_using_only_catalog_references",
         "visual_review": "judge_each_final_rendered_component_from_inspection_bytes",
     }[stage]
-    if format != "long":
-        # ADR-067 之後短片走 `shortform-cut`／`shared/shortform_broll.py`，不經本模組。
-        raise WorkerPacketError("Finished Cut Production only produces the Long format")
     return {
         "policy_id": "long_v2",
         "stage": stage,

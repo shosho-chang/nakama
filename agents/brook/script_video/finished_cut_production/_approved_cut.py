@@ -83,7 +83,7 @@ class ApprovedCutRegistration:
 
     episode_id: str
     cut_id: str
-    format: Literal["long", "short"]
+    format: Literal["long"]
     editorial_master_id: str
     winner_id: str
     tight_cut_id: str
@@ -327,7 +327,7 @@ def _command_from_row(command_id: str, value: object) -> ApprovedCutCommand:
         command_id=command_id,
         episode_id=_text(row, "episode_id"),
         cut_id=_text(row, "cut_id"),
-        format=cast(Literal["long", "short"], _text(row, "format")),
+        format=cast(Literal["long"], _text(row, "format")),
         editorial_master_id=_text(row, "editorial_master_id"),
         winner_id=_text(row, "winner_id"),
         tight_cut_id=_text(row, "tight_cut_id"),
@@ -343,7 +343,7 @@ def _context_from_row(value: object) -> EditorialCutContext:
     return EditorialCutContext(
         episode_id=_text(row, "episode_id"),
         cut_id=_text(row, "cut_id"),
-        format=cast(Literal["long", "short"], _text(row, "format")),
+        format=cast(Literal["long"], _text(row, "format")),
         editorial_master_id=_text(row, "editorial_master_id"),
         tight_cut_id=_text(row, "tight_cut_id"),
         duration_sec=_number(context, "duration_sec"),

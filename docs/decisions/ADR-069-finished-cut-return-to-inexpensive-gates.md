@@ -678,10 +678,34 @@ ADR-066 的核心決策是對的，是實作超標。否決。
     `_worker_packet`（35）沒逐條過——那是「worker 回的東西合不合格」，被退回一樣會
     停線，只是擋的是 agent 不是人。
 
-39. **`format` 這個兩值維度是下一刀。** `_engine:767` 的「只做長片」不是問題，是症狀：
-    `Literal["long", "short"]` 貫穿 `_commands`、`_context`、`_correction`、
-    `_approved_cut`、`_brand_badge`，連丟給 worker 的 response schema 裡都有
+39. **`format` 這個兩值維度拔掉了（2026-09-13，第二個 commit）。** `_engine:767` 的
+    「只做長片」不是問題，是症狀：`Literal["long", "short"]` 貫穿 `_commands`、
+    `_context`、`_correction`、`_approved_cut`、`_brand_badge`、`_worker_packet`、
+    `_plan_record`、`_records`，連丟給 worker 的 response schema 裡都有
     `{"enum": ["long", "short"]}`。ADR-067 把短片整條移走之後，這個維度是裝飾。
-    owner：「為什麼一條長片的製作流程，最後還要檢查它是不是只做長片？」——分開一個
-    commit 做。
+    owner：「為什麼一條長片的製作流程，最後還要檢查它是不是只做長片？」
+
+    做法是**把型別收成 `Literal["long"]`**，而不是把欄位從紀錄裡整個拔掉：
+
+    * 維度已經不存在——型別上不可能是第二種值，所以**三道** `!= "long"` 的門
+      （`_engine._policy_for`、`_worker_packet.expected_format_policy`、
+      `_brand_badge.derive_brand_badge_overlays`）直接刪，沒有任何 runtime 檢查取代它。
+      這才是 owner 那句話的字面意思：不用檢查，型別已經說完了。
+    * 欄位留下來當自述，跟這條 branch 上 `ResolveTransactionStatus = Literal["preview_ready"]`
+      是同一個先例（第 20 點）。硬碟上 65 個 run 的 `command.format`、69 筆 approved
+      cut、6 份 plan record 的 `candidate.format` 全部是 `"long"`，codec 讀回來時對
+      Literal 逐值驗，沒有一筆會讀不回來。
+    * 整個欄位從紀錄裡拔掉是再下一刀：測試裡 `format=` 101 處、`"format":` 42 處要
+      掃，值得單獨做，而且做的時候 Bridge `highlight_review:489` 那道
+      `cut["format"] == review_format` 篩選要一起收（它在長片頁上恆真——短片頁在
+      `:486` 就轉去 KS packet 了）。
+    * `shared/schemas/packaging.py:187` 的 `Literal["long", "short"]` **刻意不動**：那是
+      packaging 的 schema，短片真的有 package，那條線長短都存在。
+
+    順帶：`_codex_semantic` 26 個與 `_worker_packet` 35 個 `raise` 這次逐條讀完了。
+    全部是 JSON 形狀、信封一致性、ffmpeg 抽格、packet 傳輸上限（JSON 2 MB、單媒體
+    16 MB、總媒體 64 MB、64 件）——零條內容判斷。其中 `_codex_semantic:934/993` 對
+    `_ACTIVE_COMPONENT_LANES`／`_ACTIVE_SEMANTIC_KINDS` 的查核就是第 36 點說的
+    「真正擋新提案的鎖在 worker 那端」。傳輸上限是寫死的數字，一集 80 個 event 會撞到
+    ——記著，這次不動。
 

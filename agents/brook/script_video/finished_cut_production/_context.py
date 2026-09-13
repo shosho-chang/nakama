@@ -106,7 +106,7 @@ def _mint_visual_placement(
 class EditorialCutContext:
     episode_id: str
     cut_id: str
-    format: Literal["long", "short"]
+    format: Literal["long"]
     editorial_master_id: str
     tight_cut_id: str
     duration_sec: float
