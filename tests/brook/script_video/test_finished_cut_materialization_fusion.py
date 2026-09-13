@@ -247,7 +247,7 @@ def test_tampered_verified_master_cache_fails_closed_without_reverification(tmp_
             editorial_master_content_hash=_CONTENT_HASH,
         )
 
-    assert raised.value.reason_code == "editorial_master_cache_invalid"
+    assert raised.value.reason_code == "editorial_master_mismatch"
     assert verifier.calls == 1
 
 
@@ -290,7 +290,9 @@ def test_resolve_authority_returns_exact_uid_bound_read_only_inspection(tmp_path
     assert result[0].state == state
     assert result[0].baseline == baseline
     assert source.calls == [("episode-1", _CONTENT_HASH)]
-    assert snapshots.calls == [canonical, canonical]
+    # ADR-069：state 與 baseline 各讀**一次**。以前讀兩次比對，用來抓「讀的當下
+    # 有人在動 timeline」；真正的防線是動手前再比一次指紋，那一次抓得到同一件事。
+    assert snapshots.calls == [canonical]
     assert facade.mutation_calls == 0
 
 
@@ -301,7 +303,7 @@ def test_resolve_authority_returns_exact_uid_bound_read_only_inspection(tmp_path
             _binding(TimelineIdentity("Long 3", "timeline-L04")),
             ResolveProjectIdentity("episode-1", "Wrong Project", "resolve-project:trusted"),
             (TimelineIdentity("Long 3", "timeline-L04"),),
-            "resolve_project_identity_mismatch",
+            "resolve_binding_mismatch",
         ),
         (
             ResolveProjectBinding(
@@ -312,13 +314,13 @@ def test_resolve_authority_returns_exact_uid_bound_read_only_inspection(tmp_path
             ),
             ResolveProjectIdentity("episode-1", "Episode Project", "resolve-project:trusted"),
             (TimelineIdentity("Long 1", "timeline-L01"),),
-            "canonical_binding_unknown",
+            "resolve_binding_mismatch",
         ),
         (
             _binding(TimelineIdentity("Long 3", "timeline-L04")),
             ResolveProjectIdentity("episode-1", "Episode Project", "resolve-project:trusted"),
             (),
-            "canonical_timeline_unknown",
+            "resolve_binding_mismatch",
         ),
         (
             _binding(TimelineIdentity("Long 3", "timeline-L04")),
@@ -327,13 +329,13 @@ def test_resolve_authority_returns_exact_uid_bound_read_only_inspection(tmp_path
                 TimelineIdentity("Long 3", "timeline-L04"),
                 TimelineIdentity("Long 3", "timeline-L04"),
             ),
-            "canonical_timeline_ambiguous",
+            "resolve_binding_mismatch",
         ),
         (
             _binding(TimelineIdentity("Long 3", "timeline-L04")),
             ResolveProjectIdentity("episode-1", "Episode Project", "resolve-project:trusted"),
             (TimelineIdentity("Renamed", "timeline-L04"),),
-            "canonical_timeline_ambiguous",
+            "resolve_binding_mismatch",
         ),
     ],
 )
@@ -395,52 +397,7 @@ def test_resolve_authority_rejects_ambiguous_persisted_cut_binding(tmp_path: Pat
             editorial_master_content_hash=_CONTENT_HASH,
         )
 
-    assert raised.value.reason_code == "canonical_binding_ambiguous"
-    assert facade.mutation_calls == 0
-
-
-@pytest.mark.parametrize(
-    ("states", "snapshots"),
-    [
-        (
-            (_state(), _state(end_frame=100_801)),
-            (TimelineSnapshot("protected", "full"),) * 2,
-        ),
-        (
-            (_state(),) * 2,
-            (
-                TimelineSnapshot("protected", "full"),
-                TimelineSnapshot("protected-changed", "full-changed"),
-            ),
-        ),
-    ],
-)
-def test_resolve_authority_rejects_live_state_or_baseline_drift(
-    tmp_path: Path,
-    states: tuple[ResolveTimelineState, ...],
-    snapshots: tuple[TimelineSnapshot, ...],
-) -> None:
-    canonical = TimelineIdentity("Long 3", "timeline-L04")
-    facade = _ReadOnlyFacade(
-        project=ResolveProjectIdentity("episode-1", "Episode Project", "resolve-project:trusted"),
-        identities=(canonical,),
-        states=states,
-    )
-    authority = ResolveCanonicalTimelineAuthority(
-        binding=_binding(canonical),
-        facade=facade,
-        timeline_adapter=_SnapshotReader(snapshots),
-        editorial_master=_MasterSource(_master_contract(tmp_path)),
-    )
-
-    with pytest.raises(CanonicalAuthorityError) as raised:
-        authority.inspect(
-            episode_id="episode-1",
-            cut_id="punch-L04",
-            editorial_master_content_hash=_CONTENT_HASH,
-        )
-
-    assert raised.value.reason_code == "canonical_timeline_live_drift"
+    assert raised.value.reason_code == "resolve_binding_mismatch"
     assert facade.mutation_calls == 0
 
 
@@ -450,12 +407,12 @@ def test_resolve_authority_rejects_live_state_or_baseline_drift(
         (
             replace(_master_contract(Path(".")), resolve_project_name="Wrong Project"),
             _state(),
-            "editorial_master_project_mismatch",
+            "editorial_master_mismatch",
         ),
         (
             _master_contract(Path(".")),
             replace(_state(), frame_rate=None),
-            "timeline_frame_rate_unavailable",
+            "resolve_binding_mismatch",
         ),
     ],
 )

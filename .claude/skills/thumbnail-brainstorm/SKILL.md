@@ -102,6 +102,8 @@ python -c "from shared.thumbnail_playbook import format_playbook_index_for_promp
    相符的 JP-*（index 已附 `why_they_pair` 佐證）。有 → 用它的 thumb archetype。
 2. 沒有相符 JP → 依 thumb archetype 的 when_to_use/brand-fit 自配一個
    （S/A 優先，D/F 禁用），run log 記「無 JP 佐證，自配理由」。
+   `joint_pairing_id` 寫 `self-pair-<標題 archetype>-<封面 archetype>`，**不是 `null`**
+   （schema 要求 `str`）。
 3. 三個封面在**表情／大字／裝飾**軸上拉開（例：驚訝大特寫 vs 解釋+圖示 vs
    認真+數字大字）。同 archetype 出現兩次即違反 diversity — 換掉一個。
 4. 每個 idea 定案三件事：`thumb_archetype_id`、**大字**（3–7 字 hook 短語，
@@ -264,6 +266,12 @@ python .claude/skills/thumbnail-brainstorm/scripts/fetch_licensed_center.py   --
 # 2) agent 用修修的瀏覽器開那個網址、按 Download（claude-in-chrome）
 #    ⚠️ 按一次就好。第一次點擊就會下載並套授權；沒看到檔案時先查下載目錄，
 #       不要重按——那是在他的付費帳號上重複操作（2026-08-29 犯過）。
+#    ⚠️ **一定要用 app.envato.com，不要用 elements.envato.com**（2026-09-10）：
+#       elements 的品項頁永遠不進 document_idle（預覽影片一直播），
+#       claude-in-chrome 的 find／read_page／screenshot 全是注入型工具，一律 45 秒
+#       逾時。那次我因此誤判「Envato 自動化壞了」、還建議改人工下載。app 網域秒回。
+#       Elements MCP 回的是 elements 短碼網址（如 PH5T6NL），只能拿來挑概念，
+#       要到 app 網域重搜。
 
 # 3) 收線
 python .claude/skills/thumbnail-brainstorm/scripts/fetch_licensed_center.py   --episode-slug <slug> --cut-id <cut> --package-rank <n> --install   --working-dir "<ep>/packaging"
@@ -276,6 +284,37 @@ packages 等於沒改）→ 從候選池把來歷抄進配方（換掉檔名後�
 
 **下載目錄預設 `E:\` 根目錄**（修修瀏覽器的落點，不是 `~/Downloads`），
 可用 `NAKAMA_DOWNLOAD_DIR` 覆寫。
+
+### Step 4.4c — 候選池的短碼跨不到 app 網域（2026-09-10 實測）
+
+Step 4.4 的候選池是用 Elements MCP 搜的，`source` 記的是 `elements.envato.com/...-<短碼>`。
+**那個短碼在 app 網域上打不開**：
+
+- `app.envato.com/search/photos/HKF76GC` → **400 Invalid item link**
+- app 網域的標題是**改寫過的**（Elements 的「Teenage boy head down on desk」在 app 上叫
+  「Tired Student Sleeping at Desk in Classroom」）→ 用標題跨網域比對也對不上
+- 結果縮圖的 `img.src` / `a.href` 被瀏覽器擴充功能的隱私過濾擋掉 → 拿不到 CDN 路徑比對
+- 而 `elements.envato.com` 的品項頁**照片也一樣**永不進 `document_idle`（不只影片頁）
+
+**所以不要試著把某一個特定候選找到 app 網域上。** 候選池的價值是**概念與理由**
+（這張圖要扣回哪一個 beat），不是那個檔案本身。做法：
+
+1. 用候選池／Elements MCP 決定**這張卡要演什麼**（扣哪一句原話）
+2. 到 `app.envato.com` 用那個概念重搜，挑一張、按 Download（見 [[Envato 網址型式]]）
+3. 裁到卡片比例再安裝——卡片 678×455（1.4901），素材**先裁到這個比例**再縮到 1356×910，
+   不然 `object-fit: cover` 會從短邊硬裁掉你挑的那一塊：
+
+```bash
+python .claude/skills/thumbnail-brainstorm/scripts/install_center_asset.py "<E:/下載的授權原檔.jpg>"   --episode-slug <slug> --episode-dir "<episode>" --cut-id <cut> --rank <n> [--anchor left|right|top]
+```
+
+它驗橫式、驗長邊 ≥1280（低於就是還沒換到授權檔），裁到卡片比例，雙落點寫進 vault 與
+該集 `packaging/`。主體不在正中間時用 `--anchor` 挪裁切窗。
+（gate 路徑請用 `fetch_licensed_center.py`——那支要 `approval.json` 裡已有 `render_recipe`。）
+
+順帶的好處：重選時可以把**當初妥協的條件一起補回來**。2026-09-10 punch-L03 rank 3
+在候選池裡只找得到約 55 歲的男性（唯一「醒著、停下來」的姿勢，其餘全是趴倒），
+到 app 網域重選就同時拿到「年輕（對得上 TA）＋醒著」。
 
 ## Step 4.5 — 量測驗收（**不做不交付**）
 
@@ -420,7 +459,13 @@ Agent **永遠不得自動 Approve**。失敗顯示 error 且不自動重試；�
 ## Step 5 — 回填 + 驗證 + 雙落點
 
 寫 `specs.json`（3 筆：title_rank／thumbnail 本地路徑／thumb_archetype_id／
-joint_pairing_id／host_cutout／guest_cutout），然後：
+joint_pairing_id／host_cutout／guest_cutout／render_spec／center_provenance），然後：
+
+⚠️ **`joint_pairing_id` 是 `str`，不可以填 `null`**（`PackagesFileV1` 會 422）。
+沒有現成 JP 佐證時照既有慣例寫成描述字串——看 `packages.json` 實例：
+長片自配是 `self-pair-<標題 archetype>-<封面 archetype>`（例 `self-pair-T-A10-T-V7`），
+全集 N1 版式是 `N1-fixed-layout-no-jp-match`。Step 1 那句「沒有就填 `null`」
+是錯的（2026-09-10 訂正，實際 attach 時撞到）。
 
 ```bash
 python .claude/skills/thumbnail-brainstorm/scripts/attach_packages.py \
@@ -528,9 +573,18 @@ python .claude/skills/thumbnail-brainstorm/scripts/face_measure.py render \
 **一次到位交付檢查（v2.5）**——給修修看之前，五項全過，缺一不交付：
 
 - [ ] `verify` PASS（spec 參數 vs solver 重算自洽——render 前的 sanity）
-- [ ] **`face_measure.py render` QA PASS**——render 出的 PNG 上直接量兩張臉
-      （跨包 IOD/臉高離散、眼線漂移、包內比例）。**這才是 gate**：verify
-      PASS 擋不住 63px 眼線漂移（教訓 21）
+- [ ] **跑 `face_measure.py render`**——render 出的 PNG 上直接量兩張臉。
+      擋下來的只有**包內比例**（`guest/host` 目標 1.0±0.12）：那一項出界代表
+      兩張臉一大一小，縮圖上一眼看得出來。verify PASS 擋不住 63px 眼線漂移，
+      所以這一步不能省（教訓 21）。
+      **跨張 IOD／臉高離散是資訊，不是 gate**（2026-09-10 訂正）：那是在量
+      「三個表情之間的姿勢差異」，而版式**本來就要求三包表情拉開**——同時要求
+      表情多樣又要求姿勢一致，是互相矛盾的。實測 20260901 蘇予昕 已經上架的
+      punch-L04 三張封面：guest IOD 離散 8.6%（門檻 8%）判 FAIL，但那三張是修修
+      看過並發布的成品。`attach_packages.py` 從來沒有呼叫這支腳本，也就是說這道
+      「gate」在程式上一直都是建議性的——文件寫成硬擋只會讓人卡在一個沒有人
+      擋得住的地方。離散偏高時去看那一格是不是明顯前傾/後仰，決定要不要換格，
+      不要因為它重做整套。
 - [ ] 親眼看全圖（人物大小/位置/與中央卡的關係）＋ 320×180 小圖可讀
 - [ ] cutout 頭部、雙肩、可見上臂完整；肩線不碰左右界、無直切或透明挖洞
 - [ ] boom arm 未進人物 silhouette；若局部移除，只有 boom arm 區域像素可改，

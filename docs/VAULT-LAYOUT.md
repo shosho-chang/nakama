@@ -170,9 +170,11 @@ E:\Shosho LifeOS\
 │   │   ├── briefs/         Morning Brief (config.yaml.agents.nami.brief_path)
 │   │   ├── notes/          ad-hoc Nami notes
 │   │   └── research/       Nami research handler output
-│   └── brook/
-│       ├── seo-audit/      Brook SEO audit task outputs (per ADR-027)
-│       └── drafts/         draft-article 原子文章初稿 (NON-KB; provenance 單向)
+│   ├── brook/
+│   │   ├── seo-audit/      Brook SEO audit task outputs (per ADR-027)
+│   │   └── drafts/         draft-article 原子文章初稿 (NON-KB; provenance 單向)
+│   └── interviews/         podcast 每一集一個資料夾 `YYYY-MM-DD-<來賓>`（訪談日，不是發布日）
+│                           01–05 訪前研究 · 06+ 製作期文件 · report.md · 訪綱-v*.md
 │
 ├── Templates/            🔒 Human only (Templater plugin owns)
 └── Scripts/              🔒 Human only (Templater user scripts + nakama-config.md)
@@ -259,6 +261,7 @@ data/agent_reports/franky/
 | `AgentOutputs/nami/research/` | 🤖 | Nami research handler | 修修 | — |
 | `AgentOutputs/brook/seo-audit/{YYYY-MM-DD}/` | 🤖 | Brook SEO audit + enrich runners (ADR-027) | 修修 | — |
 | `AgentOutputs/brook/drafts/{slug}-draft-{YYYY-MM-DD}.md` | 🤖 | `.claude/skills/draft-article` (Composer skill) | 修修 拿去大改 | 原子文章初稿；**不回寫 KB**（紅線⑤ provenance 單向） |
+| `AgentOutputs/interviews/{YYYY-MM-DD}-{來賓}/` | 🤖+👤 | 訪前研究 skill、`.claude/skills/title-brainstorm`、podcast 產線各段 | 修修 在 Obsidian 讀與改 | 資料夾日期＝**訪談日**，episode 資料夾＝**發布日**，兩者不同（`shared/vault_interviews.py` 依來賓姓名對應）。`01–05` 訪前研究、`06+` 製作期文件（依產出順序接續編號）、`report.md`、`訪綱-v*.md` |
 | (repo) `data/agent_reports/franky/weekly/` | 🤖 | `agents/franky/reporter.py:277` (post-path-migration) | 修修, Franky weekly digest | Franky weekly format |
 | (repo) `data/agent_reports/franky/dev-backlog.md` | 👤+🤖 | 修修 writes; `agents/franky/agent.py:33` reads | Franky weekly digest input | — |
 | (repo) `data/agent_reports/franky/vault-audit/` | 🤖 | `scripts/vault_layout_audit.py` (Phase 3 PR-C1) | 修修, Franky weekly | — |

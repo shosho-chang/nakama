@@ -13,7 +13,13 @@ from typing import Literal, Protocol, cast
 
 from ..editorial_master import EditorialMasterContractError, verify_editorial_master
 from ._commands import ApprovedCutCommand
-from ._context import CanonicalSection, CueAnchor, CutSourceRange, EditorialCutContext
+from ._context import (
+    CUE_END_EPSILON_SEC,
+    CanonicalSection,
+    CueAnchor,
+    CutSourceRange,
+    EditorialCutContext,
+)
 
 _STORE_SCHEMA = "nakama.finished-cut-approved-cuts.v1"
 
@@ -77,7 +83,7 @@ class ApprovedCutRegistration:
 
     episode_id: str
     cut_id: str
-    format: Literal["long", "short"]
+    format: Literal["long"]
     editorial_master_id: str
     winner_id: str
     tight_cut_id: str
@@ -138,24 +144,31 @@ class ApprovedCutAuthority:
         duration_sec = sum(source.t1 - source.t0 for source in registration.source_ranges)
         if registration.format == "long" and duration_sec < 480.0:
             raise ApprovedCutRegistrationError("Long ApprovedCut must be at least eight minutes")
-        if registration.format == "long" and not registration.sections:
-            raise ApprovedCutRegistrationError("Long ApprovedCut requires canonical sections")
+        # 「長片必須有章節」這條拿掉了。長片本來就都有章節，所以它幾乎不會 fire；
+        # 而萬一真的沒有，`_policy` 的 `canonical_sections_missing` 會接住——那一份
+        # 才是真的前置條件（它下一行就 index `sections[0]`），而且它是**診斷**，
+        # 會出現在審核頁上，不是把整支關在登錄門外。
         if not registration.cues:
             raise ApprovedCutRegistrationError("ApprovedCut requires valid tight subtitle cues")
         _validate_sections(registration.sections, duration_sec)
         _validate_cues(registration.cues, registration.sections, duration_sec)
-        context = EditorialCutContext(
-            episode_id=registration.episode_id,
-            cut_id=registration.cut_id,
-            format=registration.format,
-            editorial_master_id=registration.editorial_master_id,
-            tight_cut_id=registration.tight_cut_id,
-            duration_sec=duration_sec,
-            source_ranges=registration.source_ranges,
-            cues=registration.cues,
-            sections=registration.sections,
-            editorial_feedback=registration.editorial_feedback,
-        )
+        try:
+            context = EditorialCutContext(
+                episode_id=registration.episode_id,
+                cut_id=registration.cut_id,
+                format=registration.format,
+                editorial_master_id=registration.editorial_master_id,
+                tight_cut_id=registration.tight_cut_id,
+                duration_sec=duration_sec,
+                source_ranges=registration.source_ranges,
+                cues=registration.cues,
+                sections=registration.sections,
+                editorial_feedback=registration.editorial_feedback,
+            )
+        except ValueError as error:
+            # 建構子講的是同一件事，只是用 context 的詞彙。登錄端要的是登錄端的
+            # 錯誤型別，原訊息照原樣帶出去，不要換成含糊的泛稱。
+            raise ApprovedCutRegistrationError(str(error)) from error
         row = _registration_row(registration, context)
         identity = hashlib.sha256(_canonical_json(row)).hexdigest()[:32]
         command_id = f"approved-cut:{identity}"
@@ -183,6 +196,7 @@ class ApprovedCutAuthority:
         editorial_master_id: str,
         tight_cut_id: str,
     ) -> EditorialCutContext | None:
+        matches: list[tuple[str, str, dict]] = []
         for command_id, row in self._read_payload()["approved_cuts"].items():
             command = _command_from_row(command_id, row)
             if (
@@ -191,8 +205,20 @@ class ApprovedCutAuthority:
                 command.editorial_master_id,
                 command.tight_cut_id,
             ) == (episode_id, cut_id, editorial_master_id, tight_cut_id):
-                return _context_from_row(row)
-        return None
+                approval = row.get("human_approval") if isinstance(row, dict) else None
+                approved_at = ""
+                if isinstance(approval, dict):
+                    approved_at = str(approval.get("approved_at") or "")
+                matches.append((approved_at, command_id, row))
+        if not matches:
+            return None
+        # 同一支 cut 重跑幾十次就有幾十筆 identity 相同的註冊。取「第一筆」等於永遠鎖在
+        # 最初那一版：2026-09-08 蘇予昕 punch-L04 累積了 38 筆，改了 canonical 章節標題
+        # 重新註冊之後，run 拿到的仍是 2026-09-07 那份舊標題——改動看似生效（註冊確實
+        # 寫進去了），實際上一次都沒有到達產線，而且完全無聲。取最後核准的那一筆；
+        # approved_at 是 ISO-8601 UTC，字典序即時間序，同時間再以 command_id 定序。
+        matches.sort(key=lambda row: (row[0], row[1]))
+        return _context_from_row(matches[-1][2])
 
     def _read_payload(self) -> dict[str, object]:
         if not self._path.exists():
@@ -286,6 +312,7 @@ def _registration_row(
                     "t0": section.t0,
                     "transition_before": section.transition_before,
                     "transition_title": section.transition_title,
+                    "summary": section.summary,
                 }
                 for section in context.sections
             ],
@@ -300,7 +327,7 @@ def _command_from_row(command_id: str, value: object) -> ApprovedCutCommand:
         command_id=command_id,
         episode_id=_text(row, "episode_id"),
         cut_id=_text(row, "cut_id"),
-        format=cast(Literal["long", "short"], _text(row, "format")),
+        format=cast(Literal["long"], _text(row, "format")),
         editorial_master_id=_text(row, "editorial_master_id"),
         winner_id=_text(row, "winner_id"),
         tight_cut_id=_text(row, "tight_cut_id"),
@@ -316,7 +343,7 @@ def _context_from_row(value: object) -> EditorialCutContext:
     return EditorialCutContext(
         episode_id=_text(row, "episode_id"),
         cut_id=_text(row, "cut_id"),
-        format=cast(Literal["long", "short"], _text(row, "format")),
+        format=cast(Literal["long"], _text(row, "format")),
         editorial_master_id=_text(row, "editorial_master_id"),
         tight_cut_id=_text(row, "tight_cut_id"),
         duration_sec=_number(context, "duration_sec"),
@@ -340,6 +367,7 @@ def _context_from_row(value: object) -> EditorialCutContext:
                 _number(section, "t0"),
                 bool(section.get("transition_before")),
                 _optional_text(section, "transition_title"),
+                _optional_text(section, "summary") or "",
             )
             for section in sections
         ),
@@ -458,6 +486,19 @@ def _validate_editorial_feedback(feedback: tuple[str, ...]) -> None:
             raise ApprovedCutRegistrationError("editorial feedback must be sanitized text only")
 
 
+#: 滿版轉場卡的字要能單獨看懂——那是寫作端的標準，不是登錄門口的正則。
+#:
+#: 這裡本來有兩條：4 字以內＋冒號開頭擋、「他她它牠祂」開頭擋。它們抓的是
+#: 2026-09-08 蘇予昕那一集的「修修：她不是你爸」。可是同一條規則
+#: **寫作端已經有了**（`.claude/skills/longform-cut/SKILL.md` 的規則表），
+#: 而正則這一份還會誤殺正常標題——實測擋掉「三個選擇：先做哪一個」「第一步：
+#: 把預設值找出來」「她們用三年做對的那件事」，每一個都讓整支 cut 登錄不進來。
+#:
+#: 修修 2026-09-13：「這不是應該在產生 title 的時候就應該會做對了嗎？如果不在
+#: 源頭一次把事情做對，那不是常常就會碰到要修改的，浪費時間？」——而且卡片上
+#: 寫著「修修：」你在審核頁一眼就看得到，符合「人眼看得出來就不該硬擋」。
+
+
 def _validate_sections(
     sections: tuple[CanonicalSection, ...],
     duration_sec: float,
@@ -486,23 +527,20 @@ def _validate_cues(
     sections: tuple[CanonicalSection, ...],
     duration_sec: float,
 ) -> None:
+    """Only what registration knows on top of the Editorial Cut Context contract.
+
+    唯一性、時序、文字非空、有限數——那些是 context 自己的結構規則，
+    `EditorialCutContext.__post_init__` 會擋，這裡不再抄一份。留下來的三條都
+    只有登錄這一刻知道：cue_id 的字面形狀、cue 落在這次登錄的章節裡，以及
+    「不可越過片尾」——`duration_sec` 是來源範圍的總和，只有在這裡才保證成立
+    （之後 `_policy` 會把兩者對不上當成診斷報出來，不是讓物件造不出來）。
+    """
+
     section_ids = {section.section_id for section in sections}
-    seen: set[str] = set()
-    prior_end = -1.0
     for cue in cues:
         if (
             not _identity(cue.cue_id)
-            or cue.cue_id in seen
-            or not isinstance(cue.text, str)
-            or not cue.text.strip()
-            or not math.isfinite(cue.t0)
-            or not math.isfinite(cue.t1)
-            or cue.t0 < 0
-            or cue.t0 >= cue.t1
-            or cue.t1 > duration_sec
-            or cue.t0 < prior_end
+            or cue.t1 > duration_sec + CUE_END_EPSILON_SEC
             or (section_ids and cue.section_id not in section_ids)
         ):
             raise ApprovedCutRegistrationError("ApprovedCut tight subtitle cues are invalid")
-        prior_end = cue.t1
-        seen.add(cue.cue_id)

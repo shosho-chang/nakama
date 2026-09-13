@@ -60,7 +60,9 @@
         will-change: transform, opacity, filter, clip-path;
       }
       .line-shell:nth-child(2) { margin-left: 60px; }
-      .glyph { display: inline-block; }
+      /* white-space: pre —— 見 kinetic_sequence.html 同一行：單獨一個空白包在
+         自己的 span 裡，normal 下寬度會被摺成零，`Screen time` 會變 `Screentime`。 */
+      .glyph { display: inline-block; white-space: pre; }
       /* tier 1 = hero：超大字（6 字/行上限；168px×6+padding ≈ 1064 ≤ 1080） */
       /* tier1 必須「一眼看出比 tier2 大一級」（二十八輪修修：兩者看起來
          一樣大）。190px×5 字 + padding 56 = 1006 ≤ 1080，故 tier1 行寬

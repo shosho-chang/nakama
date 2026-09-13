@@ -306,7 +306,18 @@ other audit or use audio. The output covers the full ordered cue set even when `
 ```
 
 Agent B uses `"agent":"B"` and numeric confidence from `0.0` through `1.0`; agent A uses the runtime string
-confidence vocabulary. `cues_reviewed` equals the exact SRT cue count. Every finding/risk uses a non-empty,
+confidence vocabulary. `cues_reviewed` equals the exact SRT cue count.
+
+**Tell each worker what its scale means, or the merge auto-accepts nothing.** Strict consensus only
+auto-accepts a finding when agent A says `"high"` **and** agent B is **`>= 0.97`**. A worker that is
+never told where the bar sits calibrates to its own taste and lands just under it: on 20260721 呂冠緯 the
+brief said only "0.0 through 1.0", agent B capped its surest finding at 0.95, and `merge-official`
+accepted **0 of 162** components — even though A and B had independently proposed the *identical*
+replacement on 109 of them. Nothing was lost (Arbitration C accepted all 109 as `accept_identical`), but
+a whole adjudication round was spent on work the deterministic merge should have absorbed. Compare
+20260901 蘇予昕, whose B used 0.98 and whose merge accepted 34 up front. Phrase it as meaning, not as a
+number to hit: **0.97+ means "I would ship the release on this reading"**; anything you would want a
+second opinion on belongs below it, and anything you cannot substantiate belongs in `risk_cues`. Every finding/risk uses a non-empty,
 contiguous `cue_numbers` range, exact first/last timestamps, exact joined original text, and a boolean
 `major_risk`. `category` must come from exactly one of these two runtime enums; `risk_cues` uses the same
 finding schema.

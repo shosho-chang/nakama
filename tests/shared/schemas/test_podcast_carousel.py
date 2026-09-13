@@ -589,3 +589,55 @@ def test_apply_request_rejects_an_empty_edit_even_with_quote_slot_present():
 
     with pytest.raises(ValidationError):
         CarouselEditorApplyRequest(manifest_sha256="a" * 64)
+
+
+# --- emphasis 不可以是否定片語 -------------------------------------------------
+# emphasis 是整張卡唯一的橘色重點。放在否定詞上，全卡最亮的地方就在說「你錯了」。
+# 20260901 蘇予昕 r001 出過兩次，修修兩張都翻成肯定句（r002）。
+
+
+@pytest.mark.parametrize(
+    "emphasis",
+    ["不是我的表現優劣", "還不太算覺察", "沒有天分", "並不重要"],
+)
+def test_emphasis_cannot_be_a_negation_phrase(emphasis: str):
+    with pytest.raises(ValidationError, match="negation phrase"):
+        QuotePage(
+            page_id="quote",
+            variant="A",
+            text=f"其實{emphasis}，重點在別的地方",
+            emphasis=emphasis,
+            guest_name="蘇予昕",
+            guest_cutout="guest_v1.png",
+            evidence=[evidence()],
+        )
+
+
+def test_point_emphasis_cannot_be_a_negation_phrase():
+    """PointPage 走自己的 headline 檢查，不能繞過否定判斷。"""
+    with pytest.raises(ValidationError, match="negation phrase"):
+        PointPage(
+            page_id="point-not-awareness",
+            headline="只用腦袋分析，還不太算覺察",
+            emphasis="還不太算覺察",
+            body="被問到感受時眼神往上。",
+            evidence=[evidence()],
+        )
+
+
+@pytest.mark.parametrize("emphasis", ["不夠好", "存在就是有價值", "情緒鬆綁"])
+def test_affirmative_and_adjective_negations_still_pass(emphasis: str):
+    """只擋開頭是否定**判斷**的片語。
+
+    「不夠好」描述的是讀者已經承認的感受，不是在反駁讀者——擋掉它會逼文案繞路。
+    """
+    page = QuotePage(
+        page_id="quote",
+        variant="A",
+        text=f"我後來才知道{emphasis}這件事",
+        emphasis=emphasis,
+        guest_name="蘇予昕",
+        guest_cutout="guest_v1.png",
+        evidence=[evidence()],
+    )
+    assert page.emphasis == emphasis

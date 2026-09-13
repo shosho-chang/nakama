@@ -29,6 +29,7 @@ from agents.brook.script_video.finished_cut_production._policy import PolicyDeci
 from agents.brook.script_video.finished_cut_production._records import (
     DirectorEventProposal,
     DPEventProposal,
+    ReleaseArtifact,
     VisualEventProposal,
     _mint_accepted_stage,
 )
@@ -38,8 +39,10 @@ from agents.brook.script_video.finished_cut_production._semantic import (
 )
 from agents.brook.script_video.finished_cut_production._store import (
     InMemoryApprovedCutStore,
+    ProductionStoreError,
     _StoredRun,
 )
+from tests.brook.script_video.finished_cut_plan_records import plan_record
 
 COMMAND_ID = "approved-cut:fedcba9876543210fedcba9876543210"
 
@@ -97,18 +100,34 @@ def _asset(name: str) -> AssetRecord:
     )
 
 
+class _AcquiringAssetResolver:
+    """素材庫會長大——Director 跑完才知道要買什麼，買完就得馬上選得到。"""
+
+    def __init__(self, records: tuple[AssetRecord, ...]) -> None:
+        self._inner = InMemoryAssetResolver(records)
+        self._records = records
+
+    def acquire(self, record: AssetRecord) -> None:
+        self._records = (*self._records, record)
+        self._inner = InMemoryAssetResolver(self._records)
+
+    def __getattr__(self, name: str):
+        return getattr(self._inner, name)
+
+
 def _production(
     tmp_path,
     *,
     assets: tuple[AssetRecord, ...] = (),
     long_policy=None,
     context: EditorialCutContext | None = None,
+    asset_resolver=None,
 ):
     semantic = InMemorySemanticAdapter()
     production = FinishedCutProduction(
         store_root=tmp_path / "runtime",
         approved_cut_store=InMemoryApprovedCutStore((_approved_cut(),)),
-        asset_resolver=InMemoryAssetResolver(assets),
+        asset_resolver=asset_resolver or InMemoryAssetResolver(assets),
         semantic_adapter=semantic,
         context_resolver=InMemoryEditorialCutContextResolver(
             (context if context is not None else _editorial_context(),)
@@ -410,6 +429,90 @@ def test_dp_correction_keeps_other_selection_and_first_build_visual_are_full(tmp
         replacement.reference,
         unaffected.reference,
     )
+
+
+def test_dp_correction_can_select_an_asset_acquired_after_registration(tmp_path) -> None:
+    """登錄之後才買的素材，DP 選了就必須被收下——看得到卻收不下是最難查的那種壞。
+
+    2026-09-09 punch-L03：目錄快照讓 DP 只能在同一批錯的素材裡重挑。第一版修正只把
+    **送出去的 packet** 換成活目錄，於是 DP 看得到新買的素材、也選了它，但收件端的
+    `_events_for_acceptance` 仍拿快照去 `resolve_dp_reference`，AssetContractError 被
+    吞成 `_leave_in_review`：沒有 diagnostic、沒有 policy_diagnostics，`advance` 立刻
+    回 needs_review 什麼都不說，看起來就像答案被吃掉了。
+    """
+    original = _asset("purpose-original")
+    unaffected = _asset("golden-age")
+    acquired_later = _asset("purpose-acquired-after-registration")
+    resolver = _AcquiringAssetResolver((original, unaffected))
+    production, semantic = _production(tmp_path, asset_resolver=resolver)
+    production.advance(COMMAND_ID)
+    semantic.respond(
+        semantic.current_request(COMMAND_ID),
+        events=(
+            DirectorEventProposal(
+                "event-purpose",
+                ("cue-purpose",),
+                "Show work with a concrete sense of purpose",
+                "工作的意義與召喚",
+                "b_roll",
+            ),
+            DirectorEventProposal(
+                "event-golden-age",
+                ("cue-golden-age",),
+                "Show workers using AI together",
+                "AI 工作力的下一個黃金年代",
+                "b_roll",
+            ),
+        ),
+    )
+    production.advance(COMMAND_ID)
+    production.advance(COMMAND_ID)
+    semantic.respond(
+        semantic.current_request(COMMAND_ID),
+        events=(
+            DPEventProposal(
+                "event-purpose", "stock_video", "b_roll", original.reference, ("cue-purpose",)
+            ),
+            DPEventProposal(
+                "event-golden-age",
+                "stock_video",
+                "b_roll",
+                unaffected.reference,
+                ("cue-golden-age",),
+            ),
+        ),
+    )
+    production.advance(COMMAND_ID)
+
+    # 這一句就是現場：Director 跑完、視覺被打回，我才知道要買哪一支。
+    resolver.acquire(acquired_later)
+    production.request_correction(
+        COMMAND_ID,
+        "dp",
+        "event-purpose",
+        "原素材是別的 beat，改用剛買進來的那支橫式素材。",
+    )
+    production.advance(COMMAND_ID)
+    retry = semantic.current_request(COMMAND_ID)
+
+    assert acquired_later.reference in {item.reference for item in retry.worker_catalog_items}
+    semantic.respond(
+        retry,
+        events=(
+            DPEventProposal(
+                "event-purpose",
+                "stock_video",
+                "b_roll",
+                acquired_later.reference,
+                ("cue-purpose",),
+            ),
+        ),
+    )
+    corrected = production.advance(COMMAND_ID)
+
+    assert corrected.status == "pending"
+    inspected = production.inspect_run(COMMAND_ID)
+    assert inspected.current_stages[1].events[0].asset_ref == acquired_later.reference
 
 
 def test_dp_correction_changes_only_target_visual_placement_authority(tmp_path) -> None:
@@ -829,7 +932,7 @@ def test_stale_correction_base_fails_before_worker_dispatch_after_restart(tmp_pa
                 ),
             ),
             worker_catalog=stored.worker_catalog,
-            base_release_id=stored.base_release_id,
+            base_plan_id=stored.base_plan_id,
         )
     )
     counter = _CountingPendingSemanticAdapter()
@@ -897,7 +1000,7 @@ def test_superseded_same_stage_base_fails_before_worker_dispatch(tmp_path) -> No
                 ),
             ),
             worker_catalog=stored.worker_catalog,
-            base_release_id=stored.base_release_id,
+            base_plan_id=stored.base_plan_id,
         )
     )
     counter = _CountingPendingSemanticAdapter()
@@ -1069,7 +1172,7 @@ def test_tampered_visual_lineage_cannot_mint_materialization_plan(tmp_path) -> N
                 ),
             ),
             worker_catalog=stored.worker_catalog,
-            base_release_id=stored.base_release_id,
+            base_plan_id=stored.base_plan_id,
         )
     )
 
@@ -1129,7 +1232,7 @@ def test_tampered_derived_request_fails_before_builder_dispatch(tmp_path) -> Non
                 ),
             ),
             worker_catalog=stored.worker_catalog,
-            base_release_id=stored.base_release_id,
+            base_plan_id=stored.base_plan_id,
         )
     )
     builder = _CountingFailedBuilder()
@@ -1158,7 +1261,7 @@ def test_tampered_derived_request_fails_before_builder_dispatch(tmp_path) -> Non
                 derived_asset_request=replace(build_request, scope="forged"),
             ),
             worker_catalog=after_geometry.worker_catalog,
-            base_release_id=after_geometry.base_release_id,
+            base_plan_id=after_geometry.base_plan_id,
         )
     )
     forged_scope_builder = _CountingFailedBuilder()
@@ -1171,7 +1274,183 @@ def test_tampered_derived_request_fails_before_builder_dispatch(tmp_path) -> Non
         context_resolver=InMemoryEditorialCutContextResolver((_editorial_context(),)),
     )
 
-    forged_scope = forged_scope_process.advance(COMMAND_ID)
+    # 詞彙表以外的 scope 是「存壞了」，不是「這一輪做壞了」：store 讀回來的當下就
+    # 擋，`advance` 根本拿不到那份 run。比起讓引擎晚一步自己發現，這條路徑更短，
+    # 而且不需要引擎那邊再寫一份同樣的名單。
+    with pytest.raises(ProductionStoreError, match="scope"):
+        forged_scope_process.advance(COMMAND_ID)
 
-    assert forged_scope.status == "needs_review"
     assert forged_scope_builder.calls == 0
+
+
+# ── 修正窗口關在「封存成 Release」而不是「鑄出 plan」（修修 2026-09-10）────────
+#
+# 舊規則在長片線上是反的：Resolve 的 timeline 與 preview 只在 plan 生出來之後才存在，
+# 也就是說**等他看得到成品，窗口已經關了**。唯一的出路是重新登錄整支，
+# 把已經付掉的語意工作再付一次。
+
+
+def _run_to_minted_plan(tmp_path, *, asset_name: str = "window-stock"):
+    """把一支 run 推到 review_ready——plan 已鑄，Resolve 也已經可以物化了。"""
+    stock = _asset(asset_name)
+    spare = _asset(f"{asset_name}-spare")
+    production, semantic = _production(
+        tmp_path,
+        assets=(stock, spare),
+        long_policy=_AcceptingPolicy(),
+    )
+    production.advance(COMMAND_ID)
+    semantic.respond(
+        semantic.current_request(COMMAND_ID),
+        events=(
+            DirectorEventProposal(
+                "event-purpose",
+                ("cue-purpose",),
+                "Show a purposeful workplace",
+                "工作的意義與召喚",
+                "b_roll",
+            ),
+        ),
+    )
+    production.advance(COMMAND_ID)
+    production.advance(COMMAND_ID)
+    semantic.respond(
+        semantic.current_request(COMMAND_ID),
+        events=(
+            DPEventProposal(
+                "event-purpose", "stock_video", "b_roll", stock.reference, ("cue-purpose",)
+            ),
+        ),
+    )
+    production.advance(COMMAND_ID)
+    production.advance(COMMAND_ID)
+    production.advance(COMMAND_ID)
+    semantic.respond(
+        semantic.current_request(COMMAND_ID),
+        events=(VisualEventProposal("event-purpose", "approved"),),
+    )
+    return production, semantic, _advance_to_plan(production), spare
+
+
+def _advance_to_plan(production):
+    """推到 plan 真的鑄出來為止。次數寫死很脆——這條線的階段數改過好幾次。"""
+    for _ in range(6):
+        stored = production._store.load_run(COMMAND_ID)
+        if stored is not None and stored.view.materialization_plan is not None:
+            return stored.view.materialization_plan
+        production.advance(COMMAND_ID)
+    stored = production._store.load_run(COMMAND_ID)
+    status = stored.view.status if stored is not None else "run 不見了"
+    raise AssertionError(f"推不到鑄出 plan 的狀態：status={status}")
+
+
+def test_correction_is_open_after_the_plan_is_minted(tmp_path) -> None:
+    """他在 timeline 上說「這支 B-roll 換掉」——那一刻 plan 已經鑄出來了。"""
+    production, semantic, plan, spare = _run_to_minted_plan(tmp_path)
+
+    request_id = production.request_correction(
+        COMMAND_ID,
+        "dp",
+        "event-purpose",
+        "timeline 上看起來不對，換一支素材。",
+    )
+
+    assert request_id
+    after = production._store.load_run(COMMAND_ID)
+    assert after is not None
+    # plan 被清掉、run 退回 pending——重鑄一份不會動到任何已封存的東西。
+    assert after.view.materialization_plan is None
+    assert after.view.status == "pending"
+
+
+def _drive_until_plan(production, semantic, replacement):
+    """回應任何還掛著的 stage 請求，直到 plan 重新鑄出來。
+
+    不要寫死 advance 次數：correction 之後是 DP retry → visual retry 兩輪，
+    中間各有一次 dispatch／accept，階段數改過就會漂。
+    """
+    for _ in range(10):
+        stored = production._store.load_run(COMMAND_ID)
+        assert stored is not None
+        if stored.view.materialization_plan is not None:
+            return stored.view.materialization_plan
+        if stored.view.outstanding_request is not None:
+            request = semantic.current_request(COMMAND_ID)
+            if request.stage == "dp":
+                semantic.respond(
+                    request,
+                    events=(
+                        DPEventProposal(
+                            "event-purpose",
+                            "stock_video",
+                            "b_roll",
+                            replacement.reference,
+                            ("cue-purpose",),
+                        ),
+                    ),
+                )
+            elif request.stage == "visual_review":
+                semantic.respond(
+                    request,
+                    events=(VisualEventProposal("event-purpose", "approved"),),
+                )
+        production.advance(COMMAND_ID)
+    raise AssertionError("correction 之後推不回鑄出 plan 的狀態")
+
+
+def test_correction_after_the_plan_re_mints_a_different_plan(tmp_path) -> None:
+    """換完素材再走回來，會拿到一份**不同的** plan，而且素材真的換掉了。
+
+    plan 決定 staging 工作區與 Resolve transaction 的身分，所以「不同的 plan」
+    也就是「不會覆蓋掉上一版的產物」。
+    """
+    production, semantic, first_plan, spare = _run_to_minted_plan(tmp_path)
+    production.request_correction(COMMAND_ID, "dp", "event-purpose", "換一支素材。")
+
+    second_plan = _drive_until_plan(production, semantic, spare)
+
+    assert second_plan.plan_id != first_plan.plan_id
+    assert [component.asset_ref for component in second_plan.components] == [spare.reference]
+
+
+def test_correction_is_refused_once_the_plan_has_a_record(tmp_path) -> None:
+    """已經落成 plan record 的 plan 不能就地重鑄——那要走 request_revision。"""
+    production, semantic, plan, _spare = _run_to_minted_plan(tmp_path)
+    production._plan_records.publish((_record_for(plan),))
+
+    with pytest.raises(CommandRejectedError) as excinfo:
+        production.request_correction(COMMAND_ID, "dp", "event-purpose", "已經發布了還想改。")
+
+    message = str(excinfo.value)
+    assert "already has a plan record" in message
+    assert "request_revision" in message
+    # 被擋下來時 plan 必須原封不動。
+    still = production._store.load_run(COMMAND_ID)
+    assert still is not None and still.view.materialization_plan is not None
+
+
+def _record_for(plan):
+    """把這份 plan 做成一份 plan record——只給上面那個「已有紀錄就擋下來」用。
+
+    紀錄的身分就是 plan 的身分，所以 `plan_id` 必須是 `plan.plan_id`：引擎是拿
+    這一格去認「這個 plan 已經有紀錄了」。
+    """
+    artifact = ReleaseArtifact(path="preview.mp4", bytes=1024, sha256="b" * 64, duration_sec=9.0)
+    return plan_record(
+        plan_id=plan.plan_id,
+        episode_id=plan.episode_id,
+        cut_id=plan.cut_id,
+        format=plan.format,
+        command_id=plan.command_id,
+        run_id=plan.run_id,
+        editorial_master_id="e" * 64,
+        winner_id="winner-sealed",
+        tight_cut_id="tight-sealed",
+        director_acceptance_id=plan.director_acceptance_id,
+        dp_acceptance_id=plan.dp_acceptance_id,
+        visual_acceptance_id=plan.visual_acceptance_id,
+        events=plan.events,
+        preview=artifact,
+        subtitle=replace(artifact, path="review.srt"),
+        components=plan.components,
+    )

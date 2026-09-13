@@ -1,6 +1,8 @@
 """Thousand Sunny — Nakama web server entry point."""
 
 import os
+import sys
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -16,6 +18,17 @@ from fastapi.staticfiles import StaticFiles
 from shared.log import force_utf8_console, get_logger
 
 force_utf8_console()
+
+# `.env` must be in os.environ BEFORE any router import: auth reads its config at
+# import time, and `_episode_dir` reads PODCAST_EPISODES_ROOT straight from the
+# environment. Relying on the launcher to inject it (`uvicorn --env-file`) meant a
+# Bridge started without that flag answered「PODCAST_EPISODES_ROOT 未設定」to every
+# packaging approval — the same app served two ports with different behaviour.
+# `load_config` walks up to the repo-level `.env`, so this also works from a
+# worktree, which a bare `Path(__file__).parent.parent / ".env"` would not.
+from shared.config import load_config  # noqa: E402
+
+load_config()
 
 from thousand_sunny.middleware.csp import add_csp_middleware  # noqa: E402
 from thousand_sunny.preflight import run_preflight  # noqa: E402
@@ -63,6 +76,40 @@ _logger = get_logger("nakama.web.app")
 # and the FastAPI lifespan that triggers the wiring.
 
 
+def _serving_for_real() -> bool:
+    """這個 process 是真的在服務，還是只是有人把 app 拉起來看看？
+
+    測試會用 TestClient 驅動 lifespan，而 `.env` 裡 `NAKAMA_CAROUSEL_AUTORUN=1`、
+    `PODCAST_EPISODES_ROOT=G:/Footages` 都是**真的**。沒有這道閘，跑一次測試就會
+    去掃 footage 磁碟，甚至真的認領一張 queued 修正單開 Chrome 出圖——那是拿
+    production 的工作單餵測試。開機掃孤兒是伺服器的職責，不是「有人 import 了
+    這個模組」的職責。
+    """
+    return "pytest" not in sys.modules and "PYTEST_CURRENT_TEST" not in os.environ
+
+
+def _carousel_sweep_body() -> None:
+    from thousand_sunny.routers.carousel_review import run_queued_autorun_sweep
+
+    try:
+        run_queued_autorun_sweep()
+    except Exception:  # noqa: BLE001 — 背景執行緒不能把例外丟進虛空
+        _logger.exception("carousel autorun sweep crashed")
+
+
+def _start_carousel_autorun_sweep() -> None:
+    """開機撿一次 carousel 孤兒修正單（見 `carousel_review.sweep_queued_autorunnable_jobs`）。
+
+    丟到 daemon thread：掃描本身很輕，但撿到的單會一路跑到出圖，那是分鐘級的，
+    不能擋住 uvicorn 起來。autorun 關著時 sweep 自己會回空清單。
+    """
+    if not _serving_for_real():
+        return
+    threading.Thread(
+        target=_carousel_sweep_body, name="carousel-autorun-sweep", daemon=True
+    ).start()
+
+
 @asynccontextmanager
 async def _lifespan(app_: FastAPI):
     """FastAPI lifespan that wires ADR-024 promotion surfaces at startup.
@@ -81,6 +128,7 @@ async def _lifespan(app_: FastAPI):
     if not os.getenv("DISABLE_ROBIN"):
         config = load_promotion_wiring_config()
         wire_promotion_surfaces(config)
+    _start_carousel_autorun_sweep()
     yield
     # No teardown wired in N518 — services hold no per-request state.
 

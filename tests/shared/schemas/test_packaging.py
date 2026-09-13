@@ -295,11 +295,24 @@ def test_cut_long_wrong_title_count_rejected():
         CutV1(**data)
 
 
-def test_cut_long_wrong_package_count_rejected():
+def test_cut_long_too_many_packages_rejected():
     data = _long_cut_data()
-    data["packages"] = data["packages"][:2]  # 2 instead of 3
-    with pytest.raises(ValidationError, match="3 packages"):
+    data["packages"] = [*data["packages"], _package(1)]  # 4 instead of 3
+    with pytest.raises(ValidationError, match="at most 3 packages"):
         CutV1(**data)
+
+
+@pytest.mark.parametrize("count", [0, 1, 2])
+def test_cut_long_partial_packages_is_a_legal_draft(count):
+    """封面是一個一個補上的，中間必然經過 0/1/2 個。
+
+    舊規則「剛好 3 個」把那段中間態當成壞檔，一支未完成的長片會讓**整個
+    packaging 頁** 422，連同已經配好封面的別支。「approve 之前要湊滿」由 gate 守
+    （`packaging_approve` 擋沒有 package 的長片），不由檔案 schema 守。
+    """
+    data = _long_cut_data()
+    data["packages"] = data["packages"][:count]
+    assert len(CutV1(**data).packages) == count
 
 
 def test_cut_short_with_packages_rejected():

@@ -6,7 +6,6 @@ import re
 import shutil
 from dataclasses import dataclass, replace
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -19,10 +18,7 @@ from agents.brook.script_video.finished_cut_production._approved_cut import (
     VerifiedEditorialMaster,
 )
 from agents.brook.script_video.finished_cut_production._assets import (
-    AssetKind,
     InMemoryAssetResolver,
-    WorkerCatalogItem,
-    WorkerSelectionCatalog,
 )
 from agents.brook.script_video.finished_cut_production._codex_semantic import (
     CodexProcessResult,
@@ -32,20 +28,12 @@ from agents.brook.script_video.finished_cut_production._composition import (
     FinishedCutProductionApplication,
     ProductionDependencies,
     ProductionPaths,
-    _stock_video_metadata_from_catalog,
     build_production_application,
 )
 from agents.brook.script_video.finished_cut_production._context import (
     CanonicalSection,
     CueAnchor,
     CutSourceRange,
-)
-from agents.brook.script_video.finished_cut_production._cutover import (
-    UnpublishedReleaseIndex,
-)
-from agents.brook.script_video.finished_cut_production._face_placement import (
-    DeterministicFacialSafePlacement,
-    OpenCvHaarFaceDetector,
 )
 from agents.brook.script_video.finished_cut_production._policy import PolicyDecision
 from agents.brook.script_video.finished_cut_production._records import (
@@ -54,7 +42,6 @@ from agents.brook.script_video.finished_cut_production._records import (
     EventRecord,
     ReleaseArtifact,
     VisualEventProposal,
-    _seal_finished_cut_release,
 )
 from agents.brook.script_video.finished_cut_production._semantic import (
     DurableSemanticAdapter,
@@ -62,13 +49,14 @@ from agents.brook.script_video.finished_cut_production._semantic import (
     SemanticDispatchOutcome,
 )
 from agents.brook.script_video.finished_cut_production._store import (
-    InMemoryCurrentReleaseIndex,
+    InMemoryPlanRecordIndex,
     _FilesystemProductionStore,
     _FilesystemSemanticDispatchLedger,
 )
 from agents.brook.script_video.finished_cut_production._visual_assets import (
     LongDerivedAssetBuilder,
 )
+from tests.brook.script_video.finished_cut_plan_records import plan_record
 
 # 這幾支測的是 Long media composition 的實際接線，需要本機釘住的 HyperFrames
 # runtime 與 Node（ci.yml 有意不裝 Node）。缺了就 skip，照 repo 既有慣例——
@@ -104,79 +92,6 @@ class _MasterVerifier:
 class _AcceptingPolicy:
     def validate(self, _candidate) -> PolicyDecision:
         return PolicyDecision("accepted")
-
-
-class _CutoverAuthority:
-    def resolve(self, command_id: str):
-        return SimpleNamespace(command_id=command_id, episode_id="episode-1")
-
-
-class _PreparedCandidates:
-    def __init__(self) -> None:
-        self.calls: list[str] = []
-
-    def prepare(self, command_id: str):
-        self.calls.append(command_id)
-        position = len(self.calls)
-        return SimpleNamespace(
-            candidate=SimpleNamespace(
-                candidate_id=f"candidate-{position}",
-                command_id=command_id,
-                episode_id="episode-1",
-                cut_id=f"long-{position}",
-            )
-        )
-
-
-class _ConfiguredCutover:
-    def __init__(self) -> None:
-        self.call: tuple[str, tuple[object, ...]] | None = None
-
-    def run(self, cutover_id: str, candidates: tuple[object, ...]):
-        self.call = (cutover_id, candidates)
-        return SimpleNamespace(
-            cutover_id=cutover_id,
-            episode_id="episode-1",
-            status="completed",
-            releases=tuple(
-                SimpleNamespace(release_id=f"release-{position}") for position in range(1, 4)
-            ),
-            unpublished_index=UnpublishedReleaseIndex(
-                index_id="manifest-0123456789abcdef01234567",
-                episode_id="episode-1",
-                release_ids=("release-1", "release-2", "release-3"),
-            ),
-            target_deployment_id="finished-cut-production-v1",
-        )
-
-
-def test_application_cutover_resolves_three_staged_candidates_once() -> None:
-    materialization = _PreparedCandidates()
-    cutover = _ConfiguredCutover()
-    application = FinishedCutProductionApplication(
-        episode_id="episode-1",
-        authority=_CutoverAuthority(),
-        production=SimpleNamespace(),
-        semantic_adapter=SimpleNamespace(),
-        run_store_root=Path("runtime/runs"),
-        materialization=materialization,
-        materialization_unavailable_reason=None,
-        cutover=cutover,
-    )
-    command_ids = tuple(f"approved-cut:{digit * 32}" for digit in ("1", "2", "3"))
-
-    result = application.cutover("lin-long-cutover", command_ids)
-
-    assert materialization.calls == list(command_ids)
-    assert cutover.call is not None
-    assert tuple(candidate.cut_id for candidate in cutover.call[1]) == (
-        "long-1",
-        "long-2",
-        "long-3",
-    )
-    assert result.state == "completed"
-    assert result.manifest_id == "manifest-0123456789abcdef01234567"
-    assert result.release_ids == ("release-1", "release-2", "release-3")
 
 
 def _registration() -> ApprovedCutRegistration:
@@ -319,14 +234,42 @@ def test_registration_rejects_source_range_outside_verified_master(tmp_path: Pat
         authority.register(invalid)
 
 
-def test_long_registration_requires_canonical_sections(tmp_path: Path) -> None:
+def test_a_long_cut_without_sections_registers_and_is_left_to_policy(tmp_path: Path) -> None:
+    """沒有章節不再擋在登錄門外——長片本來就都有章節，這條幾乎不會 fire。
+
+    真的沒有的時候，`_policy` 的 `canonical_sections_missing` 會接住（它才是真的
+    前置條件：下一行就 index `sections[0]`），而且它是**診斷**，會出現在審核頁上。
+    修修 2026-09-13：「長片不是一定要有章節嗎？那檢查這個做什麼？」
+    """
     authority = ApprovedCutAuthority(
         tmp_path / "authority",
         master_verifier=_MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0)),
     )
 
-    with pytest.raises(ApprovedCutRegistrationError, match="canonical sections"):
-        authority.register(replace(_registration(), sections=()))
+    command_id = authority.register(replace(_registration(), sections=()))
+
+    assert authority.resolve(command_id) is not None
+
+
+def test_a_chapter_title_with_a_colon_prefix_is_no_longer_refused(tmp_path: Path) -> None:
+    """「三個選擇：先做哪一個」是正常的中文標題，不該讓整支 cut 登錄不進來。
+
+    登錄門口本來有兩條正則（4 字內＋冒號、第三人稱代名詞開頭）。同一條規則寫作端
+    已經有了（`.claude/skills/longform-cut/SKILL.md`），而正則這一份會誤殺。
+    """
+    authority = ApprovedCutAuthority(
+        tmp_path / "authority",
+        master_verifier=_MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0)),
+    )
+    registration = _registration()
+    sections = tuple(
+        replace(section, transition_title="三個選擇：先做哪一個")
+        for section in registration.sections
+    )
+
+    command_id = authority.register(replace(registration, sections=sections))
+
+    assert authority.resolve(command_id) is not None
 
 
 def test_registration_requires_valid_tight_subtitle_cues(tmp_path: Path) -> None:
@@ -600,10 +543,10 @@ def test_editorial_feedback_is_director_only_and_not_forwarded_to_dp(tmp_path: P
 
 
 def test_targeted_revision_can_only_name_an_event_of_exact_current(tmp_path: Path) -> None:
-    current = InMemoryCurrentReleaseIndex()
+    current = InMemoryPlanRecordIndex()
     artifact = ReleaseArtifact("artifact.bin", 1, "b" * 64)
-    release = _seal_finished_cut_release(
-        release_id="release-current",
+    release = plan_record(
+        plan_id="release-current",
         episode_id="episode-1",
         cut_id="long-3",
         format="long",
@@ -615,7 +558,6 @@ def test_targeted_revision_can_only_name_an_event_of_exact_current(tmp_path: Pat
         director_acceptance_id="acceptance-director",
         dp_acceptance_id="acceptance-dp",
         visual_acceptance_id="acceptance-visual",
-        materialization_plan_id="plan-1",
         events=(
             EventRecord(
                 event_id="event-1",
@@ -634,8 +576,6 @@ def test_targeted_revision_can_only_name_an_event_of_exact_current(tmp_path: Pat
         ),
         preview=artifact,
         subtitle=artifact,
-        transaction_receipt_id="transaction-receipt-1",
-        rollback_ref="rollback-1",
     )
     current.publish((release,))
     application = FinishedCutProductionApplication.open(
@@ -645,7 +585,7 @@ def test_targeted_revision_can_only_name_an_event_of_exact_current(tmp_path: Pat
         dependencies=ProductionDependencies(
             asset_resolver=InMemoryAssetResolver(()),
             semantic_adapter=InMemorySemanticAdapter(),
-            current_release_index=current,
+            plan_records=current,
         ),
     )
 
@@ -653,7 +593,7 @@ def test_targeted_revision_can_only_name_an_event_of_exact_current(tmp_path: Pat
 
     assert re.fullmatch(r"targeted-revision:[0-9a-f]{32}", revision_id)
     assert application.status(revision_id).state == "registered"
-    with pytest.raises(CommandRejectedError, match="exact current"):
+    with pytest.raises(CommandRejectedError, match="plan record is not current"):
         application.request_revision("release-old", "event-1", "不能套舊 release")
 
 
@@ -749,62 +689,12 @@ def test_production_composition_wires_offline_long_media_builder_across_restart(
     reopened_builder = reopened._production._derived_asset_builder
     assert isinstance(first_builder, LongDerivedAssetBuilder)
     assert isinstance(reopened_builder, LongDerivedAssetBuilder)
-    assert isinstance(first_builder._face_placement, DeterministicFacialSafePlacement)
-    assert isinstance(
-        first_builder._face_placement._face_detector,
-        OpenCvHaarFaceDetector,
-    )
     first_runtime = first_builder._title_renderer._browser._runtime
     reopened_runtime = reopened_builder._title_renderer._browser._runtime
     assert first_runtime == reopened_runtime
     assert first_runtime.receipt_content_hash == (
         "59037c5dfd0c6769e2f6c43e5f31894913d7b6a3a7d5847d265da1a5a5a3938d"
     )
-
-
-def test_production_composition_projects_only_exact_stock_dimensions_from_live_catalog() -> None:
-    kinds = (
-        AssetKind.STOCK,
-        AssetKind.STOCK,
-        AssetKind.STOCK,
-        AssetKind.PHOTO,
-        AssetKind.NON_EDITORIAL_CLIP,
-    )
-    catalog = WorkerSelectionCatalog(
-        WorkerCatalogItem(
-            reference=f"asset-sha256:{index:064x}",
-            kind=kind,
-            visual_summary=f"neutral acquisition {index}",
-            width=1920 if index != 2 else 1080,
-            height=1080 if index != 2 else 1920,
-            duration_sec=None if kind is AssetKind.PHOTO else 12.0,
-        )
-        for index, kind in enumerate(kinds, start=1)
-    )
-
-    projected = _stock_video_metadata_from_catalog(catalog)
-
-    assert tuple((row.asset_ref, row.native_width, row.native_height) for row in projected) == (
-        ("asset-sha256:" + f"{1:064x}", 1920, 1080),
-        ("asset-sha256:" + f"{2:064x}", 1080, 1920),
-        ("asset-sha256:" + f"{3:064x}", 1920, 1080),
-    )
-
-
-def test_production_composition_rejects_untrusted_stock_dimensions() -> None:
-    catalog = SimpleNamespace(
-        items=lambda: (
-            SimpleNamespace(
-                reference="asset-sha256:" + "1" * 64,
-                kind=AssetKind.STOCK,
-                width=None,
-                height=1080,
-            ),
-        )
-    )
-
-    with pytest.raises(ValueError, match="not trustworthy"):
-        _stock_video_metadata_from_catalog(catalog)
 
 
 @requires_local_hyperframes
@@ -834,9 +724,9 @@ def test_failed_director_dispatch_is_needs_review_and_never_redispatches_after_r
     assert len(dispatches) == 1
     assert reopened_status.run_id == first_status.run_id
     assert first_status.state == "needs_review"
-    assert first_status.reason_code == "semantic_process_failed"
+    assert first_status.reason_code == "semantic_dispatch_failed"
     assert reopened_status.state == "needs_review"
-    assert reopened_status.reason_code == "semantic_process_failed"
+    assert reopened_status.reason_code == "semantic_dispatch_failed"
     retry_request_id = reopened.retry_failed_dispatch(command_id)
     assert retry_request_id.startswith("request-")
 
@@ -947,7 +837,7 @@ def test_restart_after_claim_without_outcome_is_indeterminate_and_never_redispat
 
     assert child_calls == 1
     assert status.state == "needs_review"
-    assert status.reason_code == "semantic_dispatch_indeterminate"
+    assert status.reason_code == "semantic_dispatch_failed"
 
 
 @requires_local_hyperframes
@@ -1006,7 +896,7 @@ def test_wrong_request_response_is_durably_rejected_without_redispatch(
 
     assert child_calls == 1
     assert first_status.state == "needs_review"
-    assert first_status.reason_code == "semantic_output_invalid"
+    assert first_status.reason_code == "semantic_dispatch_failed"
     assert reopened_status == first_status
 
 
@@ -1015,7 +905,7 @@ def test_targeted_revision_dispatches_its_new_event_request_once_without_full_st
 ) -> None:
     paths = ProductionPaths(tmp_path / "runtime", tmp_path / "episodes")
     verifier = _MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0))
-    current = InMemoryCurrentReleaseIndex()
+    current = InMemoryPlanRecordIndex()
     base_semantic = InMemorySemanticAdapter()
     base = FinishedCutProductionApplication.open(
         paths,
@@ -1024,7 +914,7 @@ def test_targeted_revision_dispatches_its_new_event_request_once_without_full_st
         dependencies=ProductionDependencies(
             asset_resolver=InMemoryAssetResolver(()),
             semantic_adapter=base_semantic,
-            current_release_index=current,
+            plan_records=current,
             long_policy=_AcceptingPolicy(),
         ),
     )
@@ -1062,8 +952,8 @@ def test_targeted_revision_dispatches_its_new_event_request_once_without_full_st
     plan = stored.view.materialization_plan
     assert plan is not None
     artifact = ReleaseArtifact("artifact.bin", 1, "b" * 64)
-    release = _seal_finished_cut_release(
-        release_id="release-current",
+    release = plan_record(
+        plan_id="release-current",
         episode_id="episode-1",
         cut_id="long-3",
         format="long",
@@ -1075,13 +965,10 @@ def test_targeted_revision_dispatches_its_new_event_request_once_without_full_st
         director_acceptance_id=plan.director_acceptance_id,
         dp_acceptance_id=plan.dp_acceptance_id,
         visual_acceptance_id=plan.visual_acceptance_id,
-        materialization_plan_id=plan.plan_id,
         events=plan.events,
         components=plan.components,
         preview=artifact,
         subtitle=artifact,
-        transaction_receipt_id="transaction-receipt-1",
-        rollback_ref="rollback-1",
     )
     current.publish((release,))
     worker_requests = []
@@ -1092,7 +979,7 @@ def test_targeted_revision_dispatches_its_new_event_request_once_without_full_st
             return SemanticDispatchOutcome(
                 request.request_id,
                 "failed",
-                reason_code="semantic_process_failed",
+                reason_code="semantic_dispatch_failed",
                 diagnostic="fixture failure",
             )
 
@@ -1111,7 +998,7 @@ def test_targeted_revision_dispatches_its_new_event_request_once_without_full_st
             dependencies=ProductionDependencies(
                 asset_resolver=InMemoryAssetResolver(()),
                 semantic_adapter=semantic,
-                current_release_index=current,
+                plan_records=current,
                 long_policy=_AcceptingPolicy(),
             ),
         )
@@ -1133,7 +1020,7 @@ def test_targeted_revision_dispatches_its_new_event_request_once_without_full_st
     }
     assert tuple(event.event_id for event in worker_requests[0].events) == ("event-1",)
     assert first_status.state == "needs_review"
-    assert first_status.reason_code == "semantic_process_failed"
+    assert first_status.reason_code == "semantic_dispatch_failed"
     assert reopened_status == first_status
     assert base.status(base_command_id).current_stage == "materialization"
 

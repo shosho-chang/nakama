@@ -9,7 +9,6 @@ from pathlib import Path
 import pytest
 
 from agents.brook.script_video.finished_cut_production._composition import (
-    ProductionCutoverConfiguration,
     ProductionResolveConfiguration,
     ProductionStatusView,
 )
@@ -63,11 +62,11 @@ class _FakeApplication:
 
     def request_revision(
         self,
-        current_release_ref: str,
+        current_plan_ref: str,
         event_id: str,
         feedback: str,
     ) -> str:
-        self.revision_request = (current_release_ref, event_id, feedback)
+        self.revision_request = (current_plan_ref, event_id, feedback)
         return "targeted-revision:0123456789abcdef0123456789abcdef"
 
     def inspect_run(self, command_id: str) -> RunInspection:
@@ -100,31 +99,6 @@ class _FakeApplication:
     def retry_failed_dispatch(self, command_id: str) -> str:
         self.dispatch_recovery = command_id
         return "request-fedcba9876543210fedcba9876543210"
-
-    def cutover(
-        self,
-        cutover_id: str,
-        command_ids: tuple[str, ...],
-    ) -> _CutoverStatus:
-        self.cutover_request = (cutover_id, command_ids)
-        return _CutoverStatus(
-            cutover_id=cutover_id,
-            episode_id="20260805 林之晨",
-            state="completed",
-            release_ids=("release-1", "release-2", "release-3"),
-            manifest_id="manifest-1",
-            deployment_id="finished-cut-production-v1",
-        )
-
-
-@dataclass(frozen=True)
-class _CutoverStatus:
-    cutover_id: str
-    episode_id: str
-    state: str
-    release_ids: tuple[str, ...]
-    manifest_id: str | None
-    deployment_id: str
 
 
 def _registration_payload() -> dict[str, object]:
@@ -196,14 +170,6 @@ def _resolve_configuration_payload(tmp_path: Path) -> dict[str, object]:
     }
 
 
-def _cutover_configuration_payload(tmp_path: Path) -> dict[str, object]:
-    return {
-        "fixed_cut_order": ["long-1", "long-2", "long-3"],
-        "target_deployment_id": "finished-cut-production-v1",
-        "deployment_state_path": str(tmp_path / "deployment" / "current.json"),
-    }
-
-
 def test_cli_passes_exact_resolve_configuration_to_composition(
     tmp_path: Path,
     capsys,
@@ -259,101 +225,6 @@ def test_cli_passes_exact_resolve_configuration_to_composition(
         ),
     )
     assert json.loads(capsys.readouterr().out)["state"] == "registered"
-
-
-def test_cli_runs_controlled_three_candidate_cutover_with_pinned_configuration(
-    tmp_path: Path,
-    capsys,
-) -> None:
-    resolve_path = tmp_path / "resolve.json"
-    resolve_path.write_text(
-        json.dumps(_resolve_configuration_payload(tmp_path), ensure_ascii=False),
-        encoding="utf-8",
-    )
-    cutover_path = tmp_path / "cutover.json"
-    cutover_path.write_text(
-        json.dumps(_cutover_configuration_payload(tmp_path)),
-        encoding="utf-8",
-    )
-    application = _FakeApplication()
-    captured: dict[str, object] = {}
-
-    def factory(
-        _paths,
-        _episode_id,
-        *,
-        resolve_configuration: ProductionResolveConfiguration,
-        cutover_configuration: ProductionCutoverConfiguration,
-    ):
-        captured["resolve"] = resolve_configuration
-        captured["cutover"] = cutover_configuration
-        return application
-
-    command_ids = tuple(f"approved-cut:{digit * 32}" for digit in ("1", "2", "3"))
-    exit_code = cli.main(
-        [
-            "--runtime-root",
-            str(tmp_path / "runtime"),
-            "--episodes-root",
-            str(tmp_path / "episodes"),
-            "--episode-id",
-            "20260805 林之晨",
-            "--resolve-config",
-            str(resolve_path),
-            "--cutover-config",
-            str(cutover_path),
-            "cutover",
-            "lin-longs-v3",
-            *command_ids,
-        ],
-        application_factory=factory,
-    )
-
-    assert exit_code == 0
-    assert application.cutover_request == ("lin-longs-v3", command_ids)
-    configuration = captured["cutover"]
-    assert isinstance(configuration, ProductionCutoverConfiguration)
-    assert configuration.fixed_cut_order == ("long-1", "long-2", "long-3")
-    assert configuration.target_deployment_id == "finished-cut-production-v1"
-    assert json.loads(capsys.readouterr().out) == {
-        "cutover_id": "lin-longs-v3",
-        "deployment_id": "finished-cut-production-v1",
-        "episode_id": "20260805 林之晨",
-        "manifest_id": "manifest-1",
-        "release_ids": ["release-1", "release-2", "release-3"],
-        "state": "completed",
-    }
-
-
-def test_cli_cutover_fails_before_composition_when_config_is_missing(
-    tmp_path: Path,
-) -> None:
-    called = False
-
-    def factory(*_args, **_kwargs):
-        nonlocal called
-        called = True
-        return _FakeApplication()
-
-    with pytest.raises(ValueError, match="pinned cutover configuration"):
-        cli.main(
-            [
-                "--runtime-root",
-                str(tmp_path / "runtime"),
-                "--episodes-root",
-                str(tmp_path / "episodes"),
-                "--episode-id",
-                "episode-1",
-                "cutover",
-                "cutover-1",
-                "approved-cut:" + "1" * 32,
-                "approved-cut:" + "2" * 32,
-                "approved-cut:" + "3" * 32,
-            ],
-            application_factory=factory,
-        )
-
-    assert called is False
 
 
 def test_cli_registers_approved_cut_through_composition_interface(

@@ -60,9 +60,18 @@ _SHORT_TITLE = [
 ]
 
 
+#: Step 2 的整份關鍵字研究。該集第一支要帶，之後幾支讀 `<packaging_dir>/keywords.json`。
+_KEYWORDS = {
+    "episode": "20260723-xieboran",
+    "method": "YouTube Data API 直查 + 人工數對題數",
+    "keywords": [{"term": "大腦外包", "opportunity": 8, "cite": "L274"}],
+}
+
+
 def _long_input(episode: str = "20260723-xieboran") -> dict:
     return {
         "episode": episode,
+        "keywords": _KEYWORDS,
         "cut_id": "punch-L1",
         "format": "long",
         "information_origin": "full_text",
@@ -78,6 +87,7 @@ def _long_input(episode: str = "20260723-xieboran") -> dict:
 def _short_input(episode: str = "20260723-xieboran") -> dict:
     return {
         "episode": episode,
+        "keywords": _KEYWORDS,
         "cut_id": "short-S1",
         "format": "short",
         "information_origin": "one_liner",
@@ -122,10 +132,13 @@ class TestEmitShortFilm:
 
 class TestEmitLongFilm:
     def test_long_film_writes_title_trace_json(self, tmp_path):
-        """title_trace.json must always be written."""
+        """title_trace.json must always be written — 逐支一個子目錄（ADR-054 D14）。
+
+        扁平單檔會讓第二支把第一支的完整推導鏈整檔抹掉。
+        """
         packaging_dir = tmp_path / "packaging"
         emit_mod.emit(_long_input(), packaging_dir)
-        trace_path = packaging_dir / "title_trace.json"
+        trace_path = packaging_dir / "punch-L1" / "title_trace.json"
         assert trace_path.exists()
         trace = json.loads(trace_path.read_text(encoding="utf-8"))
         assert trace["cut_id"] == "punch-L1"
@@ -197,7 +210,9 @@ class TestVaultCopy:
 
         vault_ep = vault_path / "Attachments" / "packaging" / "20260723-xieboran"
         assert (vault_ep / "packages.json").exists()
-        assert (vault_ep / "title_trace.json").exists()
+        # 推導鏈在 vault 也是逐支子目錄——否則三支長片會搶同一個檔名，
+        # 等於把 working set 剛修好的覆寫問題搬到 SoT 上。
+        assert (vault_ep / "short-S1" / "title_trace.json").exists()
 
     def test_emit_skips_vault_when_not_set(self, tmp_path):
         """Without vault_path, only packaging_dir files are written."""
@@ -307,3 +322,99 @@ class TestEmitMergesInsteadOfOverwriting:
         mod.emit(payload, tmp_path / "work", vault_path=vault)
         assert (vault / "Attachments" / "packaging" / "20260723-xieboran").is_dir()
         assert not (vault / "Attachments" / "packaging" / "20260723 謝伯讓").exists()
+
+
+class TestTracePerCut:
+    def test_a_second_cut_does_not_erase_the_first_cuts_trace(self, tmp_path):
+        """兩支長片各自留著自己的推導鏈。
+
+        舊版把 title_trace.json 寫在 packaging 根目錄，跑第二支就整檔覆寫——
+        跟 packages.json 那段血淚（2026-07-29 謝伯讓集）同一類，只是當時只修了一半。
+        """
+        packaging_dir = tmp_path / "packaging"
+
+        first = _long_input()
+        first["cut_id"] = "punch-L5"
+        first["title_trace"] = {"marker": "first"}
+        emit_mod.emit(first, packaging_dir)
+
+        second = _long_input()
+        second["cut_id"] = "story-L1"
+        second["title_trace"] = {"marker": "second"}
+        emit_mod.emit(second, packaging_dir)
+
+        one = json.loads(
+            (packaging_dir / "punch-L5" / "title_trace.json").read_text(encoding="utf-8")
+        )
+        two = json.loads(
+            (packaging_dir / "story-L1" / "title_trace.json").read_text(encoding="utf-8")
+        )
+        assert one["title_trace"]["marker"] == "first"
+        assert two["title_trace"]["marker"] == "second"
+
+    def test_a_legacy_flat_trace_is_left_untouched(self, tmp_path):
+        """改路徑之前落下的扁平舊檔不該被動到——它是另一支的紀錄。"""
+        packaging_dir = tmp_path / "packaging"
+        packaging_dir.mkdir(parents=True)
+        legacy = packaging_dir / "title_trace.json"
+        legacy.write_text('{"cut_id": "full", "keep": true}', encoding="utf-8")
+
+        emit_mod.emit(_long_input(), packaging_dir)
+
+        assert json.loads(legacy.read_text(encoding="utf-8")) == {"cut_id": "full", "keep": True}
+
+
+class TestKeywordsCache:
+    """`keywords.json` 是整集共用的關鍵字研究，第一支寫、後面幾支讀。
+
+    skill 的 Step 2 本來就這樣寫，但寫檔責任在 agent 身上、沒有任何 deterministic
+    保證：20260901 蘇予昕 整集跑完一份都沒有，20260721 呂冠緯 跑到第二支才補上。
+    一集 1 支完整節目 + 3 支長精華 + 3 支短片，關鍵字查詢因此重複到 7 次。
+    """
+
+    def test_first_cut_writes_the_cache(self, tmp_path):
+        result = emit_mod.emit(_long_input(), tmp_path)
+        cache = tmp_path / "keywords.json"
+
+        assert result["keywords_cache"] == "written"
+        assert json.loads(cache.read_text(encoding="utf-8")) == _KEYWORDS
+        assert str(cache) in result["files"]
+
+    def test_second_cut_reuses_it_and_needs_no_keywords_of_its_own(self, tmp_path):
+        emit_mod.emit(_long_input(), tmp_path)
+        second = _short_input()
+        del second["keywords"]
+
+        result = emit_mod.emit(second, tmp_path)
+
+        assert result["keywords_cache"] == "reused"
+        assert json.loads((tmp_path / "keywords.json").read_text(encoding="utf-8")) == _KEYWORDS
+
+    def test_a_cut_with_no_cache_and_no_keywords_fails_loud(self, tmp_path):
+        payload = _long_input()
+        del payload["keywords"]
+
+        with pytest.raises(ValueError, match="keywords.json"):
+            emit_mod.emit(payload, tmp_path)
+
+        # 擋下來就是擋下來——不可以留下半套的 packages.json。
+        assert not (tmp_path / "packages.json").exists()
+
+    def test_a_second_research_pass_does_not_overwrite_the_cache(self, tmp_path):
+        """快取就是為了不要每支重查；第二支又帶研究進來是浪費，不是更新。"""
+        emit_mod.emit(_long_input(), tmp_path)
+        second = _short_input()
+        second["keywords"] = {"keywords": [{"term": "重查出來的別的東西"}]}
+
+        result = emit_mod.emit(second, tmp_path)
+
+        assert result["keywords_cache"] == "reused"
+        assert json.loads((tmp_path / "keywords.json").read_text(encoding="utf-8")) == _KEYWORDS
+
+    def test_an_empty_keywords_object_is_not_a_cache(self, tmp_path):
+        """`{}` 是「我沒做 Step 2」，不是「研究結果是空的」。"""
+        payload = _long_input()
+        payload["keywords"] = {}
+
+        with pytest.raises(ValueError, match="keywords.json"):
+            emit_mod.emit(payload, tmp_path)

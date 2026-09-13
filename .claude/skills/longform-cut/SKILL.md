@@ -21,6 +21,164 @@ description: >
 （`FORMAT_*` 參數表：`short` 欄 = 已驗收 identity、`long` 欄 = 長片覆蓋），
 拆的是工作流程知識，不是 code——改 script 時兩線都要跑測試。
 
+## ADR-066 實跑手冊（2026-09-10 首次真的跑通，蘇予昕 L2/L3）
+
+> 在這之前 20260901 這一集的 L1 是**繞過 ADR-066** 用舊路做的：episode 裡沒有
+> finished-cut runtime、`highlights/review/` 是空的。第一次真的從 register 跑到
+> Resolve 物化，沿路踩到六個「規格與現實對不上」的洞（見 commit `4c29fffc`）。
+> 下面是修好之後、實際會通的順序。
+
+### 0. 環境（三個都缺一不可）
+
+```bash
+# Resolve Studio 開著、External scripting = Local、專案已開啟
+# 直譯器一定是 cp312；3.10 與 3.14 都會在 import DaVinciResolveScript 當下崩潰
+PY=E:/nakama/.venv-v2/Scripts/python.exe
+export PYTHONPATH="C:\ProgramData\Blackmagic Design\DaVinci Resolve\Support\Developer\Scripting\Modules"
+export RESOLVE_SUBTITLE_TEMPLATE="E:
+akama\data
+esolve\subtitle-template.drt"
+```
+
+`PYTHONPATH` 沒設 → `Resolve scripting module is unavailable`。
+
+### 1. 綁定檔（每次物化之後都會失效，先同步）
+
+```bash
+"$PY" scripts/sync_resolve_config.py --config <runtime>/config/resolve-<ep>.json --check
+```
+
+`project_uid` **不是** Resolve UI 上那個 UID，是 locator 的雜湊；而 canonical
+timeline 的 UID 每物化一次就換一個（交易把舊的改名成 `__fcp_backup__…`、新的頂上
+原名）。手填一定會卡在 `resolve_project_identity_mismatch` 或 `canonical_binding_unknown`。
+
+### 2. 登錄 → Director → DP → 建置 → 視覺審查
+
+```bash
+python scripts/run_finished_cut_production.py --runtime-root <rt> --episodes-root G:/Footages   --episode-id "<ep>" --semantic-worker handoff register-approved-cut --input <reg.json>
+python scripts/run_finished_cut_production.py ... advance <command_id>   # 反覆跑
+```
+
+`--semantic-worker handoff` 會把 packet 攤在 `<rt>/semantic-handoff/<request_id>/`
+然後**停下來等 `response.json`**——語意工作由當下這個 agent 自己做，不開 Codex。
+`media/` 子目錄裡是每個 component 的預覽畫格：**視覺審查一定要逐格看過再回答**。
+
+`intentional_aroll` 事件不會有畫格（刻意不上視覺），那一關直接放行是誠實的；
+只要有任何一個 built component 就必須人眼看。
+
+### 3. 物化（Resolve）
+
+```bash
+"$PY" scripts/run_finished_cut_production.py ... --resolve-config <cfg> advance <command_id>
+# → state: preview_ready，preview.mp4 落在
+#   <ep>/highlights/staging/finished-cut/<hash>/
+```
+
+成品就是那支 `preview.mp4`（1920x1080 / 30fps / H.264+AAC，與舊路匯出同碼率），
+複製到 `highlights/exports/<cut>.mp4` 即可上架。
+
+### 4. 政策門檻（Director 階段就要照著設計）
+
+**這張表以前叫「一定會擋下來的」，那是錯的。** ADR-069 階段 7 之後只有一條真的會擋
+——判準是「人眼在 Resolve timeline 上看不看得出來」，看得出來的一律降成警告：印出來、
+記進收據、繼續跑。2026-09-13 又拆掉四道不該存在的門（見 ADR-069〈落地後 review〉）。
+
+**會擋的（只有一條）**
+
+| 規則 | 值 | 為什麼它該擋 |
+|---|---|---|
+| 章節卡文字 | 逐字等於該 section 的 `transition_title` | 卡片看起來是對的、字是錯的，人眼看不出來，而它會直接上片（`chapter_transition_projection_mismatch`）|
+
+**會做出壞成品的結構條件（擋，但不是政策）**
+
+| 規則 | 值 | 踩到會怎樣 |
+|---|---|---|
+| 長片片長 | **≥ 8 分鐘** | 登錄當下擋 |
+| stock 素材 | 必須是 **native landscape**（橫的）。**比例不限**——4096×2160 的 DCI 4K 可以用，放進 16:9 只是縮放 | `stock_not_landscape_16_9` |
+| 落點 vs 素材長度 | 落點不可長過素材本身 | `stock_placement_exceeds_source_duration` |
+| photo b-roll | **目前做不到**：pass-through 要求素材本身就是 1920x1080，庫裡沒有照片是 | `derived media is not a pre-rendered 1920x1080 canvas` |
+
+**只會警告、不會擋（照著設計，但踩到不會停線）**
+
+| 規則 | 值 | 診斷碼 |
+|---|---|---|
+| asset-backed B-roll 間隔 | ≤75 秒（含片頭到第一支、最後一支到片尾）| `b_roll_cadence_gap_exceeded` |
+| distinct stock 事件／素材 | 各 ≥3 | `distinct_stock_video_minimum_not_met` |
+| Hero 卡 | ≤4，title-like 密度 ≤2/分，任 15 秒內 ≤2 張 | `hero_title_limit_exceeded` 等 |
+| 卡片停留秒數 | 轉場卡 ≤4s、字卡 ≤8s、B-roll ≤12s | `visual_placement_duration_exceeded` |
+| 兩張卡疊在一起 | — | `title_placement_overlap` |
+
+**寫作標準（沒有程式在擋，但請照做）**
+
+| 規則 | 為什麼 |
+|---|---|
+| section 標題不要有「修修：」這種發言人前綴 | 那是分鏡註記漏到畫面上（2026-09-08 蘇予昕）|
+| section 標題不要用第三人稱代名詞開頭 | 卡片上沒有先行詞，觀眾不知道是誰 |
+| 章節卡要能單獨看懂 | 它是那一節的總結，不是節裡撈出來的半句話 |
+
+這三條本來在登錄門口有正則在擋，2026-09-13 拆掉了——那份正則會誤殺「三個選擇：先做哪一個」
+「第一步：把預設值找出來」「她們用三年做對的那件事」，讓整支 cut 登錄不進來。規則留在這裡，
+在**寫的時候**做對；寫錯了你在審核頁上一眼就看得到。
+
+**490 秒的片子＝至少 7 支 B-roll，550 秒＝至少 8 支。** 這個要在寫 Director
+events 的時候就算好，不是事後補——補不了。
+
+### 5. 素材驗收：容器證明不了畫面是正的
+
+`cb530d56…`（L1 買的）容器寫 1920x1080、沒有 rotation metadata，但畫面裡的人
+整個橫躺。**每一支素材在挑進 events 之前都要真的抽一格出來看**，不要只看
+`visual_summary` 和寬高。2026-09-10 這支差點跟著 L2 上架。
+
+### 5b. 建置失敗要怎麼查
+
+`inspect-run` 只會說 `build_state: failed`，不說是哪一條指令、也不說為什麼——
+`LongDerivedAssetBuilder` 只回一個 `error_code`，而 `_advance_derived_build`
+連那個都沒存進 view。要看原因用：
+
+```bash
+python scripts/diagnose_derived_build.py --episode-id "<ep>" --command-id <cmd>     --contact-sheet <out.png>
+```
+
+逐條跑同一個 builder，印出哪一條 FAIL、以及那支素材的實際寬高與是不是 16:9。
+`--contact-sheet` 把這條 run 用到的每支素材抽一格拼成一張——**側躺、黑邊、認錯人
+只有肉眼看得出來**，`cb530d56…` 在對照表上一眼就看得出整個人是橫的。
+
+### 6. 修正窗口什麼時候關掉（2026-09-10 改了）
+
+**現在關在「封存成 Release」，不是「鑄出 plan」。**
+
+舊行為是 plan 一生出來就拒絕 `request-correction`。那條規則在這條線上是**反的**：
+Resolve 的 timeline 與 preview 只在 plan 生出來之後才存在，也就是說
+**等修修看得到成品，窗口已經關了**——他唯一的出路是重新登錄整支，把已經付掉的
+語意工作再付一次。修修 2026-09-10：「我希望長片也能快速改。」
+
+所以他在 timeline 上說「這支 B-roll 換掉」時，直接下 targeted correction：
+
+```bash
+python scripts/run_finished_cut_production.py --runtime-root <rt> --episodes-root G:/Footages --episode-id "<ep>" request-correction <command_id> dp <event_id> "timeline 上看起來不對，換一支素材。"
+```
+
+⚠️ 四個參數都是**位置參數**，不是 flag（`command_id` / `stage` / `event_id` / `feedback`）。
+`stage` 只吃 `director` / `dp` / `visual_review`。
+
+correction 會把 `materialization_plan` 清成 `None`、run 退回 `pending`，然後只對
+**那一個 event** 重派 DP（`scope=event_retry`），其餘 acceptance 原封不動。
+回答完再 `advance` 幾次就會鑄出**新的** plan——而 plan 決定 staging 工作區與 Resolve
+transaction 的身分，所以不會覆蓋上一版的產物。
+
+**唯一還擋著的**：這份 plan 已經封存成 current Release。那要走 `request_revision`
+（會鑄新 run 並保留整條收據鏈），錯誤訊息會直接告訴你是哪一個 Release。
+實務上目前不會遇到——Release 封存是 ADR-066 的另一個階段，這條線還沒接上
+（20260901 蘇予昕 全碟 0 個 sealed Release、0 個 current pointer）。
+
+真的要整支重來才用重新登錄：把 `registrations/<episode>/<cut>.json` 的 `approved_at` 換一個
+新時間即可（command_id 是整份 payload 的雜湊）。
+
+登錄檔放在 **`registrations/<episode_id>/<cut_id>.json`**——`cut_id` 是每集各自
+產生的，`punch-L03` 不只一集有。舊的扁平 `registrations/<cut_id>.json` 還讀得到，
+但只有 payload 的 `episode_id` 對得上那一集才採用（章節查詢 `resolve_chapters`
+會核對）。
+
 ## ⛔ 已停用：Stage 5 Long Highlight orchestrator（ADR-065）
 
 > **本節描述的 ADR-065 orchestrator 已停用，不要照著跑。**
@@ -200,6 +358,85 @@ roll back。根因有二：(1) 短片語彙是為了留住滑動的人，長片�
 | **Hero 大字卡** | 章內錨點 | 長片唯一配方：`punch_card_wide` tier1 + `style:"paper"`，1080p 每行字級上限 **96px**；紙卡放在說話者負空間，避免壓迫臉部。只留短橘色 accent，不用滿寬大劃線；禁止同一支片混入黑底、橘底或其他 Hero style。方向／步驟等章內列舉可用 compact Hero 或 supporting keyword title，不能升格為滿版轉場。**agent 自裁**（選轉折點、貼原話、驗語檢查把關） | 2–4 |
 | **Stock Video（Stock Village）** | 情境具象化 | 描述情境的時刻滿版實拍。**每支 long Highlight 至少 3 個真正 stock footage events**；guest-namecard、Hero Title、transition、badge、紙紋、photo 與 generated card 都不計數。選點走演算法不逐支請示：①先找「比方說/例如」舉例句與具體可拍的動作／地點；抽象論述本身不硬配隱喻，但必須繼續在片內其他具體段落找滿 3 個，找不到就維持 revision-required，不得讓 finished review 假裝完成 ② `content_gaps`（>75s 無強事件）只輔助找 Stock 分佈，每段 1 支、≥100s 可 2 支且間隔 ≥40s ③來源檔本身必須是 native landscape（寬 > 高；4K 優先、1080p 可用），Long Highlight **禁止直式或方形素材裁成橫式的例外**；同支素材全片唯一，長度切齊被強調句、`src_in` 跳廢頭 ④逐支確認動作、人物關係與情緒極性都符合完整句段；不看字幕也應讀得出語意。例如「工作很忙、上有老下有小」要呈現忙亂／負荷，不能用開心家庭團聚代打 | **至少 3；之後依 content gap 加量** |
 
+
+#### B-roll 的媒材選擇：**能用影片就用影片**
+
+`photo` 是**沒有合適影片時才用**的退路，不是跟 `stock_video` 平起平坐的選項。
+靜態照片停在畫面上 3–5 秒會讓片子瞬間變成投影片；同一個語意只要 stock 找得到動態
+素材，就一律用動態。修修 2026-09-09 review 20260901 punch-L04：
+
+> 10:02 這裡放的是一張照片，為什麼要放照片？**能夠用影片就用影片。**
+> 這裡的影片應該也很好找，就找一個人在煩惱糾結的樣子就好了。
+
+只有這幾種情況才容許 `photo`：
+- 畫面本身就是靜態物件（論文第一頁、書封、截圖、圖表）
+- 該語意在 stock 庫裡確實找不到動態素材，且已經換過至少兩組搜尋詞
+- `person_inset`（人物去背嵌入）依規格本來就吃 photo
+
+**素材選得「不知所云」比空窗更糟。** 泛用的企業意象（旋轉門、握手、走廊快走、
+白底概念棚拍）不要用來頂替具體語意——修修同一天退掉「商務人士穿過旋轉門」代表
+「不斷重複模式」：那是搜尋詞想不到畫面時的敷衍，不是隱喻。想不到就標
+`intentional_aroll`，不要硬塞。
+
+#### 視覺要承載這一段的**主張**，不是圖解句子裡出現的名詞
+
+修修 2026-09-09 從 timeline 上刪掉三段，理由是「這些都對影片沒有加分，還會造成困惑」。
+三段都不是素材爛，是**落點錯**：
+
+| 被刪 | 落在 | 那一句實際在說 | 錯在哪 |
+|---|---|---|---|
+| 女子撐頭放空 | 0:54.92 | 「我出這一門原生家庭的課程」（下一句是「絕對不是要大家對號入座」） | 圖解「課程」這個名詞，而這一段的主張是**那個但書** |
+| 女子恍然大悟 | 5:23.51 | 「堆疊的我爸」 | 素材的 `visual_summary` 寫明它是為 3:50「他就會突然幫我連結到」買的，被挪到 84 秒後的另一個 beat |
+| Hero「原來這一切的源頭是我爸」 | 3:50.29 | 「他就會突然幫我連結到／喔我爸就是這樣」 | 見下一節 |
+
+規則：
+- **每支素材的 `visual_summary` 已經寫明它是為哪一句買的**（「…；對應『……』」），
+  就放在那一句上。要挪去別段，必須先確認畫面內容真的承載得住那一段的主張。
+- 一句話裡出現的名詞（課程、報告、相機）**不是**配畫面的理由。先問「這一段在主張什麼」，
+  再問「這個畫面有沒有讓那個主張更清楚」。答不出第二題就標 `intentional_aroll`。
+
+#### Hero 大字卡：不准提前講結論，第一人稱只能是講者本人
+
+同一次 review 被刪掉的 Hero「原來這一切的源頭是我爸」落在 **3:50.29**，但講者真正說出
+「因此他看到**原來源頭**」是在 **5:13.96**——卡片比音檔早了 84 秒把結論講完，觀眾還沒
+跟著走到那裡就先被告知答案。而且 3:50 那一段是予昕在**轉述個案**（「他就會突然幫我
+連結到，喔我爸就是這樣」），卡片卻用第一人稱「我爸」，讀起來像是予昕自己的爸爸。
+
+- **落點**：Hero 的主張必須落在**講者已經說出那個主張的位置或之後**，不能提前。
+- **人稱**：卡片裡的「我」必須是講者本人。轉述第三人的故事時，不准把對方的「我」
+  搬到卡片上——這跟轉場卡的主詞規則是同一條（見 `_approved_cut._THIRD_PERSON_OPENER`）。
+
+#### Hero 大字卡的驗收標準：**沒有 punchline 就不要放**
+
+修修 2026-09-09 定版：「**如果 hero title 沒有一個很強的 punchline 的話，那出來其實是
+沒意義的。**」Hero 不是「這段很重要所以標一下」，是**觀眾會截圖的那一句**。
+
+三個測試，任一不過就不要放這張卡：
+
+1. **拿得走嗎？** 這句話單獨貼出去，沒看過影片的人看得懂、而且有感。
+2. **會驚訝，或會被說中。** 反直覺的數字、悖論、或「這根本是我」。
+3. **不是複述。** 拿掉這張卡，觀眾會少掉什麼？答不出來就是複述。
+
+同一集 punch-L04 的四張，修修的判決與理由：
+
+| Hero | 判決 | 為什麼 |
+|---|---|---|
+| 一天六七千個念頭都在罵自己 | **留** | 反直覺的量級，而且那個數字指向觀眾自己；它是「拖延不是懶」的證據，不是論點的複述 |
+| 被允許不做，才有力氣做 | **留** | 悖論結構，是整段收束的地方，觀眾可以直接拿走用在自己身上 |
+| 為了準備，設備買到一百萬 | **砍** | 「沒有什麼存在的必要」——主持人的軼事細節，不是觀眾的處境；音檔已經講得很清楚，卡片只是複述 |
+| 原來這一切的源頭是我爸 | **砍** | 提前 84 秒劇透，而且第一人稱指向被轉述的個案 |
+
+**密度**：全片 2–4 張，實際上就是「觀眾的理解被改變」的那幾個轉折。**同一節已經有章節卡
+講同一件事時，不要再放 Hero。** punch-L04 前半段的 punchline——「情緒像粽子，要一顆一顆
+鬆開」「她不是你爸」「拖延症不是懶，是想法太勤勞」——本來就由章節卡在扛，所以砍完剩
+2 張是對的密度，不是缺口。
+
+**落點已經由程式鎖住**：`_context.derive_visual_placement` 要求 `hero_title` 的
+`placement_cue_ids == semantic_cue_ids`（跟章節卡同一條鎖）。Director 說哪句話是這張卡
+的證據，卡片就出現在那句話上，DP 不能從一段長證據裡挑最前面。
+
+
+
 **stand-in 鐵則（修修 2026-08-06）**：stock 描述「修修本人做某事」的情境時，
 一律用固定 stand-in 模特兒（Envato `YuriArcursPeopleimages` 帳號、臉部參考與
 找片工法見 brook-dp skill）——不同男模特兒輪流充當修修是視覺 bug。
@@ -335,10 +572,32 @@ category／implementation component 分類，不可只看它來自哪個 JSON：
   `content_gap_sec` 75s（強事件素材真空，附 transcript 供 stock 提案）
 - 每輪改動交付：preview mp4 傳修修 + 關鍵事件幀自檢（`ev_*.png`）
 
-## 修修換段時
+## 改動代價表（修修在 timeline 上說「這裡改一下」時查這張）
 
-同 highlight-cut：改 `candidates.json` 邊界 → 重跑 Step 3 物化該段 →
-Step 6 起重走。修修手改過的 timeline 尾端見 Step 6–7 的 `--refresh-subs` 註記。
+他不會用 ADR-066 的語言講話，他會說「這張字卡改一下」「這支 B-roll 換掉」
+「這一段整個不要」。這張表把那句話翻成**要重跑到哪裡**，先查表再動手。
+
+長片的分界線跟短片不同：**貴不貴看的是「有沒有跨過 `materialization_plan`」**，
+不是跨過哪一個 Step。
+
+| 他說的 | 要重跑 | 前提 | 量級 |
+|---|---|---|---|
+| 「換一段別的」 | 改 `candidates.json` 邊界 → 重新登錄 → 整條走一次 | — | **最貴**，等於重做一支 |
+| 「這一段整個不要上視覺」 | `request-correction <cmd> director <event> "<話>"`（改成 intentional A-roll） | 沒有封存成 Release | 分鐘級 |
+| 「這支 B-roll 換掉」 | `request-correction <cmd> dp <event> "<話>"` | 同上 | 分鐘級 |
+| 「這張字卡文字改一下」 | `request-correction <cmd> director <event> "<話>"` | 同上 | 分鐘級 |
+| 已封存成 Release 之後 | `request_revision`（鑄新 run，保留收據鏈） | — | 半條線 |
+| 「配樂／SFX」 | Step 10–11 | 不動 Release | 分鐘級 |
+| 「標題／封面／描述」 | packaging，不碰 timeline | — | 秒級 |
+
+**那條線落在哪裡**：2026-09-10 之前是「視覺審查全數通過」——plan 一生出來窗口就關。
+現在移到**封存成 Release**，而這條線目前根本不封存 Release，所以實務上
+**timeline review 之後想改什麼都是分鐘級**（見上面第 6 節）。
+
+> `request_amendment`（對**已封存 Release** 做機械式修改）仍是 ADR-066 的 open
+> follow-up。變換層已經一般化並證明與 `amendments/operations/` 那兩支釘死的腳本
+> 等價（`_amendment.py`＋`tests/.../test_finished_cut_amendment.py`），驅動那條
+> 交易鏈的部分還沒接——但那是給「已經發布出去的成品」用的，不是 timeline review。
 
 ## 下游
 
@@ -354,13 +613,30 @@ Step 6 起重走。修修手改過的 timeline 尾端見 Step 6–7 的 `--refre
 - 刪掉「這一段會從 A 一路談到 B」等自我導覽句；章節已負責導航。
 - 每段只推進一件事；用具體人物、作品、數字與動作取代抽象形容詞。
 - 不得捏造獨特性或動機；沒有逐字稿證據就不寫。
-- description 固定結構：1–2 個短段 hook（約 200–300 個繁中字）→ `⏱` 章節 →
+- description 固定結構：1–2 個短段 hook（約 200–300 個繁中字）→ 章節（**時間戳在行首**，YouTube 認不出來會整份靜靜地不生效）→
   可選的公開來源 → 精簡固定 footer。footer 一律讀
   `agents/usopp/templates/video_description_footer.md`，禁止在 prompt 裡複製舊版。
 - `packages.json.citations` 可包含內部 provenance，但 SRT/VTT/JSON 路徑、vault 路徑、
   transcript timestamp 只留內部，絕對不得顯示在對外 description。只有人類可讀的
   論文、書籍或公開 URL 才可出現「本集引用」；沒有就整段省略。
 - 交付前逐句掃描「不是／而是」「不只／更」「這一段會」「帶你看」「深入探討」；命中就重寫。
+- **描述裡的章節時間戳要先切好。** `resolve_chapters` 的來源依序是 Release 對應表 →
+  核准剪輯登錄的滿版轉場卡 → **agent 切的章節表** → 舊 broll 檔。前兩個常常接不上：
+  完整版根本沒有轉場卡，長片也可能湊不到兩張（20260721 的 story-L02 與 value-L02
+  各只有一張），這時描述裡會一個時間戳都沒有而且不報錯。所以**每一支（含 full）在
+  進 Publish review 之前先跑**：
+
+  ```bash
+  python scripts/author_chapters.py "<episode>" --cut <cut_id> [--duration-sec <片長>] < chapters.json
+  ```
+
+  切章本身是語意工作——讀 `editorial-master/v1/master.srt`（或該支的 tight SRT），
+  判斷話題在哪裡轉、用觀眾看得懂的話命名，由當下執行的 agent 做，腳本只驗規則。
+  顆粒度：**10 分鐘的長片可以切細，87 分鐘的完整版不要**——修修 2026-09-12 看過
+  29 章的版本後要求收斂，定版是 16 章（平均 5.4 分、最短 2.4 分）。
+  schema 擋 YouTube 的硬性規則（首章 0:00、至少 3 章、遞增、每章至少 10 秒）；
+  違反其中任何一條 YouTube 會整份忽略而且不會告訴你。
+
 - Packaging 核准、正式 export 登錄成 Release 後，Bridge 會呼叫
   `scripts/publish_description.py <episode> --cut <cut> --auto`，只走
   `auth_policy="subscription_required"`。成功後才進 Publish review，description 保持可編輯。
@@ -415,3 +691,17 @@ preview 照樣交付（他要看隨時能看），但**不阻塞產線**。
   剪掉的「2、3%」文字殘留 0.8s）——先把 source cue 在切點**拆成兩個 cue**
   再 refresh，讓 retime 自然丟掉被剪的那半
 - stock 銜接：滿版不裁的前提下 1080p 源可用（畫質無損；4K 仍為預設優先）
+
+## 物化之後：交給發布線
+
+`preview_ready` 那支 `preview.mp4` 已經是全解析成品（1920×1080 / 30fps / H.264+AAC）。
+但**不要手動複製到 exports 就當結束**——正規路徑是發布線的
+`scripts/publish_prep.py`（ADR-055 Slice 1），它會同時登錄一筆 draft Release，
+下游的文案、排程、核准、上傳全靠那筆記錄。
+
+```bash
+python scripts/publish_prep.py "<episode>" [--cut <cut-id>]
+```
+
+之後：packaging → `publish_description.py` → `/bridge/publish/<ep>/<cut>` 核准並上傳
+→ Campaign Anchor 排程 → `publish_reconcile.py` 確認公開。全圖見 ADR-055。

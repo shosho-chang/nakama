@@ -60,6 +60,8 @@ from agents.brook.script_video.highlight_broll import (  # noqa: E402
     BrollContractError,
     verify_visual_recipe_lineage,
 )
+from shared.quiet_subprocess import quiet_kwargs
+from shared.zh_linebreak import display_width
 
 logger = logging.getLogger("short_titles")
 
@@ -338,7 +340,9 @@ def _validate_kinetic_sequence(index: int, title: dict, show_sec: float, fcfg: d
             limit = fcfg.get("max_line_emphasis", fcfg["max_line"])
         else:
             limit = fcfg["max_line_hero"]
-        too_long = [line for line in lines if len(line) > limit]
+        # 行寬用顯示寬度量，不是字元數——與 `shared.zh_linebreak.wrap_lines` 同一把尺。
+        # `limit` 的語意是「幾個中文字寬」，所以比的是 limit * 2 個半形單位。
+        too_long = [line for line in lines if display_width(line) > limit * 2]
         if too_long:
             raise SystemExit(f"sequence {index} state {state_index} 行超過 {limit} 字：{too_long}")
         scales = state.get("scales", [1.0] * len(lines))
@@ -373,7 +377,13 @@ def _render_card(variables: dict, out_path: Path, comp: str = "punch_card.html")
     )
     logger.info("render card: %s", variables.get("line1"))
     proc = subprocess.run(
-        cmd, shell=True, cwd=str(COMP_DIR), capture_output=True, text=True, encoding="utf-8"
+        cmd,
+        shell=True,
+        cwd=str(COMP_DIR),
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        **quiet_kwargs(),
     )
     if proc.returncode != 0 or not out_path.exists():
         raise SystemExit(f"hyperframes render 失敗: {(proc.stderr or '')[-400:]}")
@@ -395,6 +405,7 @@ def _validate_rendered_frame_safety(paths: list[Path]) -> None:
         capture_output=True,
         text=True,
         encoding="utf-8",
+        **quiet_kwargs(),
     )
     if proc.returncode != 0:
         raise SystemExit("字卡逐幀安全區驗收失敗，未寫入 Resolve：\n" + proc.stdout[-5000:])
@@ -760,7 +771,7 @@ def apply(
             if tier not in (1, 2):
                 raise SystemExit(f"卡片 {i} tier={tier} 不合法（1=hero 2=標準）")
             limit = fcfg["max_line_hero"] if tier == 1 else fcfg["max_line"]
-            too_long = [x for x in lines if len(x) > limit]
+            too_long = [x for x in lines if display_width(x) > limit * 2]
             if not orchestrated and too_long:
                 raise SystemExit(
                     f"卡片 {i}（tier {tier}）行超過 {limit} 字：{too_long}——改寫或拆行"
@@ -839,7 +850,7 @@ def apply(
         else:
             lines = label.split("\n")
             limit = fcfg["max_line_hero"] if tier == 1 else fcfg["max_line"]
-            too_long = [x for x in lines if len(x) > limit]
+            too_long = [x for x in lines if display_width(x) > limit * 2]
             if too_long:
                 raise SystemExit(
                     f"卡片 {i}（tier {tier}）行超過 {limit} 字：{too_long}——改寫或拆行"

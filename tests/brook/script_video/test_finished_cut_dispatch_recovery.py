@@ -41,8 +41,8 @@ def _approved_cut() -> ApprovedCutCommand:
     return ApprovedCutCommand(
         command_id=COMMAND_ID,
         episode_id="episode-recovery",
-        cut_id="short-1",
-        format="short",
+        cut_id="long-1",
+        format="long",
         editorial_master_id="master-current",
         winner_id="winner-current",
         tight_cut_id="tight-current",
@@ -53,8 +53,8 @@ def _context() -> EditorialCutContext:
     text = "工作除了 Purpose，也需要清楚知道自己的 Calling。"
     return EditorialCutContext(
         episode_id="episode-recovery",
-        cut_id="short-1",
-        format="short",
+        cut_id="long-1",
+        format="long",
         editorial_master_id="master-current",
         tight_cut_id="tight-current",
         duration_sec=45.0,
@@ -65,7 +65,7 @@ def _context() -> EditorialCutContext:
 
 
 class _FailingWorker:
-    def __init__(self, reason_code: str = "semantic_dispatch_error") -> None:
+    def __init__(self, reason_code: str = "semantic_dispatch_failed") -> None:
         self.calls = 0
         self.request_ids: list[str] = []
         self.reason_code = reason_code
@@ -184,7 +184,7 @@ def test_failed_first_dispatch_requires_one_explicit_recovery_after_restart(
         failing.request_ids[0]
     )
     assert old_outcome is not None
-    assert old_outcome.reason_code == "semantic_dispatch_error"
+    assert old_outcome.reason_code == "semantic_dispatch_failed"
     assert accepted.current_stage == "dp"
     assert checkpoint.current_stages[0].stage == "director"
     assert checkpoint.current_stages[0].attempt == 2
@@ -229,7 +229,7 @@ def test_completed_failure_can_be_recovered_after_run_save_crash_window(tmp_path
             command=stored.command,
             view=replace(stored.view, status="pending"),
             worker_catalog=stored.worker_catalog,
-            base_release_id=stored.base_release_id,
+            base_plan_id=stored.base_plan_id,
         )
     )
     restarted = _production(tmp_path, _ReadyDirectorWorker())
@@ -256,7 +256,7 @@ def test_recovery_rejects_wrong_stage_that_differs_from_durable_claim(tmp_path) 
                 outstanding_request=replace(request, stage="dp"),
             ),
             worker_catalog=stored.worker_catalog,
-            base_release_id=stored.base_release_id,
+            base_plan_id=stored.base_plan_id,
         )
     )
     restarted = _production(tmp_path, _ReadyDirectorWorker())

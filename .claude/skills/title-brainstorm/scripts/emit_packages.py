@@ -14,6 +14,7 @@
       "aspect": "16:9",
       "citations": [],
       "brand_flags": [],
+      "keywords": { ... },          # Step 2 的整份關鍵字研究；只有該集第一支要帶
       "titles": [
         {
           "text": "...",
@@ -30,6 +31,7 @@
 輸出 (寫到 <packaging_dir>/ + 複製到 vault):
     title_trace.json       — 完整推導鏈（always）
     packages.json          — short: valid PackagesFileV1; long: titles-only draft
+    keywords.json          — 該集的關鍵字快取（第一支寫、後面幾支讀）
 
 環境變數:
     VAULT_PATH  — vault root (e.g. E:/Shosho LifeOS)
@@ -79,6 +81,46 @@ def _load_df_title_archetypes() -> set[str]:
     except Exception:  # noqa: BLE001
         return set()
     return {a.id for a in idx.title_archetypes if a.brand_fit_grade in _DF_GRADES}
+
+
+# --------------------------------------------------------------------------
+# 關鍵字快取（per-集一支）
+# --------------------------------------------------------------------------
+
+#: Step 2 的整份關鍵字研究落在這裡，整集共用。
+KEYWORDS_CACHE_NAME = "keywords.json"
+
+
+def _ensure_keywords_cache(packaging_dir: Path, input_data: dict) -> tuple[Path, str]:
+    """確保 `<packaging_dir>/keywords.json` 存在，缺了就 fail closed。
+
+    skill 的 Step 2 寫著「per-集一次快取」，但寫檔責任落在 agent 身上，於是
+    **沒有任何 deterministic 保證**：20260901 蘇予昕 整集跑完連一份都沒有，
+    20260721 呂冠緯 是跑到第二支才補上的。一集要跑 1 支完整節目 + 3 支長精華
+    + 3 支短片，關鍵字查詢因此被重複到 7 次，而設計上只該查 1 次——那是
+    packaging 線網路／LLM 用量最大的一塊。
+
+    所以改由本 script 落檔：第一支把整份研究放進 `keywords` 一起送進來，之後
+    幾支什麼都不用帶（檔案已經在了）。**缺檔又沒帶研究就直接擋下來**——
+    「靜靜地再查一次網路」正是要根除的失效模式。要強制重查就先刪掉那個檔。
+    """
+    cache_path = packaging_dir / KEYWORDS_CACHE_NAME
+    inline = input_data.get("keywords")
+    if cache_path.is_file():
+        if inline:
+            sys.stderr.write(
+                f"emit_packages: WARNING — {cache_path} 已存在，這次帶進來的 keywords 不會覆寫它。"
+                "快取就是為了不要每支重查一次；真的要更新請先刪掉該檔再跑。\n"
+            )
+        return cache_path, "reused"
+    if not isinstance(inline, dict) or not inline:
+        raise ValueError(
+            f"{cache_path} 不存在，而這次的輸入也沒有帶 `keywords`。"
+            "該集第一支必須把 Step 2 的整份關鍵字研究放進 `keywords` 一起送進來，"
+            "後面幾支才讀得到快取、不用重查網路。"
+        )
+    cache_path.write_text(json.dumps(inline, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    return cache_path, "written"
 
 
 # --------------------------------------------------------------------------
@@ -138,8 +180,18 @@ def emit(
 
     packaging_dir.mkdir(parents=True, exist_ok=True)
 
-    # Always write title_trace.json
-    trace_path = packaging_dir / "title_trace.json"
+    # 關鍵字快取先落地——它是整集共用的，不該綁在某一支的成敗上。
+    keywords_path, keywords_state = _ensure_keywords_cache(packaging_dir, input_data)
+
+    # Always write title_trace.json — **逐支一個子目錄**，不是扁平單檔。
+    # ADR-054 D14「推導鏈逐支落地」，而 `title_trace_ref` 的形狀本來就是
+    # `packaging/<cut_id>/title_trace.json`。舊版寫在 `packaging/title_trace.json`，
+    # 跑第二支就把第一支的完整推導鏈整檔抹掉——跟下面 packages.json 那段血淚
+    # （2026-07-29 謝伯讓集）是同一類 bug，只是當時只修了 packages 那一半。
+    # 20260721 呂冠緯 的 `full` 那支已經有一份扁平的舊檔，改路徑之後它不會被動到。
+    trace_dir = packaging_dir / cut_id
+    trace_dir.mkdir(parents=True, exist_ok=True)
+    trace_path = trace_dir / "title_trace.json"
     trace_out = {
         "episode": episode,
         "cut_id": cut_id,
@@ -210,24 +262,31 @@ def emit(
         "cuts": cuts,
     }
 
-    # 寫檔前驗證：長片在本階段本來就還沒有 packages（S5 才補），這些草稿跳過；
-    # 其餘（短片、已配好封面的長片）必須通過 S1 schema，才不會把壞資料寫進別支。
-    drafts = {c["cut_id"] for c in cuts if c.get("format") == "long" and not c.get("packages")}
-    PackagesFileV1.model_validate(
-        {**merged, "cuts": [c for c in cuts if c["cut_id"] not in drafts]}
-    )
+    # 寫檔前**整檔**驗證，一支都不跳過。長片的 titles-only 草稿現在是合法狀態
+    # （`CutV1` 改成「至多 3 個 package」，湊滿由 approve gate 守），所以不再需要
+    # 把草稿挑出去才驗得過——那個例外本身就是漏洞：被跳過的那幾支等於沒驗。
+    PackagesFileV1.model_validate(merged)
 
     packages_path.write_text(json.dumps(merged, ensure_ascii=False, indent=2), encoding="utf-8")
 
     written_files = [str(trace_path), str(packages_path)]
+    if keywords_state == "written":
+        written_files.append(str(keywords_path))
 
     # Copy to vault if VAULT_PATH is available
     vault_copies: list[str] = []
     if vault_path is not None:
         vault_ep_dir = vault_path / "Attachments" / "packaging" / episode_slug
         vault_ep_dir.mkdir(parents=True, exist_ok=True)
-        for src in (trace_path, packages_path):
-            dst = vault_ep_dir / src.name
+        # 推導鏈跟 working set 一樣逐支放子目錄——只用 `src.name` 的話，三支長片
+        # 會在 vault 裡搶同一個 title_trace.json，等於把 working set 剛修好的
+        # 覆寫問題原封不動搬到 SoT 上。packages.json 是全集共用一份，照舊。
+        trace_dst_dir = vault_ep_dir / cut_id
+        trace_dst_dir.mkdir(parents=True, exist_ok=True)
+        for src, dst in (
+            (trace_path, trace_dst_dir / trace_path.name),
+            (packages_path, vault_ep_dir / packages_path.name),
+        ):
             shutil.copy2(src, dst)
             vault_copies.append(str(dst))
 
@@ -236,6 +295,7 @@ def emit(
         "df_rejected": len(df_rejected),
         "files": written_files,
         "vault_copies": vault_copies,
+        "keywords_cache": keywords_state,
     }
 
 
@@ -270,6 +330,11 @@ def main() -> int:
     print(
         f"OK — {result['titles_ok']} 條標題已驗證"
         + (f"，{result['df_rejected']} 條 D/F-grade 已剔除" if result["df_rejected"] else "")
+        + (
+            "，關鍵字快取沿用既有的（本支沒有重查網路）"
+            if result["keywords_cache"] == "reused"
+            else "，關鍵字快取已建立（後面幾支直接讀，不用重查）"
+        )
     )
     for f in result["files"]:
         print(f"  → {f}")

@@ -970,7 +970,11 @@ def test_attach_tolerates_other_long_cut_still_draft(monkeypatch, tmp_path):
 
 
 def test_attach_still_rejects_incomplete_target_cut(monkeypatch, tmp_path):
-    """放寬只針對『其他支』——本支自己 packages 不足 3 仍必須擋下。"""
+    """放寬只針對『其他支』——本支自己 packages 不足 3 仍必須擋下。
+
+    2026-09-10 之後這條由 `attach` 自己講明白，不再靠 `CutV1` 的「剛好 3 個」順便
+    擋住（那條放寬成「至多 3 個」，因為 titles-only 草稿是合法中間態）。
+    """
     vault = tmp_path / "vault"
     monkeypatch.setenv("VAULT_PATH", str(vault))
     working = tmp_path / "packaging"
@@ -982,7 +986,7 @@ def test_attach_still_rejects_incomplete_target_cut(monkeypatch, tmp_path):
     png = working / "pkg-punch-L1-1.png"
     png.write_bytes(b"png")
 
-    with pytest.raises(Exception):  # pydantic ValidationError
+    with pytest.raises(ValueError, match="一次配齊 3 個 package"):
         attach_packages.attach(working, "punch-L1", "20260723-xieboran", [_spec(1, png, vault)])
 
     assert not (vault / "Attachments" / "packaging").exists() or not list(

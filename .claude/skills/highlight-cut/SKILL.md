@@ -162,9 +162,6 @@ Orchestrator 必須平行 dispatch 三個互相隔離、不能讀彼此輸出的
       "format": "long|short",
       "t_start": 0.0,
       "t_end": 0.0,
-      "source_ranges": [
-        {"t_start": 0.0, "t_end": 0.0}
-      ],
       "title": "工作代號，不是發布標題",
       "hook": "段內逐字原句",
       "rationale": "為何值得剪",
@@ -175,7 +172,6 @@ Orchestrator 必須平行 dispatch 三個互相隔離、不能讀彼此輸出的
       "sections": [
         {
           "section_id": "section-01",
-          "source_range_index": 0,
           "cue_start": 1,
           "cue_end": 1,
           "start_quote": "第一個 cue 的完整原句",
@@ -195,13 +191,27 @@ identity object；不得刪欄、自行重建，也不得把 `elapsed_sec` 這�
 `source_srt_sha256` raw exact copy 其中的 `master_srt_sha256`。ID 固定以 miner role 開頭，避免
 跨 worker 撞名。`head_trim` 是 cue 內要去除的秒數或 `null`，不是文字。
 
-long candidate 的 `source_ranges` 依原片時間排序、不可重疊；`t_start/t_end` 是第一段起點與最後一段終點，
-只供快速定位，實際片長永遠是 ranges 長度總和。單段足以完成 8–12 分鐘論述時可只有一個 range；不足時
-必須組合 2+ 個語意連貫片段，不能用中間被刪掉的空白時間灌長度。
+⛔ **candidate 是「一個連續區間」，沒有 `source_ranges`。** 上面那 12 個 key 是 exact set，
+section 是 exact 8 個 key，多一個就 `schema drift`——`_MINER_CANDIDATE_FIELDS` 與
+`_LONG_SECTION_FIELDS` 用的是集合相等，不是「至少包含」。
 
-long candidate 的 `sections` 要完整覆蓋論述結構，通常 4–6 段，最多 8 段；worker 應填唯一
-`section_id`、所屬 `source_range_index`、summary 與 explicit `transition_before`，並以首尾 cue 的完整 raw
-text 作錨點。short 固定為 `[]`。`transition_before=true` 僅用於一個觀眾可獨立命名、會寫進 YouTube
+2026-09-11 血淚（20260721 呂冠緯）：本節的 schema 區塊原本帶著 `source_ranges` 與 section 的
+`source_range_index`，那是從上面**已停用的 ADR-065 orchestrator** 契約抄下來的。三個 miner 照著寫，
+13 支長片有 7 支是多段的，`--merge-miners` 第一個 candidate 就死在 `story miner candidate 0
+schema drift`，整輪重做。活的下游（`--validate` 吸附邊界、`--materialize` 建 timeline、
+`run_short_tighten.py`）從頭到尾只認 `t_start`/`t_end` 一個區間，`source_ranges` 在
+`run_highlight_cut.py` 裡出現 **0 次**。
+
+**「中間有一段不要」不是開採階段的事**——那是選段之後 tightening（`run_short_tighten.py
+--detect/--apply`）的工作。開採階段請挑一個能自己站住的連續論述弧。
+
+長度硬容忍帶由 `BANDS` 決定：**long 360–1080 秒**、**short 40–180 秒**。編輯上 long 仍以 8–12
+分鐘為目標，低於 8 分鐘要在 `rationale` 說明為什麼仍然成立。
+
+long candidate 的 `sections` 要完整覆蓋論述結構，**3–8 段**（code 下限是 3），而且必須把
+`cue_start`–`cue_end` **連續鋪滿**：第一段的 `cue_start` 等於 candidate 的 `cue_start`，每段的
+`cue_start` 等於前一段 `cue_end + 1`，最後一段的 `cue_end` 等於 candidate 的 `cue_end`。
+`section_id` 固定 `section-NN` 依序編號，並以首尾 cue 的完整 raw text 作錨點。short 固定為 `[]`。`transition_before=true` 僅用於一個觀眾可獨立命名、會寫進 YouTube
 description 的新 chapter；同章內的列舉、方向一／二、例子、證據、方法步驟保持 false。title 是 6–14
 個中文字的 YouTube chapter／全螢幕 TR 候選文案；第一段不得有 transition。這份 section map 是
 editorial 建議，Director 可因 tight cut 微調精確時間與否決不必要的 TR，但不得新增另一套章節結構。
@@ -233,20 +243,33 @@ duration、將同格式重疊 >50% 標為 variant group（不淘汰）。任何 
 
 ## Legacy Step 2 — agent-owned blind persona review
 
-Validate 成功後才 dispatch；每個 reviewer 必須 blind，不能讀其他 reviewer output。三位 scoring
-persona 全部覆蓋每個 candidate；Renee 只覆蓋 long：
+Validate 成功後才 dispatch；每個 reviewer 必須 blind，不能讀其他 reviewer output。
+**長片與短片各跑一輪**：三位 scoring persona 要覆蓋該格式的每一個 candidate，Renee 只覆蓋 long。
 
-| Reviewer | Output | Required shape |
+**盲審檔一律寫 per-format**（`<stem>.<fmt>.json`），長短各一組：
+
+| Reviewer | Output（長片 / 短片） | Required shape |
 |---|---|---|
-| 阿哲 | `highlights/review_azhe.json` | `{"persona":"azhe","source_sha256":"<candidates sha>","scores":[{"id":"story-L01","total":0,"rationale":"..."}]}` |
-| 凱文 | `highlights/review_kevin.json` | `{"persona":"kevin","source_sha256":"<candidates sha>","scores":[...]}` |
-| 淑芬 | `highlights/review_shufen.json` | `{"persona":"shufen","source_sha256":"<candidates sha>","scores":[...]}` |
-| Renee lens | `highlights/lens_renee.json` | `{"lens":"renee","source_sha256":"<candidates sha>","findings":[{"id":"story-L01","hook_risk":"...","retention_risk":"...","boundary_action":"..."}]}` |
+| 阿哲 | `review_azhe.long.json` / `review_azhe.short.json` | `{"persona":"azhe","source_sha256":"<該格式 digest>","scores":[{"id":"story-L01","total":0,"rationale":"..."}]}` |
+| 凱文 | `review_kevin.long.json` / `review_kevin.short.json` | 同上，`persona` 換 `kevin` |
+| 淑芬 | `review_shufen.long.json` / `review_shufen.short.json` | 同上，`persona` 換 `shufen` |
+| brand lens | `lens_brand.long.json` / `lens_brand.short.json` | `{"lens":"brand","source_sha256":"...","findings":[{"id":"...","severity":"veto|caution|","issue":"...","mitigation":"..."}]}` |
+| Renee lens | `lens_renee.long.json`（**短片不需要**） | `{"lens":"renee","source_sha256":"...","findings":[{"id":"story-L01","hook_risk":"...","retention_risk":"...","boundary_action":"..."}]}` |
+
+⚠️ **`source_sha256` 綁的是「該格式候選的切片」，不是整個 `candidates.json`。** 用指令拿，不要手算：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_cut_shortlist.py "<episode>" --format short --print-digest
+```
+
+**為什麼一定要分格式**（2026-09-10 血淚，20260901 蘇予昕）：一份 persona 檔服務不了兩種格式——
+gate 要求 review 的 id 集合與該格式的候選**完全相等**，覆蓋長片的那份對短片來說就是「38 支全缺」。
+更痛的是綁定範圍：綁整個檔案的話，**Step 2.5 動一支長片的邊界，38 支沒被碰過的短片候選連同
+panel 一起作廢**。綁該格式的切片，兩條線才動得了各自的。
 
 Persona `total` 必須 finite 0–100；舊 gate 的三份 scoring file IDs 必須 exact
-等於 long candidate IDs、無重複、無遺漏；每份 `source_sha256` 必須 raw exact 等於 finalized
-`candidates.json` SHA-256，並使用 `hashlib.sha256(...).hexdigest()` 的小寫 hex，不得改成
-PowerShell `Get-FileHash` 的大寫顯示。所有引用原句須為 candidate time range 內 transcript raw substring。另派一個 QA pass 驗證 schema、coverage 與 quote citations；任何整份 review citation 錯誤就
+等於**該格式**的 candidate IDs、無重複、無遺漏；每份 `source_sha256` 必須 raw exact 等於
+`--print-digest` 給的值（小寫 hex，不得改成 PowerShell `Get-FileHash` 的大寫顯示）。所有引用原句須為 candidate time range 內 transcript raw substring。另派一個 QA pass 驗證 schema、coverage 與 quote citations；任何整份 review citation 錯誤就
 作廢並 blind rerun 該 reviewer，不能局部補分。
 
 Shortlist ranking 由既有 code 計算三人中位數；同 variant group 只有最高分佔 rank，其他仍列出；

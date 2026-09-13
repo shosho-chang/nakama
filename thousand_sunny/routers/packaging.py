@@ -36,7 +36,7 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_validator
 from starlette.requests import Request
 
-from agents.usopp.publish_timeline import export_matches_current_release
+from agents.usopp.publish_timeline import export_matches_plan_record
 from scripts.packaging_manifest import load_manifest
 from shared.background_job import atomic_job_write, job_expired, load_job, new_job
 from shared.config import get_db_path, get_vault_path
@@ -924,7 +924,7 @@ def _ensure_publish_prep(episode: str, cut_id: str) -> None:
     if (
         current
         and current.get("status") == "rendered"
-        and export_matches_current_release(episode_dir, cut_id, current)
+        and export_matches_plan_record(episode_dir, cut_id, current)
     ):
         return
     if running is not None and running.poll() is None:
@@ -997,7 +997,7 @@ def _release_from_receipt(episode: str, cut_id: str) -> dict | None:
         return None
     if payload.get("status") != "rendered" or payload.get("episode") != episode:
         return None
-    if not export_matches_current_release(episode_dir, cut_id, payload):
+    if not export_matches_plan_record(episode_dir, cut_id, payload):
         # 這份 receipt 出的是別版 Release 的畫面。登錄它等於把舊內容掛上已核准的
         # 標題與縮圖推進上傳流程——2026-08-29 amendment 重封 long3 時就差這一道。
         raise HTTPException(
@@ -1016,6 +1016,9 @@ def _release_from_receipt(episode: str, cut_id: str) -> dict | None:
         raise HTTPException(status_code=409, detail="publish_prep receipt 成品路徑越界") from exc
     if not file_path.is_file() or file_path.stat().st_size != int(row.get("file_bytes", -1)):
         raise HTTPException(status_code=409, detail="publish_prep receipt 與成品檔不一致")
+    # 這是**發布資料庫**的 release 身分，跟 ADR-069 的 plan record id 是兩個識別
+    # 空間（同一個 cut 兩者都有，值不一樣）。`export_matches_plan_record` 講的才是
+    # plan record；這裡沿用 release 這個名字，才不會有人把兩者接起來。
     release_id = register_release(
         episode,
         cut_id,

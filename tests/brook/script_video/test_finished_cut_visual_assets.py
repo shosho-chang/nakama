@@ -9,6 +9,7 @@ import pytest
 from agents.brook.script_video.finished_cut_production._active_store import (
     ActiveAssetPublication,
     ActiveAssetStore,
+    ActiveAssetStoreError,
 )
 from agents.brook.script_video.finished_cut_production._assets import (
     AssetKind,
@@ -27,18 +28,14 @@ from agents.brook.script_video.finished_cut_production._derived_assets import (
     DerivedAssetGeometry,
     DerivedAssetInstruction,
 )
-from agents.brook.script_video.finished_cut_production._hyperframes_renderer import (
-    GeneratedMediaProbe,
-)
 from agents.brook.script_video.finished_cut_production._long_visual_renderer import (
     LongVisualRenderer,
 )
+from agents.brook.script_video.finished_cut_production._projection import (
+    layout_identity,
+)
 from agents.brook.script_video.finished_cut_production._visual_assets import (
-    FaceSafePlacement,
-    FfmpegPersonInsetCompositor,
-    FfmpegProcessResult,
     LongDerivedAssetBuilder,
-    PersonInsetCompositeRequest,
 )
 
 
@@ -60,6 +57,18 @@ class _CatalogOnlyStore:
     def resolve_worker_asset(self, _reference: str):
         self.resolve_calls += 1
         raise AssertionError("oversized placement must fail before Active Store resolution")
+
+
+class _CountingStore(_CatalogOnlyStore):
+    """跟上面一樣只有目錄，但解析素材時回報「查無此物」而不是炸測試。
+
+    落點上限不再擋建置之後，`_passthrough` 會真的走到 Active Store——那正是這支
+    測試要證明的事，所以解析被呼叫不是失敗，是預期。
+    """
+
+    def resolve_worker_asset(self, _reference: str):
+        self.resolve_calls += 1
+        raise ActiveAssetStoreError("asset reference is not in the active store")
 
 
 def _neutral_receipt(content: bytes, *, source_class: str) -> CompactAssetReceipt:
@@ -118,67 +127,19 @@ class _NeverFfmpegRunner:
         raise AssertionError("this build must not call ffmpeg")
 
 
-class _NeverFacePlacement:
-    def place(self, request):
-        raise AssertionError("neutral Stock must not call facial placement")
-
-
-class _FacePlacement:
-    def __init__(self) -> None:
-        self.requests = []
-        self.result = FaceSafePlacement(
-            x_ratio=0.75,
-            y_ratio=0.24,
-            width_ratio=0.20,
-            height_ratio=0.42,
-            avoids_faces=True,
-        )
-
-    def place(self, request):
-        self.requests.append(request)
-        return self.result
-
-
-class _FfmpegRunner:
-    def __init__(self) -> None:
-        self.calls = []
-
-    def run(self, arguments, *, cwd, timeout_sec):
-        self.calls.append((arguments, cwd, timeout_sec))
-        Path(arguments[-1]).write_bytes(b"person inset alpha animation")
-        return FfmpegProcessResult(returncode=0, stdout="", stderr="")
-
-
 class _NeverMediaProbe:
     def inspect(self, path: Path):
         raise AssertionError("this build must not probe generated media")
 
 
-class _PersonInsetProbe:
-    def __init__(self) -> None:
-        self.paths: list[Path] = []
-
-    def inspect(self, path: Path) -> GeneratedMediaProbe:
-        self.paths.append(path)
-        return GeneratedMediaProbe(
-            codec_name="prores",
-            pixel_format="yuva444p12le",
-            width=1920,
-            height=1080,
-            duration_sec=4.0,
-            has_alpha=True,
-        )
-
-
-class _MismatchedPersonInsetProbe(_PersonInsetProbe):
-    def inspect(self, path: Path) -> GeneratedMediaProbe:
-        result = super().inspect(path)
-        return replace(result, pixel_format="yuv420p", has_alpha=False)
-
-
-def test_sixty_second_semantic_evidence_renders_only_four_second_hero_placement(
+def test_sixty_second_semantic_evidence_renders_only_four_second_card_placement(
     tmp_path: Path,
 ) -> None:
+    """渲出來的是 placement 的 4 秒，不是語意證據的 60 秒。
+
+    2026-09-09 起 hero_title 的落點必須逐字回應語意證據（見 `_context`），所以
+    「證據長、落點短」對 Hero 已不可能；改用 identity_card 驗同一條不變量。
+    """
     context = EditorialCutContext(
         episode_id="episode-001",
         cut_id="value-L03",
@@ -198,19 +159,19 @@ def test_sixty_second_semantic_evidence_renders_only_four_second_hero_placement(
     placement = context.derive_visual_placement(
         semantic_cue_ids=semantic_cue_ids,
         placement_cue_ids=("cue-placement",),
-        semantic_kind="hero_title",
+        semantic_kind="identity_card",
     )
     instruction = DerivedAssetInstruction(
         component_id="component-hero-placement",
         event_id="event-hero-placement",
-        semantic_kind="hero_title",
-        implementation_kind="hero_title",
-        lane="hero_title",
+        semantic_kind="identity_card",
+        implementation_kind="identity_card",
+        lane="identity_card",
         display="完整命題",
         t0=placement.t0,
         t1=placement.t1,
         source_asset_ref=None,
-        geometry=DerivedAssetGeometry(1920, 1080, "hero_title:v1"),
+        geometry=DerivedAssetGeometry(1920, 1080, layout_identity("identity_card")),
         recipe_identity="recipe:hero:placement-current",
     )
     request = DerivedAssetBuildRequest(
@@ -231,12 +192,6 @@ def test_sixty_second_semantic_evidence_renders_only_four_second_hero_placement(
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=browser),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
 
     result = builder.build(request)
@@ -298,12 +253,6 @@ def test_native_horizontal_stock_within_one_frame_duration_tolerance_passes_thro
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
 
     result = builder.build(request)
@@ -361,18 +310,14 @@ def test_vertical_stock_is_rejected_instead_of_being_reframed(tmp_path: Path) ->
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
 
     result = builder.build(request)
 
     assert result.status == "failed"
-    assert result.error_code == "derived_asset_mismatch"
+    # 這條規則收成一份之後也要留住名字：`derived_asset_mismatch` 是「沒有 source
+    # ref／目錄漂掉／資產類別不符」共用的代碼，DP 看到它完全不知道問題出在方向。
+    assert result.error_code == "stock_video_not_native_landscape"
 
 
 def test_exact_current_hero_recipe_reuses_active_asset_without_rendering_again(
@@ -383,12 +328,6 @@ def test_exact_current_hero_recipe_reuses_active_asset_without_rendering_again(
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=browser),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
     instruction = DerivedAssetInstruction(
         component_id="component-hero",
@@ -403,7 +342,7 @@ def test_exact_current_hero_recipe_reuses_active_asset_without_rendering_again(
         geometry=DerivedAssetGeometry(
             target_width=1920,
             target_height=1080,
-            layout_identity="hero_title:v1",
+            layout_identity=layout_identity("hero_title"),
         ),
         recipe_identity="recipe:hero:current",
     )
@@ -440,18 +379,12 @@ def test_exact_current_hero_recipe_reuses_active_asset_without_rendering_again(
     assert store.resolve_exact_recipe("recipe:hero:current").record.kind is AssetKind.TITLE_RENDER
 
 
-def test_oversized_chapter_placement_fails_before_browser_render(tmp_path: Path) -> None:
+def test_an_oversized_chapter_placement_renders_and_is_left_to_policy(tmp_path: Path) -> None:
     store = ActiveAssetStore.open(tmp_path / "assets-v2", episode_id="episode-001")
     browser = _Browser(tmp_path)
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=browser),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
     request = DerivedAssetBuildRequest(
         build_request_id="build-chapter-oversized",
@@ -474,7 +407,7 @@ def test_oversized_chapter_placement_fails_before_browser_render(tmp_path: Path)
                 t0=100.0,
                 t1=104.001,
                 source_asset_ref=None,
-                geometry=DerivedAssetGeometry(1920, 1080, "fullscreen_transition:v1"),
+                geometry=DerivedAssetGeometry(1920, 1080, layout_identity("fullscreen_transition")),
                 recipe_identity="recipe:chapter:oversized",
             ),
         ),
@@ -483,9 +416,13 @@ def test_oversized_chapter_placement_fails_before_browser_render(tmp_path: Path)
 
     result = builder.build(request)
 
-    assert result.status == "failed"
-    assert result.error_code == "visual_placement_duration_exceeded"
-    assert browser.calls == 0
+    # 落點超過上限不再擋建置。ADR-069 階段 7 已經把 `visual_placement_duration_exceeded`
+    # 評成 `warning`（判準：人眼在 timeline 上看得出來），但評級只改了 `_policy` 那
+    # 一份，這一層照樣讓整條 run 死在 preflight——20260721 punch-L03 就是這樣掛的：
+    # 金句卡 23 個字撐出 8.85 秒，而字數是 Director 寫的，DP 怎麼挑 cue 都救不回來。
+    # 警告仍然由 `_policy` 報（見 test_finished_cut_policy.py）。
+    assert result.status == "ready"
+    assert browser.calls == 1
 
 
 @pytest.mark.parametrize(
@@ -495,7 +432,7 @@ def test_oversized_chapter_placement_fails_before_browser_render(tmp_path: Path)
         ("identity_card", "identity_card", "identity_card"),
     ],
 )
-def test_oversized_title_or_identity_placement_fails_before_browser_render(
+def test_an_oversized_title_or_identity_placement_renders_and_is_left_to_policy(
     tmp_path: Path,
     semantic_kind: str,
     implementation_kind: str,
@@ -506,12 +443,6 @@ def test_oversized_title_or_identity_placement_fails_before_browser_render(
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=browser),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
     request = DerivedAssetBuildRequest(
         build_request_id=f"build-{implementation_kind}-oversized",
@@ -534,7 +465,7 @@ def test_oversized_title_or_identity_placement_fails_before_browser_render(
                 t0=100.0,
                 t1=108.001,
                 source_asset_ref=None,
-                geometry=DerivedAssetGeometry(1920, 1080, f"{implementation_kind}:v1"),
+                geometry=DerivedAssetGeometry(1920, 1080, layout_identity(implementation_kind)),
                 recipe_identity=f"recipe:{implementation_kind}:oversized",
             ),
         ),
@@ -543,9 +474,13 @@ def test_oversized_title_or_identity_placement_fails_before_browser_render(
 
     result = builder.build(request)
 
-    assert result.status == "failed"
-    assert result.error_code == "visual_placement_duration_exceeded"
-    assert browser.calls == 0
+    # 落點超過上限不再擋建置。ADR-069 階段 7 已經把 `visual_placement_duration_exceeded`
+    # 評成 `warning`（判準：人眼在 timeline 上看得出來），但評級只改了 `_policy` 那
+    # 一份，這一層照樣讓整條 run 死在 preflight——20260721 punch-L03 就是這樣掛的：
+    # 金句卡 23 個字撐出 8.85 秒，而字數是 Director 寫的，DP 怎麼挑 cue 都救不回來。
+    # 警告仍然由 `_policy` 報（見 test_finished_cut_policy.py）。
+    assert result.status == "ready"
+    assert browser.calls == 1
 
 
 @pytest.mark.parametrize(
@@ -554,10 +489,9 @@ def test_oversized_title_or_identity_placement_fails_before_browser_render(
         ("stock_video", AssetKind.STOCK, 30.0, None),
         ("photo", AssetKind.PHOTO, None, None),
         ("non_editorial_clip", AssetKind.NON_EDITORIAL_CLIP, 30.0, None),
-        ("person_inset", AssetKind.PHOTO, None, "recipe:person-inset:oversized"),
     ],
 )
-def test_oversized_asset_backed_broll_fails_before_resolution_or_render(
+def test_an_oversized_asset_backed_broll_builds_and_is_left_to_policy(
     tmp_path: Path,
     implementation_kind: str,
     asset_kind: AssetKind,
@@ -573,15 +507,10 @@ def test_oversized_asset_backed_broll_fails_before_resolution_or_render(
         height=1080,
         duration_sec=duration_sec,
     )
+    store = _CountingStore(catalog_item)
     builder = LongDerivedAssetBuilder(
-        store=_CatalogOnlyStore(catalog_item),  # type: ignore[arg-type]
+        store=store,  # type: ignore[arg-type]
         title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
     request = DerivedAssetBuildRequest(
         build_request_id=f"build-{implementation_kind}-oversized",
@@ -613,8 +542,13 @@ def test_oversized_asset_backed_broll_fails_before_resolution_or_render(
 
     result = builder.build(request)
 
-    assert result.status == "failed"
-    assert result.error_code == "visual_placement_duration_exceeded"
+    # 落點超過上限不再擋建置。ADR-069 階段 7 已經把 `visual_placement_duration_exceeded`
+    # 評成 `warning`（判準：人眼在 timeline 上看得出來），但評級只改了 `_policy` 那
+    # 一份，這一層照樣讓整條 run 死在 preflight——20260721 punch-L03 就是這樣掛的：
+    # 金句卡 23 個字撐出 8.85 秒，而字數是 Director 寫的，DP 怎麼挑 cue 都救不回來。
+    # 警告仍然由 `_policy` 報（見 test_finished_cut_policy.py）。
+    assert result.error_code != "visual_placement_duration_exceeded"
+    assert store.resolve_calls == 1
 
 
 def test_stock_placement_longer_than_source_by_more_than_one_frame_fails_before_resolution(
@@ -633,12 +567,6 @@ def test_stock_placement_longer_than_source_by_more_than_one_frame_fails_before_
     builder = LongDerivedAssetBuilder(
         store=store,  # type: ignore[arg-type]
         title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
     request = DerivedAssetBuildRequest(
         build_request_id="build-stock-too-short",
@@ -689,12 +617,6 @@ def test_legacy_webm_title_cannot_be_reused_as_current_resolve_media(tmp_path: P
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
     request = DerivedAssetBuildRequest(
         build_request_id="build-hero-current",
@@ -717,7 +639,7 @@ def test_legacy_webm_title_cannot_be_reused_as_current_resolve_media(tmp_path: P
                 t0=22.0,
                 t1=25.0,
                 source_asset_ref=None,
-                geometry=DerivedAssetGeometry(1920, 1080, "hero_title:v1"),
+                geometry=DerivedAssetGeometry(1920, 1080, layout_identity("hero_title")),
                 recipe_identity="recipe:hero:current",
             ),
         ),
@@ -736,20 +658,25 @@ def test_all_current_generated_browser_components_publish_final_assets(tmp_path:
     builder = LongDerivedAssetBuilder(
         store=store,
         title_renderer=LongVisualRenderer(browser=browser),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
     )
     # Each role pins its own canonical layout identity; the renderer rejects a
     # request that does not carry the exact one for that role.
     roles = (
-        ("chapter", "chapter", "fullscreen_transition", "第一章", "fullscreen_transition:v4"),
-        ("hero", "hero_title", "hero_title", "真正的選擇", "hero_title:v1"),
-        ("identity", "identity_card", "identity_card", "簡立峰博士", "identity_card:v1"),
-        ("effect", "visual_effect", "visual_effect", "焦點強調", "visual_effect:v1"),
+        (
+            "chapter",
+            "chapter",
+            "fullscreen_transition",
+            "第一章",
+            layout_identity("fullscreen_transition"),
+        ),
+        ("hero", "hero_title", "hero_title", "真正的選擇", layout_identity("hero_title")),
+        (
+            "identity",
+            "identity_card",
+            "identity_card",
+            "簡立峰博士",
+            layout_identity("identity_card"),
+        ),
     )
     instructions = tuple(
         DerivedAssetInstruction(
@@ -791,10 +718,10 @@ def test_all_current_generated_browser_components_publish_final_assets(tmp_path:
 
     assert result.status == "ready"
     assert browser.calls == len(instructions)
+    # 三個現役的生成字卡：轉場卡、Hero、來賓名牌。visual_effect 2026-09-08 退役。
     expected_kinds = (
         AssetKind.CHAPTER_RENDER,
         AssetKind.TITLE_RENDER,
-        AssetKind.CONCEPT_RENDER,
         AssetKind.CONCEPT_RENDER,
     )
     assert (
@@ -803,206 +730,3 @@ def test_all_current_generated_browser_components_publish_final_assets(tmp_path:
         )
         == expected_kinds
     )
-
-
-def test_person_inset_is_alpha_animated_small_and_face_safe(tmp_path: Path) -> None:
-    portrait_path = tmp_path / "doctor.png"
-    portrait_path.write_bytes(b"portrait with alpha")
-    store = ActiveAssetStore.open(tmp_path / "assets-v2", episode_id="episode-001")
-    portrait = store.publish(
-        ActiveAssetPublication(
-            source_path=portrait_path,
-            kind=AssetKind.PHOTO,
-            visual_summary="簡立峰博士的中性大頭照",
-            width=800,
-            height=1000,
-            compact_receipt=_neutral_receipt(
-                portrait_path.read_bytes(), source_class="provided_self_archive"
-            ),
-        )
-    )
-    face_placement = _FacePlacement()
-    ffmpeg = _FfmpegRunner()
-    probe = _PersonInsetProbe()
-    compositor = FfmpegPersonInsetCompositor(
-        output_root=tmp_path / "composites",
-        runner=ffmpeg,
-        probe=probe,
-    )
-    builder = LongDerivedAssetBuilder(
-        store=store,
-        title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
-        compositor=compositor,
-        face_placement=face_placement,
-    )
-    request = DerivedAssetBuildRequest(
-        build_request_id="build-person-current",
-        run_id="run-current",
-        command_id="command-current",
-        episode_id="episode-001",
-        cut_id="value-L01",
-        format="long",
-        dp_acceptance_id="acceptance-dp-current",
-        scope="full_stage",
-        event_id=None,
-        instructions=(
-            DerivedAssetInstruction(
-                component_id="component-person",
-                event_id="event-person",
-                semantic_kind="b_roll",
-                implementation_kind="person_inset",
-                lane="b_roll",
-                display="簡立峰博士",
-                t0=30.0,
-                t1=34.0,
-                source_asset_ref=portrait.record.reference,
-                geometry=DerivedAssetGeometry(
-                    target_width=1920,
-                    target_height=1080,
-                    layout_identity="person_inset:v1",
-                ),
-                recipe_identity="recipe:person-inset:current",
-            ),
-        ),
-        worker_catalog_items=store.worker_selection_catalog().items(),
-    )
-
-    result = builder.build(request)
-
-    assert result.status == "ready"
-    assert len(face_placement.requests) == 1
-    assert len(ffmpeg.calls) == 1
-    arguments, cwd, timeout_sec = ffmpeg.calls[0]
-    command = " ".join(arguments)
-    assert "prores_ks" in command
-    assert "-profile:v 4" in command
-    assert "yuva444p12le" in command
-    assert "alpha=1" in command
-    assert "overlay=" in command
-    assert cwd is None
-    assert arguments[arguments.index("-an") :] == (
-        "-an",
-        "-c:v",
-        "prores_ks",
-        "-profile:v",
-        "4",
-        "-pix_fmt",
-        "yuva444p12le",
-        "-movflags",
-        "+faststart",
-        arguments[-1],
-    )
-    assert Path(arguments[-1]).suffix == ".mov"
-    assert timeout_sec > 0
-    assert face_placement.result.avoids_faces is True
-    assert face_placement.result.width_ratio <= 0.24
-    assert len(probe.paths) == 1
-    assert result.assets[0].source_asset_ref == portrait.record.reference
-    assert result.assets[0].final_asset_ref != portrait.record.reference
-    assert result.assets[0].inspection_ref == result.assets[0].final_asset_ref
-    assert store.resolve_active_asset(result.assets[0].final_asset_ref).path.suffix == ".mov"
-    assert (
-        store.resolve_exact_recipe("recipe:person-inset:current").record.kind is AssetKind.COMPOSITE
-    )
-
-
-def test_person_inset_probe_mismatch_leaves_no_unverified_output(tmp_path: Path) -> None:
-    source = tmp_path / "portrait.png"
-    source.write_bytes(b"portrait")
-    output_root = tmp_path / "composites"
-    compositor = FfmpegPersonInsetCompositor(
-        output_root=output_root,
-        runner=_FfmpegRunner(),
-        probe=_MismatchedPersonInsetProbe(),
-    )
-
-    with pytest.raises(ValueError, match="probe"):
-        compositor.composite(
-            PersonInsetCompositeRequest(
-                render_identity="recipe:person-inset:mismatch",
-                source_path=source,
-                target_width=1920,
-                target_height=1080,
-                duration_sec=4.0,
-                placement=FaceSafePlacement(
-                    x_ratio=0.75,
-                    y_ratio=0.24,
-                    width_ratio=0.20,
-                    height_ratio=0.42,
-                    avoids_faces=True,
-                ),
-            )
-        )
-
-    assert list(output_root.iterdir()) == []
-
-
-def test_legacy_webm_person_inset_cannot_be_reused_as_resolve_composite(
-    tmp_path: Path,
-) -> None:
-    portrait_path = tmp_path / "portrait.png"
-    portrait_path.write_bytes(b"portrait")
-    legacy_path = tmp_path / "person-inset.webm"
-    legacy_path.write_bytes(b"legacy vp9 composite")
-    store = ActiveAssetStore.open(tmp_path / "assets-v2", episode_id="episode-001")
-    portrait = store.publish(
-        ActiveAssetPublication(
-            source_path=portrait_path,
-            kind=AssetKind.PHOTO,
-            visual_summary="中性人物照片",
-            width=800,
-            height=1000,
-            compact_receipt=_neutral_receipt(
-                portrait_path.read_bytes(), source_class="provided_self_archive"
-            ),
-        )
-    )
-    store.publish(
-        ActiveAssetPublication(
-            source_path=legacy_path,
-            kind=AssetKind.COMPOSITE,
-            recipe_identity="recipe:person-inset:current",
-        )
-    )
-    builder = LongDerivedAssetBuilder(
-        store=store,
-        title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
-        compositor=FfmpegPersonInsetCompositor(
-            output_root=tmp_path / "composites",
-            runner=_NeverFfmpegRunner(),
-            probe=_NeverMediaProbe(),
-        ),
-        face_placement=_NeverFacePlacement(),
-    )
-    request = DerivedAssetBuildRequest(
-        build_request_id="build-person-current",
-        run_id="run-current",
-        command_id="command-current",
-        episode_id="episode-001",
-        cut_id="value-L01",
-        format="long",
-        dp_acceptance_id="acceptance-dp-current",
-        scope="full_stage",
-        event_id=None,
-        instructions=(
-            DerivedAssetInstruction(
-                component_id="component-person",
-                event_id="event-person",
-                semantic_kind="b_roll",
-                implementation_kind="person_inset",
-                lane="b_roll",
-                display="簡立峰博士",
-                t0=30.0,
-                t1=34.0,
-                source_asset_ref=portrait.record.reference,
-                geometry=DerivedAssetGeometry(1920, 1080, "person_inset:v1"),
-                recipe_identity="recipe:person-inset:current",
-            ),
-        ),
-        worker_catalog_items=store.worker_selection_catalog().items(),
-    )
-
-    result = builder.build(request)
-
-    assert result.status == "failed"
-    assert result.error_code == "derived_asset_mismatch"

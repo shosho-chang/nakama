@@ -13,7 +13,6 @@ from uuid import uuid4
 
 from ._assets import (
     AssetContractError,
-    AssetKind,
     AssetResolver,
     InMemoryAssetResolver,
     WorkerSelectionCatalog,
@@ -46,33 +45,32 @@ from ._derived_assets import (
     DerivedAssetBuildResult,
     DerivedAssetGeometry,
     DerivedAssetInstruction,
+    readable_floor_sec,
 )
+from ._plan_record import PlanRecord, PlanRecordError, PlanTimeline
 from ._policy import (
     CutPolicyInput,
     FormatPolicy,
     LongV2Policy,
-    ShortPolicy,
-    StockVideoMetadata,
 )
 from ._projection import (
     _WORKER_PROJECTION_COMBINATIONS,
-    _event_has_active_projection,
+    ASSET_KIND_BY_IMPLEMENTATION,
+    NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS,
+    SOURCE_ASSET_KIND_BY_IMPLEMENTATION,
+    _event_has_mintable_projection,
     _is_active_semantic_kind,
+    layout_identity,
 )
 from ._records import (
     STAGE_RESPONSE_SCHEMA,
     AcceptedStage,
-    ArtifactView,
     ComponentProposal,
-    ComponentView,
-    CutView,
     DirectorEventProposal,
     DPEventProposal,
     EventPlacementCandidates,
     EventRecord,
-    EventView,
     FinishedCutInspection,
-    FinishedCutRelease,
     ProjectedComponent,
     ReleaseArtifact,
     RequestScope,
@@ -85,9 +83,7 @@ from ._records import (
     _mint_materialization_plan,
     _mint_projected_component,
     _ProductionRun,
-    _seal_finished_cut_release,
 )
-from ._release import ReleaseLifecycleError
 from ._semantic import (
     _DEFAULT_PARENT,
     InMemorySemanticAdapter,
@@ -96,31 +92,20 @@ from ._semantic import (
 )
 from ._store import (
     ApprovedCutStore,
-    CurrentReleaseIndex,
-    InMemoryCurrentReleaseIndex,
+    InMemoryPlanRecordIndex,
+    PlanRecordIndex,
     SemanticDispatchStoreError,
     _FilesystemProductionStore,
     _StoredRun,
 )
 
 _ALLOWED_PROJECTION = frozenset(_WORKER_PROJECTION_COMBINATIONS)
-_ASSET_KIND_BY_IMPLEMENTATION = {
-    "stock_video": AssetKind.STOCK,
-    "photo": AssetKind.PHOTO,
-    "person_inset": AssetKind.PHOTO,
-    "non_editorial_clip": AssetKind.NON_EDITORIAL_CLIP,
-}
-_FINAL_ASSET_KIND_BY_IMPLEMENTATION = {
-    "stock_video": AssetKind.STOCK,
-    "photo": AssetKind.PHOTO,
-    "non_editorial_clip": AssetKind.NON_EDITORIAL_CLIP,
-    "fullscreen_transition": AssetKind.CHAPTER_RENDER,
-    "hero_title": AssetKind.TITLE_RENDER,
-    "person_inset": AssetKind.COMPOSITE,
-    "identity_card": AssetKind.CONCEPT_RENDER,
-    "visual_effect": AssetKind.CONCEPT_RENDER,
-}
-_NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS = frozenset({"stock_video", "photo", "non_editorial_clip"})
+#: 三張表本來在這裡各自宣告一份（ADR-069 階段 1 漏掉的兩份就在這）。名單本體在
+#: `_projection.VOCABULARY`——`source` 是 worker 挑進來的素材類別，`asset_kind` 是
+#: 成品的類別，person_inset 兩者不同（挑 PHOTO、產 COMPOSITE）。
+_ASSET_KIND_BY_IMPLEMENTATION = SOURCE_ASSET_KIND_BY_IMPLEMENTATION
+_FINAL_ASSET_KIND_BY_IMPLEMENTATION = ASSET_KIND_BY_IMPLEMENTATION
+_NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS = NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
 
 
 @dataclass(slots=True)
@@ -177,9 +162,7 @@ class FinishedCutProduction:
         derived_asset_builder: DerivedAssetBuilder | None = None,
         context_resolver: EditorialCutContextResolver | None = None,
         long_policy: FormatPolicy | None = None,
-        short_policy: FormatPolicy | None = None,
-        stock_video_metadata: Iterable[StockVideoMetadata] = (),
-        current_release_index: CurrentReleaseIndex | None = None,
+        plan_records: PlanRecordIndex | None = None,
     ) -> None:
         self._store = _FilesystemProductionStore(store_root)
         self._approved_cut_store = approved_cut_store
@@ -190,9 +173,7 @@ class FinishedCutProduction:
         )
         self._context_resolver = context_resolver
         self._long_policy = long_policy or LongV2Policy()
-        self._short_policy = short_policy or ShortPolicy()
-        self._stock_video_metadata = tuple(stock_video_metadata)
-        self._current_release_index = current_release_index or InMemoryCurrentReleaseIndex()
+        self._plan_records = plan_records or InMemoryPlanRecordIndex()
 
     def advance(self, command_id: str) -> RunView:
         with self._store.command_lock(command_id):
@@ -203,27 +184,24 @@ class FinishedCutProduction:
             raise CommandRejectedError(f"opaque authoritative command ID required: {command_id}")
         existing = self._store.load_run(command_id)
         if existing is not None:
-            base_release = None
-            if existing.base_release_id is not None:
-                base_release = self._current_release_index.resolve_exact_current(
-                    existing.base_release_id
-                )
-                if base_release is None:
+            base_record = None
+            if existing.base_plan_id is not None:
+                base_record = self._plan_records.resolve(existing.base_plan_id)
+                if base_record is None:
                     raise CommandRejectedError(
-                        f"targeted revision base is not exact current: {existing.base_release_id}"
+                        f"targeted revision base is not exact current: {existing.base_plan_id}"
                     )
             run = _RunState(
                 command=existing.command,
                 view=existing.view,
-                worker_catalog=existing.worker_catalog,
-                base_release=base_release,
+                worker_catalog=_live_catalog(self._asset_resolver, existing.worker_catalog),
+                base_record=base_record,
                 editorial_context=self._validate_stored_context(
                     existing.view.editorial_context,
                     existing.command,
-                    base_release=base_release,
+                    base_record=base_record,
                 ),
-                format_policy=self._policy_for(existing.command.format),
-                stock_video_metadata=self._stock_video_metadata,
+                format_policy=self._long_policy,
                 derived_asset_builder=self._derived_asset_builder,
                 asset_resolver=self._asset_resolver,
             )
@@ -240,7 +218,7 @@ class FinishedCutProduction:
                         command=existing.command,
                         view=result,
                         worker_catalog=existing.worker_catalog,
-                        base_release_id=existing.base_release_id,
+                        base_plan_id=existing.base_plan_id,
                     )
                 )
             return _public_run_view(result)
@@ -255,21 +233,19 @@ class FinishedCutProduction:
             command, command_id
         ):
             raise CommandRejectedError(f"opaque authoritative command ID required: {command_id}")
-        base_release = None
+        base_record = None
         events: tuple[EventRecord, ...] = ()
         feedback = None
         scope = "full_stage"
         event_id = None
         parent_acceptance_id = None
         if isinstance(command, TargetedRevisionCommand):
-            base_release = self._current_release_index.resolve_exact_current(
-                command.current_release_id
-            )
-            if base_release is None:
+            base_record = self._plan_records.resolve(command.current_plan_id)
+            if base_record is None:
                 raise CommandRejectedError(
-                    f"targeted revision base is not exact current: {command.current_release_id}"
+                    f"targeted revision base is not exact current: {command.current_plan_id}"
                 )
-            director = self._store.load_accepted(base_release.director_acceptance_id)
+            director = self._store.load_accepted(base_record.director_acceptance_id)
             if director is None:
                 raise CommandRejectedError("targeted revision Director authority is unavailable")
             target = next(
@@ -283,7 +259,7 @@ class FinishedCutProduction:
             scope = "event_retry"
             event_id = command.event_id
             parent_acceptance_id = director.acceptance_id
-        editorial_context = self._resolve_context(command, base_release=base_release)
+        editorial_context = self._resolve_context(command, base_record=base_record)
         run_id = f"run-{uuid4().hex}"
         request = StageRequest(
             run_id=run_id,
@@ -297,7 +273,7 @@ class FinishedCutProduction:
             scope=scope,
             event_id=event_id,
             parent_acceptance_id=parent_acceptance_id,
-            base_acceptance_id=(director.acceptance_id if base_release is not None else None),
+            base_acceptance_id=(director.acceptance_id if base_record is not None else None),
             events=events,
             feedback=feedback,
             components=(
@@ -323,16 +299,15 @@ class FinishedCutProduction:
             command,
             view,
             worker_catalog,
-            base_release_id=base_release.release_id if base_release is not None else None,
+            base_plan_id=base_record.plan_id if base_record is not None else None,
         )
         run = _RunState(
             command=command,
             view=view,
             worker_catalog=worker_catalog,
-            base_release=base_release,
+            base_record=base_record,
             editorial_context=editorial_context,
-            format_policy=self._policy_for(command.format),
-            stock_video_metadata=self._stock_video_metadata,
+            format_policy=self._long_policy,
             derived_asset_builder=self._derived_asset_builder,
             asset_resolver=self._asset_resolver,
         )
@@ -351,44 +326,67 @@ class FinishedCutProduction:
                     command=command,
                     view=result,
                     worker_catalog=worker_catalog,
-                    base_release_id=(base_release.release_id if base_release is not None else None),
+                    base_plan_id=(base_record.plan_id if base_record is not None else None),
                 )
             )
         return _public_run_view(result)
 
     def request_revision(
         self,
-        current_release_ref: str,
+        current_plan_ref: str,
         event_id: str,
         feedback: str,
     ) -> str:
-        with self._store.command_lock(current_release_ref):
-            return self._request_revision_locked(current_release_ref, event_id, feedback)
+        with self._store.command_lock(current_plan_ref):
+            return self._request_revision_locked(current_plan_ref, event_id, feedback)
 
     def _request_revision_locked(
         self,
-        current_release_ref: str,
+        current_plan_ref: str,
         event_id: str,
         feedback: str,
     ) -> str:
-        release = self._current_release_index.resolve_exact_current(current_release_ref)
-        if release is None:
-            raise CommandRejectedError(f"release is not exact current: {current_release_ref}")
+        record = self._plan_records.resolve(current_plan_ref)
+        if record is None:
+            raise CommandRejectedError(f"plan record is not current: {current_plan_ref}")
+        # 修訂是拿這份紀錄當「修修看過的就是這個」在用：事件清單、落點、成品檔全
+        # 部從它出發。所以在這裡、而且只在這裡，把兩個成品重量一次——有人換過
+        # preview 或字幕的話，這份紀錄描述的已經不是他看過的那支片，據此修訂等於
+        # 對著不存在的東西改。
+        #
+        # 這道檢查以前只有測試在呼叫（`verify_artifacts` 全 repo 沒有生產呼叫端），
+        # 跟 ADR-069 抓到的 `BLOCKING_DIAGNOSTICS` 是同一個形狀：只存在於宣告它的
+        # 檔案裡的防線。一次修訂算一次 sha256，成本可以接受。
+        try:
+            self._plan_records.verify_artifacts(record)
+        except PlanRecordError as error:
+            raise CommandRejectedError(
+                f"plan record no longer describes what is on disk: {error}"
+            ) from error
+        # 這道門本來用的是**現役**名單：只要紀錄裡有任何一個退役投影，整份就不能修訂。
+        # 那是自己造的死路——`visual_effect` 已經在 timeline 上，而它在 `VOCABULARY`
+        # 裡有 track、版位與 renderer recipe，原封不動再鋪一次完全正常；擋住的是那張
+        # 卡以外的每一個 event。
+        #
+        # 判準換成「鑄不鑄得出來」：`supporting_title` 只活在既有收據裡、不在
+        # `VOCABULARY`、沒有 track 也沒有 renderer——那種**要**在這裡就擋，不然它會死
+        # 在更下游、訊息更難懂。真正擋新提案的鎖在 worker 那端
+        # （`_ALLOWED_PROJECTION`，由 `_WORKER_PROJECTION_COMBINATIONS` 推導）。
         if any(
-            not _event_has_active_projection(
+            not _event_has_mintable_projection(
                 semantic_kind=event.semantic_kind,
                 implementation_kind=event.implementation_kind,
                 lane=event.lane,
                 intentional_aroll=event.intentional_aroll,
             )
-            for event in release.events
+            for event in record.events
             if event.semantic_kind
         ):
             raise CommandRejectedError(
-                "historical Release is read-only after projection retirement"
+                "a historical plan record is read-only after projection retirement"
             )
-        if event_id not in {event.event_id for event in release.events}:
-            raise CommandRejectedError(f"event is not in current release: {event_id}")
+        if event_id not in {event.event_id for event in record.events}:
+            raise CommandRejectedError(f"event is not in the plan record: {event_id}")
         normalized_feedback = feedback.strip()
         if not normalized_feedback:
             raise CommandRejectedError("targeted revision feedback is required")
@@ -396,10 +394,10 @@ class FinishedCutProduction:
         self._store.save_targeted_revision(
             TargetedRevisionCommand(
                 command_id=command_id,
-                current_release_id=release.release_id,
-                episode_id=release.episode_id,
-                cut_id=release.cut_id,
-                format=release.format,
+                current_plan_id=record.plan_id,
+                episode_id=record.episode_id,
+                cut_id=record.cut_id,
+                format=record.format,
                 event_id=event_id,
                 feedback=normalized_feedback,
             )
@@ -474,25 +472,22 @@ class FinishedCutProduction:
                 raise CommandRejectedError(
                     "current request has no terminal dispatch failure or rejected correction"
                 )
-            base_release = None
-            if stored.base_release_id is not None:
-                base_release = self._current_release_index.resolve_exact_current(
-                    stored.base_release_id
-                )
-                if base_release is None:
+            base_record = None
+            if stored.base_plan_id is not None:
+                base_record = self._plan_records.resolve(stored.base_plan_id)
+                if base_record is None:
                     raise CommandRejectedError("dispatch recovery base is not exact current")
             run = _RunState(
                 command=stored.command,
                 view=view,
-                worker_catalog=stored.worker_catalog,
-                base_release=base_release,
+                worker_catalog=_live_catalog(self._asset_resolver, stored.worker_catalog),
+                base_record=base_record,
                 editorial_context=self._validate_stored_context(
                     view.editorial_context,
                     stored.command,
-                    base_release=base_release,
+                    base_record=base_record,
                 ),
-                format_policy=self._policy_for(stored.command.format),
-                stock_video_metadata=self._stock_video_metadata,
+                format_policy=self._long_policy,
                 derived_asset_builder=self._derived_asset_builder,
                 asset_resolver=self._asset_resolver,
             )
@@ -505,7 +500,7 @@ class FinishedCutProduction:
             if not _request_base_is_current(run, request, aggregate):
                 raise CommandRejectedError("failed semantic request is not exact current")
             request_id = f"request-{uuid4().hex}"
-            retry = replace(request, request_id=request_id, attempt=request.attempt + 1)
+            retry = _retry_with_live_catalog(request, request_id, run.worker_catalog)
             self._store.save_run(
                 _StoredRun(
                     command=stored.command,
@@ -516,7 +511,7 @@ class FinishedCutProduction:
                         policy_diagnostics=(),
                     ),
                     worker_catalog=stored.worker_catalog,
-                    base_release_id=stored.base_release_id,
+                    base_plan_id=stored.base_plan_id,
                 )
             )
             return request_id
@@ -546,13 +541,38 @@ class FinishedCutProduction:
         stored = self._store.load_run(command_id)
         if stored is None:
             raise CommandRejectedError(f"authoritative production run not found: {command_id}")
-        if isinstance(stored.command, TargetedRevisionCommand):
-            raise CommandRejectedError(
-                "pre-release correction is only available to fresh ApprovedCut runs"
-            )
+        # 這裡本來擋住「已經是修訂的 run 不能再送 pre-release correction」。
+        # 引進它的 commit（`f1ac6f32`，2026-08-29）沒有記錄理由，而 correction 的
+        # 機制（`_select_correction`）看的是驗收鏈長什麼樣，跟這個 command 是
+        # ApprovedCut 還是 TargetedRevision 無關。修訂回來的東西不滿意時，那是
+        # 最自然的下一步，不該只剩「再修訂一次」。
         view = stored.view
-        if view.materialization_plan is not None:
-            raise CommandRejectedError("pre-release correction is closed after materialization")
+        # 舊行為：`MaterializationPlan` 一鑄出來就把修正窗口關掉。
+        #
+        # 那條規則在長片線上是**反的**：Resolve 的 timeline 與 preview 只在 plan 生出來
+        # 之後才存在，也就是說**等修修看得到成品，窗口已經關了**。他 2026-09-10 的原話
+        # 是「我希望長片也能快速改」——而唯一的出路是重新登錄整支，把已經付掉的語意
+        # 工作再付一次。
+        #
+        # plan 是 run 內部的紀錄，重鑄一份不會動到任何已封存的東西：correction 本來就會
+        # 把 `materialization_plan` 清成 None、run 退回 `pending`（見本函式結尾的
+        # `save_run`），而新的 plan 依 `_materialization_paths` 會拿到**自己的** staging
+        # 工作區與 Resolve transaction（兩者的身分都由 plan 決定），不會覆蓋舊的。
+        #
+        # 真正不能動的是**已經落成 plan record** 的 plan——那要走 `request_revision`，
+        # 它會鑄新 run 並保留整條收據鏈。所以只擋這一種。
+        plan = view.materialization_plan
+        if plan is not None:
+            recorded = [
+                record
+                for record in self._plan_records.records(stored.command.episode_id)
+                if record.plan_id == plan.plan_id
+            ]
+            if recorded:
+                raise CommandRejectedError(
+                    "this MaterializationPlan already has a plan record "
+                    f"{recorded[0].plan_id}; use request_revision to change a recorded cut"
+                )
         if view.correction is not None:
             raise CommandRejectedError("another pre-release correction is still current")
         try:
@@ -572,11 +592,19 @@ class FinishedCutProduction:
         )
         if dispatch_state != "unclaimed":
             raise CommandRejectedError("downstream semantic request was already claimed")
-        if view.derived_asset_request is not None and view.status != "pending" and stage != "dp":
+        if (
+            view.derived_asset_request is not None
+            and view.status != "pending"
+            and stage != "dp"
+            and not _derived_build_failed(view)
+        ):
             raise CommandRejectedError("downstream derived-asset work is already current")
         target = next(event for event in selection.base.events if event.event_id == event_id)
         upstream = selection.current_prefix[-1] if selection.current_prefix else None
         request_id = f"request-{uuid4().hex}"
+        dp_catalog = (
+            _live_catalog(self._asset_resolver, stored.worker_catalog) if stage == "dp" else None
+        )
         request = StageRequest(
             run_id=view.run_id,
             request_id=request_id,
@@ -597,12 +625,14 @@ class FinishedCutProduction:
                 else ()
             ),
             feedback=selection.correction.feedback,
+            # 修正之所以被發出，常常正是因為素材不對。用登錄那一刻的快照等於
+            # 「重挑永遠只能在同一批錯的素材裡重挑」——見 `_live_catalog`。
             worker_asset_refs=(
-                tuple(item.reference for item in stored.worker_catalog.items())
-                if stage == "dp"
+                tuple(item.reference for item in dp_catalog.items())
+                if dp_catalog is not None
                 else ()
             ),
-            worker_catalog_items=(stored.worker_catalog.items() if stage == "dp" else ()),
+            worker_catalog_items=(dp_catalog.items() if dp_catalog is not None else ()),
             components=tuple(
                 component
                 for component in selection.base.components
@@ -631,7 +661,7 @@ class FinishedCutProduction:
                     policy_diagnostics=(),
                 ),
                 worker_catalog=stored.worker_catalog,
-                base_release_id=stored.base_release_id,
+                base_plan_id=stored.base_plan_id,
             )
         )
         return request_id
@@ -655,7 +685,7 @@ class FinishedCutProduction:
         ):
             build_state = "ready"
         elif view.derived_asset_request is not None:
-            build_state = "failed" if view.status == "needs_review" else "pending"
+            build_state = "failed" if _derived_build_failed(view) else "pending"
         else:
             build_state = "not_started"
         return _project_run_inspection(
@@ -673,22 +703,22 @@ class FinishedCutProduction:
         )
 
     def inspect_current(self, episode_id: str) -> FinishedCutInspection:
-        return _current_inspection(episode_id, self._current_release_index)
+        return self._plan_records.inspect(episode_id)
 
     def _resolve_context(
         self,
         command: ApprovedCutCommand | TargetedRevisionCommand,
         *,
-        base_release: FinishedCutRelease | None,
+        base_record: PlanRecord | None,
     ) -> EditorialCutContext:
         if self._context_resolver is None:
             raise CommandRejectedError("exact Editorial Cut Context is unavailable")
         if isinstance(command, ApprovedCutCommand):
             editorial_master_id = command.editorial_master_id
             tight_cut_id = command.tight_cut_id
-        elif base_release is not None:
-            editorial_master_id = base_release.editorial_master_id
-            tight_cut_id = base_release.tight_cut_id
+        elif base_record is not None:
+            editorial_master_id = base_record.editorial_master_id
+            tight_cut_id = base_record.tight_cut_id
         else:
             raise CommandRejectedError("targeted revision has no exact current context")
         context = self._context_resolver.resolve(
@@ -713,14 +743,14 @@ class FinishedCutProduction:
         context: EditorialCutContext,
         command: ApprovedCutCommand | TargetedRevisionCommand,
         *,
-        base_release: FinishedCutRelease | None,
+        base_record: PlanRecord | None,
     ) -> EditorialCutContext:
         if isinstance(command, ApprovedCutCommand):
             editorial_master_id = command.editorial_master_id
             tight_cut_id = command.tight_cut_id
-        elif base_release is not None:
-            editorial_master_id = base_release.editorial_master_id
-            tight_cut_id = base_release.tight_cut_id
+        elif base_record is not None:
+            editorial_master_id = base_record.editorial_master_id
+            tight_cut_id = base_record.tight_cut_id
         else:
             raise CommandRejectedError("targeted revision has no exact current context")
         if (
@@ -733,21 +763,123 @@ class FinishedCutProduction:
             raise CommandRejectedError("persisted Editorial Cut Context identity is invalid")
         return context
 
-    def _policy_for(self, format: str) -> FormatPolicy:
-        return self._long_policy if format == "long" else self._short_policy
-
 
 @dataclass(slots=True)
 class _RunState:
     command: ApprovedCutCommand | TargetedRevisionCommand
     view: _ProductionRun
     worker_catalog: WorkerSelectionCatalog
-    base_release: FinishedCutRelease | None = None
+    base_record: PlanRecord | None = None
     editorial_context: EditorialCutContext | None = None
     format_policy: FormatPolicy | None = None
-    stock_video_metadata: tuple[StockVideoMetadata, ...] = ()
     derived_asset_builder: DerivedAssetBuilder | None = None
     asset_resolver: AssetResolver | None = None
+
+
+def _derived_build_failed(view: RunView) -> bool:
+    """衍生素材建置已經死在這裡——不是還在跑，也不是已經交給 visual_review。
+
+    `request_correction` 原本用「有 derived_asset_request 且 status 不是 pending」
+    當「下游工作還是 current」來擋上游修正。可是那個條件**正好就是建置失敗的條件**
+    （見 `inspect_run` 的 build_state），於是唯一需要回上游修的情況被擋死了。
+
+    20260721 punch-L03：hero01 的字卡 23 個字，撐到讀得完要 8.85 秒 > 8.0 秒上限，
+    preflight 直接 `visual_placement_duration_exceeded`。長度是 Director 寫的，DP
+    改不了；而 `retry-failed-dispatch` 要有 outstanding 的語意請求才動得了，這時
+    沒有。整條 run 於是沒有任何合法出路，只剩「重新登錄整支」——而那正是這個檔案
+    自己在 `_live_catalog` 裡記下的「蠻力，不是流程」。
+
+    失敗的建置不是 current work，是死路；死路必須讓得開。
+    """
+    if view.derived_asset_request is None:
+        return False
+    if any(stage.stage == "visual_review" for stage in view.accepted_stages):
+        return False
+    outstanding = view.outstanding_request
+    if outstanding is not None and outstanding.stage == "visual_review":
+        return False
+    return view.status == "needs_review"
+
+
+def _retry_with_live_catalog(
+    request: StageRequest,
+    request_id: str,
+    catalog: WorkerSelectionCatalog,
+) -> StageRequest:
+    """重試一站 DP 時，換上**現在**的素材目錄，不是失敗那一刻的那份。
+
+    `_live_catalog` 已經讓每次載入 run 都重讀目錄，但 `retry_failed_dispatch` 造重試
+    請求時是 `replace(request, request_id=…, attempt=…)`——只換這兩個欄位，於是舊請求
+    那份 `worker_catalog_items` 原封不動被複製過去。活目錄只被拿去做 base 驗證，從來
+    沒進到送出去的請求裡。
+
+    20260721 punch-L03 的實測：登錄那一刻素材庫是空的（DP 還沒跑，沒人知道要買什麼），
+    補買八支之後 retry，packet 的 `catalog` 仍然是 `[]`，DP 連一個 `asset_ref` 都引用
+    不到。而 DP 的契約就是 `implement_current_events_using_only_catalog_references`
+    ——只能選、不能買——所以空目錄等於整站無解。
+
+    只在 DP 這一站換。Director 與 visual_review 的請求本來就不帶素材目錄，硬塞會讓
+    `_worker_packet` 的 `worker_catalog_items` / `worker_asset_refs` 一致性檢查失效。
+    """
+    bumped = replace(request, request_id=request_id, attempt=request.attempt + 1)
+    return _with_live_catalog(bumped, catalog)
+
+
+def _with_live_catalog(request: StageRequest, catalog: WorkerSelectionCatalog) -> StageRequest:
+    """把一個 DP 請求換上**現在**的素材目錄；其他站原樣回傳。
+
+    請求一旦鑄好就把目錄凍在裡面，而 DP 的請求是在 `register_approved_cut` 那一刻
+    鑄的——那時候 Director 還沒跑，沒有人知道要買什麼，目錄必然是空的。之後補買的
+    素材再多，送出去的還是那份空快照。
+
+    20260721 value-L02：素材庫已經有 52 支，packet 的 `catalog` 仍然是 `[]`。
+    `retry-failed-dispatch` 那條路先前已經修過（見 `_retry_with_live_catalog`），
+    但**第一次派發**走的是 `_advance_existing`，直接把儲存的請求原樣丟出去，同一個
+    缺口在那裡還開著。
+
+    只換 DP。Director 與 visual_review 的請求本來就不帶目錄，硬塞會讓
+    `_worker_packet` 的 `worker_catalog_items` / `worker_asset_refs` 一致性檢查失效。
+    """
+    if request.stage != "dp":
+        return request
+    items = catalog.items()
+    return replace(
+        request,
+        worker_asset_refs=tuple(item.reference for item in items),
+        worker_catalog_items=items,
+    )
+
+
+def _live_catalog(
+    resolver: AssetResolver | None,
+    snapshot: WorkerSelectionCatalog,
+) -> WorkerSelectionCatalog:
+    """素材目錄一律**在用到的當下重讀**，不用登錄那一刻的快照。
+
+    2026-09-09 punch-L03 的實測：目錄在 `register_approved_cut` 拍一次快照就再也不更新，
+    而 DP 的契約是 `implement_current_events_using_only_catalog_references`——只能選、
+    不能買——三個 stage 裡也沒有任何一站負責獲取。三件事疊起來就是：**登錄之後才買的
+    素材，這支 cut 永遠看不到**。可是要買什麼，是 Director 跑完才知道的。
+
+    實際後果：L2 的「邊際效應遞減」被迫配了 L1 的相機素材（不同的 beat）然後建置失敗；
+    我補買了四支對的素材，發修正、retry、再發修正，DP 目錄始終是同一批 5 支 L1 剩菜。
+    L1 之所以出得來，是因為 `authority.json` 裡有約 50 個 run——每買一批就重登錄一次，
+    硬換一張新快照。那是蠻力，不是流程。
+
+    **只把送出去的 packet 換成活的還不夠**：第一版修正只動了請求端，DP 於是看得到 25 支、
+    也選了新買的那一支，但 `_events_for_acceptance` 收件時仍拿 `run.worker_catalog`
+    去 `resolve_dp_reference`，快照裡沒有這支 → `AssetContractError` → `_leave_in_review`。
+    沒有 diagnostic、沒有 policy_diagnostics，`advance` 立刻回 needs_review 什麼也不說，
+    看起來就像「答案被吃掉了」。`_derived_asset_request` 帶給建置器的
+    `worker_catalog_items` 也是同一份快照，會在下一站再爆一次。所以活目錄要放在
+    **`_RunState` 建構的那一刻**，讓所有讀取點自然都是活的，而不是逐個站點加特例。
+
+    重讀不會弄髒稽核：每個 StageRequest 都各自存下自己那份 `worker_catalog_items`，
+    所以「這一次 DP 是在哪些素材裡挑的」照樣查得到，只是不再被第一次登錄綁死。
+    """
+    if resolver is None:
+        return snapshot
+    return resolver.worker_selection_catalog()
 
 
 class _AggregateContext(Protocol):
@@ -799,8 +931,8 @@ class InMemoryProductionSystem:
         self._runs: dict[str, _RunState] = {}
         self._accepted_stages: dict[str, AcceptedStage] = {}
         self._state_views: dict[str, dict[str, object]] = {}
-        self._releases: dict[str, FinishedCutRelease] = {}
-        self._current_releases: dict[str, tuple[FinishedCutRelease, ...]] = {}
+        self._records: dict[str, PlanRecord] = {}
+        self._current_records: dict[str, tuple[PlanRecord, ...]] = {}
         self._sequence = 0
 
     def _next_id(self, prefix: str) -> str:
@@ -843,40 +975,43 @@ class InMemoryProductionSystem:
 
         self._state_views[run_id] = dict(forged_view)
 
-    def install_current_release(
-        self, view: _ProductionRun, *, release_id: str
-    ) -> FinishedCutRelease:
-        """Seed the fake current-index adapter from a plan produced by this module."""
+    def install_plan_record(self, view: _ProductionRun) -> PlanRecord:
+        """Seed the fake record index from a plan produced by this module.
+
+        以前這裡要「封存成 Release」才拿得到一個可以被 `request_revision` 指到的
+        身分，所以 fixture 得憑空生一個 release_id。plan record 的身分就是
+        plan 自己的 id——少一個參數，也少一個 fixture 與正式路徑對不上的機會。
+        """
 
         plan = view.materialization_plan
         run = self._runs.get(view.command_id)
         if plan is None or run is None or not isinstance(run.command, ApprovedCutCommand):
-            raise ValueError("only a review-ready approved cut can seed fake current")
+            raise ValueError("only a review-ready approved cut can seed a fake record")
         artifact = ReleaseArtifact(path="fixture", bytes=0, sha256="0" * 64)
-        release = _seal_finished_cut_release(
-            release_id=release_id,
+        record = PlanRecord(
+            plan_id=plan.plan_id,
+            command_id=run.command.command_id,
+            run_id=view.run_id,
             episode_id=run.command.episode_id,
             cut_id=run.command.cut_id,
             format=run.command.format,
-            command_id=run.command.command_id,
-            run_id=view.run_id,
             editorial_master_id=run.command.editorial_master_id,
             winner_id=run.command.winner_id,
             tight_cut_id=run.command.tight_cut_id,
             director_acceptance_id=plan.director_acceptance_id,
             dp_acceptance_id=plan.dp_acceptance_id,
             visual_acceptance_id=plan.visual_acceptance_id,
-            materialization_plan_id=plan.plan_id,
-            events=plan.events,
-            components=plan.components,
+            timeline=PlanTimeline(name="fixture-timeline", uid="fixture-uid"),
+            transaction_id="fixture-transaction",
+            duration_sec=max(plan.duration_sec, 1.0),
             preview=artifact,
             subtitle=artifact,
-            transaction_receipt_id="fixture-committed-transaction",
-            rollback_ref="fixture-rollback",
+            events=plan.events,
+            components=plan.components,
         )
-        self._releases[release.release_id] = release
-        self._current_releases[release.episode_id] = (release,)
-        return release
+        self._records[record.plan_id] = record
+        self._current_records[record.episode_id] = (record,)
+        return record
 
 
 def advance(command_id: str, *, system: InMemoryProductionSystem) -> _ProductionRun:
@@ -890,7 +1025,7 @@ def advance(command_id: str, *, system: InMemoryProductionSystem) -> _Production
         raise CommandRejectedError(f"authoritative command not found: {command_id}")
     run_id = system._next_id("run")
     worker_catalog = system._asset_resolver.worker_selection_catalog()
-    base_release: FinishedCutRelease | None = None
+    base_record: PlanRecord | None = None
     events: tuple[EventRecord, ...] = ()
     scope = "full_stage"
     event_id: str | None = None
@@ -898,8 +1033,8 @@ def advance(command_id: str, *, system: InMemoryProductionSystem) -> _Production
     base_acceptance_id: str | None = None
     feedback: str | None = None
     if isinstance(command, TargetedRevisionCommand):
-        base_release = system._releases[command.current_release_id]
-        director = system._accepted_stages[base_release.director_acceptance_id]
+        base_record = system._records[command.current_plan_id]
+        director = system._accepted_stages[base_record.director_acceptance_id]
         events = tuple(event for event in director.events if event.event_id == command.event_id)
         scope = "event_retry"
         event_id = command.event_id
@@ -925,7 +1060,7 @@ def advance(command_id: str, *, system: InMemoryProductionSystem) -> _Production
     view = _ProductionRun(
         run_id=run_id,
         command_id=command.command_id,
-        editorial_context=_in_memory_editorial_context(command, base_release=base_release),
+        editorial_context=_in_memory_editorial_context(command, base_record=base_record),
         status="pending",
         outstanding_request=request,
     )
@@ -933,7 +1068,7 @@ def advance(command_id: str, *, system: InMemoryProductionSystem) -> _Production
         command=command,
         view=view,
         worker_catalog=worker_catalog,
-        base_release=base_release,
+        base_record=base_record,
     )
     return view
 
@@ -941,16 +1076,16 @@ def advance(command_id: str, *, system: InMemoryProductionSystem) -> _Production
 def _in_memory_editorial_context(
     command: ApprovedCutCommand | TargetedRevisionCommand,
     *,
-    base_release: FinishedCutRelease | None,
+    base_record: PlanRecord | None,
 ) -> EditorialCutContext:
     """Create deterministic fake authority for the legacy in-memory test adapter only."""
 
     if isinstance(command, ApprovedCutCommand):
         editorial_master_id = command.editorial_master_id
         tight_cut_id = command.tight_cut_id
-    elif base_release is not None:
-        editorial_master_id = base_release.editorial_master_id
-        tight_cut_id = base_release.tight_cut_id
+    elif base_record is not None:
+        editorial_master_id = base_record.editorial_master_id
+        tight_cut_id = base_record.tight_cut_id
     else:  # pragma: no cover - the caller resolves targeted base authority first
         raise CommandRejectedError("targeted revision has no exact current context")
     return EditorialCutContext(
@@ -966,7 +1101,7 @@ def _in_memory_editorial_context(
 
 
 def request_revision(
-    current_release_ref: str,
+    current_plan_ref: str,
     event_id: str,
     feedback: str,
     *,
@@ -974,20 +1109,20 @@ def request_revision(
 ) -> str:
     """Mint one current-event revision command after exact-current validation."""
 
-    release = system._releases.get(current_release_ref)
-    if release is None or release not in system._current_releases.get(release.episode_id, ()):
-        raise CommandRejectedError(f"release is not exact current: {current_release_ref}")
-    if event_id not in {event.event_id for event in release.events}:
-        raise CommandRejectedError(f"event is not in current release: {event_id}")
+    record = system._records.get(current_plan_ref)
+    if record is None or record not in system._current_records.get(record.episode_id, ()):
+        raise CommandRejectedError(f"plan record is not current: {current_plan_ref}")
+    if event_id not in {event.event_id for event in record.events}:
+        raise CommandRejectedError(f"event is not in the plan record: {event_id}")
     if not feedback.strip():
         raise CommandRejectedError("targeted revision feedback is required")
     command_id = system._next_id("targeted-revision")
     system._targeted_revisions[command_id] = TargetedRevisionCommand(
         command_id=command_id,
-        current_release_id=release.release_id,
-        episode_id=release.episode_id,
-        cut_id=release.cut_id,
-        format=release.format,
+        current_plan_id=record.plan_id,
+        episode_id=record.episode_id,
+        cut_id=record.cut_id,
+        format=record.format,
         event_id=event_id,
         feedback=feedback.strip(),
     )
@@ -998,10 +1133,10 @@ def inspect_current(
     episode_id: str,
     *,
     system: InMemoryProductionSystem,
-) -> tuple[FinishedCutRelease, ...]:
-    """Return only the exact current Release index for an episode."""
+) -> tuple[PlanRecord, ...]:
+    """Return only this episode's recorded cuts."""
 
-    return system._current_releases.get(episode_id, ())
+    return system._current_records.get(episode_id, ())
 
 
 def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _ProductionRun:
@@ -1017,6 +1152,8 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
         return _advance_visual_checkpoint(run, aggregate)
     if request is None:
         return run.view
+    # 送出去之前換上現在的素材目錄——請求是登錄那一刻鑄的，那時候櫃子必然是空的。
+    request = _with_live_catalog(request, run.worker_catalog)
     if not _request_base_is_current(run, request, aggregate):
         return _leave_in_review(run, request)
     outcome = aggregate.dispatch(request)
@@ -1188,10 +1325,10 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
             next_event_id = None
             next_feedback = None
             correction = None
-    elif request.scope == "event_retry" and run.base_release is not None:
+    elif request.scope == "event_retry" and run.base_record is not None:
         next_base_acceptance_id = {
-            "dp": run.base_release.dp_acceptance_id,
-            "visual_review": run.base_release.visual_acceptance_id,
+            "dp": run.base_record.dp_acceptance_id,
+            "visual_review": run.base_record.visual_acceptance_id,
         }[next_stage]
     next_events = accepted.events
     next_components = accepted.components
@@ -1202,6 +1339,7 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
         next_components = tuple(
             component for component in accepted.components if component.event_id == request.event_id
         )
+    dp_catalog = run.worker_catalog if next_stage == "dp" else None
     next_request = StageRequest(
         run_id=request.run_id,
         request_id=aggregate.mint_id("request"),
@@ -1223,11 +1361,9 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
         ),
         feedback=next_feedback,
         worker_asset_refs=(
-            tuple(item.reference for item in run.worker_catalog.items())
-            if next_stage == "dp"
-            else ()
+            tuple(item.reference for item in dp_catalog.items()) if dp_catalog is not None else ()
         ),
-        worker_catalog_items=(run.worker_catalog.items() if next_stage == "dp" else ()),
+        worker_catalog_items=(dp_catalog.items() if dp_catalog is not None else ()),
         components=next_components,
         editorial_context=None,
     )
@@ -1269,9 +1405,9 @@ def _request_base_is_current(
     if request.parent_acceptance_id != expected_parent:
         if not (
             not current
-            and run.base_release is not None
+            and run.base_record is not None
             and request.stage == "director"
-            and request.parent_acceptance_id == run.base_release.director_acceptance_id
+            and request.parent_acceptance_id == run.base_record.director_acceptance_id
         ):
             return False
     if request.scope == "full_stage":
@@ -1279,7 +1415,7 @@ def _request_base_is_current(
     if request.event_id is None:
         return False
     if request.base_acceptance_id is None:
-        return run.base_release is not None
+        return run.base_record is not None
     try:
         base = aggregate.load_accepted(request.base_acceptance_id)
     except KeyError:
@@ -1300,12 +1436,12 @@ def _request_base_is_current(
             and base.acceptance_id == latest.acceptance_id
             and run.view.correction.event_id == request.event_id
         )
-    if run.base_release is None:
+    if run.base_record is None:
         return False
     expected = {
-        "director": run.base_release.director_acceptance_id,
-        "dp": run.base_release.dp_acceptance_id,
-        "visual_review": run.base_release.visual_acceptance_id,
+        "director": run.base_record.director_acceptance_id,
+        "dp": run.base_record.dp_acceptance_id,
+        "visual_review": run.base_record.visual_acceptance_id,
     }[request.stage]
     return base.acceptance_id == expected
 
@@ -1318,8 +1454,8 @@ def _current_chain_is_exact(run: _RunState) -> bool:
     if any(stage.run_id != run.view.run_id for stage in current):
         return False
     expected_first_parent = (
-        run.base_release.director_acceptance_id
-        if run.base_release is not None and isinstance(run.command, TargetedRevisionCommand)
+        run.base_record.director_acceptance_id
+        if run.base_record is not None and isinstance(run.command, TargetedRevisionCommand)
         else None
     )
     if current and current[0].parent_acceptance_id != expected_first_parent:
@@ -1369,24 +1505,35 @@ def _derived_asset_request(
         if event.visual_placement is None:
             raise RuntimeError("accepted DP event has no Visual Placement authority")
         placement = event.visual_placement
-        layout_version = "v4" if event.implementation_kind == "fullscreen_transition" else "v1"
         geometry = DerivedAssetGeometry(
             target_width=width,
             target_height=height,
-            layout_identity=f"{event.implementation_kind}:{layout_version}",
+            layout_identity=layout_identity(event.implementation_kind),
         )
         recipe_identity = None
         if event.implementation_kind not in _NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS:
+            # Recipe identity 必須是**畫面的函數**，只放真的會改變輸出像素的欄位。
+            #
+            # 原本這裡還放了 run_id、dp_acceptance_id 與 event_id——三個都不影響渲染。
+            # 後果是每次重跑（重新登錄、事件改名、修正後重建）都會為**完全一樣的
+            # bytes** 鑄出一個新 identity：`find_exact_recipe` 永遠 miss，於是重新
+            # render，然後 content-addressed store 因為 digest 早就在了而拒絕
+            # 「content digest already has conflicting asset metadata」，被
+            # `_render_browser_visual` 吞成 None，再被回報成 `derived_asset_mismatch`
+            # ——沒有 diagnostic，看不出是哪一條指令、更看不出原因。
+            #
+            # 2026-09-09 punch-L03：把 `visual_effect` 事件改名成 hero 之後重跑，
+            # 「其實就是重播」那張卡就是這樣卡死的。20260805 那 50 次重新登錄之所以
+            # 那麼痛，同一個病根。
+            #
+            # 絕對時間也拿掉：渲染器只吃時長，兩張同字同版位同長度的卡本來就會產出
+            # 一樣的 bytes，讓它們共用同一份媒體才是對的。
             recipe_payload = {
-                "run_id": run.view.run_id,
-                "dp_acceptance_id": accepted.acceptance_id,
-                "event_id": event.event_id,
                 "semantic_kind": event.semantic_kind,
                 "implementation_kind": event.implementation_kind,
                 "lane": event.lane,
                 "display": event.display,
-                "t0": placement.t0,
-                "t1": placement.t1,
+                "show_sec": round(placement.t1 - placement.t0, 6),
                 "source_asset_ref": event.asset_ref,
                 "geometry": {
                     "target_width": geometry.target_width,
@@ -1519,7 +1666,7 @@ def _derived_request_is_current(
         events = tuple(event for event in dp.events if event.event_id == request.event_id)
         if len(events) != 1:
             return False
-        if run.base_release is None and (
+        if run.base_record is None and (
             run.view.correction is None
             or run.view.correction.event_id != request.event_id
             or not run.view.correction.remaining_base_acceptance_ids
@@ -1587,9 +1734,9 @@ def _visual_retry_context(
                 remaining_base_acceptance_ids=correction.remaining_base_acceptance_ids[1:],
             ),
         )
-    if scope == "event_retry" and run.base_release is not None:
+    if scope == "event_retry" and run.base_record is not None:
         try:
-            base = aggregate.load_accepted(run.base_release.visual_acceptance_id)
+            base = aggregate.load_accepted(run.base_record.visual_acceptance_id)
         except KeyError:
             return None
         if base.stage != "visual_review" or event_id is None:
@@ -1598,6 +1745,15 @@ def _visual_retry_context(
     if scope == "event_retry":
         return None
     return None, 1, None, correction
+
+
+# 每個字卡實作的版面版本。改設計就要 bump，否則新舊兩版會共用同一個 recipe
+# 快取鍵，畫面改了卻拿到舊的渲染檔。
+# - fullscreen_transition v4：滿版紙紋轉場（B2 定版）
+# - hero_title v2：2026-09-08 從 ADR-066 自創的 compact_paper 單行藥丸，改回頻道
+#   定版的 punch_card_wide tier1 + style:paper（錯位雙行紙卡、96px、手繪橘底線、
+#   落在說話者負空間）。手冊：.claude/skills/longform-cut/SKILL.md「Hero 大字卡」
+# 版位版本住在 _projection.LAYOUT_VERSIONS（唯一真相來源），這裡不再自己維護一份。
 
 
 def _leave_in_review_from_build(run: _RunState) -> _ProductionRun:
@@ -1634,18 +1790,22 @@ def _advance_visual_checkpoint(
             CutPolicyInput(
                 context=run.editorial_context,
                 components=projected_components,
-                stock_video_metadata=run.stock_video_metadata,
             )
         )
-        if policy_decision.status != "accepted":
+        # `accepted_with_warnings` 照樣往下走：那些是品味與政策，不是壞成品。
+        # 分級理由見 `_policy` 的模組 docstring（修修 2026-09-10 裁決）。
+        if policy_decision.status == "needs_review":
             run.view = replace(
                 run.view,
                 status="needs_review",
                 policy_diagnostics=policy_decision.diagnostics,
             )
             return run.view
+        # 警告要跟著 plan 一起留在 view 上——收據裡看得到，修修在 timeline 上自己判斷。
+        policy_notices = policy_decision.diagnostics
     else:
         projected_components = _project_components(visual)
+        policy_notices = ()
     current_by_stage = {stage.stage: stage for stage in run.view.accepted_stages}
     plan = _mint_materialization_plan(
         plan_id=aggregate.mint_id("plan"),
@@ -1659,12 +1819,15 @@ def _advance_visual_checkpoint(
         visual_acceptance_id=visual.acceptance_id,
         events=visual.events,
         components=projected_components,
+        duration_sec=(
+            run.editorial_context.duration_sec if run.editorial_context is not None else 0.0
+        ),
     )
     run.view = replace(
         run.view,
         status="review_ready",
         materialization_plan=plan,
-        policy_diagnostics=(),
+        policy_diagnostics=policy_notices,
     )
     return run.view
 
@@ -1698,10 +1861,6 @@ def _derived_result_matches(
             asset.final_asset_ref != instruction.source_asset_ref
         ):
             return False
-        if instruction.implementation_kind == "person_inset" and (
-            asset.final_asset_ref == instruction.source_asset_ref
-        ):
-            return False
         try:
             final = asset_resolver.resolve_active_asset(asset.final_asset_ref)
             if asset.inspection_ref is not None:
@@ -1712,7 +1871,16 @@ def _derived_result_matches(
             instruction.implementation_kind
         ):
             return False
-        if final.record.recipe_identity != instruction.recipe_identity:
+        # 生成素材只要求「它是某個配方算出來的」，不要求 store record 上的 identity
+        # 就是這一個：兩個配方算出同樣的 bytes 時 store 會回既有那筆
+        # （`ActiveAssetStore.publish` 的去重路徑），逐字相等在那條路上永遠不成立。
+        # 建置器交出來的 `asset.recipe_identity` 已經在上面比對過，那才是「這一份
+        # 媒體是為這條指令建的」的宣告。
+        # 直通素材（stock/photo）沒有配方，record 也必須沒有——那是兩種不同的東西。
+        if instruction.recipe_identity is None:
+            if final.record.recipe_identity is not None:
+                return False
+        elif final.record.recipe_identity is None:
             return False
     return True
 
@@ -1781,6 +1949,13 @@ def _events_for_acceptance(
                     or not event.intent.strip()
                     or not event.display.strip()
                     or not _is_active_semantic_kind(event.semantic_kind)
+                    # `intentional_aroll` 與 semantic_kind 必須互相同意。DP 那一關
+                    # 硬性要求「intentional_aroll 的事件其 semantic_kind 也是
+                    # intentional_aroll」，所以 Director 交出 hero_title +
+                    # intentional_aroll=true 這種組合時，DP 無論回什麼都會被拒——
+                    # 錯在 Director，卻由 DP 反覆撞牆，而且沒有任何訊息說得出原因。
+                    # 2026-09-08 蘇予昕 punch-L04 就是這樣連退 11 次。
+                    or event.intentional_aroll != (event.semantic_kind == "intentional_aroll")
                 ):
                     return None
                 try:
@@ -1878,6 +2053,7 @@ def _events_for_acceptance(
                         semantic_cue_ids=base.master_cue_ids,
                         placement_cue_ids=event.placement_cue_ids,
                         semantic_kind=base.semantic_kind,
+                        min_show_sec=readable_floor_sec(event.implementation_kind, base.display),
                     )
                 except ValueError:
                     return None
@@ -1989,12 +2165,12 @@ def _merge_retry_events(
             proposal_events,
             event_id=request.event_id,
         )
-    if run.base_release is None or request.event_id is None:
+    if run.base_record is None or request.event_id is None:
         raise RuntimeError("event retry has no current base release")
     acceptance_id = {
-        "director": run.base_release.director_acceptance_id,
-        "dp": run.base_release.dp_acceptance_id,
-        "visual_review": run.base_release.visual_acceptance_id,
+        "director": run.base_record.director_acceptance_id,
+        "dp": run.base_record.dp_acceptance_id,
+        "visual_review": run.base_record.visual_acceptance_id,
     }[request.stage]
     base = aggregate.load_accepted(acceptance_id)
     replacement = proposal_events[0]
@@ -2020,12 +2196,12 @@ def _merge_retry_components(
             proposal.components,
             event_id=request.event_id,
         )
-    if run.base_release is None or request.event_id is None:
+    if run.base_record is None or request.event_id is None:
         raise RuntimeError("event retry has no current base release")
     acceptance_id = {
-        "director": run.base_release.director_acceptance_id,
-        "dp": run.base_release.dp_acceptance_id,
-        "visual_review": run.base_release.visual_acceptance_id,
+        "director": run.base_record.director_acceptance_id,
+        "dp": run.base_record.dp_acceptance_id,
+        "visual_review": run.base_record.visual_acceptance_id,
     }[request.stage]
     base = aggregate.load_accepted(acceptance_id)
     return _replace_component_group(
@@ -2194,91 +2370,4 @@ def _public_run_view(run: _ProductionRun) -> RunView:
         current_stage=request.stage if request is not None else None,
         scope=request.scope if request is not None else None,
         event_id=request.event_id if request is not None else None,
-    )
-
-
-def _current_inspection(episode_id: str, index: CurrentReleaseIndex) -> FinishedCutInspection:
-    """Project the exact current index for one episode.
-
-    Shared so an inbound read-only adapter cannot drift from what
-    ``FinishedCutProduction.inspect_current`` returns.
-    """
-    try:
-        releases = index.inspect_current(episode_id)
-    except ReleaseLifecycleError as error:
-        if error.reason == "missing":
-            return FinishedCutInspection(
-                episode_id=episode_id,
-                state="missing",
-                error_code="current_release_missing",
-            )
-        return FinishedCutInspection(
-            episode_id=episode_id,
-            state="invalid",
-            error_code="current_release_invalid",
-        )
-    if not releases:
-        return FinishedCutInspection(
-            episode_id=episode_id,
-            state="missing",
-            error_code="current_release_missing",
-        )
-    return FinishedCutInspection(
-        episode_id=episode_id,
-        state="ready",
-        cuts=tuple(_cut_view(release) for release in releases),
-    )
-
-
-def _cut_view(release: FinishedCutRelease) -> CutView:
-    return CutView(
-        release_id=release.release_id,
-        cut_id=release.cut_id,
-        format=release.format,
-        preview=_artifact_view(release.preview),
-        subtitle=_artifact_view(release.subtitle),
-        events=tuple(
-            EventView(
-                event_id=event.event_id,
-                master_cue_ids=event.master_cue_ids,
-                text=event.text,
-                text_hash=event.text_hash,
-                t0=event.t0,
-                t1=event.t1,
-                section_id=event.section_id,
-                intent=event.intent,
-                display=event.display,
-                semantic_kind=event.semantic_kind,
-                implementation_kind=event.implementation_kind,
-                lane=event.lane,
-                asset_ref=event.asset_ref,
-                visual_status=event.visual_status,
-                intentional_aroll=event.intentional_aroll,
-            )
-            for event in release.events
-        ),
-        components=tuple(
-            ComponentView(
-                component_id=component.component_id,
-                event_id=component.event_id,
-                semantic_kind=component.semantic_kind,
-                implementation_kind=component.implementation_kind,
-                lane=component.lane,
-                display=component.display,
-                t0=component.t0,
-                t1=component.t1,
-                asset_ref=component.asset_ref,
-            )
-            for component in release.components
-        ),
-    )
-
-
-def _artifact_view(artifact: ReleaseArtifact) -> ArtifactView:
-    return ArtifactView(
-        reference=artifact.path,
-        bytes=artifact.bytes,
-        sha256=artifact.sha256,
-        duration_sec=artifact.duration_sec,
-        probe=artifact.probe,
     )

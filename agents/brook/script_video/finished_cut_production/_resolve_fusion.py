@@ -7,11 +7,13 @@ import importlib
 import json
 import math
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterator, Mapping, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Protocol
 
+from ._projection import LANE_TRACKS
 from ._resolve import ResolveTransactionError, TimelineIdentity
 from ._resolve_davinci import (
     RenderRequest,
@@ -25,13 +27,8 @@ from ._resolve_davinci import (
 from ._timeline_apply import TimelinePlacement
 
 _DERIVED_VIDEO_TRACKS = range(2, 8)
-_LANE_TRACKS = {
-    "b_roll": 2,
-    "hero_title": 3,
-    "identity_card": 4,
-    "fullscreen_transition": 6,
-    "visual_effect": 7,
-}
+#: lane → video track。名單本體在 `_projection.VOCABULARY`，不在這裡抄第二份。
+_LANE_TRACKS = LANE_TRACKS
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,65 +154,72 @@ class DaVinciResolveFacade:
 
     def timeline_state(self, uid: str) -> ResolveTimelineState:
         timeline = self._timeline_by_uid(uid)
-        start_frame = _required_int(timeline, "GetStartFrame")
-        end_frame = _required_int(timeline, "GetEndFrame")
-        if end_frame <= start_frame:
-            raise ResolveTransactionError("Resolve Timeline range is invalid")
-        tracks: list[ResolveTimelineTrack] = []
-        items: list[ResolveTimelineItem] = []
-        for track_type in ("video", "audio", "subtitle"):
-            count = _required_nonnegative_int(timeline, "GetTrackCount", track_type)
-            for track_index in range(1, count + 1):
-                raw_items = _required_call(
-                    timeline,
-                    "GetItemListInTrack",
-                    track_type,
-                    track_index,
-                )
-                if not isinstance(raw_items, Sequence) or isinstance(raw_items, (str, bytes)):
-                    raise ResolveTransactionError("Resolve Timeline track items are invalid")
-                track_items = tuple(
-                    self._snapshot_item(item, track_type=track_type, track_index=track_index)
-                    for item in raw_items
-                )
-                tracks.append(
-                    ResolveTimelineTrack(
-                        track_type=track_type,  # type: ignore[arg-type]
-                        track_index=track_index,
-                        name=_required_string(
-                            timeline,
-                            "GetTrackName",
-                            track_type,
-                            track_index,
-                        ),
-                        enabled=_required_bool(
-                            timeline,
-                            "GetIsTrackEnabled",
-                            track_type,
-                            track_index,
-                        ),
-                        locked=_required_bool(
-                            timeline,
-                            "GetIsTrackLocked",
-                            track_type,
-                            track_index,
-                        ),
-                        item_ids=tuple(item.item_id for item in track_items),
+        # Resolve 的 `GetIsTrackEnabled` / `GetIsTrackLocked` 只對**當下開著的**
+        # timeline 回真值；讀別的 timeline 一律回 False。不先切過去，物化的
+        # protected-track 檢查就會看到「V1／音軌／字幕軌全部被停用」，一路報
+        # `protected_track_drift`——而畫面上那條 timeline 明明好好的。
+        # 2026-09-09 punch-L03 第一次真的跑到物化就卡在這裡。
+        # 讀完切回原本那條：這是唯讀檢查，不該改動修修正在編輯的畫面。
+        with self._timeline_current(timeline):
+            start_frame = _required_int(timeline, "GetStartFrame")
+            end_frame = _required_int(timeline, "GetEndFrame")
+            if end_frame <= start_frame:
+                raise ResolveTransactionError("Resolve Timeline range is invalid")
+            tracks: list[ResolveTimelineTrack] = []
+            items: list[ResolveTimelineItem] = []
+            for track_type in ("video", "audio", "subtitle"):
+                count = _required_nonnegative_int(timeline, "GetTrackCount", track_type)
+                for track_index in range(1, count + 1):
+                    raw_items = _required_call(
+                        timeline,
+                        "GetItemListInTrack",
+                        track_type,
+                        track_index,
                     )
-                )
-                items.extend(track_items)
-        if len({item.item_id for item in items}) != len(items):
-            raise ResolveTransactionError("Resolve Timeline item identity is ambiguous")
-        return ResolveTimelineState(
-            start_frame=start_frame,
-            end_frame=end_frame,
-            items=tuple(items),
-            tracks=tuple(tracks),
-            frame_rate=_positive_number(
-                _required_call(timeline, "GetSetting", "timelineFrameRate"),
-                label="Timeline frame rate",
-            ),
-        )
+                    if not isinstance(raw_items, Sequence) or isinstance(raw_items, (str, bytes)):
+                        raise ResolveTransactionError("Resolve Timeline track items are invalid")
+                    track_items = tuple(
+                        self._snapshot_item(item, track_type=track_type, track_index=track_index)
+                        for item in raw_items
+                    )
+                    tracks.append(
+                        ResolveTimelineTrack(
+                            track_type=track_type,  # type: ignore[arg-type]
+                            track_index=track_index,
+                            name=_required_string(
+                                timeline,
+                                "GetTrackName",
+                                track_type,
+                                track_index,
+                            ),
+                            enabled=_required_bool(
+                                timeline,
+                                "GetIsTrackEnabled",
+                                track_type,
+                                track_index,
+                            ),
+                            locked=_required_bool(
+                                timeline,
+                                "GetIsTrackLocked",
+                                track_type,
+                                track_index,
+                            ),
+                            item_ids=tuple(item.item_id for item in track_items),
+                        )
+                    )
+                    items.extend(track_items)
+            if len({item.item_id for item in items}) != len(items):
+                raise ResolveTransactionError("Resolve Timeline item identity is ambiguous")
+            return ResolveTimelineState(
+                start_frame=start_frame,
+                end_frame=end_frame,
+                items=tuple(items),
+                tracks=tuple(tracks),
+                frame_rate=_positive_number(
+                    _required_call(timeline, "GetSetting", "timelineFrameRate"),
+                    label="Timeline frame rate",
+                ),
+            )
 
     def duplicate_timeline(self, uid: str, name: str) -> TimelineIdentity:
         if not isinstance(name, str) or not name.strip():
@@ -319,10 +323,11 @@ class DaVinciResolveFacade:
             raise ResolveTransactionError("Resolve imported media path does not match final asset")
         _assert_online_media(properties)
         width, height = _media_resolution(properties)
-        if placement.implementation_kind == "stock_video":
-            if width <= height or width * 9 != height * 16:
-                raise ResolveTransactionError("Stock media is not native 16:9 landscape")
-        elif (width, height) != (1920, 1080):
+        # 取得的 Stock 原生解析度不限（4K 很常見），所以只有生成的字卡要是 1920x1080。
+        # 「直式 Stock」在選片那一刻就擋掉了（`_visual_assets` 用目錄自己的
+        # width/height 驗），這裡不驗第二遍——同一條規則兩處實作，其中一處還是在
+        # Resolve 交易中間 raise，而且 2026-09 誤擋過合法的 DCI 4K（ADR-069 階段 2）。
+        if placement.implementation_kind != "stock_video" and (width, height) != (1920, 1080):
             raise ResolveTransactionError("derived media is not a pre-rendered 1920x1080 canvas")
         source_fps = _positive_number(properties.get("FPS"), label="media FPS")
         source_frames = _positive_int(properties.get("Frames"), label="media frame count")
@@ -401,23 +406,30 @@ class DaVinciResolveFacade:
             _media_path(actual_media_properties) == source_path
             and actual_digest.lower() == digest.lower()
         )
+        # 記錄端長度允許差一格：來源素材的幀率常常不是 timeline 的幀率
+        # （Envato 大量是 25fps，時間軸是 30fps），Resolve 會自己 conform，
+        # 算出來的長度必然和 `round(duration_sec * timeline_fps)` 差到一格。
+        # punch-L03 第一支 B-roll 就是 25fps：期望 568、實際 567，整條物化被擋下。
+        # 一格是 33 毫秒、肉眼不可見，而且是 conform 的必然結果，不是落點錯了；
+        # 真正放錯位置的落差遠大於一格，仍然擋得住。
+        # 起點不放寬——落點是我們指定的，沒有 conform 的理由。
+        expected_source_frames = _conformed_source_frames(
+            actual_end - actual_start, source_fps, timeline_fps
+        )
         if (
             actual_start != record_frame
-            or actual_end != record_frame + record_duration_frames
+            or abs(actual_end - (record_frame + record_duration_frames)) > 1
+            or actual_end <= actual_start
             or actual_source_start != 0
-            or actual_source_end
-            not in {
-                source_duration_frames - 1,
-                source_duration_frames,
-            }
+            or abs((actual_source_end - actual_source_start + 1) - expected_source_frames) > 1
             or not same_media
         ):
             raise ResolveTransactionError(
                 "Resolve appended media range or identity drifted: "
                 f"actual=({actual_start},{actual_end},{actual_source_start},"
                 f"{actual_source_end},{same_media}); "
-                f"expected=({record_frame},{record_frame + record_duration_frames},0,"
-                f"{source_duration_frames - 1}|{source_duration_frames},True)"
+                f"expected=({record_frame},{record_frame + record_duration_frames}±1,0,"
+                f"{actual_source_start + expected_source_frames - 1}±1,True)"
             )
 
     def select_timeline(self, uid: str) -> None:
@@ -589,6 +601,18 @@ class DaVinciResolveFacade:
         ) != len(identities):
             raise ResolveTransactionError("Resolve Timeline inventory is ambiguous")
         return tuple(rows)
+
+    @contextmanager
+    def _timeline_current(self, timeline: object) -> Iterator[None]:
+        """暫時把 timeline 切成當下這條，讀完切回去。"""
+        project = self._current_project()
+        previous = _required_call(project, "GetCurrentTimeline")
+        _require_true_call(project, "SetCurrentTimeline", timeline)
+        try:
+            yield
+        finally:
+            if previous is not None:
+                _required_call(project, "SetCurrentTimeline", previous)
 
     def _timeline_by_uid(self, uid: str) -> object:
         if not isinstance(uid, str) or not uid.strip():
@@ -782,6 +806,22 @@ def _json_compatible(value: object) -> object:
     if isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
         return [_json_compatible(item) for item in value]
     raise ResolveTransactionError("Resolve snapshot contains an unsupported value")
+
+
+def _conformed_source_frames(timeline_frames: int, source_fps: float, timeline_fps: float) -> int:
+    """記錄端佔 `timeline_frames` 格時，來源端該被吃掉幾格。
+
+    來源端的長度**跟著實際的記錄長度走**，不是跟著我們用浮點秒數算出來的
+    `round(duration_sec * source_fps)`。Resolve 是先把記錄端取整，再把那個長度
+    conform 回來源幀率；兩層取整各帶一次誤差，用秒數直接算必然對不上。
+
+    value-L02：落點 8.02s、來源 59.94fps、時間軸 30fps。`round(8.02*59.94)=481`，
+    但 Resolve 實際給 240 記錄格 → 480 來源格（末格索引 479）。舊檢查要
+    480 或 481，整條物化被一個純粹的單位錯誤擋住。
+    """
+    if source_fps <= 0 or timeline_fps <= 0:
+        raise ResolveTransactionError("frame rates must be positive to conform a source range")
+    return round(timeline_frames * source_fps / timeline_fps)
 
 
 def _is_sha256(value: object) -> bool:

@@ -211,23 +211,90 @@
           </div>
           {% endif %}
 
-          {% set release = cut.release_truth %}
+          {% set record = cut.release_truth %}
           <section class="visual-truth visual-truth--ready" aria-labelledby="visual-truth-{{ cut.cut_id }}">
             <header class="visual-truth__head">
               <div>
-                <p class="visual-truth__eyebrow sho-mono">FINISHED CUT RELEASE V3</p>
-                <h3 id="visual-truth-{{ cut.cut_id }}">Current semantic events</h3>
+                <p class="visual-truth__eyebrow sho-mono">FINISHED CUT PLAN RECORD</p>
+                {# 標題要說出這一塊實際上有什麼。短片沒有語意 event，卻頂著
+                   「Current semantic events」，讀起來跟下面那句自己打架。 #}
+                <h3 id="visual-truth-{{ cut.cut_id }}">{{ "Current semantic events" if record.plan_id else "沒有語意紀錄" }}</h3>
               </div>
-              <span class="visual-truth__status sho-mono">{{ release.status_label }}</span>
+              <span class="visual-truth__status sho-mono">{{ record.status_label }}</span>
             </header>
+            {% if not record.plan_id %}
+            {# 短片線不走 finished cut production，所以沒有 plan record：沒有 plan id、
+               沒有 timeline、沒有輪次可比。照長片的版面排下去會印出字面的 "None"
+               與「這是第一輪」，兩句都不是真的。 #}
+            <p class="visual-diff__empty sho-mono">
+              這支走的是短片審核 packet，沒有 plan record——沒有語意 event、沒有
+              timeline 紀錄，也沒有可比的上一輪。畫面請直接看 preview。
+            </p>
+            {% else %}
             <dl class="visual-truth__revisions sho-mono">
-              <div><dt>RELEASE</dt><dd>{{ release.release_id }}</dd></div>
-              <div><dt>EVENTS</dt><dd>{{ release.events|length }}</dd></div>
+              <div><dt>PLAN</dt><dd>{{ record.plan_id }}</dd></div>
+              <div><dt>TIMELINE</dt><dd>{{ record.timeline or "（未記錄）" }}</dd></div>
+              <div><dt>EVENTS</dt><dd>{{ record.events|length }}</dd></div>
             </dl>
+
+            {% if record.uniform_shift_sec is not none %}
+            <p class="visual-shift" role="status">
+              <span class="visual-shift__label sho-mono-up">整份平移</span>
+              <span>這一輪有 <strong>{{ record.event_diff|length }}</strong> 個 event，
+                而且<strong>每一個都被移動了同樣的
+                {{ "%+.3f"|format(record.uniform_shift_sec) }} 秒</strong>。
+                一個 event 被搬是剪輯判斷；整份搬同樣的距離不是。</span>
+            </p>
+            {% endif %}
+
+            <div class="visual-diff">
+              <p class="visual-diff__head sho-mono-up">
+                這一輪 vs 上一輪
+                {% if record.event_diff_previous_acceptance_id %}
+                <span class="sho-mono">· 對照 {{ record.event_diff_previous_acceptance_id }}</span>
+                {% endif %}
+              </p>
+              {% if not record.event_diff %}
+              <p class="visual-diff__empty sho-mono">
+                {% if record.event_diff_previous_acceptance_id %}這一輪沒有任何 event 變動。
+                {% else %}這是第一輪，沒有可比的上一輪。{% endif %}
+              </p>
+              {% else %}
+              <ol class="visual-diff__rows">
+                {% for row in record.event_diff %}
+                <li class="visual-diff__row">
+                  <span class="visual-diff__at sho-mono">{{ row.at }}</span>
+                  <span class="visual-diff__kind sho-mono">{{ row.implementation_kind }}</span>
+                  <span class="visual-diff__changes">
+                    {% for change in row.changes %}
+                    <span class="sho-tag">{{ change }}</span>
+                    {% endfor %}
+                    {% if row.shift_sec is not none %}
+                    <span class="sho-mono">{{ "%+.3f"|format(row.shift_sec) }}s
+                      {%- if row.previous_at %}（原 {{ row.previous_at }}）{% endif %}</span>
+                    {% endif %}
+                  </span>
+                  {% if row.retitled %}
+                  <span class="visual-diff__text">
+                    <del class="visual-truth__pre">{{ row.previous_display or "（空）" }}</del>
+                    <span class="visual-diff__arrow" aria-label="改為">→</span>
+                    <ins class="visual-truth__pre">{{ row.display or "（空）" }}</ins>
+                  </span>
+                  {% elif row.display or row.previous_display %}
+                  {# 沒有文字的卡（B-roll）不排這一行——34 列各多一行空白，正好讓最需要
+                     被掃讀的那個案子變得最難掃。 #}
+                  <span class="visual-diff__text visual-truth__pre">{{ row.display or row.previous_display }}</span>
+                  {% endif %}
+                  <span class="visual-diff__id sho-mono">{{ row.event_id }}</span>
+                </li>
+                {% endfor %}
+              </ol>
+              {% endif %}
+            </div>
             <details class="visual-truth__details">
-              <summary>查看 sealed Release 的語意事件</summary>
+              <summary>查看這份紀錄的語意事件</summary>
               <ol class="visual-truth__events">
-                {% for event in release.events %}
+                {% for event in record.events %}
                 <li class="visual-event">
                   <header class="visual-event__head">
                     <div><span class="visual-event__index sho-mono">{{ '%02d'|format(loop.index) }}</span><strong>{{ event.event_id }}</strong></div>
@@ -245,6 +312,7 @@
                 {% endfor %}
               </ol>
             </details>
+            {% endif %}
           </section>
 
           <section class="cut-feedback" aria-labelledby="cut-feedback-label-{{ cut.cut_id }}">

@@ -44,7 +44,7 @@ def test_to_utc_iso_rejects_naive():
 
 TARGET = {
     "title": "腦科學家的腦腐自救 3 步",
-    "description": "hook…\n\n⏱ 00:00 開場",
+    "description": "hook…\n\n00:00 開場",
     "publish_at": "2026-08-10T20:00:00+08:00",
 }
 RELEASE = {"cut_id": "punch-L5"}

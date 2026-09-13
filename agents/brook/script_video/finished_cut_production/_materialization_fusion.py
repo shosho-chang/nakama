@@ -118,7 +118,7 @@ class VerifiedEditorialMasterContractCache:
         except Exception as exc:
             raise CanonicalAuthorityError(
                 "ADR-064 Editorial Master verification failed",
-                reason_code="editorial_master_verification_failed",
+                reason_code="editorial_master_mismatch",
             ) from exc
         contract = _contract_from_selection(selection, episode_root=self._episode_root)
         _assert_requested_contract(
@@ -137,7 +137,7 @@ class VerifiedEditorialMasterContractCache:
         except (OSError, UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise CanonicalAuthorityError(
                 "verified Editorial Master cache is unreadable",
-                reason_code="editorial_master_cache_invalid",
+                reason_code="editorial_master_mismatch",
             ) from exc
         if not isinstance(document, dict) or set(document) != {
             "schema",
@@ -146,18 +146,18 @@ class VerifiedEditorialMasterContractCache:
         }:
             raise CanonicalAuthorityError(
                 "verified Editorial Master cache envelope is invalid",
-                reason_code="editorial_master_cache_invalid",
+                reason_code="editorial_master_mismatch",
             )
         payload = document.get("payload")
         if document.get("schema") != _CACHE_SCHEMA or not isinstance(payload, dict):
             raise CanonicalAuthorityError(
                 "verified Editorial Master cache schema is invalid",
-                reason_code="editorial_master_cache_invalid",
+                reason_code="editorial_master_mismatch",
             )
         if document.get("payload_sha256") != _sha256_json(payload):
             raise CanonicalAuthorityError(
                 "verified Editorial Master cache digest is invalid",
-                reason_code="editorial_master_cache_invalid",
+                reason_code="editorial_master_mismatch",
             )
         return _contract_from_payload(payload, episode_root=self._episode_root)
 
@@ -211,7 +211,7 @@ class ResolveCanonicalTimelineAuthority:
         if self._binding.episode_id != episode_id:
             raise CanonicalAuthorityError(
                 "Resolve binding belongs to another episode",
-                reason_code="resolve_project_identity_mismatch",
+                reason_code="resolve_binding_mismatch",
             )
         expected_project = ResolveProjectIdentity(
             episode_id=self._binding.episode_id,
@@ -221,18 +221,18 @@ class ResolveCanonicalTimelineAuthority:
         if self._facade.project_identity() != expected_project:
             raise CanonicalAuthorityError(
                 "live Resolve project differs from its exact binding",
-                reason_code="resolve_project_identity_mismatch",
+                reason_code="resolve_binding_mismatch",
             )
         cut_matches = tuple(cut for cut in self._binding.cuts if cut.cut_id == cut_id)
         if not cut_matches:
             raise CanonicalAuthorityError(
                 "cut has no canonical Resolve binding",
-                reason_code="canonical_binding_unknown",
+                reason_code="resolve_binding_mismatch",
             )
         if len(cut_matches) != 1:
             raise CanonicalAuthorityError(
                 "cut has ambiguous canonical Resolve bindings",
-                reason_code="canonical_binding_ambiguous",
+                reason_code="resolve_binding_mismatch",
             )
         canonical = cut_matches[0].canonical
         inventory = self._facade.timeline_identities()
@@ -241,12 +241,12 @@ class ResolveCanonicalTimelineAuthority:
         if not uid_matches:
             raise CanonicalAuthorityError(
                 "canonical Timeline UID is absent from live Resolve",
-                reason_code="canonical_timeline_unknown",
+                reason_code="resolve_binding_mismatch",
             )
         if len(uid_matches) != 1 or len(exact_matches) != 1:
             raise CanonicalAuthorityError(
                 "canonical Timeline UID is not one exact live identity",
-                reason_code="canonical_timeline_ambiguous",
+                reason_code="resolve_binding_mismatch",
             )
 
         contract = self._editorial_master.load(
@@ -256,18 +256,16 @@ class ResolveCanonicalTimelineAuthority:
         if contract.resolve_project_name != self._binding.project_name:
             raise CanonicalAuthorityError(
                 "verified Editorial Master belongs to another Resolve project",
-                reason_code="editorial_master_project_mismatch",
+                reason_code="editorial_master_mismatch",
             )
-        first_state = self._facade.timeline_state(canonical.uid)
-        first_baseline = self._timeline_adapter.snapshot(canonical)
-        second_state = self._facade.timeline_state(canonical.uid)
-        second_baseline = self._timeline_adapter.snapshot(canonical)
-        if first_state != second_state or first_baseline != second_baseline:
-            raise CanonicalAuthorityError(
-                "canonical Timeline changed during its read-only inspection",
-                reason_code="canonical_timeline_live_drift",
-            )
-        frame_rate = _state_frame_rate(first_state)
+        # ADR-069：這裡以前把 state 與 baseline 各讀兩次、比對，用來抓「讀的當下
+        # 有人在動 timeline」。那個 race 沒有人遇過，而且抓不抓到都不影響結果：
+        # baseline 會原封不動帶到 `_resolve` 的 `prepare`，在**動手之前**再比一次
+        # 指紋（`protected_track_drift`）。所以中間漂掉照樣擋得住，而這裡多讀的
+        # 一次是每支 cut 都要付的 Resolve 往返。
+        state = self._facade.timeline_state(canonical.uid)
+        baseline = self._timeline_adapter.snapshot(canonical)
+        frame_rate = _state_frame_rate(state)
         return (
             CanonicalTimelineInspection(
                 episode_id=episode_id,
@@ -278,8 +276,8 @@ class ResolveCanonicalTimelineAuthority:
                 timeline_frame_rate=frame_rate,
                 editorial_master_frame_rate=contract.frame_rate,
                 editorial_master_duration_sec=contract.duration_sec,
-                state=first_state,
-                baseline=first_baseline,
+                state=state,
+                baseline=baseline,
             ),
         )
 
@@ -293,7 +291,7 @@ def _contract_from_selection(
     if not isinstance(receipt, dict):
         raise CanonicalAuthorityError(
             "verified Editorial Master receipt is invalid",
-            reason_code="editorial_master_contract_invalid",
+            reason_code="editorial_master_mismatch",
         )
     artifacts = _mapping(receipt, "artifacts")
     media = _mapping(artifacts, "media")
@@ -328,7 +326,7 @@ def _contract_from_selection(
     except (OSError, ValueError) as exc:
         raise CanonicalAuthorityError(
             "verified Editorial Master receipt facts are invalid",
-            reason_code="editorial_master_contract_invalid",
+            reason_code="editorial_master_mismatch",
         ) from exc
     return contract
 
@@ -343,7 +341,7 @@ def _contract_payload(
     except ValueError as exc:
         raise CanonicalAuthorityError(
             "verified Master media path escapes its episode",
-            reason_code="editorial_master_contract_invalid",
+            reason_code="editorial_master_mismatch",
         ) from exc
     return {
         "episode_id": contract.episode_id,
@@ -379,13 +377,13 @@ def _contract_from_payload(
     if set(payload) != expected:
         raise CanonicalAuthorityError(
             "verified Editorial Master cache payload is invalid",
-            reason_code="editorial_master_cache_invalid",
+            reason_code="editorial_master_mismatch",
         )
     relative = Path(_string(payload.get("master_media_relative_path"), "Master media path"))
     if relative.is_absolute() or ".." in relative.parts:
         raise CanonicalAuthorityError(
             "verified Editorial Master cache path escapes its episode",
-            reason_code="editorial_master_cache_invalid",
+            reason_code="editorial_master_mismatch",
         )
     try:
         media_path = (episode_root / relative).resolve(strict=True)
@@ -419,7 +417,7 @@ def _contract_from_payload(
     except (OSError, ValueError) as exc:
         raise CanonicalAuthorityError(
             "verified Editorial Master cache facts are invalid",
-            reason_code="editorial_master_cache_invalid",
+            reason_code="editorial_master_mismatch",
         ) from exc
 
 
@@ -435,7 +433,7 @@ def _assert_requested_contract(
     ):
         raise CanonicalAuthorityError(
             "verified Editorial Master cache belongs to another authority",
-            reason_code="editorial_master_identity_mismatch",
+            reason_code="editorial_master_mismatch",
         )
 
 
@@ -444,7 +442,7 @@ def _mapping(value: Mapping[str, object], key: str) -> Mapping[str, object]:
     if not isinstance(nested, Mapping):
         raise CanonicalAuthorityError(
             f"verified Editorial Master {key} is invalid",
-            reason_code="editorial_master_contract_invalid",
+            reason_code="editorial_master_mismatch",
         )
     return nested
 
@@ -453,7 +451,7 @@ def _require_identity(value: object, label: str) -> None:
     if not isinstance(value, str) or not value.strip():
         raise CanonicalAuthorityError(
             f"{label} is invalid",
-            reason_code="editorial_master_identity_mismatch",
+            reason_code="editorial_master_mismatch",
         )
 
 
@@ -461,7 +459,7 @@ def _require_sha256(value: object, label: str) -> None:
     if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
         raise CanonicalAuthorityError(
             f"{label} is invalid",
-            reason_code="editorial_master_identity_mismatch",
+            reason_code="editorial_master_mismatch",
         )
 
 
@@ -500,7 +498,7 @@ def _state_frame_rate(state: ResolveTimelineState) -> float:
     except ValueError as exc:
         raise CanonicalAuthorityError(
             "live Resolve Timeline frame rate is unavailable",
-            reason_code="timeline_frame_rate_unavailable",
+            reason_code="resolve_binding_mismatch",
         ) from exc
 
 

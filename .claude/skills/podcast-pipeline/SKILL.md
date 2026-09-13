@@ -4,7 +4,11 @@ description: >
   訪談集正式 E2E 編排：素材 preflight、Auphonic normalization、Memo large-v2、
   Memo Dual-Audit Release V1、Resolve、highlight、packaging 與發布。
   Use when the user points to an episode folder and asks to run, resume, review,
-  or diagnose the podcast pipeline. The default subtitle contract follows ADR-063.
+  or diagnose the podcast pipeline.
+  **也用在他說「定稿了」「完整版定稿」「這集可以了」「這集 OK 了」的時候**——
+  那句話是派工令（見 S8F），不是閒聊：完整版剪定之後他不按按鈕，直接講一句，
+  就要開始平行派工（三長三短＋carousel），不要回問「要開始了嗎」。
+  The default subtitle contract follows ADR-063.
 ---
 
 # Podcast Pipeline — supervised production E2E
@@ -455,11 +459,11 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" -
   -> E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" --merge-miners
   -> highlights/candidates.json
   -> blind azhe/kevin/shufen + brand + Renee review
-  -> highlights/review_azhe.json
-  -> highlights/review_kevin.json
-  -> highlights/review_shufen.json
-  -> highlights/lens_brand.json
-  -> highlights/lens_renee.json
+  -> highlights/review_azhe.long.json
+  -> highlights/review_kevin.long.json
+  -> highlights/review_shufen.long.json
+  -> highlights/lens_brand.long.json
+  -> highlights/lens_renee.long.json
   -> review schema/coverage/citation QA
   -> E:\nakama\.venv-v2\Scripts\python.exe scripts\run_cut_shortlist.py "<episode>" --format long
   -> Highlight shortlist review gate
@@ -482,11 +486,171 @@ E:\nakama\.venv-v2\Scripts\python.exe `
   scripts\run_highlight_cut.py "<episode>" --materialize
 ```
 
+## S8F — 「定稿了」＝派工令（修修 2026-09-10 裁定：沒有按鈕）
+
+> 「完整版定稿之後，我不會按一個按鈕，我會直接跟你說已經定稿了。**現在不要有按鈕可以按了**，
+> 我要直接跟你講，這樣我可以看到你是不是直接開始派工去做平行的工作。」
+
+**觸發是一句話，不是一個 UI 動作。** 他說「定稿了」「完整版定稿」「這集可以了」——語意到了就開工。
+**不要回問「要開始了嗎」**：那句話本身就是命令（同 §Standing authorization 那條血淚，
+2026-09-04 已經犯過一次）。第一件事是開工，不是確認。
+
+### 開工第一件事：算清楚這一集現在在哪
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\episode_fanout_status.py "<episode>"
+```
+
+唯讀。它會把 Editorial Master、開採、兩個格式的盲審與選段、每一支 cut 的
+標題／封面／匯出／release target、carousel 全部列出來，最後印**這一輪該平行派什麼**。
+
+**先跑它再派工**，不要憑印象——2026-09-10 實測第一次跑就抓到三支短片完全沒有標題
+（`標題 0/1`），而我當時已經以為那一集收完了。它也懂兩件容易搞錯的事：
+短片要 1 條標題不是 5 條、短片不做封面；已經挑完的格式即使盲審綁定過期也不用重跑
+（那是歷史，不是待辦）。
+
+### 開工前 30 秒：只驗一件事
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe -c "import sys; sys.path.insert(0,'.'); from agents.brook.script_video.editorial_master import EditorialMasterRequest; print(EditorialMasterRequest(r'<episode>', expected_episode_id='<episode-id>').open().identity())"
+```
+
+Editorial Master 開得起來＝定稿是真的。開不起來就**立刻**回報缺什麼，不要往下派工——
+整條線的 lineage 都綁在它身上，錯的 master 派出去是六支白工。
+
+### 派工圖（哪些真的能平行，哪些只是看起來像）
+
+```
+Editorial Master 封存
+ │
+ ├─【平行】完整節目 packaging（S7P）—— 一路跑到 gate，中間不要停下來問
+ │     title-brainstorm --cut-id full → emit_packages
+ │     cutout 抽格（麥克風能量取窗 → blendshape → vision 複驗）→ face_measure --write
+ │     ⇒ 到 `/bridge/packaging/<slug>` **為止**；標題／臉／大字他在 gate 上挑，不在對話裡問
+ ▼
+定稿
+ │
+ ├─【平行 ×3】miner：story / punch / value          subagent，互相隔離不讀彼此輸出
+ │     └─ 每支都要讀完整 SRT，各出 ≥3 long ≥3 short
+ ▼
+ [序列] --merge-miners → candidates.json（strict merge + validate）
+ │
+ ├─【平行 ×5】盲審：阿哲 / 凱文 / 淑芬 / Renee lens / brand lens
+ │     └─ blind，不讀彼此輸出；三位 persona 覆蓋全部候選，Renee 只長片
+ ▼
+ [序列] run_cut_shortlist.py --format long ＋ --format short
+ │        → 兩張候選表 ＋ 一份合併的 Vault 選段報告
+ ▼
+■ 停點 1：他挑（長短各幾支都行，順序＝rank）
+ │
+ ▼
+ [序列] 邊界打磨 → --materialize（Resolve，單執行緒）
+ │
+ ├─【平行準備】6 支 cut 的語意工作 ＋ carousel
+ │     長片：**ADR-066**（`run_finished_cut_production.py --semantic-worker handoff`）
+ │           手冊＝`longform-cut/SKILL.md`。⛔ 不是 `podcast_highlight_visual_orchestrator.py`
+ │     短片：緊湊化複審／字卡企劃／素材選型（`shortform-director` / `shortform-dp`）
+ │     carousel：見 `skills/ig-cards/SKILL.md`（不是 `.claude/skills/ig-cards/`，那只是入口）
+ │  【序列上軌】每一支輪流進 Resolve
+ ▼
+■ 停點 2：他在 Resolve timeline 上看六支，用自然語言講要改什麼
+ │        （改動代價查各 skill 的「改動代價表」，不要憑印象整支重跑）
+ ▼
+■ 他說第二次「定稿」＝ 出成品
+ │
+ ├─ [序列] publish_prep.py --cut <每一支>（Resolve render → 登錄 draft Release）
+ ├─【平行】長片 packaging：title-brainstorm ×3（短片不做封面）
+ │  [序列] emit_packages ×3
+ ├─ [序列] thumbnail-brainstorm ×3（封面）
+ ▼
+■ 停點 3：packaging review（Bridge）
+ ▼
+ [序列] author_chapters.py --cut <每一支，含 full>（切章節；描述要帶時間戳）
+ publish_description.py → /bridge/publish/<ep>/<cut> → 上傳（**要他明確核准**）
+```
+
+### 三條併發紅線（違反會靜默壞掉，不會報錯）
+
+1. **Resolve scripting 是單執行緒。** 六條 timeline 不能同時上軌。做法是
+   **「並行準備、序列上軌」**：語意工作（企劃、選素材、寫文案）全部平行跑完，
+   碰 Resolve 的那一步一支一支來。兩支同時 append 會互相搶 current timeline。
+2. **`packages.json` 是 read-modify-write。** `emit_packages` 用 cut_id 合併，
+   兩支同時寫＝後寫的把先寫的整段蓋掉（2026-07-29 謝伯讓集差點全毀）。
+   平行跑 brainstorm、**序列寫檔**：subagent 只回 payload JSON，orchestrator 自己
+   一支一支 emit。
+3. **一個 subagent 顧一支 cut。** ADR-066 的 semantic handoff 本來就 blocking 等
+   `response.json`，天然可行。但不要讓兩支 agent 同時動同一支 cut 的檔案。
+
+### 停點只有三個，其餘一律不要問
+
+選段（停點 1）、timeline review（停點 2）、packaging review（停點 3），
+加上最後 YouTube 上傳要他明確核准。**其餘每一次「要不要繼續」都是在把決策成本丟回給他。**
+中途失敗就修，修不動才停下來報——見 §Stop and recovery policy。
+
+⛔ **不要自己發明第四個停點。** 尤其不要把「做好了、先給他在對話裡看一眼」當成停點——
+packaging 的 review 介面**就是 gate**（ADR-054 D11：gate 端零 render、零 LLM，桌機先把 PNG 做完，
+Bridge 只勾）。標題挑哪一條、用哪兩張臉、大字打什麼，全部是 gate 上〈組封面〉區的欄位，
+不是對話題目。在對話裡問＝把他從那個介面拉出來，還要他自己記得回去。
+
+2026-09-11 血淚：20260721 呂冠緯，我叫 title-brainstorm subagent「不要 emit，修修要先看過」——
+那句是我編的，流程裡沒有。結果 packaging 全部做完卻沒進 gate，他問「我不是這時候應該進
+Packaging Gate 去 review 嗎？Packaging Gate 上沒看到啊」。他的原話：
+「以後我確定了 editorial master 之後，你就直接跑到 packaging gate 那邊再停下來，**不要讓我一直提醒**。」
+
+### carousel 這一條的入口（免得每次重新摸索）
+
+canonical workflow 在 **`skills/ig-cards/SKILL.md`**（`.claude/skills/ig-cards/` 只是一頁入口）。
+
+前置只有兩樣：`transcript_prose.md`（唯一證據來源，每一筆 `evidence[]` 含 `t0`/`t1` 都以
+SHA-256 綁它）與 `packaging/cutouts/*.png`。`social_brief.md` 可有可無。
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_podcast_carousel.py "<episode>" --copy-spec "<episode>/ig-carousel/editorial/rNNN/copy_spec.v1.json" --panel-result "<episode>/ig-carousel/editorial/rNNN/panel_result.v1.json" --template-dir <template-dir>
+```
+
+文案是語意工作：三個盲審 lens（IG Audience／Episode Editorial／Brand and Evidence）跑到收斂。
+**文字聲音走 `skills/ig-cards/references/copy-voice.md`**，不要用預設模型語氣（那份是 r001→r002
+的真實對照，七條）。
+
+之後 `/bridge/ig-cards/<episode>` 是唯一人工核准面。他在上面改的**純結構化**修正單會自動執行
+（`NAKAMA_CAROUSEL_AUTORUN=1`），Bridge 開機也會掃一次還孤在 `queued` 的單。
+
+### 短片不做封面
+
+`packages` 對短片就是 `[]`、`thumbnail: null`（schema 明訂）。Bridge 的選段 gate 在
+`?format=short` 下也不排 `packaging-plan.json`。直式短片直接播第一幀，沒有 16:9 縮圖版位。
+
 ## S9 — long highlight and finished-cut review
 
-對每個 long winner 依序跑 tightening，再封存 guest identity placement與機位／Timeline 導播，接著強制走
-ADR-065 的 Director → DP → same-Director second-pass semantic audit receipt chain，最後才 materialize visual events、跑
-titles、SFX、review。Tightening與所有視覺工作都只能使用 Editorial Master media/timebase：
+> ## ⛔ 長片的視覺線走 ADR-066，不是本節底下那條 ADR-065 chain
+>
+> **`scripts/podcast_highlight_visual_orchestrator.py` 已停用，不要照著跑。**
+> long 的生產唯一路線 = **ADR-066 Finished Cut Production**：
+> `scripts/run_finished_cut_production.py`，實跑手冊在
+> [`longform-cut/SKILL.md`](../longform-cut/SKILL.md) 的「ADR-066 實跑手冊」節
+> （2026-09-10 蘇予昕 L2/L3 第一次真的跑通，沿路六個坑都寫在裡面）。
+>
+> 語意工作用 `--semantic-worker handoff`：packet 攤在
+> `<runtime-root>/semantic-handoff/<request_id>/`，**停下來交給當下正在跑的 agent**。
+> 不要因為看到某段 code 寫死 Codex 就去派 Codex（`feedback_semantic_work_runs_on_host_agent`）。
+>
+> **2026-09-11 血淚（20260721 呂冠緯）**：`highlight-cut` 與 `longform-cut` 兩份 skill
+> 開頭都掛了這個 ⛔，唯獨本節沒有，於是 agent 照本節跑完了整條 ADR-065 chain——
+> 三支長片的 Director 企劃做完、`accept-director` 才發現它要一份只有
+> `CodexExecDispatcher` 生得出來的執行收據，白工。
+>
+> **當時有三次機會停下來**：三個 Director subagent 各自回報
+> 「work packet 沒有 `long_highlight_contract` v2 marker → **legacy ADR-065 route**」。
+> **subagent 或 code 說「legacy route」是 stop-the-line 訊號，不是註腳。**
+>
+> 還有一條可遷移的判準：**活的流程要求一個死掉的前置條件時，先懷疑自己走錯路線，
+> 不要先去補那個前置條件。** 當時我去問修修「要不要補一個 Claude dispatcher」——
+> 正確的問題是「為什麼活的流程會要求一個死掉的供應商」，那一問就通到答案了。
+>
+> 以下 ADR-065 的描述**只保留給讀舊 receipt／舊 state 時對照**，不是操作指示。
+
+對每個 long winner 依序跑 tightening，再封存 guest identity placement與機位／Timeline 導播。
+Tightening與所有視覺工作都只能使用 Editorial Master media/timebase：
 
 ```powershell
 E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_tighten.py "<episode>" --detect --id <winner-id>

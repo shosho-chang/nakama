@@ -1,5 +1,12 @@
 # P9 Task Prompt — Release Amendment authority（ADR-066 follow-up）
 
+> ⛔ **SUPERSEDED by ADR-069（2026-09-12）。不要照著做。**
+>
+> ADR-069 放棄了封存 Release 這條路（Candidate → seal → pointer → cutover 退役，
+> review_ready 的 plan 就是紀錄），所以「對已封存 Release 做機械變換」這個問題
+> 不再存在。`_amendment.py` 與 `amendments/` 底下三支釘死的一次性腳本一併刪除。
+> 對已交付成品做機械改動，走整趟 `request_revision`。
+
 - **日期**：2026-08-29
 - **模式**：P9（多模組，8+ 檔案）
 - **前置**：`3ab01f75` amendment journal 已落地（B）；本文件是 A

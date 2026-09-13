@@ -8,6 +8,8 @@ from html import escape
 from pathlib import Path
 from typing import Literal, Protocol
 
+from ._projection import layout_identity
+
 LongVisualRole = Literal[
     "chapter",
     "hero_title",
@@ -77,9 +79,10 @@ class RenderedLongVisual:
     media: BrowserRenderResult
 
 
+#: 版位版本是契約，不是渲染器的私有常數——兩邊各寫一份就會漂移（見 _projection）。
 _RECIPES: dict[LongVisualRole, dict[str, object]] = {
     "chapter": {
-        "layout_identity": "fullscreen_transition:v4",
+        "layout_identity": layout_identity("fullscreen_transition"),
         "style_name": "paper_hand",
         "content_width_ratio": 0.84,
         "font_size_px": 128,
@@ -91,10 +94,10 @@ _RECIPES: dict[LongVisualRole, dict[str, object]] = {
         "pixel_format": "yuv420p",
     },
     "hero_title": {
-        "layout_identity": "hero_title:v1",
-        "style_name": "compact_paper",
-        "content_width_ratio": 0.60,
-        "font_size_px": 64,
+        "layout_identity": layout_identity("hero_title"),
+        "style_name": "paper",
+        "content_width_ratio": 0.72,
+        "font_size_px": 96,
         "safe_region": "lower",
         "full_frame": False,
         "has_alpha": True,
@@ -103,10 +106,10 @@ _RECIPES: dict[LongVisualRole, dict[str, object]] = {
         "pixel_format": "yuva444p12le",
     },
     "identity_card": {
-        "layout_identity": "identity_card:v1",
-        "style_name": "identity_plaque",
+        "layout_identity": layout_identity("identity_card"),
+        "style_name": "paper",
         "content_width_ratio": 0.34,
-        "font_size_px": 36,
+        "font_size_px": 50,
         "safe_region": "lower",
         "full_frame": False,
         "has_alpha": True,
@@ -115,7 +118,7 @@ _RECIPES: dict[LongVisualRole, dict[str, object]] = {
         "pixel_format": "yuva444p12le",
     },
     "visual_effect": {
-        "layout_identity": "visual_effect:v1",
+        "layout_identity": layout_identity("visual_effect"),
         "style_name": "concept_accent",
         "content_width_ratio": 0.48,
         "font_size_px": 44,
@@ -205,6 +208,178 @@ class LongVisualRenderer:
         return RenderedLongVisual(recipe=recipe, media=media)
 
 
+_HERO_LINE_BREAKS = "，、。：；！？"
+
+
+def _hero_lines(display: str) -> tuple[str, ...]:
+    """把一行 Hero 文案拆成定版的錯位雙行。
+
+    頂多三行（定版 punch_card_wide 的上限），優先在標點斷；沒標點又太長就從中間斷。
+    短句（≤ 6 字）保持單行——強拆會把詞組切開。
+    """
+    text = display.strip()
+    for index, char in enumerate(text):
+        if char in _HERO_LINE_BREAKS and 1 < index < len(text) - 2:
+            return (text[:index].strip(), text[index + 1 :].strip())
+    # 沒有標點就保持單行。**絕不從中間硬拆**——按字數對半切會把詞組切開
+    # （「喔我爸就／是這樣」「一天六七／千個念頭」）。斷行是導演的決定，定版
+    # composition 因此給的是 line1/line2/line3 三個獨立欄位；這裡只有一個
+    # `display`，所以唯一可靠的斷點是它自己帶的標點。
+    return (text,)
+
+
+_NAMECARD_SEPARATORS = "／｜/|"
+
+
+def _paper_namecard_document(
+    *,
+    display: str,
+    canvas_width: int,
+    canvas_height: int,
+    duration_sec: float,
+) -> str:
+    """來賓名牌——半透明紙卡＋手繪橘豎筆觸，落在左下。
+
+    這份 HTML 是 `video/compositions/chapter_label/compositions/chapter_label_wide.html`
+    （`align:"left"` + `style:"paper"`）的第二份實作——跟轉場卡、Hero 卡同一個
+    結構問題，改一份就要同步另一份。ADR-066 原本自己造了一個 `identity_plaque`
+    36px 置中藥丸，跟手冊寫的不是同一個東西。
+
+    設計 token 取自定版：左 4% / 上 76%、紙白 rgba(251,250,247,.85)、
+    橘筆觸 #e98965、姓名 50px/700、頭銜 29px/400 #6f6a62。
+
+    `display` 形如「蘇予昕／諮商心理師」，以分隔號拆成姓名與頭銜。
+    """
+    text = display.strip()
+    label, sub = text, ""
+    for separator in _NAMECARD_SEPARATORS:
+        if separator in text:
+            head, _, tail = text.partition(separator)
+            label, sub = head.strip(), tail.strip()
+            break
+    sub_html = f'      <div id="sub">{escape(sub)}</div>' + chr(10) if sub else ""
+    return f"""<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width={canvas_width},height={canvas_height}">
+<style>
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+html, body {{ width: {canvas_width}px; height: {canvas_height}px;
+  overflow: hidden; background: transparent; }}
+#root {{ position: relative; width: {canvas_width}px; height: {canvas_height}px;
+  overflow: hidden; font-family: "LINE Seed TW", "Noto Sans TC", sans-serif; }}
+#tag {{ position: absolute; left: 4%; top: 76%; transform: translateY(-50%);
+  display: inline-flex; align-items: center; gap: 14px;
+  background: rgba(251, 250, 247, 0.85);
+  border: 1px solid rgba(217, 213, 207, 0.55); border-radius: 10px;
+  padding: 14px 32px 17px 24px;
+  box-shadow: 0 2px 10px rgba(20, 18, 15, 0.14);
+  animation: tag-enter 420ms cubic-bezier(.2,.8,.2,1) both; }}
+.tick-svg {{ flex: none; width: 19px; align-self: stretch; overflow: visible; }}
+.tick-svg path {{ fill: none; stroke: #e98965; stroke-width: 8;
+  stroke-linecap: round; opacity: .92; }}
+#col {{ display: flex; flex-direction: column; }}
+#text {{ white-space: nowrap; font-weight: 700; font-size: 50px;
+  line-height: 1.2; color: #1c1915;
+  animation: text-enter 380ms 120ms ease-out both; }}
+#sub {{ white-space: nowrap; font-weight: 400; font-size: 29px;
+  line-height: 1.35; color: #6f6a62; margin-top: 5px;
+  animation: sub-enter 380ms 220ms ease-out both; }}
+@keyframes tag-enter {{ from {{ opacity: 0; transform: translateY(-38%); }}
+  to {{ opacity: 1; transform: translateY(-50%); }} }}
+@keyframes text-enter {{ from {{ opacity: 0; transform: translateX(-14px); }}
+  to {{ opacity: 1; transform: translateX(0); }} }}
+@keyframes sub-enter {{ from {{ opacity: 0; }} to {{ opacity: 1; }} }}
+</style>
+</head>
+<body data-role="identity_card" data-style="paper">
+<main id="root" data-root="true" data-composition-id="chapter_label_wide" data-no-timeline
+  data-width="{canvas_width}" data-height="{canvas_height}" data-start="0"
+  data-duration="{duration_sec:.6f}">
+  <div id="tag" class="style-paper">
+    <svg class="tick-svg" viewBox="0 0 19 100" preserveAspectRatio="none">
+      <path d="M9,4 C12,26 6,52 10,74 S8,92 9,96"/>
+    </svg>
+    <div id="col">
+      <div id="text">{escape(label)}</div>
+{sub_html}    </div>
+  </div>
+</main>
+</body>
+</html>"""
+
+
+def _paper_hero_document(
+    *,
+    display: str,
+    font_size_px: int,
+    content_width_ratio: float,
+    canvas_width: int,
+    canvas_height: int,
+    duration_sec: float,
+) -> str:
+    """Hero 大字卡——錯位紙卡、手繪橘底線、落在說話者負空間。
+
+    這份 HTML 是 `video/compositions/punch_card/compositions/punch_card_wide.html`
+    （tier1 + style:paper）的第二份實作——與轉場卡同一個結構問題，不是理想狀態；
+    改其中一份就要同步另一份。ADR-066 一開始沒沿用定版配方，自己造了一個
+    64px 的單行藥丸放在畫面正中（compact_paper），不但小、還正好壓在臉上——
+    而手冊寫的是「長片**唯一配方**：punch_card_wide tier1 + style:paper，
+    每行字級上限 96px；紙卡放在說話者負空間，避免壓迫臉部」。
+    設計 token 一律取自定版檔：紙白 rgba(251,250,247,.86)、ink #1c1915、
+    橘線 #e98965、錯位 32px / -24px、pos-y 66%。
+    """
+    # 字級與寬度取自配方，不在 HTML 裡另寫一份數字——兩份數字遲早會漂移
+    # （2026-09-09：版位版本就是這樣裂成兩個真相來源，害 27 個測試一起紅）。
+    lines = _hero_lines(display)
+    offsets = ("0px", "32px", "-24px")
+    blocks = "".join(
+        f'    <div class="line" style="margin-left: {offsets[index]}; '
+        f'animation-delay: {index * 90}ms">{escape(line)}'
+        '<svg class="uline" viewBox="0 0 100 22" preserveAspectRatio="none">'
+        '<path d="M2,9 C18,12 30,8 46,13 S62,8 74,14 S90,9 98,12"/></svg></div>' + chr(10)
+        for index, line in enumerate(lines)
+    )
+    return f"""<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width={canvas_width},height={canvas_height}">
+<style>
+* {{ margin: 0; padding: 0; box-sizing: border-box; }}
+html, body {{ width: {canvas_width}px; height: {canvas_height}px;
+  overflow: hidden; background: transparent; }}
+#root {{ position: relative; width: {canvas_width}px; height: {canvas_height}px;
+  overflow: hidden; font-family: "LINE Seed TW", sans-serif; }}
+#card {{ position: absolute; left: 50%; top: 66%; transform: translate(-50%, -50%);
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  max-width: {content_width_ratio * 100:.0f}%; }}
+.line {{ position: relative; display: inline-block; white-space: nowrap;
+  background: rgba(251, 250, 247, 0.86); color: #1c1915;
+  border: 1px solid rgba(217, 213, 207, 0.55); border-radius: 10px;
+  box-shadow: 0 2px 10px rgba(20, 18, 15, 0.14);
+  font-weight: 900; font-size: {font_size_px}px; line-height: 1.1; padding: 8px 24px 15px;
+  animation: hero-enter 420ms cubic-bezier(.2,.8,.2,1) both; }}
+.line svg.uline {{ position: absolute; left: 22px; right: 22px; bottom: 10px;
+  width: calc(100% - 44px); height: 22px; overflow: visible; pointer-events: none; }}
+.line svg.uline path {{ fill: none; stroke: #e98965; stroke-width: 9;
+  stroke-linecap: round; opacity: .92; }}
+@keyframes hero-enter {{ from {{ opacity: 0; transform: translateY(18px); }}
+  to {{ opacity: 1; transform: translateY(0); }} }}
+</style>
+</head>
+<body data-role="hero_title" data-style="paper">
+<main id="root" data-root="true" data-composition-id="punch_card_wide" data-no-timeline
+  data-width="{canvas_width}" data-height="{canvas_height}" data-start="0"
+  data-duration="{duration_sec:.6f}">
+  <div id="card" class="tier1 style-paper">
+{blocks}  </div>
+</main>
+</body>
+</html>"""
+
+
 def _html_document(
     *,
     display: str,
@@ -220,6 +395,22 @@ def _html_document(
     if role == "chapter":
         return _paper_hand_chapter_document(
             display=display,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+            duration_sec=duration_sec,
+        )
+    if role == "identity_card":
+        return _paper_namecard_document(
+            display=display,
+            canvas_width=canvas_width,
+            canvas_height=canvas_height,
+            duration_sec=duration_sec,
+        )
+    if role == "hero_title":
+        return _paper_hero_document(
+            display=display,
+            font_size_px=font_size_px,
+            content_width_ratio=content_width_ratio,
             canvas_width=canvas_width,
             canvas_height=canvas_height,
             duration_sec=duration_sec,
@@ -287,6 +478,15 @@ def _paper_hand_chapter_document(
     """Render the approved B2 Big Title Transition visual language."""
 
     title = escape(display)
+    # ⚠️ 這份 HTML 是 `video/compositions/transition_title/compositions/
+    # transition_title_wide.html` 的第二份實作。兩邊的字級規則必須一致——2026-09-08
+    # 修好了那一份，這一份沒動，於是 pipeline 渲出來的卡照樣斷成孤字，visual_review
+    # 退了三張，人卻看不出兩份的差別在哪。
+    #
+    # CJK 字寬約 1em，.stage 扣掉左右 160px 之後只有 1600px 可用：13 字 ×128px =
+    # 1664px 就會換行，第二行只剩一兩個孤字（「拖延症不是懶，是想法太勤勞」變成
+    # 「…太勤／勞」）。章節標題的規格範圍是 6–14 字，卡片要載得動，不是回頭砍文案。
+    title_font_px = 104 if len(display) > 12 else 128 if len(display) > 9 else 168
     paper_texture = (
         "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'"
         " width='360' height='360' viewBox='0 0 360 360'%3E"
@@ -321,7 +521,7 @@ html, body {{ margin: 0; width: {canvas_width}px; height: {canvas_height}px;
 .kbar path {{ stroke-width: 8; }}
 .kicker {{ color: #6f6a62; font-size: 52px; font-weight: 700;
   letter-spacing: .18em; }}
-.title {{ max-width: 1600px; color: #1c1915; font-size: 128px;
+.title {{ max-width: 1600px; color: #1c1915; font-size: {title_font_px}px;
   font-weight: 900; line-height: 1.12; letter-spacing: .01em; text-align: center;
   animation: title-enter .55s .10s cubic-bezier(.22,.75,.2,1) both; }}
 .uline {{ width: min(92%, 1460px); height: 28px; overflow: visible;
@@ -350,7 +550,6 @@ html, body {{ margin: 0; width: {canvas_width}px; height: {canvas_height}px;
       <svg class="kbar" viewBox="0 0 100 22" preserveAspectRatio="none">
         <path d="M3,12 C30,9.5 62,14 97,11"/>
       </svg>
-      <div class="kicker">章節</div>
     </div>
     <div class="title">{title}</div>
     <svg class="uline" viewBox="0 0 100 22" preserveAspectRatio="none">

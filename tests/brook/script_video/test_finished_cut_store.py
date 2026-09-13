@@ -33,31 +33,28 @@ from agents.brook.script_video.finished_cut_production._derived_assets import (
     DerivedAssetBuildRequest,
     DerivedAssetBuildResult,
 )
-from agents.brook.script_video.finished_cut_production._policy import (
-    StockVideoMetadata,
+from agents.brook.script_video.finished_cut_production._plan_record import (
+    PlanRecord,
+    PlanRecordError,
+    PlanRecordStore,
 )
 from agents.brook.script_video.finished_cut_production._records import (
     ComponentProposal,
     DirectorEventProposal,
     DPEventProposal,
     EventRecord,
-    ProjectedComponent,
     ReleaseArtifact,
     VisualEventProposal,
     _mint_projected_component,
-    _rehydrate_finished_cut_release,
-    _seal_finished_cut_release,
-)
-from agents.brook.script_video.finished_cut_production._release import (
-    FinishedCutReleaseLifecycle,
 )
 from agents.brook.script_video.finished_cut_production._semantic import (
     InMemorySemanticAdapter,
 )
 from agents.brook.script_video.finished_cut_production._store import (
     InMemoryApprovedCutStore,
-    InMemoryCurrentReleaseIndex,
+    InMemoryPlanRecordIndex,
 )
+from tests.brook.script_video.finished_cut_plan_records import plan_record
 
 
 def _approved_cut(*, format: str = "long") -> ApprovedCutCommand:
@@ -173,7 +170,6 @@ class _ReadyDerivedAssetBuilder:
                 kind = {
                     "fullscreen_transition": AssetKind.CHAPTER_RENDER,
                     "hero_title": AssetKind.TITLE_RENDER,
-                    "person_inset": AssetKind.COMPOSITE,
                     "identity_card": AssetKind.CONCEPT_RENDER,
                     "visual_effect": AssetKind.CONCEPT_RENDER,
                 }[instruction.implementation_kind]
@@ -314,8 +310,8 @@ def test_retired_supporting_title_worker_response_fails_closed(tmp_path) -> None
 
 def test_historical_supporting_title_release_cannot_authorize_a_revision(tmp_path) -> None:
     artifact = ReleaseArtifact(path="historical", bytes=1, sha256="a" * 64)
-    historical = _rehydrate_finished_cut_release(
-        release_id="release-historical-support",
+    historical = plan_record(
+        plan_id="release-historical-support",
         episode_id="episode-1",
         cut_id="cut-1",
         format="long",
@@ -327,7 +323,6 @@ def test_historical_supporting_title_release_cannot_authorize_a_revision(tmp_pat
         director_acceptance_id="director-historical",
         dp_acceptance_id="dp-historical",
         visual_acceptance_id="visual-historical",
-        materialization_plan_id="plan-historical",
         events=(
             EventRecord(
                 event_id="historical-support",
@@ -341,34 +336,32 @@ def test_historical_supporting_title_release_cannot_authorize_a_revision(tmp_pat
         ),
         preview=artifact,
         subtitle=artifact,
-        transaction_receipt_id="receipt-historical",
-        rollback_ref="rollback-historical",
         components=(),
     )
-    current = InMemoryCurrentReleaseIndex()
+    current = InMemoryPlanRecordIndex()
     current.publish((historical,))
     production = FinishedCutProduction(
         store_root=tmp_path / "finished-cut-historical-read-only",
         approved_cut_store=InMemoryApprovedCutStore(()),
         asset_resolver=InMemoryAssetResolver(()),
         semantic_adapter=InMemorySemanticAdapter(),
-        current_release_index=current,
+        plan_records=current,
     )
 
-    with pytest.raises(CommandRejectedError, match="historical Release is read-only"):
+    with pytest.raises(CommandRejectedError, match="historical plan record is read-only"):
         production.request_revision(
-            historical.release_id,
+            historical.plan_id,
             "historical-support",
             "Do not reuse the retired card",
         )
 
 
 def test_dp_visual_placement_is_distinct_from_director_semantic_evidence(tmp_path) -> None:
-    command = _approved_cut(format="short")
+    command = _approved_cut()
     context = EditorialCutContext(
         episode_id="episode-1",
         cut_id="cut-1",
-        format="short",
+        format="long",
         editorial_master_id="master-1",
         tight_cut_id="tight-1",
         duration_sec=60.0,
@@ -439,11 +432,11 @@ def test_dp_visual_placement_is_distinct_from_director_semantic_evidence(tmp_pat
 
 
 def test_chapter_visual_placement_uses_canonical_section_window_not_cue_time(tmp_path) -> None:
-    command = _approved_cut(format="short")
+    command = _approved_cut()
     context = EditorialCutContext(
         episode_id="episode-1",
         cut_id="cut-1",
-        format="short",
+        format="long",
         editorial_master_id="master-1",
         tight_cut_id="tight-1",
         duration_sec=45.0,
@@ -829,8 +822,8 @@ def test_dp_owns_implementation_lane_and_current_catalog_asset(tmp_path) -> None
 
 
 def test_assetless_title_stops_at_derived_build_before_visual_or_plan(tmp_path) -> None:
-    command = _approved_cut(format="short")
-    context = _editorial_context(format="short", duration_sec=45.0)
+    command = _approved_cut()
+    context = _editorial_context(duration_sec=45.0)
     semantic = InMemorySemanticAdapter()
     builder = _PendingDerivedAssetBuilder()
     approved_cuts = InMemoryApprovedCutStore((command,))
@@ -897,8 +890,8 @@ def test_assetless_title_stops_at_derived_build_before_visual_or_plan(tmp_path) 
 
 
 def test_failed_build_stays_in_review_without_calling_visual_or_rerunning_dp(tmp_path) -> None:
-    command = _approved_cut(format="short")
-    context = _editorial_context(format="short", duration_sec=45.0)
+    command = _approved_cut()
+    context = _editorial_context(duration_sec=45.0)
     semantic = InMemorySemanticAdapter()
     builder = _FailedDerivedAssetBuilder()
     production = FinishedCutProduction(
@@ -950,8 +943,8 @@ def test_failed_build_stays_in_review_without_calling_visual_or_rerunning_dp(tmp
 
 
 def test_visual_receives_the_exact_built_final_and_inspection_references(tmp_path) -> None:
-    command = _approved_cut(format="short")
-    context = _editorial_context(format="short", duration_sec=45.0)
+    command = _approved_cut()
+    context = _editorial_context(duration_sec=45.0)
     semantic = InMemorySemanticAdapter()
     resolver = InMemoryAssetResolver(())
     builder = _ReadyDerivedAssetBuilder(resolver)
@@ -1021,8 +1014,8 @@ def test_visual_receives_the_exact_built_final_and_inspection_references(tmp_pat
 
 
 def test_well_formed_but_unpublished_final_ref_never_reaches_visual(tmp_path) -> None:
-    command = _approved_cut(format="short")
-    context = _editorial_context(format="short", duration_sec=45.0)
+    command = _approved_cut()
+    context = _editorial_context(duration_sec=45.0)
     semantic = InMemorySemanticAdapter()
     production = FinishedCutProduction(
         store_root=tmp_path / "finished-cut-authority",
@@ -1071,8 +1064,8 @@ def test_well_formed_but_unpublished_final_ref_never_reaches_visual(tmp_path) ->
 
 
 def test_visual_only_approves_exact_dp_selection_and_core_projects_it(tmp_path) -> None:
-    command = _approved_cut(format="short")
-    context = _editorial_context(format="short", duration_sec=45.0)
+    command = _approved_cut()
+    context = _editorial_context(duration_sec=45.0)
     semantic = InMemorySemanticAdapter()
     stock = _asset("visual-stock")
     production = FinishedCutProduction(
@@ -1157,8 +1150,8 @@ def test_visual_only_approves_exact_dp_selection_and_core_projects_it(tmp_path) 
 
 
 def test_intentional_aroll_needs_no_asset_and_projects_no_component(tmp_path) -> None:
-    command = _approved_cut(format="short")
-    context = _editorial_context(format="short", duration_sec=45.0)
+    command = _approved_cut()
+    context = _editorial_context(duration_sec=45.0)
     semantic = InMemorySemanticAdapter()
     builder = _PendingDerivedAssetBuilder()
     production = FinishedCutProduction(
@@ -1209,7 +1202,7 @@ def test_intentional_aroll_needs_no_asset_and_projects_no_component(tmp_path) ->
     assert builder.requests == []
 
 
-def test_four_minute_nineteen_second_long_stops_before_plan_without_rerun(
+def test_four_minute_nineteen_second_long_warns_but_is_not_blocked(
     tmp_path,
 ) -> None:
     context = EditorialCutContext(
@@ -1265,13 +1258,15 @@ def test_four_minute_nineteen_second_long_stops_before_plan_without_rerun(
     unchanged = production.advance(_approved_cut().command_id)
     authority = _run_authority(production, rejected.command_id)
 
-    assert rejected.status == "needs_review"
-    assert authority.materialization_plan is None
+    # 8 分鐘下限是**品味**，不是結構——4:19 的長片剪出來沒有壞，只是短。
+    # 修修 2026-09-10 裁決降級成警告：照樣往下走，診斷掛在 view 上，
+    # 他在 timeline 上自己判斷要不要用。
+    assert rejected.status != "needs_review"
     assert authority.outstanding_request is None
     assert len(authority.accepted_stages) == 3
-    assert tuple(item.code for item in authority.policy_diagnostics) == (
-        "long_duration_below_minimum",
-    )
+    # 分級之後不再「撞到第一條就早退」，所以這支 4:19 的 fixture 會一次收齊
+    # 全部警告（它也真的素材太少、節奏有缺口）。斷言改成包含，不是相等。
+    assert "long_duration_below_minimum" in {item.code for item in authority.policy_diagnostics}
     assert unchanged == rejected
 
 
@@ -1286,9 +1281,18 @@ def test_good_long_chain_passes_long_policy_before_plan_mint(tmp_path) -> None:
         ("photo-300", 300.0, "section-2", "b_roll", "Workplace"),
         ("chapter-3", 360.0, "section-3", "chapter", "第三章"),
         ("clip-360", 360.0, "section-3", "b_roll", "Chapter example"),
-        ("person-420", 420.0, "section-3", "b_roll", "Expert"),
+        ("photo-420", 420.0, "section-3", "b_roll", "Expert"),
         ("clip-480", 480.0, "section-3", "b_roll", "Closing example"),
     )
+    # tight cut 的字幕 cue 不會重疊：同一刻同時要出章節卡與 B-roll 時，它們錨在
+    # 相鄰的兩句話上，不是同一句。以前這份 fixture 讓 chapter-2 與 clip-180 共用
+    # 180.0，只是因為那時候沒有人在建構 context 的時候看一眼。
+    cues: list[CueAnchor] = []
+    cue_end = 0.0
+    for event_id, t0, section_id, _semantic_kind, display in rows:
+        cue_start = max(t0, cue_end)
+        cues.append(CueAnchor(f"cue-{event_id}", display, cue_start, cue_start + 10.0, section_id))
+        cue_end = cue_start + 10.0
     context = EditorialCutContext(
         episode_id="episode-1",
         cut_id="cut-1",
@@ -1297,10 +1301,7 @@ def test_good_long_chain_passes_long_policy_before_plan_mint(tmp_path) -> None:
         tight_cut_id="tight-1",
         duration_sec=540.0,
         source_ranges=(CutSourceRange(0.0, 540.0),),
-        cues=tuple(
-            CueAnchor(f"cue-{event_id}", display, t0, t0 + 10.0, section_id)
-            for event_id, t0, section_id, _semantic_kind, display in rows
-        ),
+        cues=tuple(cues),
         sections=(
             CanonicalSection("section-1", "開場", 0.0),
             CanonicalSection(
@@ -1326,7 +1327,7 @@ def test_good_long_chain_passes_long_policy_before_plan_mint(tmp_path) -> None:
         "clip-180": _asset("long-clip-180", kind=AssetKind.NON_EDITORIAL_CLIP),
         "clip-240": _asset("long-clip-240", kind=AssetKind.NON_EDITORIAL_CLIP),
         "photo-300": _asset("long-photo-300", kind=AssetKind.PHOTO, extension=".jpg"),
-        "person-420": _asset("long-person-420", kind=AssetKind.PHOTO, extension=".jpg"),
+        "photo-420": _asset("long-photo-420", kind=AssetKind.PHOTO, extension=".jpg"),
         "clip-360": _asset("long-clip-360", kind=AssetKind.NON_EDITORIAL_CLIP),
         "clip-480": _asset("long-clip-480", kind=AssetKind.NON_EDITORIAL_CLIP),
     }
@@ -1339,10 +1340,6 @@ def test_good_long_chain_passes_long_policy_before_plan_mint(tmp_path) -> None:
         semantic_adapter=semantic,
         derived_asset_builder=_ReadyDerivedAssetBuilder(resolver),
         context_resolver=InMemoryEditorialCutContextResolver((context,)),
-        stock_video_metadata=tuple(
-            StockVideoMetadata(assets[event_id].reference, 1920, 1080)
-            for event_id in ("stock-1", "stock-2", "stock-3")
-        ),
     )
     director_wait = production.advance(_approved_cut().command_id)
     director_request = _current_request(production, semantic, director_wait.command_id)
@@ -1371,7 +1368,7 @@ def test_good_long_chain_passes_long_policy_before_plan_mint(tmp_path) -> None:
         "photo-300": ("photo", "b_roll"),
         "chapter-3": ("fullscreen_transition", "fullscreen_transition"),
         "clip-360": ("non_editorial_clip", "b_roll"),
-        "person-420": ("person_inset", "b_roll"),
+        "photo-420": ("photo", "b_roll"),
         "clip-480": ("non_editorial_clip", "b_roll"),
     }
     semantic.respond(
@@ -1442,12 +1439,12 @@ def test_inspect_current_returns_only_public_immutable_finished_cut_view(tmp_pat
         t1=event.t1,
         asset_ref=event.asset_ref,
     )
-    release = _seal_finished_cut_release(
-        release_id="release-1",
+    release = plan_record(
+        plan_id="release-1",
         episode_id="episode-1",
         cut_id="cut-1",
-        format="short",
-        command_id=_approved_cut(format="short").command_id,
+        format="long",
+        command_id=_approved_cut().command_id,
         run_id="run-1",
         editorial_master_id="master-1",
         winner_id="winner-1",
@@ -1455,22 +1452,19 @@ def test_inspect_current_returns_only_public_immutable_finished_cut_view(tmp_pat
         director_acceptance_id="director-1",
         dp_acceptance_id="dp-1",
         visual_acceptance_id="visual-1",
-        materialization_plan_id="plan-1",
         events=(event,),
         components=(component,),
         preview=artifact,
         subtitle=artifact,
-        transaction_receipt_id="receipt-1",
-        rollback_ref="rollback-1",
     )
-    current = InMemoryCurrentReleaseIndex()
+    current = InMemoryPlanRecordIndex()
     current.publish((release,))
     production = FinishedCutProduction(
         store_root=tmp_path / "authority",
         approved_cut_store=InMemoryApprovedCutStore(()),
         asset_resolver=InMemoryAssetResolver(()),
         semantic_adapter=InMemorySemanticAdapter(),
-        current_release_index=current,
+        plan_records=current,
     )
 
     view = production.inspect_current("episode-1")
@@ -1493,7 +1487,7 @@ def test_inspect_current_returns_typed_missing_and_invalid_results(tmp_path) -> 
             return {}
 
     def lifecycle(episode_root):
-        return FinishedCutReleaseLifecycle(
+        return PlanRecordStore(
             episode_root,
             transactions=Transactions(),
             preview_probe=lambda _path: {},
@@ -1507,28 +1501,34 @@ def test_inspect_current_returns_typed_missing_and_invalid_results(tmp_path) -> 
     }
     missing = FinishedCutProduction(
         **common,
-        current_release_index=lifecycle(tmp_path / "missing-episode"),
+        plan_records=lifecycle(tmp_path / "missing-episode"),
     ).inspect_current("episode-1")
 
+    # 「壞掉」的意思跟著紀錄換了：以前是 review manifest，現在是 plan record 本身。
     corrupt_root = tmp_path / "corrupt-episode"
-    corrupt_manifest = (
-        corrupt_root / "highlights" / "review" / "finished_review_manifest_current.json"
+    corrupt_record = (
+        corrupt_root
+        / "highlights"
+        / "staging"
+        / "finished-cut"
+        / "0123456789abcdef01234567"
+        / "materialization.json"
     )
-    corrupt_manifest.parent.mkdir(parents=True)
-    corrupt_manifest.write_text("{", encoding="utf-8")
+    corrupt_record.parent.mkdir(parents=True)
+    corrupt_record.write_text("{", encoding="utf-8")
     invalid = FinishedCutProduction(
         **common,
-        current_release_index=lifecycle(corrupt_root),
+        plan_records=lifecycle(corrupt_root),
     ).inspect_current("episode-1")
 
     assert (missing.state, missing.error_code, missing.cuts) == (
         "missing",
-        "current_release_missing",
+        "plan_record_missing",
         (),
     )
     assert (invalid.state, invalid.error_code, invalid.cuts) == (
         "invalid",
-        "current_release_invalid",
+        "plan_record_invalid",
         (),
     )
 
@@ -1689,8 +1689,8 @@ def test_missing_editorial_context_is_rejected_before_run_creation(tmp_path) -> 
 
 def test_complete_current_chain_and_plan_survive_every_process_restart(tmp_path) -> None:
     root = tmp_path / "finished-cut-authority"
-    command = _approved_cut(format="short")
-    context = _editorial_context(format="short", duration_sec=45.0)
+    command = _approved_cut()
+    context = _editorial_context(duration_sec=45.0)
     approved_cuts = InMemoryApprovedCutStore((command,))
     semantic = InMemorySemanticAdapter()
 
@@ -1804,11 +1804,11 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
     tmp_path,
 ) -> None:
     root = tmp_path / "finished-cut-authority"
-    command = _approved_cut(format="short")
+    command = _approved_cut()
     context = EditorialCutContext(
         episode_id="episode-1",
         cut_id="cut-1",
-        format="short",
+        format="long",
         editorial_master_id="master-1",
         tight_cut_id="tight-1",
         duration_sec=45.0,
@@ -1837,7 +1837,9 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
 
     class ProjectionPolicy:
         def validate(self, candidate):
-            return type("Decision", (), {"status": "accepted"})()
+            # `diagnostics` 不能省：真的 PolicyDecision 一定有（預設空 tuple），
+            # 引擎在 accepted 路徑也會讀它來把警告掛上 view。
+            return type("Decision", (), {"status": "accepted", "diagnostics": ()})()
 
     def reopen() -> FinishedCutProduction:
         return FinishedCutProduction(
@@ -1847,7 +1849,7 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
             semantic_adapter=semantic,
             derived_asset_builder=builder,
             context_resolver=InMemoryEditorialCutContextResolver((context,)),
-            short_policy=ProjectionPolicy(),
+            long_policy=ProjectionPolicy(),
         )
 
     director_process = reopen()
@@ -1893,9 +1895,7 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
                 None,
                 ("cue-support",),
             ),
-            DPEventProposal(
-                "inset-event", "person_inset", "b_roll", inset.reference, ("cue-inset",)
-            ),
+            DPEventProposal("inset-event", "photo", "b_roll", inset.reference, ("cue-inset",)),
         ),
     )
     visual_process = reopen()
@@ -1926,7 +1926,7 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
         ("chapter", "fullscreen_transition", "fullscreen_transition"),
         ("hero_title", "hero_title", "hero_title"),
         ("identity_card", "identity_card", "identity_card"),
-        ("b_roll", "person_inset", "b_roll"),
+        ("b_roll", "photo", "b_roll"),
     )
     assert all(
         component.asset_ref is not None for component in ready.materialization_plan.components
@@ -1940,12 +1940,15 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
         if component.event_id == "inset-event"
     )
     assert inset_event.asset_ref == inset.reference
-    assert inset_component.asset_ref != inset_event.asset_ref
-    assert (
-        resolver.resolve_active_asset(inset_component.asset_ref).record.kind is AssetKind.COMPOSITE
-    )
-    with pytest.raises(TypeError, match="minted only"):
-        ProjectedComponent(
+    # passthrough 的 component 直接沿用 worker 挑的那一份素材，不另外算一支
+    # ——person_inset（挑 PHOTO、產 COMPOSITE）在 ADR-069 階段 2 退役之後，
+    # 「吃素材又要再算一次」這個組合不存在了。
+    assert inset_component.asset_ref == inset_event.asset_ref
+    assert resolver.resolve_active_asset(inset_component.asset_ref).record.kind is AssetKind.PHOTO
+    # ADR-069：擋的是「這個投影今天還成不成立」，不是「誰造的」。sentinel 那版
+    # 只認得出身，反而擋不住一個出身正確但語意／實作／軌道對不起來的組合。
+    with pytest.raises(ValueError, match="retired or unsupported component projection"):
+        _mint_projected_component(
             component_id="forged",
             event_id="support-event",
             semantic_kind="identity_card",
@@ -1960,11 +1963,11 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
 
 def test_targeted_revision_survives_restart_and_changes_only_one_event(tmp_path) -> None:
     root = tmp_path / "finished-cut-authority"
-    command = _approved_cut(format="short")
+    command = _approved_cut()
     context = EditorialCutContext(
         episode_id="episode-1",
         cut_id="cut-1",
-        format="short",
+        format="long",
         editorial_master_id="master-1",
         tight_cut_id="tight-1",
         duration_sec=45.0,
@@ -1977,7 +1980,7 @@ def test_targeted_revision_survives_restart_and_changes_only_one_event(tmp_path)
     )
     approved_cuts = InMemoryApprovedCutStore((command,))
     semantic = InMemorySemanticAdapter()
-    current = InMemoryCurrentReleaseIndex()
+    current = InMemoryPlanRecordIndex()
     resolver = InMemoryAssetResolver(())
     builder = _ReadyDerivedAssetBuilder(resolver)
 
@@ -1989,7 +1992,7 @@ def test_targeted_revision_survives_restart_and_changes_only_one_event(tmp_path)
             semantic_adapter=semantic,
             derived_asset_builder=builder,
             context_resolver=InMemoryEditorialCutContextResolver((context,)),
-            current_release_index=current,
+            plan_records=current,
         )
 
     director_process = reopen()
@@ -2040,8 +2043,8 @@ def test_targeted_revision_survives_restart_and_changes_only_one_event(tmp_path)
     assert original_plan is not None
 
     artifact = ReleaseArtifact(path="fixture", bytes=1, sha256="a" * 64, duration_sec=45.0)
-    release = _seal_finished_cut_release(
-        release_id="release-current",
+    release = plan_record(
+        plan_id="release-current",
         episode_id=command.episode_id,
         cut_id=command.cut_id,
         format=command.format,
@@ -2053,18 +2056,15 @@ def test_targeted_revision_survives_restart_and_changes_only_one_event(tmp_path)
         director_acceptance_id=original_plan.director_acceptance_id,
         dp_acceptance_id=original_plan.dp_acceptance_id,
         visual_acceptance_id=original_plan.visual_acceptance_id,
-        materialization_plan_id=original_plan.plan_id,
         events=original_plan.events,
         components=original_plan.components,
         preview=artifact,
         subtitle=artifact,
-        transaction_receipt_id="receipt-1",
-        rollback_ref="rollback-1",
     )
     current.publish((release,))
 
     revision_id = reopen().request_revision(
-        release.release_id,
+        release.plan_id,
         "hero-2",
         "Use a concise supporting title",
     )
@@ -2249,11 +2249,11 @@ def test_wrong_parent_and_replayed_request_cannot_accept_a_stage(tmp_path) -> No
 
 
 def test_stage_shape_failures_stay_on_exact_request_without_full_rerun(tmp_path) -> None:
-    command = _approved_cut(format="short")
+    command = _approved_cut()
     context = EditorialCutContext(
         episode_id="episode-1",
         cut_id="cut-1",
-        format="short",
+        format="long",
         editorial_master_id="master-1",
         tight_cut_id="tight-1",
         duration_sec=45.0,
@@ -2432,6 +2432,8 @@ def test_cross_format_proposal_cannot_enter_the_current_chain(tmp_path) -> None:
                 "hero-1", ("cue-context-1",), "Explain", "目前論點", "hero_title"
             ),
         ),
+        # 本模組只產長片（ADR-069 階段 2），所以「跨格式」現在是任何非 long 的
+        # 宣告——worker 回一個對不上 run 的格式就擋，不進權威鏈。
         format="short",
     )
 
@@ -2473,3 +2475,105 @@ def test_old_schema_proposal_cannot_enter_the_current_chain(tmp_path) -> None:
     assert rejected.status == "needs_review"
     assert authority.accepted_stages == ()
     assert authority.outstanding_request == director_request
+
+
+def test_a_revision_refuses_to_start_from_a_record_whose_artifacts_moved(tmp_path) -> None:
+    """修訂是拿這份紀錄當「修修看過的就是這支」在用，所以先確認成品還是那兩個檔。
+
+    重鑄 plan 可以不改片長（把一支 b-roll 移位、拿掉另一支，長度分毫不差），所以
+    長度護欄看不出差別。`verify_artifacts` 是唯一會重量 bytes 的那道，而它在
+    ADR-069 落地時全 repo 只有測試在呼叫——跟這次一起抓到的
+    `BLOCKING_DIAGNOSTICS` 是同一個形狀：只存在於宣告它的檔案裡的防線。
+    """
+
+    class _MovedArtifacts(InMemoryPlanRecordIndex):
+        def verify_artifacts(self, record: PlanRecord) -> None:
+            raise PlanRecordError(
+                f"recorded artifact changed after the plan record: {record.preview.path}"
+            )
+
+    records = _MovedArtifacts()
+    records.publish((plan_record(plan_id="plan-moved", episode_id="episode-1"),))
+    production = FinishedCutProduction(
+        store_root=tmp_path / "runs",
+        approved_cut_store=InMemoryApprovedCutStore(()),
+        asset_resolver=InMemoryAssetResolver(()),
+        semantic_adapter=InMemorySemanticAdapter(),
+        plan_records=records,
+    )
+
+    with pytest.raises(CommandRejectedError, match="no longer describes what is on disk"):
+        production.request_revision("plan-moved", "event-1", "把這張卡的字改一下")
+
+
+def test_a_cut_carrying_a_retired_card_can_still_be_revised(tmp_path) -> None:
+    """退役＝不能被**新提案**選中，不是「既有的不能再存在」。
+
+    這道門本來只要紀錄裡有任何一個退役投影，整份就不能修訂——因為修訂會把整份
+    events 重鑄一次，而鑄造端跟 worker 提案端共用同一張嚴格名單。那是自己造的死路：
+    那張卡已經在 timeline 上，`visual_effect` 在 `VOCABULARY` 裡有 track、版位與
+    renderer recipe，原封不動再鋪一次完全正常。真正的鎖在 worker 提案端。
+
+    修修 2026-09-13：「這個我完全看不懂在做什麼，為什麼會有這一條？」
+    """
+    retired = EventRecord(
+        event_id="event-retired",
+        master_cue_ids=("cue-9",),
+        text_hash="9" * 64,
+        intent="舊的視覺效果卡",
+        visual_status="approved",
+        t0=30.0,
+        t1=34.0,
+        section_id="section-1",
+        display="舊卡",
+        semantic_kind="visual_effect",
+        implementation_kind="visual_effect",
+        lane="visual_effect",
+    )
+    live = EventRecord(
+        event_id="event-live",
+        master_cue_ids=("cue-1",),
+        text_hash="1" * 64,
+        intent="金句卡",
+        visual_status="approved",
+        t0=10.0,
+        t1=14.0,
+        section_id="section-1",
+        display="下一個黃金年代",
+        semantic_kind="hero_title",
+        implementation_kind="hero_title",
+        lane="hero_title",
+    )
+    records = InMemoryPlanRecordIndex()
+    records.publish(
+        (plan_record(plan_id="plan-retired", episode_id="episode-1", events=(live, retired)),)
+    )
+    production = FinishedCutProduction(
+        store_root=tmp_path / "runs",
+        approved_cut_store=InMemoryApprovedCutStore(()),
+        asset_resolver=InMemoryAssetResolver(()),
+        semantic_adapter=InMemorySemanticAdapter(),
+        plan_records=records,
+    )
+
+    command_id = production.request_revision("plan-retired", "event-live", "這張卡的字改一下")
+
+    assert command_id.startswith("targeted-revision:")
+
+
+def test_a_receipt_only_projection_still_cannot_be_minted() -> None:
+    """`supporting_title` 只活在既有收據裡——它不在 `VOCABULARY`，沒有 track 也沒有
+    renderer，鑄出來會死在更下游。讀得回來但鑄不出來，那個不對稱是刻意的。
+    """
+    with pytest.raises(ValueError, match="retired or unsupported"):
+        _mint_projected_component(
+            component_id="component-1",
+            event_id="event-1",
+            semantic_kind="supporting_title",
+            implementation_kind="supporting_title",
+            lane="supporting_title",  # type: ignore[arg-type]
+            display="舊的輔助標題",
+            t0=1.0,
+            t1=4.0,
+            asset_ref=None,
+        )
