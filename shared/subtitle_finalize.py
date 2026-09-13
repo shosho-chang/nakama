@@ -504,6 +504,7 @@ def finalize_srt_file(
     stats["reboundary_moved"] = moved
     return stats
 
+
 #: 半形（拉丁字母／阿拉伯數字）與全形中文之間插半形空白。
 #: 只認**漢字**，不認全形標點——「AI」的引號緊貼字母是對的，不該變成「 AI 」。
 _HAN = chr(92) + "u3400-" + chr(92) + "u4dbf" + chr(92) + "u4e00-" + chr(92) + "u9fff"

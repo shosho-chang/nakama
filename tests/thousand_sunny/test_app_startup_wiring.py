@@ -560,9 +560,7 @@ def test_the_sweep_body_swallows_nothing_silently(monkeypatch, caplog):
     def _boom() -> None:
         raise RuntimeError("sweep exploded")
 
-    monkeypatch.setattr(
-        "thousand_sunny.routers.carousel_review.run_queued_autorun_sweep", _boom
-    )
+    monkeypatch.setattr("thousand_sunny.routers.carousel_review.run_queued_autorun_sweep", _boom)
     with caplog.at_level("ERROR"):
         app_module._carousel_sweep_body()
     assert "carousel autorun sweep crashed" in caplog.text
@@ -572,9 +570,7 @@ def test_lifespan_starts_the_carousel_sweep(monkeypatch):
     import thousand_sunny.app as app_module
 
     started = []
-    monkeypatch.setattr(
-        app_module, "_start_carousel_autorun_sweep", lambda: started.append(True)
-    )
+    monkeypatch.setattr(app_module, "_start_carousel_autorun_sweep", lambda: started.append(True))
     monkeypatch.setattr(app_module, "run_preflight", lambda: None)
     monkeypatch.setenv("DISABLE_ROBIN", "1")
 

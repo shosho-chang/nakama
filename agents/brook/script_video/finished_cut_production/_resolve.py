@@ -357,5 +357,3 @@ def _validate_preview(preview: PreviewRender) -> None:
         raise ResolveTransactionError("preview audio codec is not AAC or absent")
     if not math.isfinite(preview.duration_sec) or preview.duration_sec <= 0:
         raise ResolveTransactionError("preview duration is not positive and finite")
-
-

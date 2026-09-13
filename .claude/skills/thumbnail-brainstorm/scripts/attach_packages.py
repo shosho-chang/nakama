@@ -67,8 +67,12 @@ def _recipe_from_render_spec(spec: dict, *, episode_slug: str, vault_root: Path)
     if not variables.get("title_lines"):
         return None
     geometry_keys = (
-        "host_height_pct", "host_x_pct", "host_y_pct",
-        "guest_height_pct", "guest_x_pct", "guest_y_pct",
+        "host_height_pct",
+        "host_x_pct",
+        "host_y_pct",
+        "guest_height_pct",
+        "guest_x_pct",
+        "guest_y_pct",
     )
     geometry = {k: float(variables[k]) for k in geometry_keys if k in variables}
     return {

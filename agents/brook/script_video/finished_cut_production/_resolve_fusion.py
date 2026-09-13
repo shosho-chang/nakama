@@ -808,9 +808,7 @@ def _json_compatible(value: object) -> object:
     raise ResolveTransactionError("Resolve snapshot contains an unsupported value")
 
 
-def _conformed_source_frames(
-    timeline_frames: int, source_fps: float, timeline_fps: float
-) -> int:
+def _conformed_source_frames(timeline_frames: int, source_fps: float, timeline_fps: float) -> int:
     """記錄端佔 `timeline_frames` 格時，來源端該被吃掉幾格。
 
     來源端的長度**跟著實際的記錄長度走**，不是跟著我們用浮點秒數算出來的

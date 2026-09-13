@@ -357,9 +357,10 @@ def publish_cut(
     # 標籤要說出「實際會上傳的那一份」。之前寫死 tight SRT，實際送的是 Release
     # 那份——頁面上的檔名跟播放器聽到的內容不是同一個東西。
     subs = (
-        (_plan_subtitle_or_409(_episode_dir(rel), cut_id) or latest_tight_srt(
-            _episode_dir(rel), cut_id
-        ))
+        (
+            _plan_subtitle_or_409(_episode_dir(rel), cut_id)
+            or latest_tight_srt(_episode_dir(rel), cut_id)
+        )
         if cc_policy == "sidecar_required"
         else None
     )

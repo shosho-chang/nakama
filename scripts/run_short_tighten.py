@@ -480,9 +480,7 @@ WORD_PROJECTION_MIN_HIT_RATE = 0.6
 _WORD_PROJECTION_SAMPLE = 40
 
 
-def _projection_lands_on_the_master(
-    words: list[dict], srt_path: Path
-) -> float | None:
+def _projection_lands_on_the_master(words: list[dict], srt_path: Path) -> float | None:
     """抽樣驗投影：詞投到哪一秒，master.srt 那一秒就該有這個字。
 
     回傳命中率；樣本不足以判斷時回 None（呼叫端當作通過）。
@@ -505,9 +503,9 @@ def _projection_lands_on_the_master(
         if not text:
             continue
         mid = (float(w["start"]) + float(w["end"])) / 2
-        window = "".join(
-            t for s_, e_, t in cues if e_ > mid - 1.5 and s_ < mid + 1.5
-        ).replace(" ", "")
+        window = "".join(t for s_, e_, t in cues if e_ > mid - 1.5 and s_ < mid + 1.5).replace(
+            " ", ""
+        )
         if not window:
             continue
         checked += 1

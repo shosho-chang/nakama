@@ -1510,9 +1510,7 @@ def test_silent_major_component_is_a_valid_negative_observation(tmp_path: Path) 
     assert component["decision"] == "retain_memo_original"
     assert component["reason_code"] == "dual_asr_conflict"
     assert component["replacements"] == {}
-    evidence = json.loads(
-        (tmp_path / f"{asr}/faster/cue-2/evidence.json").read_bytes()
-    )
+    evidence = json.loads((tmp_path / f"{asr}/faster/cue-2/evidence.json").read_bytes())
     assert evidence["recognition"] == {
         "text": "",
         "segments": [],
@@ -1524,9 +1522,7 @@ def test_silence_never_supports_a_candidate() -> None:
     """放寬的是「聽不到」，不是「比對」——任一邊空白就退回保留原文。"""
     item = {"a_proposals": ["甲"], "b_proposals": ["甲"]}
     assert (
-        release._dual_asr_supported_candidate(
-            item, faster_observation="甲", qwen_observation="甲"
-        )
+        release._dual_asr_supported_candidate(item, faster_observation="甲", qwen_observation="甲")
         == "甲"
     )
     for faster, qwen in (("", "甲"), ("甲", ""), ("", ""), ("   ", "甲"), ("甲", " ")):

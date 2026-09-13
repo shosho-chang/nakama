@@ -56,9 +56,7 @@ def _round(value: float) -> float:
     return round(float(value), 3)
 
 
-def _assert_shared_clock(
-    sources: dict[str, Any], body_keys: set[str], fps: float
-) -> None:
+def _assert_shared_clock(sources: dict[str, Any], body_keys: set[str], fps: float) -> None:
     """多機位當主體的前提：它們的實測偏移彼此在一格內。
 
     共用主體代表共用一個 ``source_start_sec`` 座標系。偏移對不上就不是同一個
@@ -73,9 +71,7 @@ def _assert_shared_clock(
             measured[name] = float(entry.get("offset_sec") or 0.0)
     missing = sorted(body_keys - set(measured))
     if missing:
-        raise ConformMapError(
-            f"這些機位要一起當主體，但 sources 裡沒有它們的實測偏移：{missing}"
-        )
+        raise ConformMapError(f"這些機位要一起當主體，但 sources 裡沒有它們的實測偏移：{missing}")
     spread = max(measured.values()) - min(measured.values())
     if spread > tolerance:
         detail = "、".join(f"{k}={v:+.4f}s" for k, v in sorted(measured.items()))

@@ -384,9 +384,7 @@ class CodexSemanticAdapter:
     ) -> SemanticDispatchOutcome:
         # diagnostic 現在要帶上 code，所以留位置給它——總長仍然守住 512。
         prefix = f"{code}: "
-        bounded_detail = _bounded_head_and_tail(
-            detail, _MAX_DIAGNOSTIC_DETAIL_CHARS - len(prefix)
-        )
+        bounded_detail = _bounded_head_and_tail(detail, _MAX_DIAGNOSTIC_DETAIL_CHARS - len(prefix))
         self._record(request, code, bounded_detail)
         outcome = SemanticDispatchOutcome(
             request_id=request.request_id,

@@ -339,9 +339,7 @@ def _release_event_diff(row: Any) -> dict[str, Any]:
         "changes": [_EVENT_CHANGE_LABELS.get(change, change) for change in row.changes],
         "change_codes": list(row.changes),
         "at": _visual_time_stamp(row.t0),
-        "previous_at": (
-            None if row.previous_t0 is None else _visual_time_stamp(row.previous_t0)
-        ),
+        "previous_at": (None if row.previous_t0 is None else _visual_time_stamp(row.previous_t0)),
         "implementation_kind": row.implementation_kind,
         "display": row.display,
         "previous_display": row.previous_display,
@@ -968,9 +966,7 @@ def _context(episode_slug: str, review_format: str = "long") -> dict:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     shown = rows[:_MAX_CANDIDATES]
     if not shown:
-        raise HTTPException(
-            status_code=422, detail=f"no {review_format}-form candidates available"
-        )
+        raise HTTPException(status_code=422, detail=f"no {review_format}-form candidates available")
     latest = feedback_audit["decisions"][-1] if feedback_audit["decisions"] else {}
     latest_feedback = latest.get("feedback", {}) if isinstance(latest, dict) else {}
     if not isinstance(latest_feedback, dict):
@@ -1129,9 +1125,7 @@ async def highlight_review_decide(
     # 長片的網址一個字都不變（`format` 的預設就是 long），短片才帶參數回來——
     # 存完之後要回到剛剛那一頁，不是永遠彈回長片。
     suffix = "" if review_format == "long" else f"&format={review_format}"
-    return RedirectResponse(
-        f"/bridge/highlights/{episode_slug}?saved=1{suffix}", status_code=303
-    )
+    return RedirectResponse(f"/bridge/highlights/{episode_slug}?saved=1{suffix}", status_code=303)
 
 
 @page_router.get("/{episode_slug}/finished", response_class=HTMLResponse)

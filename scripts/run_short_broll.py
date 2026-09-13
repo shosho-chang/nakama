@@ -990,9 +990,7 @@ def apply(
         (item, kind) for item in items if (kind := _preserved_structural_kind(item)) is not None
     ]
     if structural_only:
-        render_items = sorted(
-            (item for item, _ in structural_items), key=lambda x: float(x["t0"])
-        )
+        render_items = sorted((item for item, _ in structural_items), key=lambda x: float(x["t0"]))
         if not render_items:
             raise SystemExit(
                 f"{broll_path} 裡沒有 structural row（badge／guest-namecard／"

@@ -267,7 +267,6 @@ class AssetResolver(Protocol):
 
     def resolve_active_asset(self, reference: str) -> ResolvedAsset: ...
 
-
     def resolve_exact_recipe(self, recipe_identity: str) -> ResolvedAsset: ...
 
 

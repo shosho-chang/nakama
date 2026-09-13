@@ -2577,4 +2577,3 @@ def test_a_receipt_only_projection_still_cannot_be_minted() -> None:
             t1=4.0,
             asset_ref=None,
         )
-

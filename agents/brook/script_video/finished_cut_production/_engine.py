@@ -186,9 +186,7 @@ class FinishedCutProduction:
         if existing is not None:
             base_record = None
             if existing.base_plan_id is not None:
-                base_record = self._plan_records.resolve(
-                    existing.base_plan_id
-                )
+                base_record = self._plan_records.resolve(existing.base_plan_id)
                 if base_record is None:
                     raise CommandRejectedError(
                         f"targeted revision base is not exact current: {existing.base_plan_id}"
@@ -242,9 +240,7 @@ class FinishedCutProduction:
         event_id = None
         parent_acceptance_id = None
         if isinstance(command, TargetedRevisionCommand):
-            base_record = self._plan_records.resolve(
-                command.current_plan_id
-            )
+            base_record = self._plan_records.resolve(command.current_plan_id)
             if base_record is None:
                 raise CommandRejectedError(
                     f"targeted revision base is not exact current: {command.current_plan_id}"
@@ -478,9 +474,7 @@ class FinishedCutProduction:
                 )
             base_record = None
             if stored.base_plan_id is not None:
-                base_record = self._plan_records.resolve(
-                    stored.base_plan_id
-                )
+                base_record = self._plan_records.resolve(stored.base_plan_id)
                 if base_record is None:
                     raise CommandRejectedError("dispatch recovery base is not exact current")
             run = _RunState(
@@ -768,6 +762,7 @@ class FinishedCutProduction:
         ):
             raise CommandRejectedError("persisted Editorial Cut Context identity is invalid")
         return context
+
 
 @dataclass(slots=True)
 class _RunState:

@@ -200,9 +200,7 @@ class PlanRecordStore:
             raise PlanRecordError("staging a plan record requires Resolve and probe seams")
         transaction = self._transactions.inspect_transaction(transaction_id)
         if transaction.get("transaction_id") != transaction_id:
-            raise PlanRecordError(
-                "transaction identity does not match the requested transaction"
-            )
+            raise PlanRecordError("transaction identity does not match the requested transaction")
         if transaction.get("status") != "preview_ready":
             raise PlanRecordError("a plan record requires a preview_ready transaction")
         probe = self._preview_probe(Path(preview_path))
@@ -232,9 +230,7 @@ class PlanRecordStore:
             timeline=timeline,
             transaction_id=transaction_id,
             duration_sec=float(duration),
-            preview=self._artifact(
-                Path(preview_path), duration_sec=float(duration), probe=probe
-            ),
+            preview=self._artifact(Path(preview_path), duration_sec=float(duration), probe=probe),
             subtitle=self._artifact(Path(subtitle_path)),
             events=plan.events,
             components=plan.components,
@@ -267,9 +263,7 @@ class PlanRecordStore:
     def records(self, episode_id: str) -> tuple[PlanRecord, ...]:
         """This episode's plan records, oldest staging directory first."""
 
-        return tuple(
-            record for record in self._all_records() if record.episode_id == episode_id
-        )
+        return tuple(record for record in self._all_records() if record.episode_id == episode_id)
 
     def resolve(self, plan_id: str) -> PlanRecord | None:
         return next(
@@ -324,9 +318,7 @@ class PlanRecordStore:
         try:
             relative = resolved.relative_to(self.episode_root)
         except ValueError as error:
-            raise PlanRecordError(
-                "recorded artifact must stay inside the episode root"
-            ) from error
+            raise PlanRecordError("recorded artifact must stay inside the episode root") from error
         try:
             size, digest = measure_file(resolved)
         except OSError as error:

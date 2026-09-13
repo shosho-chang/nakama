@@ -144,9 +144,7 @@ def apply_corrections_text(srt_text: str, document: CorrectionSet) -> tuple[str,
         current = " ".join(line.strip() for line in lines[2:]).strip()
         if current != item.before:
             raise SubtitleCorrectionError(
-                f"cue {item.cue} 的原文與勘誤單不符：\n"
-                f"  SRT ：{current!r}\n"
-                f"  勘誤：{item.before!r}"
+                f"cue {item.cue} 的原文與勘誤單不符：\n  SRT ：{current!r}\n  勘誤：{item.before!r}"
             )
         blocks[position] = "\n".join([lines[0], lines[1], item.after])
         applied += 1

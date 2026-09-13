@@ -212,7 +212,9 @@ def collect(hl_dir: Path, fmt: str, *, verify_binding: bool = True) -> list[dict
                 raise HighlightDataError(f"{review_path.name} contains an invalid score row")
             candidate_id = row["id"]
             if candidate_id in seen:
-                raise HighlightDataError(f"{review_path.name} contains duplicate id: {candidate_id}")
+                raise HighlightDataError(
+                    f"{review_path.name} contains duplicate id: {candidate_id}"
+                )
             seen.add(candidate_id)
             total = row.get("total")
             if (
@@ -297,7 +299,6 @@ def collect(hl_dir: Path, fmt: str, *, verify_binding: bool = True) -> list[dict
         )
 
     return _rank(candidates, fmt, scores, review_notes, brand)
-
 
 
 def winners_path(hl_dir: Path, fmt: str) -> Path:

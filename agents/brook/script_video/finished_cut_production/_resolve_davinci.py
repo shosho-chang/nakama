@@ -493,6 +493,7 @@ class DaVinciResolveTimelineAdapter:
         self._exact_timeline(workspace.backup)
         return cut
 
+
 def _fingerprint(value: object) -> str:
     encoded = json.dumps(
         value,

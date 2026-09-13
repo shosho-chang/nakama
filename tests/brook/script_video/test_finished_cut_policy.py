@@ -570,14 +570,17 @@ def test_title_like_visual_placements_that_overlap_are_reported_not_blocked() ->
     )
 
     assert decision.status == "accepted_with_warnings"
-    assert policy_module.PolicyDiagnostic(
+    assert (
+        policy_module.PolicyDiagnostic(
             "title_placement_overlap",
             (
                 "Title-like visual placements overlap: chapter-2 [180.000000, 183.000000]s; "
                 "overlapping-hero [180.000000, 183.000000]s"
             ),
             component_ids=("chapter-2", "overlapping-hero"),
-    ) in decision.diagnostics
+        )
+        in decision.diagnostics
+    )
 
 
 def test_l2_observed_one_hundred_thirty_five_second_visual_gap_needs_review() -> None:
@@ -627,14 +630,17 @@ def test_l2_observed_one_hundred_thirty_five_second_visual_gap_needs_review() ->
     )
 
     assert decision.status == "accepted_with_warnings"
-    assert policy_module.PolicyDiagnostic(
+    assert (
+        policy_module.PolicyDiagnostic(
             "visual_gap_exceeded",
             (
                 "Long non-structural visual gap [10.000000, 145.334000]s exceeds 75 seconds; "
                 "previous_event_id=event-stock-1; next_event_id=event-stock-2"
             ),
             component_ids=("stock-1", "stock-2"),
-    ) in decision.diagnostics
+        )
+        in decision.diagnostics
+    )
 
 
 def test_title_cards_cannot_mask_an_asset_backed_broll_cadence_gap() -> None:
@@ -647,14 +653,17 @@ def test_title_cards_cannot_mask_an_asset_backed_broll_cadence_gap() -> None:
     decision = LongV2Policy().validate(replace(_long_input(), components=gap_components))
 
     assert decision.status == "accepted_with_warnings"
-    assert policy_module.PolicyDiagnostic(
+    assert (
+        policy_module.PolicyDiagnostic(
             "b_roll_cadence_gap_exceeded",
             (
                 "Long asset-backed B-roll cadence gap [130.000000, 240.000000]s exceeds "
                 "75 seconds; previous_event_id=event-stock-3; next_event_id=event-240"
             ),
             component_ids=("stock-3", "broll-240"),
-    ) in decision.diagnostics
+        )
+        in decision.diagnostics
+    )
 
 
 def test_sixty_second_semantic_anchor_with_four_second_title_cannot_mask_broll_gap() -> None:
@@ -728,14 +737,17 @@ def test_observed_long3_head_broll_gap_needs_review_at_exact_boundary() -> None:
         replace(_long_input(), components=(*components, *title_fillers))
     )
 
-    assert policy_module.PolicyDiagnostic(
+    assert (
+        policy_module.PolicyDiagnostic(
             "b_roll_cadence_gap_exceeded",
             (
                 "Long asset-backed B-roll cadence gap [0.000000, 148.333000]s exceeds "
                 "75 seconds; previous_event_id=cut_start; next_event_id=event-stock-1"
             ),
             component_ids=("stock-1",),
-    ) in decision.diagnostics
+        )
+        in decision.diagnostics
+    )
 
 
 def test_observed_long3_internal_broll_gap_needs_review_at_exact_boundary() -> None:
@@ -756,14 +768,17 @@ def test_observed_long3_internal_broll_gap_needs_review_at_exact_boundary() -> N
         replace(_long_input(), components=(*components, *title_fillers))
     )
 
-    assert policy_module.PolicyDiagnostic(
+    assert (
+        policy_module.PolicyDiagnostic(
             "b_roll_cadence_gap_exceeded",
             (
                 "Long asset-backed B-roll cadence gap [10.000000, 134.100000]s exceeds "
                 "75 seconds; previous_event_id=event-stock-1; next_event_id=event-stock-2"
             ),
             component_ids=("stock-1", "stock-2"),
-    ) in decision.diagnostics
+        )
+        in decision.diagnostics
+    )
 
 
 def test_asset_backed_broll_gap_of_exactly_seventy_five_seconds_passes() -> None:
@@ -784,14 +799,17 @@ def test_tail_visual_gap_reports_previous_event_and_cut_end() -> None:
 
     decision = LongV2Policy().validate(replace(_long_input(), components=components))
 
-    assert policy_module.PolicyDiagnostic(
+    assert (
+        policy_module.PolicyDiagnostic(
             "visual_gap_exceeded",
             (
                 "Long non-structural visual gap [430.000000, 540.000000]s exceeds 75 seconds; "
                 "previous_event_id=event-420; next_event_id=cut_end"
             ),
             component_ids=("broll-420",),
-    ) in decision.diagnostics
+        )
+        in decision.diagnostics
+    )
 
 
 def test_nested_broll_window_cannot_move_coverage_end_backward() -> None:

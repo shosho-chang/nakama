@@ -57,9 +57,8 @@ def display_width(text: str) -> int:
     `bookkeeping`（11）也是同一個原因。這類詞在 AI 主題的訪談裡只會越來越多，
     用字元數當寬度等於讓片子被英文詞卡死。
     """
-    return sum(
-        _FULL if unicodedata.east_asian_width(ch) in ("W", "F") else _HALF for ch in text
-    )
+    return sum(_FULL if unicodedata.east_asian_width(ch) in ("W", "F") else _HALF for ch in text)
+
 
 #: 左段結尾「自己站得住」的詞性：名詞類、獨立動詞、習語、簡稱。
 #: 代名詞（r）與數量詞（m/q）刻意不收——「這件」「一個」收尾就是拆到一半。

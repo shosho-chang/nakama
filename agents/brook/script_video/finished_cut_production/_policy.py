@@ -258,7 +258,8 @@ class LongV2Policy:
             candidate.context.duration_sec < LONG_MIN_DURATION_SEC
             or selected_duration < LONG_MIN_DURATION_SEC
         ):
-            notices.extend((
+            notices.extend(
+                (
                     PolicyDiagnostic(
                         "long_duration_below_minimum",
                         "Long selected ranges and cut duration must both be at least 480 seconds",
@@ -318,7 +319,8 @@ class LongV2Policy:
             ceiling_sec = _PLACEMENT_DURATION_CEILINGS_SEC.get(component.implementation_kind)
             show_sec = component.t1 - component.t0
             if ceiling_sec is not None and show_sec > ceiling_sec:
-                notices.extend((
+                notices.extend(
+                    (
                         PolicyDiagnostic(
                             "visual_placement_duration_exceeded",
                             (
@@ -335,7 +337,8 @@ class LongV2Policy:
             if component.semantic_kind == "hero_title"
         )
         if len(hero_titles) > LONG_MAX_HERO_TITLES:
-            notices.extend((
+            notices.extend(
+                (
                     PolicyDiagnostic(
                         "hero_title_limit_exceeded",
                         "Long permits at most four Hero Titles",
@@ -348,7 +351,8 @@ class LongV2Policy:
         )
         title_density = len(title_like) / (candidate.context.duration_sec / 60.0)
         if title_density > LONG_MAX_TITLE_LIKE_PER_MINUTE:
-            notices.extend((
+            notices.extend(
+                (
                     PolicyDiagnostic(
                         "title_like_density_exceeded",
                         "Long title-like density must not exceed two cards per minute",
@@ -387,7 +391,8 @@ class LongV2Policy:
         for index in range(len(ordered_titles) - LONG_TITLE_CLUSTER_MAX_CARDS):
             cluster = ordered_titles[index : index + LONG_TITLE_CLUSTER_MAX_CARDS + 1]
             if cluster[-1].t0 - cluster[0].t0 <= LONG_TITLE_CLUSTER_WINDOW_SEC:
-                notices.extend((
+                notices.extend(
+                    (
                         PolicyDiagnostic(
                             "title_cluster_exceeded",
                             "Long permits at most two title-like cards in any 15 seconds",
@@ -415,7 +420,8 @@ class LongV2Policy:
             len(distinct_stock_event_ids) < LONG_MIN_DISTINCT_STOCK_VIDEO_EVENTS
             or len(distinct_stock_assets) < LONG_MIN_DISTINCT_STOCK_VIDEO_EVENTS
         ):
-            notices.extend((
+            notices.extend(
+                (
                     PolicyDiagnostic(
                         "distinct_stock_video_minimum_not_met",
                         "Long requires three distinct asset-backed Stock Video events",
@@ -439,7 +445,8 @@ class LongV2Policy:
             )
         )
         if reused_assets:
-            notices.extend((
+            notices.extend(
+                (
                     PolicyDiagnostic(
                         "stock_video_asset_reused",
                         "Every Stock Video event must use a different asset",
@@ -474,7 +481,8 @@ class LongV2Policy:
             max_gap_sec=LONG_MAX_NONSTRUCTURAL_VISUAL_GAP_SEC,
         )
         if visual_gap is not None:
-            notices.extend((
+            notices.extend(
+                (
                     _coverage_gap_diagnostic(
                         "visual_gap_exceeded",
                         "Long non-structural visual gap",
@@ -496,7 +504,8 @@ class LongV2Policy:
             max_gap_sec=LONG_MAX_ASSET_BACKED_BROLL_GAP_SEC,
         )
         if broll_gap is not None:
-            notices.extend((
+            notices.extend(
+                (
                     _coverage_gap_diagnostic(
                         "b_roll_cadence_gap_exceeded",
                         "Long asset-backed B-roll cadence gap",

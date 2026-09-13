@@ -123,7 +123,9 @@ def _flatten_tracks(layered: list[list[dict]]) -> list[dict]:
                         "tl_start": a,
                         "tl_end": b,
                         # 切開之後來源起點要跟著往後推同樣的格數。
-                        "src_left_offset": None if left is None else int(left) + (a - int(item["tl_start"])),
+                        "src_left_offset": None
+                        if left is None
+                        else int(left) + (a - int(item["tl_start"])),
                         "source_path": item["source_path"],
                     }
                 )

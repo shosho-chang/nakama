@@ -659,9 +659,7 @@ def _stage_short_candidates(episode_root: Path) -> None:
         json.dumps(
             {
                 "source_sha256": short_sha256,
-                "findings": [
-                    {"id": f"S{i}", "severity": None, "issue": ""} for i in range(1, 5)
-                ],
+                "findings": [{"id": f"S{i}", "severity": None, "issue": ""} for i in range(1, 5)],
             },
             ensure_ascii=False,
         ),

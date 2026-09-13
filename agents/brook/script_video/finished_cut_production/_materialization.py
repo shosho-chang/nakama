@@ -459,8 +459,7 @@ class MaterializationCoordinator:
             timeline=prior.timeline if prior.timeline.name else fresh.timeline,
             event_diff=prior.event_diff or fresh.event_diff,
             event_diff_previous_acceptance_id=(
-                prior.event_diff_previous_acceptance_id
-                or fresh.event_diff_previous_acceptance_id
+                prior.event_diff_previous_acceptance_id or fresh.event_diff_previous_acceptance_id
             ),
             uniform_shift_sec=(
                 prior.uniform_shift_sec

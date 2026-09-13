@@ -1419,9 +1419,7 @@ def test_correction_is_refused_once_the_plan_has_a_record(tmp_path) -> None:
     production._plan_records.publish((_record_for(plan),))
 
     with pytest.raises(CommandRejectedError) as excinfo:
-        production.request_correction(
-            COMMAND_ID, "dp", "event-purpose", "已經發布了還想改。"
-        )
+        production.request_correction(COMMAND_ID, "dp", "event-purpose", "已經發布了還想改。")
 
     message = str(excinfo.value)
     assert "already has a plan record" in message

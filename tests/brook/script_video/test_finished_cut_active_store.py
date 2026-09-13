@@ -173,9 +173,7 @@ def test_byte_identical_publish_is_idempotent_across_store_reopen(tmp_path: Path
     # 原本這裡還順手驗「綁定 Release 之後再 publish 一次，綁定不會被蓋掉」。
     # `release_ids` 隨封存鏈退役（實測 322 筆紀錄沒有一筆非空），剩下的是
     # idempotence 本身：同一份內容 publish 幾次都是同一筆紀錄。
-    assert ActiveAssetStore.open(store_root, episode_id="episode-001").publish(
-        publication
-    ) == first
+    assert ActiveAssetStore.open(store_root, episode_id="episode-001").publish(publication) == first
 
 
 def test_neutral_acquisition_metadata_survives_index_reopen(tmp_path: Path) -> None:

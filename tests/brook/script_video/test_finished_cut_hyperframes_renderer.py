@@ -606,4 +606,3 @@ def test_real_pinned_hyperframes_renders_prores_4444_alpha_hero(
     assert rendered.media.codec_name == "prores"
     assert rendered.media.pixel_format == "yuva444p12le"
     assert rendered.media.has_alpha is True
-

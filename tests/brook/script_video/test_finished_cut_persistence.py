@@ -41,6 +41,7 @@ class _DurableTimelineAdapter:
     def rollback(self, *args: object, **kwargs: object) -> None:
         raise AssertionError("rollback is not used by this test")
 
+
 class _RestartResolve:
     def __init__(self) -> None:
         self.statuses = {
@@ -163,5 +164,3 @@ def test_transaction_store_rejects_checksum_tampering_without_historical_fallbac
 
     with pytest.raises(PersistenceError, match="checksum differs"):
         store.load(expected.transaction_id)
-
-

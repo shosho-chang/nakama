@@ -669,15 +669,13 @@ def build_production_application(
         materialization = None
         materialization_reason = "resolve_binding_not_configured"
     else:
-        materialization, records, _transactions = (
-            _build_resolve_materialization_composition(
-                paths=paths,
-                episode_id=episode_id,
-                assets=assets,
-                run_store_root=run_store_root,
-                configuration=resolve_configuration,
-                ports=resolve_ports or ProductionResolvePorts(),
-            )
+        materialization, records, _transactions = _build_resolve_materialization_composition(
+            paths=paths,
+            episode_id=episode_id,
+            assets=assets,
+            run_store_root=run_store_root,
+            configuration=resolve_configuration,
+            ports=resolve_ports or ProductionResolvePorts(),
         )
         materialization_reason = None
     return FinishedCutProductionApplication.open(

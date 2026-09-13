@@ -730,4 +730,3 @@ def test_all_current_generated_browser_components_publish_final_assets(tmp_path:
         )
         == expected_kinds
     )
-

@@ -76,9 +76,7 @@ def test_an_exact_preview_passes():
 @pytest.mark.parametrize("drift_frames", [2, -2, 30])
 def test_a_preview_that_really_drifted_is_rejected(drift_frames):
     """容忍度沒有被放寬——兩格照擋。"""
-    assert not _preview_matches_timeline(
-        (TIMELINE_FRAMES + drift_frames) / FPS, _inspection()
-    )
+    assert not _preview_matches_timeline((TIMELINE_FRAMES + drift_frames) / FPS, _inspection())
 
 
 @pytest.mark.parametrize(

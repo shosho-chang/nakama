@@ -401,9 +401,7 @@ def _short_panel(hl: Path, ids: tuple[str, ...]) -> None:
             {
                 "lens": "brand",
                 "source_sha256": digest,
-                "findings": [
-                    {"id": i, "severity": "", "issue": "", "mitigation": ""} for i in ids
-                ],
+                "findings": [{"id": i, "severity": "", "issue": "", "mitigation": ""} for i in ids],
             },
             ensure_ascii=False,
         ),

@@ -96,6 +96,7 @@ class _InMemoryTimelineAdapter:
             assert isinstance(visuals, list)
             visuals.append("corrupted-after-rollback")
 
+
 def _plan(cut_id: str = "value-L01") -> MaterializationPlan:
     event = EventRecord(
         event_id="event-001",

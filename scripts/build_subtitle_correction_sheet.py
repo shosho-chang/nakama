@@ -96,7 +96,8 @@ def build_sheet(
         return start <= cues[cue][0] <= end
 
     rows = [
-        item for item in sorted(items, key=lambda value: value["cue_numbers"][0])
+        item
+        for item in sorted(items, key=lambda value: value["cue_numbers"][0])
         if inside(item["cue_numbers"][0])
     ]
     clustered = {cue for group in (clusters or {}).values() for cue in group}
@@ -111,10 +112,10 @@ def build_sheet(
         "",
         f"# {episode_dir.name} — 字幕勘誤單",
         "",
-        f"這些句子兩份稽核都看出「不對」，但**機器無法唯一還原**。目前字幕保留原文（不猜）。",
+        "這些句子兩份稽核都看出「不對」，但**機器無法唯一還原**。目前字幕保留原文（不猜）。",
         "",
         "**怎麼填**：點一下方框就好；方框都不對就寫在 " + f"`{ANSWER_PREFIX}` 後面。",
-        f"**留白＝維持原文**，不填不擋發布。",
+        "**留白＝維持原文**，不填不擋發布。",
         "",
     ]
 
@@ -141,7 +142,8 @@ def build_sheet(
             out += [f"<small>依據：{basis}</small>", ""]
 
     open_rows = [
-        item for item in rows
+        item
+        for item in rows
         if item["cue_numbers"][0] not in clustered and item["cue_numbers"][0] not in verified
     ]
     if open_rows:
@@ -155,7 +157,7 @@ def build_sheet(
             if reason:
                 out += [f"<small>稽核判定：{reason}</small>", ""]
 
-    out += ["---", "", f"填完把 `status:` 改成 `已填`，跟我說一聲就好。", ""]
+    out += ["---", "", "填完把 `status:` 改成 `已填`，跟我說一聲就好。", ""]
     return "\n".join(out)
 
 
