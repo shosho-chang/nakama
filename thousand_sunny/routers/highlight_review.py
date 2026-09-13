@@ -209,7 +209,7 @@ def _visual_time_range(t0: object, t1: object) -> str:
 
 
 def _finished_cut_event_view(cut: dict[str, Any]) -> dict[str, object]:
-    """Project only semantic events carried by the sealed current Release."""
+    """Project only the semantic events this cut's plan record carries."""
 
     plan_id = cut.get("plan_id")
     if plan_id is None:
@@ -290,7 +290,7 @@ def _require_final_qa_clear(episode_dir: Path, cut_id: str) -> None:
         )
 
 
-_CURRENT_RELEASE_INSPECTOR_FACTORY = build_plan_record_reader
+_PLAN_RECORD_INSPECTOR_FACTORY = build_plan_record_reader
 
 
 def _release_artifact(artifact: Any) -> dict[str, Any]:
@@ -324,8 +324,10 @@ _EVENT_CHANGE_LABELS = {
     "added": "新增",
     "removed": "刪除",
     "moved": "移動",
+    "retimed": "改長度",
     "retitled": "改寫",
     "recast": "換卡種",
+    "reshot": "換素材",
 }
 
 
@@ -407,7 +409,7 @@ def _load_finished_manifest(episode_slug: str) -> dict[str, Any]:
     """Project only the exact current v3 Release index into the Bridge view model."""
 
     episode_dir = _episode_dir(episode_slug)
-    review = FinishedCutReviewAdapter(_CURRENT_RELEASE_INSPECTOR_FACTORY(episode_dir)).load(
+    review = FinishedCutReviewAdapter(_PLAN_RECORD_INSPECTOR_FACTORY(episode_dir)).load(
         episode_slug
     )
     if review.state is ReviewState.MISSING:

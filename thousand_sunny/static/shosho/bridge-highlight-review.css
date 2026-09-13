@@ -408,7 +408,12 @@
 
 .visual-diff__row:first-child { border-top: 0; }
 
-.visual-diff__at {
+/* 時間戳是掃讀這份清單的入口——要找哪一張卡，眼睛先落在這一欄——所以它比周圍的
+   metadata 更該讀得清楚。`.visual-diff__at` 只有 (0,1,0)，而同一個 span 上的
+   `.sho-mono` 被 `.sho .sho-mono` 以 (0,2,0) 染成 muted，於是這裡寫的
+   `--sho-text-2` 一直沒有生效：實測 light 主題拿到的是 4.43:1（secondary 的 AA
+   門檻是 4.5），不是本來要的 7.0。補一層 scope 把權重拉平。 */
+.visual-diff__row .visual-diff__at {
   color: var(--sho-text-2);
   flex: 0 0 auto;
   font-variant-numeric: tabular-nums;

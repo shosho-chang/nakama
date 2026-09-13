@@ -216,10 +216,21 @@
             <header class="visual-truth__head">
               <div>
                 <p class="visual-truth__eyebrow sho-mono">FINISHED CUT PLAN RECORD</p>
-                <h3 id="visual-truth-{{ cut.cut_id }}">Current semantic events</h3>
+                {# 標題要說出這一塊實際上有什麼。短片沒有語意 event，卻頂著
+                   「Current semantic events」，讀起來跟下面那句自己打架。 #}
+                <h3 id="visual-truth-{{ cut.cut_id }}">{{ "Current semantic events" if record.plan_id else "沒有語意紀錄" }}</h3>
               </div>
               <span class="visual-truth__status sho-mono">{{ record.status_label }}</span>
             </header>
+            {% if not record.plan_id %}
+            {# 短片線不走 finished cut production，所以沒有 plan record：沒有 plan id、
+               沒有 timeline、沒有輪次可比。照長片的版面排下去會印出字面的 "None"
+               與「這是第一輪」，兩句都不是真的。 #}
+            <p class="visual-diff__empty sho-mono">
+              這支走的是短片審核 packet，沒有 plan record——沒有語意 event、沒有
+              timeline 紀錄，也沒有可比的上一輪。畫面請直接看 preview。
+            </p>
+            {% else %}
             <dl class="visual-truth__revisions sho-mono">
               <div><dt>PLAN</dt><dd>{{ record.plan_id }}</dd></div>
               <div><dt>TIMELINE</dt><dd>{{ record.timeline or "（未記錄）" }}</dd></div>
@@ -301,6 +312,7 @@
                 {% endfor %}
               </ol>
             </details>
+            {% endif %}
           </section>
 
           <section class="cut-feedback" aria-labelledby="cut-feedback-label-{{ cut.cut_id }}">

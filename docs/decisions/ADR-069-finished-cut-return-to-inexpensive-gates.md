@@ -538,3 +538,58 @@ ADR-066 的核心決策是對的，是實作超標。否決。
 - **v1 三方審查（2026-09-12）**：創作者視角、cost×risk×complexity 審計、ADR-066 原作者辯護——三方一致「改了再簽」。審計重算數字並指出 v1 標「留」但該砍的七項；辯護人對 v1 標「砍」的八項各給出今天就會發生的失敗情境（`source_range_drift`、活字幕軌、master content hash、`_current_chain_is_exact`、retry base、ledger 三態、canonical 精確匹配、素材 bytes），並指出 journal 的承擔理由對錯對象。整合報告在該 session 的 `ADR-069-panel-report.md`。
 - **owner 裁決（2026-09-12）**：放棄封存 Release；`_face_placement.py` 整刪；`chapter_transition_projection_mismatch` 升回 blocking。
 - **owner 簽核 v2：2026-09-12「簽，直接做到完」。** 七個階段依序實作，每階段一個 commit。
+- **落地後 code review（2026-09-13，xhigh）**：10 個角度掃完 93 檔、15 條全部修掉。
+  見下方〈落地後 review〉。
+
+## 落地後 review（2026-09-13）
+
+23. **最重的兩條都不是重構做錯，是新舊交界沒接上。**
+
+    * `video_description.resolve_chapters` 的入口條件還在問「這一集有沒有
+      `publish-timelines.v1.json`」。可是 ADR-069 之後 `plan_chapters` 不需要對應表
+      先指路了——於是「有紀錄、沒有對應表」的長片整個跳過紀錄、掉回 `_broll.json`，
+      正是 20260805 value-L02 分章全錯的那條路（broll 只到 326.7s，成品 563.7s）。
+      同一個檔的 `build_description_prompt` 直接問 `plan_subtitle`、沒有這道閘，
+      所以那個組合產出的會是**字幕取自成品、分章取自舊時間軸**的自相矛盾描述。
+      改成問紀錄本身；`plan_chapters` 因此變成三態（`None` = 沒有紀錄、`[]` = 紀錄
+      說沒有分章，後者是權威答案，不准回頭撿 broll）。
+
+    * `_reopen_prior_record` 拿整個 dataclass 比對 `prior != fresh`。v1 紀錄的
+      `event_diff` 永遠是空的，而第一輪的 diff 一定非空（每個 event 都是 `added`），
+      所以**磁碟上那六份舊紀錄每一份重進入都會被判成 `materialization_journal_conflict`**
+      ——而重進入這條路正是為了那些舊紀錄存在的（20260721 punch-L03）。
+      `timeline` 與 diff 都是鑄紀錄那一刻的旁註、不是 plan 的身分：缺的補上去、
+      改寫成 v2，比對只剩身分與成品。
+
+24. **三條是這次重構自己的論點被自己違反。** 這一類最值得記，因為它們都通過了測試。
+
+    | 主張 | 違反 |
+    |---|---|
+    | 階段 5「一個 reason code 回答一類問題」 | 三份直式擋片收成一份之後，唯一的倖存者藏在 `_passthrough` 的一串 `return None` 裡，被翻成跟「目錄漂掉」共用的 `derived_asset_mismatch`——DP 收到的回饋一個字都沒提到方向 |
+    | 階段 3「同一件事只宣告一次」 | 新的 `_plan_record._measure` 是這個套件裡第**四**份 streamed sha256。收成 `_digest.py` |
+    | 階段 6「介面不能看起來在顯示真相卻沒有資料」 | 短片沒有 plan record，卻照長片版面排出 `PLAN None` 與「這是第一輪，沒有可比的上一輪」——一支沒有輪次概念的 cut 被說成第一輪 |
+
+25. **`verify_artifacts` 全 repo 只有測試在呼叫。** 跟這份 ADR 自己抓到的
+    `BLOCKING_DIAGNOSTICS` 是同一個形狀：只存在於宣告它的檔案裡的防線，而測試讓它
+    看起來是活的。接到 `_request_revision_locked`——修訂是拿這份紀錄當「修修看過的
+    就是這支」在用，那是唯一值得付一次 sha256 的時刻。
+
+26. **假件跟真件不同形，所以 38 支測試從來沒走過輪次比對。** `_round_diff` 當時寫
+    `getattr(view, "accepted_stages", ())`，而 `test_finished_cut_materialization`
+    的假 view 是手搭的 `SimpleNamespace`，那兩格根本不存在。把兜底拿掉之後 38 支
+    當場紅——那就是證據。假件補上那兩格（空 tuple），破綻才會出現在測試裡而不是線上。
+
+27. **CSS 的權重把一個無障礙決定悄悄吃掉了。** `.visual-diff__at { color: var(--sho-text-2) }`
+    是 (0,1,0)，而同一個 span 上的 `.sho-mono` 被 `.sho .sho-mono` 以 (0,2,0) 染成
+    muted——所以那行 `--sho-text-2` 從來沒有生效過，時間戳實際拿到的是 4.43:1
+    （secondary 的 AA 門檻是 4.5），不是本來要的 7.0。而時間戳正是掃這份清單時眼睛
+    第一個落點。補一層 scope 拉平權重之後：light 9.88、dark 8.42。
+    `docs/design-system.md` 早就警告過這個坑，它還是發生了——因為**沒有人量**。
+
+28. **「讀不回來的紀錄」與「沒有紀錄」必須是兩個答案。** 兩者原本都回 `None`／`[]`，
+    於是壞掉的紀錄一路安靜退回 ADR-065 的舊來源。新增 `PlanRecordUnreadable`：
+    分章與字幕 raise（Bridge 上翻成 409，不是 500），而發布閘
+    `export_matches_plan_record` 對它回 **False**——回 True 等於說「已經 render 的
+    那份就是現在這版」，可是我們根本不知道現在這版是什麼。多 render 一次的代價，
+    遠小於安靜發錯內容。
+

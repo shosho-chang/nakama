@@ -154,7 +154,7 @@ def _client(
     inspector = _FakeInspector(inspection)
     monkeypatch.setattr(
         review_module,
-        "_CURRENT_RELEASE_INSPECTOR_FACTORY",
+        "_PLAN_RECORD_INSPECTOR_FACTORY",
         lambda _episode_dir: inspector,
     )
     app = FastAPI()
@@ -576,6 +576,27 @@ def test_short_review_view_discovers_packets_and_exposes_short_component_lanes(
     )
     assert media.status_code == 200
     assert media.content == (packet / "短1_preview.mp4").read_bytes()
+
+
+def test_a_short_packet_does_not_pretend_to_have_a_plan_record(client, finished_episode):
+    """短片線不走 finished cut production，所以它沒有 plan record。
+
+    版面照長片排下去的話，PLAN 那一格會印出字面的 `None`（Jinja 對 Python 的 None
+    就是這樣），而輪次比對那一塊會寫著「這是第一輪，沒有可比的上一輪」——一支根本
+    沒有輪次概念的 cut 被說成第一輪。兩句都不是真的。
+    """
+    _, episode, _ = finished_episode
+    _write_short_packet(episode)
+
+    response = client.get(
+        "/bridge/highlights/20260721%20%E9%84%AD%E5%9C%8B%E5%A8%81/finished?format=short",
+        cookies=_auth_cookie(),
+    )
+
+    assert response.status_code == 200
+    assert "<dd>None</dd>" not in response.text
+    assert "這是第一輪，沒有可比的上一輪" not in response.text
+    assert "沒有 plan record" in response.text
 
 
 def test_short_review_feedback_is_append_only_and_separate_from_long_feedback(
