@@ -430,3 +430,32 @@ def test_a_read_only_store_refuses_to_stage(tmp_path) -> None:
             preview_path=tmp_path / "preview.mp4",
             subtitle_path=tmp_path / "review.srt",
         )
+
+
+def test_an_incomplete_staging_file_is_reported_without_being_destroyed(tmp_path) -> None:
+    """回報「有一份沒寫完的紀錄」的同時把它刪掉，等於自己抹掉停線的理由。
+
+    刪掉之後下一次重跑就安靜地成功了，而沒有人知道上一次寫到一半死在哪裡；併發時
+    更糟——刪的是另一支行程正在寫的那個檔。
+    """
+    path = tmp_path / PLAN_RECORD_FILENAME
+    staging = path.with_name(f".{path.name}.staging")
+    staging.write_bytes(b"another writer is still here")
+
+    with pytest.raises(PlanRecordError) as error:
+        write_plan_record(path, plan_record())
+
+    assert error.value.reason == "incomplete"
+    assert staging.read_bytes() == b"another writer is still here"
+    assert not path.exists()
+
+
+def test_the_record_is_flushed_to_disk_and_read_back_before_it_counts(tmp_path) -> None:
+    """這份紀錄是這支 cut 唯一的耐久描述——落盤要真的落，落完要回讀確認。"""
+    path = tmp_path / PLAN_RECORD_FILENAME
+    record = plan_record()
+
+    write_plan_record(path, record)
+
+    assert read_plan_record_at(path) == record
+    assert not path.with_name(f".{path.name}.staging").exists()

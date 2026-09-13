@@ -16,6 +16,7 @@ from typing import Protocol
 from shared.quiet_subprocess import quiet_kwargs
 from shared.render_windows import hide_render_windows
 
+from ._digest import file_digest as _file_digest
 from ._long_visual_renderer import (
     BrowserRenderResult,
     LongVisualRecipe,
@@ -463,14 +464,6 @@ class HyperFramesBrowserRenderer:
         finally:
             staging.unlink(missing_ok=True)
         return target
-
-
-def _file_digest(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _host_identity(path: Path) -> tuple[int, str]:

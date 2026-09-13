@@ -47,7 +47,7 @@ from ._derived_assets import (
     DerivedAssetInstruction,
     readable_floor_sec,
 )
-from ._plan_record import PlanRecord, PlanTimeline
+from ._plan_record import PlanRecord, PlanRecordError, PlanTimeline
 from ._policy import (
     CutPolicyInput,
     FormatPolicy,
@@ -353,6 +353,20 @@ class FinishedCutProduction:
         record = self._plan_records.resolve(current_plan_ref)
         if record is None:
             raise CommandRejectedError(f"plan record is not current: {current_plan_ref}")
+        # 修訂是拿這份紀錄當「修修看過的就是這個」在用：事件清單、落點、成品檔全
+        # 部從它出發。所以在這裡、而且只在這裡，把兩個成品重量一次——有人換過
+        # preview 或字幕的話，這份紀錄描述的已經不是他看過的那支片，據此修訂等於
+        # 對著不存在的東西改。
+        #
+        # 這道檢查以前只有測試在呼叫（`verify_artifacts` 全 repo 沒有生產呼叫端），
+        # 跟 ADR-069 抓到的 `BLOCKING_DIAGNOSTICS` 是同一個形狀：只存在於宣告它的
+        # 檔案裡的防線。一次修訂算一次 sha256，成本可以接受。
+        try:
+            self._plan_records.verify_artifacts(record)
+        except PlanRecordError as error:
+            raise CommandRejectedError(
+                f"plan record no longer describes what is on disk: {error}"
+            ) from error
         if any(
             not _event_has_active_projection(
                 semantic_kind=event.semantic_kind,

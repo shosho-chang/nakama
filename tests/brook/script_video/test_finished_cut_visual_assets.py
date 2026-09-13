@@ -302,7 +302,9 @@ def test_vertical_stock_is_rejected_instead_of_being_reframed(tmp_path: Path) ->
     result = builder.build(request)
 
     assert result.status == "failed"
-    assert result.error_code == "derived_asset_mismatch"
+    # 這條規則收成一份之後也要留住名字：`derived_asset_mismatch` 是「沒有 source
+    # ref／目錄漂掉／資產類別不符」共用的代碼，DP 看到它完全不知道問題出在方向。
+    assert result.error_code == "stock_video_not_native_landscape"
 
 
 def test_exact_current_hero_recipe_reuses_active_asset_without_rendering_again(

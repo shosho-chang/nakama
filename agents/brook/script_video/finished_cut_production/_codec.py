@@ -175,7 +175,13 @@ class RecordCodec:
             if dataclasses.is_dataclass(annotation):
                 return self.load(annotation, raw)
             if annotation is bool:
-                return bool(raw)
+                # `bool(raw)` 對 dict／list／字串一律給得出答案（`{}` 是 False、
+                # `"false"` 是 True），於是壞掉的 payload 會靜靜變成一個看起來合理
+                # 的布林值。這支的承諾是「不支援的形狀當場報錯」，布林不能是唯一
+                # 的例外。
+                if not isinstance(raw, bool):
+                    raise RecordCodecError(f"{path} is not a bool")
+                return raw
             if annotation in (str, int, float):
                 if raw is None or isinstance(raw, (dict, list, tuple)):
                     raise RecordCodecError(f"{path} is not a {annotation.__name__}")

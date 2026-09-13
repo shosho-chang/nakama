@@ -22,7 +22,12 @@ BuildState = Literal["not_started", "pending", "ready", "failed"]
 #: 改動——把它算進去的話，每一輪都會整份標成 moved，diff 就沒有訊號了。
 EVENT_SHIFT_EPSILON_SEC = 0.05
 
-EventChange = Literal["added", "removed", "moved", "retitled", "recast"]
+EventChange = Literal["added", "removed", "moved", "retimed", "retitled", "recast", "reshot"]
+
+#: 語意流程的先後。`_latest_round` 用它判斷「走得最遠的那一關」——那一關的 event
+#: 集合才是修修現在在 timeline 上看到的東西；`_select_correction` 用同一份確認
+#: 現役驗收鏈沒有跳關。同一個順序在這個檔裡曾經有兩份。
+_STAGE_PROGRESS: tuple[StageName, ...] = ("director", "dp", "visual_review")
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,9 +172,8 @@ def _select_correction(
     index, base = matching[0]
     if event_id not in {event.event_id for event in base.events}:
         raise _PreReleaseCorrectionError("correction event is not in the current stage")
-    expected_order = ("director", "dp", "visual_review")
     observed_order = tuple(accepted.stage for accepted in current_stages)
-    if observed_order != expected_order[: len(observed_order)]:
+    if observed_order != _STAGE_PROGRESS[: len(observed_order)]:
         raise _PreReleaseCorrectionError("current acceptance chain is invalid")
     return _CorrectionSelection(
         base=base,
@@ -212,23 +216,7 @@ def _project_run_inspection(
     policy_diagnostics: tuple[PolicyDiagnostic, ...],
 ) -> RunInspection:
     current_ids = {stage.acceptance_id for stage in current_stages}
-    this_round = _latest_round(current_stages)
-    last_round = (
-        None
-        if this_round is None
-        else _latest_round(
-            tuple(
-                stage
-                for stage in stage_history
-                if stage.acceptance_id not in current_ids
-                and stage.stage == this_round.stage
-            )
-        )
-    )
-    diff = _event_diff(
-        () if this_round is None else this_round.events,
-        () if last_round is None else last_round.events,
-    )
+    diff, previous_acceptance_id, uniform_shift = _round_event_diff(current_stages, stage_history)
     return RunInspection(
         run_id=run_id,
         command_id=command_id,
@@ -257,10 +245,8 @@ def _project_run_inspection(
             for diagnostic in policy_diagnostics
         ),
         event_diff=diff,
-        event_diff_previous_acceptance_id=(
-            None if last_round is None else last_round.acceptance_id
-        ),
-        uniform_shift_sec=_uniform_shift(diff),
+        event_diff_previous_acceptance_id=previous_acceptance_id,
+        uniform_shift_sec=uniform_shift,
     )
 
 
@@ -310,9 +296,35 @@ def _project_event(event: EventRecord) -> RunEventInspection:
     )
 
 
-#: 語意流程的先後。`_latest_round` 用它判斷「走得最遠的那一關」——那一關的 event
-#: 集合才是修修現在在 timeline 上看到的東西。
-_STAGE_PROGRESS: tuple[StageName, ...] = ("director", "dp", "visual_review")
+def _round_event_diff(
+    current_stages: tuple[AcceptedStage, ...],
+    stage_history: tuple[AcceptedStage, ...],
+) -> tuple[tuple[RunEventDiff, ...], str | None, float | None]:
+    """這一輪 vs 上一輪：diff、拿來比的那一次驗收、整份平移的常數。
+
+    兩個呼叫端要的是同一個答案：`inspect-run` 的即時投影，與鑄 plan record 的那一
+    刻（算完存進紀錄，因為 Bridge 那條讀取路徑刻意沒有 run store 的依賴）。這段
+    挑輪次的邏輯本來兩邊各抄一份，改其中一份另一份不會紅——那正是這次重構要收掉
+    的形狀，不該在收掉的過程裡又長出一份。
+    """
+
+    this_round = _latest_round(current_stages)
+    if this_round is None:
+        return (), None, None
+    current_ids = {stage.acceptance_id for stage in current_stages}
+    last_round = _latest_round(
+        tuple(
+            stage
+            for stage in stage_history
+            if stage.acceptance_id not in current_ids and stage.stage == this_round.stage
+        )
+    )
+    diff = _event_diff(this_round.events, () if last_round is None else last_round.events)
+    return (
+        diff,
+        None if last_round is None else last_round.acceptance_id,
+        _uniform_shift(diff),
+    )
 
 
 def _latest_round(stages: tuple[AcceptedStage, ...]) -> AcceptedStage | None:
@@ -354,10 +366,17 @@ def _event_diff(
         shift = event.t0 - prior.t0
         if abs(shift) > EVENT_SHIFT_EPSILON_SEC:
             changes.append("moved")
+        # 只比 t0 的話，「同一個落點但多撐兩秒」與「換成另一支素材」都讀作沒有變動
+        # ——而那兩種正好是片長護欄也看不出來的改動。落點、長度、文字、卡種、素材，
+        # 五件事各自會變，diff 要五件都講得出來。
+        if abs((event.t1 - event.t0) - (prior.t1 - prior.t0)) > EVENT_SHIFT_EPSILON_SEC:
+            changes.append("retimed")
         if event.display != prior.display:
             changes.append("retitled")
         if event.implementation_kind != prior.implementation_kind:
             changes.append("recast")
+        if event.asset_ref != prior.asset_ref:
+            changes.append("reshot")
         if not changes:
             continue
         rows.append(

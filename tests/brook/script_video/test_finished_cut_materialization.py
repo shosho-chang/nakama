@@ -35,9 +35,14 @@ from agents.brook.script_video.finished_cut_production._persistence import (
 from agents.brook.script_video.finished_cut_production._plan_record import (
     PlanRecordError,
     PlanRecordStore,
+    PlanTimeline,
+    read_plan_record_at,
+    write_plan_record,
 )
 from agents.brook.script_video.finished_cut_production._records import (
+    EventRecord,
     MaterializationPlan,
+    _mint_accepted_stage,
     _mint_materialization_plan,
     _mint_projected_component,
     _ProductionRun,
@@ -320,6 +325,11 @@ def _stored(
             status="review_ready",
             materialization_plan=plan or _plan(),
             editorial_context=context or _context(),
+            # 真的 run view 一定有這兩格（`_ProductionRun`），假的以前沒有——
+            # `_round_diff` 用 `getattr(..., ())` 兜底，所以這一整組測試從來沒有
+            # 真的走過輪次比對那段。假件要跟真件同形，破綻才會在這裡而不是線上。
+            accepted_stages=(),
+            accepted_stage_history=(),
         ),
     )
 
@@ -1334,3 +1344,96 @@ def test_incomplete_candidate_journal_fails_before_transaction_reentry(tmp_path:
 
     assert raised.value.reason_code == "materialization_journal_incomplete"
     assert transactions.calls == []
+
+
+def test_a_pre_adr069_record_can_still_be_reopened(tmp_path: Path) -> None:
+    """ADR-069 之前的紀錄沒有 timeline、也沒有 diff——那不是衝突，是還沒補的旁註。
+
+    重進入這條路正是為了那些舊紀錄存在的（20260721 punch-L03 卡在 preview 探測之
+    後就再也結不了帳）。拿整個 dataclass 去比，會把磁碟上那六份 v1 紀錄每一份都
+    判成 `materialization_journal_conflict`——第一輪的 diff 一定非空（每個 event
+    都是 `added`），而 v1 紀錄的那一格永遠是空的。
+    """
+    asset = tmp_path / "title.mov"
+    asset.write_bytes(b"title")
+    resolved = _resolved_asset(asset)
+    event = EventRecord(
+        event_id="event-1",
+        master_cue_ids=("cue-1",),
+        text_hash="1" * 64,
+        intent="金句卡",
+        visual_status="approved",
+        t0=4.0,
+        t1=8.0,
+        section_id="section-1",
+        display="下一個黃金年代",
+        semantic_kind="hero_title",
+        implementation_kind="hero_title",
+        lane="hero_title",
+    )
+    plan = _component_plan(resolved.record.reference)
+    stage = _mint_accepted_stage(
+        acceptance_id="acceptance-visual-1",
+        run_id="run-1",
+        request_id="request-" + "1" * 32,
+        stage="visual_review",
+        attempt=1,
+        scope="full_stage",
+        event_id=None,
+        parent_acceptance_id=None,
+        events=(event,),
+    )
+    stored = _stored(plan=plan)
+    stored.view.accepted_stages = (stage,)
+    stored.view.accepted_stage_history = (stage,)
+    authority = _CanonicalAuthority((_canonical(),))
+    assets = _AssetResolver({resolved.record.reference: resolved})
+    adapter = _TimelineAdapter(tmp_path, baseline=_canonical().baseline)
+    transaction_root = tmp_path / "transactions"
+
+    def open_coordinator() -> MaterializationCoordinator:
+        manager = ResolveTransactionManager(
+            adapter,
+            store=AtomicResolveTransactionStore(transaction_root),
+        )
+        return MaterializationCoordinator(
+            run_store=_RunStore(stored),
+            canonical_authority=authority,
+            assets=assets,
+            transactions=manager,
+            records=PlanRecordStore(
+                tmp_path,
+                transactions=manager,
+                preview_probe=lambda path: {
+                    "duration_sec": 480.0,
+                    "video_codec": "h264",
+                    "audio_codec": "aac",
+                    "decode_ok": True,
+                    "offline_frame_count": 0,
+                },
+            ),
+            episode_root=tmp_path,
+        )
+
+    first = open_coordinator().prepare("approved-cut:" + "a" * 32)
+    assert first.record.event_diff  # 第一輪：每個 event 都是 added
+
+    # 把磁碟上那一份降級成「ADR-069 之前的樣子」：沒有 timeline、沒有 diff。
+    record_path = next((tmp_path / "highlights" / "staging").rglob("materialization.json"))
+    write_plan_record(
+        record_path,
+        replace(
+            first.record,
+            timeline=PlanTimeline(name="", uid=""),
+            event_diff=(),
+            event_diff_previous_acceptance_id=None,
+            uniform_shift_sec=None,
+        ),
+    )
+
+    second = open_coordinator().prepare("approved-cut:" + "a" * 32)
+
+    assert second.record.timeline.name == first.record.timeline.name
+    assert second.record.event_diff == first.record.event_diff
+    # 補完之後磁碟上那一份也升級了，不是每次重進入都要重算。
+    assert read_plan_record_at(record_path) == second.record

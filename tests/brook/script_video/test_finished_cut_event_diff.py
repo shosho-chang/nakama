@@ -10,6 +10,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from agents.brook.script_video.finished_cut_production._correction import (
@@ -185,3 +187,52 @@ def test_the_round_is_the_furthest_stage_reached_and_its_latest_attempt() -> Non
 
     assert _latest_round(stages).acceptance_id == "acceptance-dp-2"
     assert _latest_round(()) is None
+
+
+def test_a_card_that_only_got_longer_is_still_a_change() -> None:
+    """同一個落點、多撐兩秒——只比 t0 的話這一列根本不會出現。
+
+    片長護欄也看不出這種改動（總長可以不變），所以 diff 是唯一會講的人。
+    """
+    before = (_event(0, 10.0),)
+    after = (replace(before[0], t1=before[0].t1 + 2.0),)
+
+    diff = _event_diff(after, before)
+
+    assert [(row.event_id, row.changes) for row in diff] == [("event-0", ("retimed",))]
+
+
+def test_swapping_the_asset_behind_an_event_is_a_change() -> None:
+    """同一句話、同一個落點，換了另一支 B-roll——畫面全變了，文字一個字沒動。"""
+    before = (replace(_event(0, 10.0), asset_ref="active-sha256:" + "a" * 64),)
+    after = (replace(before[0], asset_ref="active-sha256:" + "b" * 64),)
+
+    diff = _event_diff(after, before)
+
+    assert [(row.event_id, row.changes) for row in diff] == [("event-0", ("reshot",))]
+
+
+def test_one_event_can_be_moved_and_retimed_and_reshot_at_once() -> None:
+    """`changes` 是集合不是分類——強迫二選一會讓其中一半的事實消失。"""
+    before = (replace(_event(0, 10.0), asset_ref="active-sha256:" + "a" * 64),)
+    after = (
+        replace(
+            before[0],
+            t0=20.0,
+            t1=25.0,
+            display="改寫過的標題",
+            asset_ref="active-sha256:" + "b" * 64,
+        ),
+    )
+
+    diff = _event_diff(after, before)
+
+    assert diff[0].changes == ("moved", "retimed", "retitled", "reshot")
+
+
+def test_frame_level_jitter_is_not_a_length_change() -> None:
+    """1/30 秒的量化誤差不算改長度——算進去的話每一輪都會整份標成 retimed。"""
+    before = (_event(0, 10.0),)
+    after = (replace(before[0], t1=before[0].t1 + EVENT_SHIFT_EPSILON_SEC / 2),)
+
+    assert _event_diff(after, before) == ()

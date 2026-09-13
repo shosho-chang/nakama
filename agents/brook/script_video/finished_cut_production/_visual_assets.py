@@ -131,6 +131,20 @@ class LongDerivedAssetBuilder:
                 return "derived_asset_mismatch"
             if request_item != current_item or current_item.duration_sec is None:
                 return "derived_asset_mismatch"
+            # 「長片 Stock 必須是原生橫式」。ADR-069 階段 2 把這條規則的三份實作
+            # （`_policy` 的對照表、`_resolve_fusion` 交易中間、選片那一刻）收成
+            # 一份，留下的是選片端這一份——但它原本藏在 `_passthrough` 的一串
+            # `return None` 裡，跟「沒有 source ref」「目錄漂掉」「資產類別不符」
+            # 一起被呼叫端翻成同一個 `derived_asset_mismatch`，DP 拿到的回饋因此
+            # 一個字都沒提到方向。階段 5 自己的主張是「一個 reason code 回答一類
+            # 問題」，所以規則收成一份之後，名字也要留住。
+            #
+            # 放在這一關而不是 `_passthrough`：這裡已經拿著兩份目錄、已經在逐支
+            # 掃 stock，多一個判斷不用多讀一次索引。
+            if current_item.width is None or current_item.height is None:
+                return "stock_video_dimensions_unknown"
+            if current_item.width <= current_item.height:
+                return "stock_video_not_native_landscape"
             if (
                 instruction.show_sec
                 > current_item.duration_sec + STOCK_PLACEMENT_DURATION_TOLERANCE_SEC
@@ -156,12 +170,6 @@ class LongDerivedAssetBuilder:
             return None
         expected_kind = ASSET_KIND_BY_IMPLEMENTATION[instruction.implementation_kind]
         if resolution.record.kind is not expected_kind:
-            return None
-        if instruction.implementation_kind == "stock_video" and (
-            current_item.width is None
-            or current_item.height is None
-            or current_item.width <= current_item.height
-        ):
             return None
         return BuiltComponentAsset(
             component_id=instruction.component_id,

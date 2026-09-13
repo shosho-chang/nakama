@@ -12,6 +12,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import dataclass
 
 import pytest
 
@@ -20,7 +21,10 @@ from agents.brook.script_video.finished_cut_production._assets import (
     WorkerCatalogItem,
     WorkerSelectionCatalog,
 )
-from agents.brook.script_video.finished_cut_production._codec import RecordCodecError
+from agents.brook.script_video.finished_cut_production._codec import (
+    RecordCodec,
+    RecordCodecError,
+)
 from agents.brook.script_video.finished_cut_production._context import (
     CanonicalSection,
     CueAnchor,
@@ -466,3 +470,23 @@ def test_range_sum_mismatch_stays_a_policy_diagnostic_not_a_construction_error()
 def test_a_visual_placement_cannot_exist_with_an_inverted_window() -> None:
     with pytest.raises(ValueError, match="Visual Placement fields are invalid"):
         VisualPlacement(placement_cue_ids=("cue-1",), t0=9.0, t1=4.0, section_id="section-1")
+
+
+def test_a_bool_field_refuses_anything_that_is_not_a_bool() -> None:
+    """`bool(raw)` 對任何東西都給得出答案，於是壞掉的 payload 會變成合理的布林值。
+
+    `{}` 是 False、`"false"` 是 True、`{"a": 1}` 是 True——三個都是謊，而且會一路
+    存回磁碟。這支的承諾是「不支援的形狀當場報錯」，布林不能是唯一的例外。
+    """
+
+    @dataclass(frozen=True, slots=True)
+    class Flagged:
+        flag: bool
+
+    codec = RecordCodec()
+
+    assert codec.load_record(Flagged, {"flag": True}).flag is True
+    assert codec.load_record(Flagged, {"flag": False}).flag is False
+    for rubbish in ({}, [], "false", "true", 1, 0, None):
+        with pytest.raises(RecordCodecError, match="is not a bool"):
+            codec.load_record(Flagged, {"flag": rubbish})

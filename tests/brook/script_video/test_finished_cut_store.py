@@ -34,6 +34,8 @@ from agents.brook.script_video.finished_cut_production._derived_assets import (
     DerivedAssetBuildResult,
 )
 from agents.brook.script_video.finished_cut_production._plan_record import (
+    PlanRecord,
+    PlanRecordError,
     PlanRecordStore,
 )
 from agents.brook.script_video.finished_cut_production._records import (
@@ -2473,3 +2475,33 @@ def test_old_schema_proposal_cannot_enter_the_current_chain(tmp_path) -> None:
     assert rejected.status == "needs_review"
     assert authority.accepted_stages == ()
     assert authority.outstanding_request == director_request
+
+
+def test_a_revision_refuses_to_start_from_a_record_whose_artifacts_moved(tmp_path) -> None:
+    """修訂是拿這份紀錄當「修修看過的就是這支」在用，所以先確認成品還是那兩個檔。
+
+    重鑄 plan 可以不改片長（把一支 b-roll 移位、拿掉另一支，長度分毫不差），所以
+    長度護欄看不出差別。`verify_artifacts` 是唯一會重量 bytes 的那道，而它在
+    ADR-069 落地時全 repo 只有測試在呼叫——跟這次一起抓到的
+    `BLOCKING_DIAGNOSTICS` 是同一個形狀：只存在於宣告它的檔案裡的防線。
+    """
+
+    class _MovedArtifacts(InMemoryPlanRecordIndex):
+        def verify_artifacts(self, record: PlanRecord) -> None:
+            raise PlanRecordError(
+                f"recorded artifact changed after the plan record: {record.preview.path}"
+            )
+
+    records = _MovedArtifacts()
+    records.publish((plan_record(plan_id="plan-moved", episode_id="episode-1"),))
+    production = FinishedCutProduction(
+        store_root=tmp_path / "runs",
+        approved_cut_store=InMemoryApprovedCutStore(()),
+        asset_resolver=InMemoryAssetResolver(()),
+        semantic_adapter=InMemorySemanticAdapter(),
+        plan_records=records,
+    )
+
+    with pytest.raises(CommandRejectedError, match="no longer describes what is on disk"):
+        production.request_revision("plan-moved", "event-1", "把這張卡的字改一下")
+

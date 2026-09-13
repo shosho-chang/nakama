@@ -40,6 +40,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+import os
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
@@ -47,6 +48,7 @@ from typing import Literal, Protocol, cast
 
 from ._codec import RecordCodec, RecordCodecError
 from ._correction import RunEventDiff
+from ._digest import measure_file
 from ._projection import RELEASE_PROJECTIONS
 from ._records import (
     ArtifactView,
@@ -248,7 +250,7 @@ class PlanRecordStore:
             path = (self.episode_root / artifact.path).resolve()
             try:
                 path.relative_to(self.episode_root)
-                size, digest = _measure(path)
+                size, digest = measure_file(path)
             except (ValueError, OSError) as error:
                 raise PlanRecordError(
                     f"recorded artifact changed after the plan record: {artifact.path}"
@@ -326,7 +328,7 @@ class PlanRecordStore:
                 "recorded artifact must stay inside the episode root"
             ) from error
         try:
-            size, digest = _measure(resolved)
+            size, digest = measure_file(resolved)
         except OSError as error:
             raise PlanRecordError(
                 f"recorded artifact is not readable: {relative.as_posix()}"
@@ -358,14 +360,27 @@ def write_plan_record(path: Path, record: PlanRecord) -> None:
     staging = _staging_path(path)
     try:
         path.parent.mkdir(parents=True, exist_ok=True)
-        with staging.open("xb") as handle:
-            handle.write(encoded)
-            handle.flush()
-        staging.replace(path)
+        handle = staging.open("xb")
     except FileExistsError as error:
+        # 這一份不是我們造的——上一次寫到一半死掉的，或另一支行程正在寫。
+        # **不可以清掉**：清掉等於一邊說「有一份沒寫完的紀錄」、一邊把證據刪了，
+        # 下一次重跑就安靜地成功了；併發時更糟，刪的是對方正在寫的那個檔。
         raise PlanRecordError(
             "an incomplete plan record is already staged", reason="incomplete"
         ) from error
+    except OSError as error:
+        raise PlanRecordError("plan record could not be written") from error
+    try:
+        with handle:
+            handle.write(encoded)
+            handle.flush()
+            # flush 只把 bytes 交給作業系統。這份紀錄是這支 cut 唯一的耐久描述
+            # （Candidate／Release 那條鏈已經退役），掉電後剩半截檔＝這個 run 再也
+            # 結不了帳，所以要真的落盤，落完再回讀確認。
+            os.fsync(handle.fileno())
+        os.replace(staging, path)
+        if path.read_bytes() != encoded:
+            raise PlanRecordError("plan record bytes differ after atomic replace")
     except OSError as error:
         raise PlanRecordError("plan record could not be written") from error
     finally:
@@ -514,22 +529,6 @@ def _component_view(component: ProjectedComponent) -> ComponentView:
 
 
 # -- helpers ---------------------------------------------------------------
-def _measure(path: Path) -> tuple[int, str]:
-    """Size and digest one artifact without holding it in memory.
-
-    A preview is around a gigabyte, so reading it whole cost a full-file
-    allocation every time it was measured.
-    """
-
-    digest = hashlib.sha256()
-    size = 0
-    with path.open("rb") as stream:
-        for block in iter(lambda: stream.read(1 << 20), b""):
-            digest.update(block)
-            size += len(block)
-    return size, digest.hexdigest()
-
-
 def _probe_value(value: object) -> ProbeValue:
     if value is None or isinstance(value, (str, int, float, bool)):
         return value

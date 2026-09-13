@@ -15,7 +15,8 @@ from typing import Literal, Protocol
 from ._assets import AssetContractError, AssetKind, AssetResolver, ResolvedAsset
 from ._commands import ApprovedCutCommand, _is_authoritative_approved_cut
 from ._context import EditorialCutContext
-from ._correction import RunEventDiff, _event_diff, _latest_round, _uniform_shift
+from ._correction import RunEventDiff, _round_event_diff
+from ._digest import file_digest
 from ._plan_record import (
     PLAN_RECORD_FILENAME,
     PlanRecord,
@@ -25,7 +26,7 @@ from ._plan_record import (
     read_plan_record_at,
     write_plan_record,
 )
-from ._records import MaterializationPlan
+from ._records import AcceptedStage, MaterializationPlan
 from ._resolve import (
     ResolveTransaction,
     ResolveTransactionError,
@@ -447,11 +448,28 @@ class MaterializationCoordinator:
             subtitle_path=subtitle_path,
             round_diff=round_diff,
         )
-        if not prior.timeline.name and not prior.timeline.uid and timeline is not None:
-            # ADR-069 之前的紀錄沒有記 timeline（那時候要從交易反查，而反查要求
-            # `status == "committed"`，所以永遠查不到）。補上並改寫成 v2——既有的
-            # run 因此不必重跑就能被發布線讀懂。
-            prior = replace(prior, timeline=timeline)
+        # `timeline` 與這一輪的 diff 都是**鑄紀錄那一刻算出來的旁註**，不是 plan
+        # 的身分。ADR-069 之前的紀錄兩樣都沒有：v1 沒有 timeline 欄位（那時要從交易
+        # 反查，而反查要求 `status == "committed"`，所以永遠查不到），也沒有 diff
+        # 欄位。拿整個 dataclass 去比，等於判定磁碟上每一份舊紀錄都跟現在衝突——
+        # 而重進入這條路正是為了那些舊紀錄存在的。缺的旁註補上去、改寫成 v2，
+        # 比對只剩身分與成品。
+        upgraded = replace(
+            prior,
+            timeline=prior.timeline if prior.timeline.name else fresh.timeline,
+            event_diff=prior.event_diff or fresh.event_diff,
+            event_diff_previous_acceptance_id=(
+                prior.event_diff_previous_acceptance_id
+                or fresh.event_diff_previous_acceptance_id
+            ),
+            uniform_shift_sec=(
+                prior.uniform_shift_sec
+                if prior.uniform_shift_sec is not None
+                else fresh.uniform_shift_sec
+            ),
+        )
+        if upgraded != prior:
+            prior = upgraded
             write_plan_record(record_path, prior)
         if prior != fresh:
             raise MaterializationError(
@@ -783,7 +801,7 @@ def _validate_final_assets(plan: MaterializationPlan, assets: AssetResolver) -> 
                     reason_code="final_asset_unavailable",
                 )
             try:
-                if not path.is_file() or _file_sha256(path) != resolved.record.digest:
+                if not path.is_file() or file_digest(path) != resolved.record.digest:
                     # ADR-069 階段 7：bytes 對不上要有自己的名字。它跟「references
                     # 綁錯」是兩件不同的事——後者是接線錯了，這一條是**同名的檔案
                     # 被換過**，也就是收據簡化之後唯一還在保護素材來歷的那道鎖。
@@ -811,14 +829,6 @@ def _validate_final_assets(plan: MaterializationPlan, assets: AssetResolver) -> 
                     "Stock component is not native 16:9 landscape",
                     reason_code="stock_not_landscape_16_9",
                 )
-
-
-def _file_sha256(path: Path) -> str:
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
 
 
 def _validate_editorial_base(
@@ -1022,30 +1032,23 @@ def _subtitle_text(properties: tuple[tuple[str, object], ...]) -> str | None:
     return text if isinstance(text, str) else None
 
 
-def _round_diff(view: object) -> tuple[tuple[RunEventDiff, ...], str | None, float | None]:
+class _RunRounds(Protocol):
+    """走過的驗收輪次——算 diff 只要這兩格。"""
+
+    accepted_stages: tuple[AcceptedStage, ...]
+    accepted_stage_history: tuple[AcceptedStage, ...]
+
+
+def _round_diff(view: _RunRounds) -> tuple[tuple[RunEventDiff, ...], str | None, float | None]:
     """這一輪 vs 上一輪，算在鑄出 plan record 的那一刻。
 
     「輪」只有一個有順序的來源：`accepted_stage_history` 是 append 上去的。plan
     record 之間沒有先後可言——staging 目錄是 content-addressed，不帶時間也不記前一
     份是誰——所以這件事必須在還拿得到 run 的時候算完，存進紀錄。
+
+    這裡直接讀欄位，不用 `getattr(..., ())` 兜底：欄位改名時要當場 AttributeError，
+    不是安靜地算出一份空 diff，讓頁面寫著「這是第一輪」。那種無聲的空畫面正是
+    ADR-069 階段 6 一開始要修的東西。
     """
 
-    current = tuple(getattr(view, "accepted_stages", ()) or ())
-    history = tuple(getattr(view, "accepted_stage_history", ()) or ())
-    this_round = _latest_round(current)
-    if this_round is None:
-        return (), None, None
-    current_ids = {stage.acceptance_id for stage in current}
-    last_round = _latest_round(
-        tuple(
-            stage
-            for stage in history
-            if stage.acceptance_id not in current_ids and stage.stage == this_round.stage
-        )
-    )
-    diff = _event_diff(this_round.events, () if last_round is None else last_round.events)
-    return (
-        diff,
-        None if last_round is None else last_round.acceptance_id,
-        _uniform_shift(diff),
-    )
+    return _round_event_diff(view.accepted_stages, view.accepted_stage_history)

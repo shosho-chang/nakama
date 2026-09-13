@@ -204,6 +204,8 @@ class PlanRecordIndex(Protocol):
 
     def inspect(self, episode_id: str) -> FinishedCutInspection: ...
 
+    def verify_artifacts(self, record: PlanRecord) -> None: ...
+
 
 class InMemoryPlanRecordIndex:
     """Fixture adapter holding one episode's records in memory."""
@@ -230,6 +232,12 @@ class InMemoryPlanRecordIndex:
 
     def records(self, episode_id: str) -> tuple[PlanRecord, ...]:
         return self._by_episode.get(episode_id, ())
+
+    def verify_artifacts(self, record: PlanRecord) -> None:
+        """記憶體 fixture 沒有磁碟上的成品可以重量——沒有東西會漂掉。
+
+        真的那一份（`PlanRecordStore`）會把 preview 與字幕重新量一次 sha256。
+        """
 
     def inspect(self, episode_id: str) -> FinishedCutInspection:
         records = self._by_episode.get(episode_id, ())
