@@ -9,6 +9,7 @@ import pytest
 from agents.brook.script_video.finished_cut_production._active_store import (
     ActiveAssetPublication,
     ActiveAssetStore,
+    ActiveAssetStoreError,
 )
 from agents.brook.script_video.finished_cut_production._assets import (
     AssetKind,
@@ -56,6 +57,18 @@ class _CatalogOnlyStore:
     def resolve_worker_asset(self, _reference: str):
         self.resolve_calls += 1
         raise AssertionError("oversized placement must fail before Active Store resolution")
+
+
+class _CountingStore(_CatalogOnlyStore):
+    """跟上面一樣只有目錄，但解析素材時回報「查無此物」而不是炸測試。
+
+    落點上限不再擋建置之後，`_passthrough` 會真的走到 Active Store——那正是這支
+    測試要證明的事，所以解析被呼叫不是失敗，是預期。
+    """
+
+    def resolve_worker_asset(self, _reference: str):
+        self.resolve_calls += 1
+        raise ActiveAssetStoreError("asset reference is not in the active store")
 
 
 def _neutral_receipt(content: bytes, *, source_class: str) -> CompactAssetReceipt:
@@ -366,7 +379,7 @@ def test_exact_current_hero_recipe_reuses_active_asset_without_rendering_again(
     assert store.resolve_exact_recipe("recipe:hero:current").record.kind is AssetKind.TITLE_RENDER
 
 
-def test_oversized_chapter_placement_fails_before_browser_render(tmp_path: Path) -> None:
+def test_an_oversized_chapter_placement_renders_and_is_left_to_policy(tmp_path: Path) -> None:
     store = ActiveAssetStore.open(tmp_path / "assets-v2", episode_id="episode-001")
     browser = _Browser(tmp_path)
     builder = LongDerivedAssetBuilder(
@@ -403,9 +416,13 @@ def test_oversized_chapter_placement_fails_before_browser_render(tmp_path: Path)
 
     result = builder.build(request)
 
-    assert result.status == "failed"
-    assert result.error_code == "visual_placement_duration_exceeded"
-    assert browser.calls == 0
+    # 落點超過上限不再擋建置。ADR-069 階段 7 已經把 `visual_placement_duration_exceeded`
+    # 評成 `warning`（判準：人眼在 timeline 上看得出來），但評級只改了 `_policy` 那
+    # 一份，這一層照樣讓整條 run 死在 preflight——20260721 punch-L03 就是這樣掛的：
+    # 金句卡 23 個字撐出 8.85 秒，而字數是 Director 寫的，DP 怎麼挑 cue 都救不回來。
+    # 警告仍然由 `_policy` 報（見 test_finished_cut_policy.py）。
+    assert result.status == "ready"
+    assert browser.calls == 1
 
 
 @pytest.mark.parametrize(
@@ -415,7 +432,7 @@ def test_oversized_chapter_placement_fails_before_browser_render(tmp_path: Path)
         ("identity_card", "identity_card", "identity_card"),
     ],
 )
-def test_oversized_title_or_identity_placement_fails_before_browser_render(
+def test_an_oversized_title_or_identity_placement_renders_and_is_left_to_policy(
     tmp_path: Path,
     semantic_kind: str,
     implementation_kind: str,
@@ -448,7 +465,7 @@ def test_oversized_title_or_identity_placement_fails_before_browser_render(
                 t0=100.0,
                 t1=108.001,
                 source_asset_ref=None,
-                geometry=DerivedAssetGeometry(1920, 1080, f"{implementation_kind}:v1"),
+                geometry=DerivedAssetGeometry(1920, 1080, layout_identity(implementation_kind)),
                 recipe_identity=f"recipe:{implementation_kind}:oversized",
             ),
         ),
@@ -457,9 +474,13 @@ def test_oversized_title_or_identity_placement_fails_before_browser_render(
 
     result = builder.build(request)
 
-    assert result.status == "failed"
-    assert result.error_code == "visual_placement_duration_exceeded"
-    assert browser.calls == 0
+    # 落點超過上限不再擋建置。ADR-069 階段 7 已經把 `visual_placement_duration_exceeded`
+    # 評成 `warning`（判準：人眼在 timeline 上看得出來），但評級只改了 `_policy` 那
+    # 一份，這一層照樣讓整條 run 死在 preflight——20260721 punch-L03 就是這樣掛的：
+    # 金句卡 23 個字撐出 8.85 秒，而字數是 Director 寫的，DP 怎麼挑 cue 都救不回來。
+    # 警告仍然由 `_policy` 報（見 test_finished_cut_policy.py）。
+    assert result.status == "ready"
+    assert browser.calls == 1
 
 
 @pytest.mark.parametrize(
@@ -470,7 +491,7 @@ def test_oversized_title_or_identity_placement_fails_before_browser_render(
         ("non_editorial_clip", AssetKind.NON_EDITORIAL_CLIP, 30.0, None),
     ],
 )
-def test_oversized_asset_backed_broll_fails_before_resolution_or_render(
+def test_an_oversized_asset_backed_broll_builds_and_is_left_to_policy(
     tmp_path: Path,
     implementation_kind: str,
     asset_kind: AssetKind,
@@ -486,8 +507,9 @@ def test_oversized_asset_backed_broll_fails_before_resolution_or_render(
         height=1080,
         duration_sec=duration_sec,
     )
+    store = _CountingStore(catalog_item)
     builder = LongDerivedAssetBuilder(
-        store=_CatalogOnlyStore(catalog_item),  # type: ignore[arg-type]
+        store=store,  # type: ignore[arg-type]
         title_renderer=LongVisualRenderer(browser=_NeverBrowser()),
     )
     request = DerivedAssetBuildRequest(
@@ -520,8 +542,13 @@ def test_oversized_asset_backed_broll_fails_before_resolution_or_render(
 
     result = builder.build(request)
 
-    assert result.status == "failed"
-    assert result.error_code == "visual_placement_duration_exceeded"
+    # 落點超過上限不再擋建置。ADR-069 階段 7 已經把 `visual_placement_duration_exceeded`
+    # 評成 `warning`（判準：人眼在 timeline 上看得出來），但評級只改了 `_policy` 那
+    # 一份，這一層照樣讓整條 run 死在 preflight——20260721 punch-L03 就是這樣掛的：
+    # 金句卡 23 個字撐出 8.85 秒，而字數是 Director 寫的，DP 怎麼挑 cue 都救不回來。
+    # 警告仍然由 `_policy` 報（見 test_finished_cut_policy.py）。
+    assert result.error_code != "visual_placement_duration_exceeded"
+    assert store.resolve_calls == 1
 
 
 def test_stock_placement_longer_than_source_by_more_than_one_frame_fails_before_resolution(

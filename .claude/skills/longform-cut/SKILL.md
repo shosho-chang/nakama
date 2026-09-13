@@ -77,17 +77,48 @@ python scripts/run_finished_cut_production.py ... advance <command_id>   # 反�
 成品就是那支 `preview.mp4`（1920x1080 / 30fps / H.264+AAC，與舊路匯出同碼率），
 複製到 `highlights/exports/<cut>.mp4` 即可上架。
 
-### 4. 一定會擋下來的政策門檻（Director 階段就要照著設計）
+### 4. 政策門檻（Director 階段就要照著設計）
+
+**這張表以前叫「一定會擋下來的」，那是錯的。** ADR-069 階段 7 之後只有一條真的會擋
+——判準是「人眼在 Resolve timeline 上看不看得出來」，看得出來的一律降成警告：印出來、
+記進收據、繼續跑。2026-09-13 又拆掉四道不該存在的門（見 ADR-069〈落地後 review〉）。
+
+**會擋的（只有一條）**
+
+| 規則 | 值 | 為什麼它該擋 |
+|---|---|---|
+| 章節卡文字 | 逐字等於該 section 的 `transition_title` | 卡片看起來是對的、字是錯的，人眼看不出來，而它會直接上片（`chapter_transition_projection_mismatch`）|
+
+**會做出壞成品的結構條件（擋，但不是政策）**
 
 | 規則 | 值 | 踩到會怎樣 |
 |---|---|---|
-| asset-backed B-roll 間隔 | **≤75 秒**（含片頭到第一支、最後一支到片尾） | `b_roll_cadence_gap_exceeded`；**修正機制沒辦法新增事件**，只能重新登錄重跑 |
+| 長片片長 | **≥ 8 分鐘** | 登錄當下擋 |
+| stock 素材 | 必須是 **native landscape**（橫的）。**比例不限**——4096×2160 的 DCI 4K 可以用，放進 16:9 只是縮放 | `stock_not_landscape_16_9` |
+| 落點 vs 素材長度 | 落點不可長過素材本身 | `stock_placement_exceeds_source_duration` |
+| photo b-roll | **目前做不到**：pass-through 要求素材本身就是 1920x1080，庫裡沒有照片是 | `derived media is not a pre-rendered 1920x1080 canvas` |
+
+**只會警告、不會擋（照著設計，但踩到不會停線）**
+
+| 規則 | 值 | 診斷碼 |
+|---|---|---|
+| asset-backed B-roll 間隔 | ≤75 秒（含片頭到第一支、最後一支到片尾）| `b_roll_cadence_gap_exceeded` |
 | distinct stock 事件／素材 | 各 ≥3 | `distinct_stock_video_minimum_not_met` |
 | Hero 卡 | ≤4，title-like 密度 ≤2/分，任 15 秒內 ≤2 張 | `hero_title_limit_exceeded` 等 |
-| 章節卡文字 | 逐字等於該 section 的 `transition_title` | `chapter_transition_projection_mismatch` |
-| section 標題 | 不可有「修修：」這種發言人前綴、不可用第三人稱代名詞開頭 | 登錄當下就被 `ApprovedCutRegistrationError` 擋 |
-| stock 素材 | 必須**恰好 16:9**（4096x2160 的 DCI 4K 會被擋）、native landscape | `stock_not_landscape_16_9` |
-| photo b-roll | **目前做不到**：pass-through 要求素材本身就是 1920x1080，庫裡沒有照片是 | `derived media is not a pre-rendered 1920x1080 canvas` |
+| 卡片停留秒數 | 轉場卡 ≤4s、字卡 ≤8s、B-roll ≤12s | `visual_placement_duration_exceeded` |
+| 兩張卡疊在一起 | — | `title_placement_overlap` |
+
+**寫作標準（沒有程式在擋，但請照做）**
+
+| 規則 | 為什麼 |
+|---|---|
+| section 標題不要有「修修：」這種發言人前綴 | 那是分鏡註記漏到畫面上（2026-09-08 蘇予昕）|
+| section 標題不要用第三人稱代名詞開頭 | 卡片上沒有先行詞，觀眾不知道是誰 |
+| 章節卡要能單獨看懂 | 它是那一節的總結，不是節裡撈出來的半句話 |
+
+這三條本來在登錄門口有正則在擋，2026-09-13 拆掉了——那份正則會誤殺「三個選擇：先做哪一個」
+「第一步：把預設值找出來」「她們用三年做對的那件事」，讓整支 cut 登錄不進來。規則留在這裡，
+在**寫的時候**做對；寫錯了你在審核頁上一眼就看得到。
 
 **490 秒的片子＝至少 7 支 B-roll，550 秒＝至少 8 支。** 這個要在寫 Director
 events 的時候就算好，不是事後補——補不了。

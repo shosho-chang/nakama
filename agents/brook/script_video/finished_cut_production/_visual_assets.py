@@ -13,7 +13,6 @@ from ._derived_assets import (
     DerivedAssetBuildRequest,
     DerivedAssetBuildResult,
     DerivedAssetInstruction,
-    _placement_duration_is_within_ceiling,
 )
 from ._hyperframes_renderer import (
     FfprobeGeneratedMediaProbe,
@@ -111,11 +110,21 @@ class LongDerivedAssetBuilder:
         )
 
     def _placement_preflight_error(self, request: DerivedAssetBuildRequest) -> str | None:
-        if any(
-            not _placement_duration_is_within_ceiling(instruction)
-            for instruction in request.instructions
-        ):
-            return "visual_placement_duration_exceeded"
+        """建置前擋得住的只有「素材對不上」，不是「這張卡停太久」。
+
+        `visual_placement_duration_exceeded` 本來在這裡硬擋。ADR-069 階段 7 把它
+        評成 `warning`（`_policy.DIAGNOSTIC_GRADES`）——判準是「人眼在 timeline 上
+        看不看得出來」，一張卡停 9 秒是看得出來的。可是評級只改了 `_policy` 那一
+        份，這一層照樣讓整條 run 死在 preflight。
+
+        實際代價（`_derived_assets.max_readable_display_chars` 的註解記著）：金句卡
+        的秒數下限由字數決定（每字 0.35 秒 ＋ 0.8 秒動畫），上限 8 秒，於是
+        **Director 寫超過 20 個字，整條 run 就沒有任何合法出路**——DP 怎麼挑 cue
+        都救不回來，因為長度不是 DP 決定的。20260721 punch-L03 就是這樣掛的。
+
+        現在它只留在 `_policy` 的警告裡：印出來、記進收據、繼續跑。
+        """
+
         request_catalog = WorkerSelectionCatalog(request.worker_catalog_items)
         current_catalog = self._store.worker_selection_catalog()
         for instruction in request.instructions:

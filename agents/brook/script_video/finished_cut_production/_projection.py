@@ -200,6 +200,11 @@ _ACTIVE_PROJECTION_COMBINATIONS: frozenset[tuple[str, str, str]] = frozenset(
     (spec.semantic_kind, kind, spec.lane) for kind, spec in _spec_items(retired=False)
 )
 
+#: 鑄得出來的投影三元組（現役 ＋ `VOCABULARY` 裡的退役）。見 `_is_mintable_projection`。
+_MINTABLE_PROJECTION_COMBINATIONS: frozenset[tuple[str, str, str]] = frozenset(
+    (spec.semantic_kind, kind, spec.lane) for kind, spec in VOCABULARY.items()
+)
+
 #: Release reader 接受的投影三元組（現役 ＋ 退役，含只在 receipt 裡的）。
 RELEASE_PROJECTIONS: frozenset[tuple[str, str, str]] = (
     frozenset((spec.semantic_kind, kind, spec.lane) for kind, spec in VOCABULARY.items())
@@ -276,29 +281,43 @@ def _is_active_semantic_kind(value: str) -> bool:
     return value in _ACTIVE_SEMANTIC_KINDS
 
 
-def _is_active_projection(
+def _is_mintable_projection(
     semantic_kind: str,
     implementation_kind: str,
     lane: str,
 ) -> bool:
-    return (semantic_kind, implementation_kind, lane) in _ACTIVE_PROJECTION_COMBINATIONS
+    """鑄得出來的投影——含退役，只要 `VOCABULARY` 還描述得出它怎麼上片。
+
+    退役的意思是**不能被新提案選中**，不是「既有的不能再存在」。那道真正的鎖在
+    worker 提案端（`_engine._ALLOWED_PROJECTION` 與丟給 worker 的 response schema
+    enum，兩者都由 `_WORKER_PROJECTION_COMBINATIONS` 推導，退役的不在裡面）。
+
+    鑄造端跟著 writer 端一起嚴格的代價：一支含退役卡的成品**整份不能修訂**——
+    修訂會把整份 events 重鑄一次（`_engine._project_event_components`），於是那張
+    沒有被動到的舊卡把整條路擋死。而系統其實做得到：`visual_effect` 在
+    `VOCABULARY` 裡有 track、版位與 renderer recipe，原封不動再鋪一次完全正常。
+
+    `RETIRED_RELEASE_PROJECTIONS`（只存在於既有收據裡的 `supporting_title`）**不在**
+    這一組——它不在 `VOCABULARY`，沒有 lane track 也沒有 renderer，鑄出來會死在更
+    下游。讀得回來（`_plan_record`）但鑄不出來，那個不對稱是對的。
+    """
+
+    return (semantic_kind, implementation_kind, lane) in _MINTABLE_PROJECTION_COMBINATIONS
 
 
-def _event_has_active_projection(
+def _event_has_mintable_projection(
     *,
     semantic_kind: str,
     implementation_kind: str,
     lane: str | None,
     intentional_aroll: bool,
 ) -> bool:
+    """一個 event 的投影鑄不鑄得出來（含 `intentional_aroll`）。見 `_is_mintable_projection`。"""
+
     if intentional_aroll:
         return (
             semantic_kind == _INTENTIONAL_AROLL
             and implementation_kind == _INTENTIONAL_AROLL
             and lane is None
         )
-    return lane is not None and _is_active_projection(
-        semantic_kind,
-        implementation_kind,
-        lane,
-    )
+    return lane is not None and _is_mintable_projection(semantic_kind, implementation_kind, lane)

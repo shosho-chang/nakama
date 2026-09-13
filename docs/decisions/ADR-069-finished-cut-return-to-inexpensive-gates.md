@@ -540,6 +540,8 @@ ADR-066 的核心決策是對的，是實作超標。否決。
 - **owner 簽核 v2：2026-09-12「簽，直接做到完」。** 七個階段依序實作，每階段一個 commit。
 - **落地後 code review（2026-09-13，xhigh）**：10 個角度掃完 93 檔、15 條全部修掉。
   見下方〈落地後 review〉。
+- **owner 拆門（2026-09-13）**：「我要的東西很簡單，就是很順暢地將一集節目推進到我要
+  的結果。所有不必要的檢查都不用。」七道門拆掉，判準見下方〈哪些門該拆〉。
 
 ## 落地後 review（2026-09-13）
 
@@ -592,4 +594,94 @@ ADR-066 的核心決策是對的，是實作超標。否決。
     `export_matches_plan_record` 對它回 **False**——回 True 等於說「已經 render 的
     那份就是現在這版」，可是我們根本不知道現在這版是什麼。多 render 一次的代價，
     遠小於安靜發錯內容。
+
+## 哪些門該拆（2026-09-13 owner 裁決）
+
+29. **review 從來沒有問過「這個檢查有人要嗎」。** 落地後 review 的 10 個角度全在問
+    「重構有沒有做錯」，簽核當時的 sub-agent review 問的是「這份設計自洽嗎」。兩者都
+    沒有問第三個問題，而那正是 owner 唯一在意的。這一節補上。
+
+    判準只有一條，而且是這份 ADR 自己寫的：**這條規則擋下來的東西，人眼在 Resolve
+    timeline 上看不看得出來？看得出來就不該擋。**
+
+30. **素材收據降成純紀錄。** 追來歷：2026-08-26 `3905fc2c`（commit body 是空的）造出
+    acquisition receipt，2026-08-29 `2a5edf12` 把它變成 publish 的硬擋，ADR-066 本文
+    有一句授權它（「The active store receives a compact asset receipt containing
+    media digest, source/license facts…」）。**沒有任何一次 owner 要求過**——那句話
+    是寫進 ADR 的，owner 簽的是整份 ADR。
+
+    而它實際擋掉的是 #1245 那種情況：Envato 併站之後，這道門讓當天買的素材登錄不
+    進來，除非偽造網址或把授權素材謊報成別的 `source_class`。
+
+    現在：**有收據就照驗**（sanitized source facts 那一圈照跑，sha256 必須對得上實際
+    bytes），**沒有收據不擋**。三處硬擋拆掉（`_active_store.publish`、`_reindex`、
+    `_materialization` 的 `final_asset_identity_mismatch`）。既有 322 張收據一張沒動，
+    實測兩集索引照樣載得回來、worker 候選 52／25 支不變。
+
+31. **「恰好 16:9」是這份 ADR 自己說要砍、卻砍到另一份的那條。** 階段 2 的模組
+    docstring 舉的例子就是它擋掉一支 4096×2160 的 DCI 4K；砍的時候砍掉 `_policy`
+    那一份，`_materialization:818` 這一份留下來了，而且是更嚴的版本
+    （`width * 9 != height * 16`）。現在只留「必須是橫的」——直的放進 16:9 只剩中間
+    一條，那是真的會做出壞成品。
+
+32. **字卡秒數上限同樣是評級改了一半。** 階段 7 把 `visual_placement_duration_exceeded`
+    評成 `warning`，但只改了 `_policy` 的表；`_visual_assets` 的 preflight 照樣讓整條
+    run 死掉。代價寫在 `_derived_assets.max_readable_display_chars` 的註解裡：金句卡
+    秒數下限由字數決定（每字 0.35s ＋ 0.8s 動畫）、上限 8s，於是 **Director 寫超過
+    20 個字，整條 run 沒有任何合法出路**——DP 怎麼挑 cue 都救不回來。preflight 那道
+    拆掉，警告留在 `_policy`。
+
+33. **章節卡標題的兩條正則：規則早就在寫作端，這是粗糙的第二份。**
+    `.claude/skills/longform-cut/SKILL.md` 的規則表已經寫著「不可有發言人前綴、不可用
+    第三人稱代名詞開頭」。而正則會誤殺——實測擋掉「三個選擇：先做哪一個」「第一步：
+    把預設值找出來」「她們用三年做對的那件事」，每一個都讓**整支 cut 登錄不進來**。
+
+    owner：「這不是應該在產生 title 的時候就應該會做對了嗎？如果不在源頭一次把事情
+    做對，那不是常常就會碰到要修改的，浪費時間？」規則留在 skill，正則拆掉。卡片上
+    寫著「修修：」在審核頁一眼就看得到。
+
+34. **「長片必須有章節」拆掉；「長片 ≥ 8 分鐘」留下。** 前者長片本來就都有，幾乎不會
+    fire，而真的沒有時 `_policy` 的 `canonical_sections_missing` 會接住——那一份才是
+    真的前置條件（下一行就 index `sections[0]`），而且它是**診斷**，出現在審核頁上，
+    不是把整支關在登錄門外。後者 owner 明確要保留。
+
+35. **「修訂過的 run 不能再送 pre-release correction」拆掉。** 引進它的 commit
+    （`f1ac6f32`）沒有記錄理由，而 correction 的機制（`_select_correction`）看的是驗收
+    鏈長什麼樣，跟 command 是 ApprovedCut 還是 TargetedRevision 無關。修訂回來的東西
+    不滿意時，那是最自然的下一步。
+
+36. **退役詞彙唯讀：不是拆門，是換判準。** 這一條我先量錯過一次——原本報告
+    `20260901 蘇予昕 / punch-L03` 已經被鎖住，那是用錯判斷式（直接比對投影三元組，
+    漏掉 `intentional_aroll` 有獨立分支）。實測**六份 plan record 全部可以修訂，一份
+    都沒鎖**。
+
+    但門本身的問題是真的：它用**現役**名單，於是只要紀錄裡有任何一個退役投影，整份
+    不能修訂——而 `visual_effect` 在 `VOCABULARY` 裡有 track、版位與 renderer recipe，
+    原封不動再鋪一次完全正常。判準換成 `_is_mintable_projection`（現役 ＋
+    `VOCABULARY` 裡的退役）：
+
+    * `visual_effect` → 可沿用、可修訂
+    * `supporting_title` → 仍然擋。它只活在既有收據裡、不在 `VOCABULARY`、沒有 track
+      也沒有 renderer，鑄出來會死在更下游。**讀得回來但鑄不出來，這個不對稱是對的。**
+
+    同一個判準套到四處（`_records` 的兩個 mint、`_derived_assets` 的建置指令、
+    `_timeline_apply` 的上軌）；真正擋新提案的鎖留在 worker 那端
+    （`_ALLOWED_PROJECTION`，由 `_WORKER_PROJECTION_COMBINATIONS` 推導）。
+
+37. **skill 的政策表本身是錯的。** `longform-cut/SKILL.md` 那張表標題寫「一定會擋下來
+    的政策門檻」，但階段 7 之後表上多數已經是警告。表格重寫成四段：會擋的（只有
+    `chapter_transition_projection_mismatch` 一條）、會做出壞成品的結構條件、只警告
+    不擋的、以及沒有程式在擋的寫作標準。
+
+38. **還沒查完的。** 這一輪用針對性搜尋（門檻常數、比例／張數／秒數比較）加上逐一
+    讀執行點，**沒有讀完全部 637 個 `raise`**。`_codex_semantic`（26）與
+    `_worker_packet`（35）沒逐條過——那是「worker 回的東西合不合格」，被退回一樣會
+    停線，只是擋的是 agent 不是人。
+
+39. **`format` 這個兩值維度是下一刀。** `_engine:767` 的「只做長片」不是問題，是症狀：
+    `Literal["long", "short"]` 貫穿 `_commands`、`_context`、`_correction`、
+    `_approved_cut`、`_brand_badge`，連丟給 worker 的 response schema 裡都有
+    `{"enum": ["long", "short"]}`。ADR-067 把短片整條移走之後，這個維度是裝飾。
+    owner：「為什麼一條長片的製作流程，最後還要檢查它是不是只做長片？」——分開一個
+    commit 做。
 

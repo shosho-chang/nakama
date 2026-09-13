@@ -17,7 +17,7 @@ from ._projection import (
     GENERATED_IMPLEMENTATIONS,
     NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS,
     ComponentLane,
-    _is_active_projection,
+    _is_mintable_projection,
 )
 
 BuildStatus = Literal["ready", "pending", "failed"]
@@ -133,7 +133,9 @@ class DerivedAssetInstruction:
             )
         ):
             raise DerivedAssetContractError("derived asset instruction fields are required")
-        if not _is_active_projection(
+        # 沿用那一組（含 `VOCABULARY` 裡的退役）——修訂會把整份 events 重鑄，沒有被
+        # 動到的舊卡必須走得過去。真正的鎖在 worker 提案端。
+        if not _is_mintable_projection(
             self.semantic_kind,
             self.implementation_kind,
             self.lane,

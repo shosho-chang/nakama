@@ -2505,3 +2505,76 @@ def test_a_revision_refuses_to_start_from_a_record_whose_artifacts_moved(tmp_pat
     with pytest.raises(CommandRejectedError, match="no longer describes what is on disk"):
         production.request_revision("plan-moved", "event-1", "把這張卡的字改一下")
 
+
+def test_a_cut_carrying_a_retired_card_can_still_be_revised(tmp_path) -> None:
+    """退役＝不能被**新提案**選中，不是「既有的不能再存在」。
+
+    這道門本來只要紀錄裡有任何一個退役投影，整份就不能修訂——因為修訂會把整份
+    events 重鑄一次，而鑄造端跟 worker 提案端共用同一張嚴格名單。那是自己造的死路：
+    那張卡已經在 timeline 上，`visual_effect` 在 `VOCABULARY` 裡有 track、版位與
+    renderer recipe，原封不動再鋪一次完全正常。真正的鎖在 worker 提案端。
+
+    修修 2026-09-13：「這個我完全看不懂在做什麼，為什麼會有這一條？」
+    """
+    retired = EventRecord(
+        event_id="event-retired",
+        master_cue_ids=("cue-9",),
+        text_hash="9" * 64,
+        intent="舊的視覺效果卡",
+        visual_status="approved",
+        t0=30.0,
+        t1=34.0,
+        section_id="section-1",
+        display="舊卡",
+        semantic_kind="visual_effect",
+        implementation_kind="visual_effect",
+        lane="visual_effect",
+    )
+    live = EventRecord(
+        event_id="event-live",
+        master_cue_ids=("cue-1",),
+        text_hash="1" * 64,
+        intent="金句卡",
+        visual_status="approved",
+        t0=10.0,
+        t1=14.0,
+        section_id="section-1",
+        display="下一個黃金年代",
+        semantic_kind="hero_title",
+        implementation_kind="hero_title",
+        lane="hero_title",
+    )
+    records = InMemoryPlanRecordIndex()
+    records.publish(
+        (plan_record(plan_id="plan-retired", episode_id="episode-1", events=(live, retired)),)
+    )
+    production = FinishedCutProduction(
+        store_root=tmp_path / "runs",
+        approved_cut_store=InMemoryApprovedCutStore(()),
+        asset_resolver=InMemoryAssetResolver(()),
+        semantic_adapter=InMemorySemanticAdapter(),
+        plan_records=records,
+    )
+
+    command_id = production.request_revision("plan-retired", "event-live", "這張卡的字改一下")
+
+    assert command_id.startswith("targeted-revision:")
+
+
+def test_a_receipt_only_projection_still_cannot_be_minted() -> None:
+    """`supporting_title` 只活在既有收據裡——它不在 `VOCABULARY`，沒有 track 也沒有
+    renderer，鑄出來會死在更下游。讀得回來但鑄不出來，那個不對稱是刻意的。
+    """
+    with pytest.raises(ValueError, match="retired or unsupported"):
+        _mint_projected_component(
+            component_id="component-1",
+            event_id="event-1",
+            semantic_kind="supporting_title",
+            implementation_kind="supporting_title",
+            lane="supporting_title",  # type: ignore[arg-type]
+            display="舊的輔助標題",
+            t0=1.0,
+            t1=4.0,
+            asset_ref=None,
+        )
+

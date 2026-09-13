@@ -98,15 +98,31 @@ class ActiveAssetStore:
         except OSError as exc:
             raise ActiveAssetStoreError("asset publication source is unreadable") from exc
         if publication.kind in _NEUTRAL_KINDS:
+            # 收據是**紀錄**，不是門。修修 2026-09-13：「我從來沒有要求要做這件事情
+            # ……我要的東西很簡單，就是很順暢地將一集節目推進到我要的結果。」
+            #
+            # 追這條規則的來歷：2026-08-26 `3905fc2c`（commit body 是空的）第一次
+            # 造出 acquisition receipt，2026-08-29 ADR-066 的 authority 核心把它變成
+            # publish 時的硬擋。沒有任何一次 owner 要求過。而它實際擋掉的是什麼——
+            # #1245 就是活生生的例子：Envato 併站之後，這道門讓當天買的素材登錄不
+            # 進來，除非偽造網址或把授權素材謊報成別的 source_class。
+            #
+            # 所以：有收據就照驗（`CompactAssetReceipt.__post_init__` 那一整圈照跑，
+            # 而且 sha256 必須對得上實際 bytes——那才是真的在保護來歷）；沒有收據就
+            # 存 None，照樣上片。
             compact_receipt = publication.compact_receipt
-            if compact_receipt is None or compact_receipt.origin != "neutral_acquisition":
-                raise ActiveAssetStoreError(
-                    "neutral asset publication requires acquisition provenance"
-                )
-            if compact_receipt.media_sha256 != digest or compact_receipt.media_bytes != media_bytes:
-                raise ActiveAssetStoreError(
-                    "neutral acquisition provenance differs from source content"
-                )
+            if compact_receipt is not None:
+                if compact_receipt.origin != "neutral_acquisition":
+                    raise ActiveAssetStoreError(
+                        "neutral asset provenance must describe an acquisition"
+                    )
+                if (
+                    compact_receipt.media_sha256 != digest
+                    or compact_receipt.media_bytes != media_bytes
+                ):
+                    raise ActiveAssetStoreError(
+                        "neutral acquisition provenance differs from source content"
+                    )
         else:
             if publication.compact_receipt is not None:
                 raise ActiveAssetStoreError(
@@ -217,8 +233,7 @@ class ActiveAssetStore:
         return updated_record
 
     def _reindex(self) -> None:
-        if any(record.compact_receipt is None for record in self._records):
-            raise ActiveAssetStoreError("Active Asset Store record lacks compact provenance")
+        # 少一張收據不再是索引壞掉——見 `publish` 的註解。
         if len({record.digest for record in self._records}) != len(self._records):
             raise ActiveAssetStoreError("Active Asset Store index has duplicate content identity")
         recipe_ids = tuple(
@@ -427,9 +442,9 @@ def _optional_number(payload: Mapping[str, Any], key: str) -> float | None:
     return float(value)
 
 
-def _compact_receipt_to_dict(receipt: CompactAssetReceipt | None) -> dict[str, object]:
+def _compact_receipt_to_dict(receipt: CompactAssetReceipt | None) -> dict[str, object] | None:
     if receipt is None:
-        raise ActiveAssetStoreError("Active Asset Store record lacks compact provenance")
+        return None
     result: dict[str, object] = {
         "origin": receipt.origin,
         "media_sha256": receipt.media_sha256,
@@ -450,7 +465,9 @@ def _compact_receipt_to_dict(receipt: CompactAssetReceipt | None) -> dict[str, o
     return result
 
 
-def _compact_receipt_from_dict(value: object) -> CompactAssetReceipt:
+def _compact_receipt_from_dict(value: object) -> CompactAssetReceipt | None:
+    if value is None:
+        return None
     if not isinstance(value, dict):
         raise ActiveAssetStoreError("Active Asset Store compact receipt is invalid")
     origin = value.get("origin")

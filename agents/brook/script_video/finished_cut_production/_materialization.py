@@ -789,7 +789,11 @@ def _validate_final_assets(plan: MaterializationPlan, assets: AssetResolver) -> 
                     "component final asset is unavailable in the Active Store",
                     reason_code="final_asset_unavailable",
                 ) from error
-            if resolved.record.reference != reference or resolved.record.compact_receipt is None:
+            # 這裡本來還要求「一定有收據」——那是 `_active_store` 那道門的第二份。
+            # 收據降成紀錄之後（修修 2026-09-13），這一層只問它自己該問的：Active
+            # Store 回來的那筆，是不是我要的那一筆。bytes 對不對由下面的
+            # `asset_digest_mismatch` 管，那才是真的在保護素材沒被換掉。
+            if resolved.record.reference != reference:
                 raise MaterializationError(
                     "Active Store result does not bind the exact component reference",
                     reason_code="final_asset_identity_mismatch",
@@ -816,6 +820,13 @@ def _validate_final_assets(plan: MaterializationPlan, assets: AssetResolver) -> 
                 ) from error
             verified[reference] = resolved
         if component.implementation_kind == "stock_video":
+            # 這裡本來要求**恰好** 16:9（`width * 9 == height * 16`）。ADR-069 階段 2
+            # 的模組 docstring 自己寫著這條該砍，舉的例子就是它擋掉一支 4096×2160 的
+            # DCI 4K——那支放進 16:9 timeline 只是縮放，畫面完全正常。砍的時候砍到的
+            # 是 `_policy` 那一份，這一份留下來了，而且是更嚴的版本。
+            #
+            # 留下的只有「必須是橫的」：直的素材放進 16:9 會只剩中間一條，那是真的
+            # 會做出壞成品。選片那一關（`_visual_assets`）用同一條規則。
             width = resolved.record.width
             height = resolved.record.height
             if (
@@ -823,10 +834,9 @@ def _validate_final_assets(plan: MaterializationPlan, assets: AssetResolver) -> 
                 or type(width) is not int
                 or type(height) is not int
                 or width <= height
-                or width * 9 != height * 16
             ):
                 raise MaterializationError(
-                    "Stock component is not native 16:9 landscape",
+                    "Stock component is not native landscape",
                     reason_code="stock_not_landscape_16_9",
                 )
 

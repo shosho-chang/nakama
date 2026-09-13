@@ -10,7 +10,11 @@ from ._brand_badge import BrandBadgeOverlay, derive_brand_badge_overlays
 from ._context import CueAnchor, EditorialCutContext, VisualPlacement
 from ._derived_assets import BuiltComponentAsset, DerivedAssetBuildRequest
 from ._policy import PolicyDiagnostic
-from ._projection import ComponentLane, _event_has_active_projection, _is_active_projection
+from ._projection import (
+    ComponentLane,
+    _event_has_mintable_projection,
+    _is_mintable_projection,
+)
 
 if TYPE_CHECKING:
     from ._correction import RunEventDiff, _PreReleaseCorrection
@@ -106,7 +110,7 @@ def _mint_projected_component(
 ) -> ProjectedComponent:
     """Mint a component that today's vocabulary still projects."""
 
-    if not _is_active_projection(semantic_kind, implementation_kind, lane):
+    if not _is_mintable_projection(semantic_kind, implementation_kind, lane):
         # Name the projection.  A bare "retired or unsupported" over three free
         # strings leaves the reader with no way to tell which lane was retired
         # or which component carried it.
@@ -273,7 +277,7 @@ def _mint_materialization_plan(
 ) -> MaterializationPlan:
     if any(
         event.semantic_kind
-        and not _event_has_active_projection(
+        and not _event_has_mintable_projection(
             semantic_kind=event.semantic_kind,
             implementation_kind=event.implementation_kind,
             lane=event.lane,
@@ -281,7 +285,7 @@ def _mint_materialization_plan(
         )
         for event in events
     ) or any(
-        not _is_active_projection(
+        not _is_mintable_projection(
             component.semantic_kind,
             component.implementation_kind,
             component.lane,

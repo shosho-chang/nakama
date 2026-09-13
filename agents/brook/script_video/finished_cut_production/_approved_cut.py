@@ -144,8 +144,10 @@ class ApprovedCutAuthority:
         duration_sec = sum(source.t1 - source.t0 for source in registration.source_ranges)
         if registration.format == "long" and duration_sec < 480.0:
             raise ApprovedCutRegistrationError("Long ApprovedCut must be at least eight minutes")
-        if registration.format == "long" and not registration.sections:
-            raise ApprovedCutRegistrationError("Long ApprovedCut requires canonical sections")
+        # 「長片必須有章節」這條拿掉了。長片本來就都有章節，所以它幾乎不會 fire；
+        # 而萬一真的沒有，`_policy` 的 `canonical_sections_missing` 會接住——那一份
+        # 才是真的前置條件（它下一行就 index `sections[0]`），而且它是**診斷**，
+        # 會出現在審核頁上，不是把整支關在登錄門外。
         if not registration.cues:
             raise ApprovedCutRegistrationError("ApprovedCut requires valid tight subtitle cues")
         _validate_sections(registration.sections, duration_sec)
@@ -484,28 +486,17 @@ def _validate_editorial_feedback(feedback: tuple[str, ...]) -> None:
             raise ApprovedCutRegistrationError("editorial feedback must be sanitized text only")
 
 
-_SPEAKER_ATTRIBUTION_PREFIX = re.compile(r"^[^，。！？、]{1,4}[：:]")
-_THIRD_PERSON_OPENER = re.compile(r"^[他她它牠祂]")
-
-
-def _validate_transition_title(section_id: str, title: str) -> None:
-    """滿版轉場卡的字要能單獨看懂——它是那一節的總結，不是節裡撈出來的半句話。
-
-    2026-09-08 蘇予昕那一集交出「修修：她不是你爸」「修修：設備花了一百萬」，兩個問題：
-    「修修：」是分鏡註記漏到畫面上，而「她」在卡片上沒有先行詞，觀眾不知道是誰。這兩種
-    都是機器判得出來的；「主詞整個不見」（例如「不是牽拖，是線索」少了「原生家庭」）
-    正則判不出來，只能靠 `highlight-cut` skill 的標準與反例表擋在寫作端。
-    """
-    if _SPEAKER_ATTRIBUTION_PREFIX.match(title):
-        raise ApprovedCutRegistrationError(
-            f"{section_id} transition title carries a speaker attribution prefix "
-            f"({title!r}); the card must summarise the section, not label who said it"
-        )
-    if _THIRD_PERSON_OPENER.match(title):
-        raise ApprovedCutRegistrationError(
-            f"{section_id} transition title opens with a third-person pronoun "
-            f"({title!r}); the card has no antecedent on screen"
-        )
+#: 滿版轉場卡的字要能單獨看懂——那是寫作端的標準，不是登錄門口的正則。
+#:
+#: 這裡本來有兩條：4 字以內＋冒號開頭擋、「他她它牠祂」開頭擋。它們抓的是
+#: 2026-09-08 蘇予昕那一集的「修修：她不是你爸」。可是同一條規則
+#: **寫作端已經有了**（`.claude/skills/longform-cut/SKILL.md` 的規則表），
+#: 而正則這一份還會誤殺正常標題——實測擋掉「三個選擇：先做哪一個」「第一步：
+#: 把預設值找出來」「她們用三年做對的那件事」，每一個都讓整支 cut 登錄不進來。
+#:
+#: 修修 2026-09-13：「這不是應該在產生 title 的時候就應該會做對了嗎？如果不在
+#: 源頭一次把事情做對，那不是常常就會碰到要修改的，浪費時間？」——而且卡片上
+#: 寫著「修修：」你在審核頁一眼就看得到，符合「人眼看得出來就不該硬擋」。
 
 
 def _validate_sections(
@@ -527,8 +518,6 @@ def _validate_sections(
             or (section.transition_title is not None and not section.transition_title.strip())
         ):
             raise ApprovedCutRegistrationError("canonical sections are invalid")
-        if section.transition_title is not None:
-            _validate_transition_title(section.section_id, section.transition_title.strip())
         prior_t0 = section.t0
         seen.add(section.section_id)
 

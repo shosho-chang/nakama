@@ -58,7 +58,7 @@ from ._projection import (
     ASSET_KIND_BY_IMPLEMENTATION,
     NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS,
     SOURCE_ASSET_KIND_BY_IMPLEMENTATION,
-    _event_has_active_projection,
+    _event_has_mintable_projection,
     _is_active_semantic_kind,
     layout_identity,
 )
@@ -367,8 +367,17 @@ class FinishedCutProduction:
             raise CommandRejectedError(
                 f"plan record no longer describes what is on disk: {error}"
             ) from error
+        # 這道門本來用的是**現役**名單：只要紀錄裡有任何一個退役投影，整份就不能修訂。
+        # 那是自己造的死路——`visual_effect` 已經在 timeline 上，而它在 `VOCABULARY`
+        # 裡有 track、版位與 renderer recipe，原封不動再鋪一次完全正常；擋住的是那張
+        # 卡以外的每一個 event。
+        #
+        # 判準換成「鑄不鑄得出來」：`supporting_title` 只活在既有收據裡、不在
+        # `VOCABULARY`、沒有 track 也沒有 renderer——那種**要**在這裡就擋，不然它會死
+        # 在更下游、訊息更難懂。真正擋新提案的鎖在 worker 那端
+        # （`_ALLOWED_PROJECTION`，由 `_WORKER_PROJECTION_COMBINATIONS` 推導）。
         if any(
-            not _event_has_active_projection(
+            not _event_has_mintable_projection(
                 semantic_kind=event.semantic_kind,
                 implementation_kind=event.implementation_kind,
                 lane=event.lane,
@@ -538,10 +547,11 @@ class FinishedCutProduction:
         stored = self._store.load_run(command_id)
         if stored is None:
             raise CommandRejectedError(f"authoritative production run not found: {command_id}")
-        if isinstance(stored.command, TargetedRevisionCommand):
-            raise CommandRejectedError(
-                "pre-release correction is only available to fresh ApprovedCut runs"
-            )
+        # 這裡本來擋住「已經是修訂的 run 不能再送 pre-release correction」。
+        # 引進它的 commit（`f1ac6f32`，2026-08-29）沒有記錄理由，而 correction 的
+        # 機制（`_select_correction`）看的是驗收鏈長什麼樣，跟這個 command 是
+        # ApprovedCut 還是 TargetedRevision 無關。修訂回來的東西不滿意時，那是
+        # 最自然的下一步，不該只剩「再修訂一次」。
         view = stored.view
         # 舊行為：`MaterializationPlan` 一鑄出來就把修正窗口關掉。
         #

@@ -234,14 +234,42 @@ def test_registration_rejects_source_range_outside_verified_master(tmp_path: Pat
         authority.register(invalid)
 
 
-def test_long_registration_requires_canonical_sections(tmp_path: Path) -> None:
+def test_a_long_cut_without_sections_registers_and_is_left_to_policy(tmp_path: Path) -> None:
+    """沒有章節不再擋在登錄門外——長片本來就都有章節，這條幾乎不會 fire。
+
+    真的沒有的時候，`_policy` 的 `canonical_sections_missing` 會接住（它才是真的
+    前置條件：下一行就 index `sections[0]`），而且它是**診斷**，會出現在審核頁上。
+    修修 2026-09-13：「長片不是一定要有章節嗎？那檢查這個做什麼？」
+    """
     authority = ApprovedCutAuthority(
         tmp_path / "authority",
         master_verifier=_MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0)),
     )
 
-    with pytest.raises(ApprovedCutRegistrationError, match="canonical sections"):
-        authority.register(replace(_registration(), sections=()))
+    command_id = authority.register(replace(_registration(), sections=()))
+
+    assert authority.resolve(command_id) is not None
+
+
+def test_a_chapter_title_with_a_colon_prefix_is_no_longer_refused(tmp_path: Path) -> None:
+    """「三個選擇：先做哪一個」是正常的中文標題，不該讓整支 cut 登錄不進來。
+
+    登錄門口本來有兩條正則（4 字內＋冒號、第三人稱代名詞開頭）。同一條規則寫作端
+    已經有了（`.claude/skills/longform-cut/SKILL.md`），而正則這一份會誤殺。
+    """
+    authority = ApprovedCutAuthority(
+        tmp_path / "authority",
+        master_verifier=_MasterVerifier(VerifiedEditorialMaster("episode-1", "a" * 64, 1_200.0)),
+    )
+    registration = _registration()
+    sections = tuple(
+        replace(section, transition_title="三個選擇：先做哪一個")
+        for section in registration.sections
+    )
+
+    command_id = authority.register(replace(registration, sections=sections))
+
+    assert authority.resolve(command_id) is not None
 
 
 def test_registration_requires_valid_tight_subtitle_cues(tmp_path: Path) -> None:

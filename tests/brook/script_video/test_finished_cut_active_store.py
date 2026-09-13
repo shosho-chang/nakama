@@ -208,18 +208,47 @@ def test_neutral_acquisition_metadata_survives_index_reopen(tmp_path: Path) -> N
     )
 
 
-@pytest.mark.parametrize("receipt_state", ["missing", "wrong_digest", "wrong_bytes"])
-def test_neutral_publication_rejects_unproven_content_before_store_mutation(
+def test_a_stock_asset_without_a_receipt_still_publishes(tmp_path: Path) -> None:
+    """收據是紀錄，不是門（修修 2026-09-13 裁決）。
+
+    這條規則的來歷：2026-08-26 `3905fc2c`（commit body 空的）造出 acquisition
+    receipt，2026-08-29 ADR-066 的 authority 核心把它變成 publish 硬擋。沒有任何
+    一次 owner 要求過，而它實際擋掉的是 #1245 那種情況——平台改網址，當天買的素材
+    就登錄不進來。
+    """
+    content = b"native horizontal stock"
+    source = tmp_path / "work-pressure.mp4"
+    source.write_bytes(content)
+    store_root = tmp_path / "assets-v2"
+
+    published = ActiveAssetStore.open(store_root, episode_id="episode-001").publish(
+        ActiveAssetPublication(
+            source_path=source,
+            kind=AssetKind.STOCK,
+            visual_summary="焦頭爛額處理工作與家庭責任的橫式實拍",
+            width=1920,
+            height=1080,
+            duration_sec=8.4,
+        )
+    )
+
+    assert published.record.compact_receipt is None
+    reopened = ActiveAssetStore.open(store_root, episode_id="episode-001")
+    assert reopened.resolve_active_asset(published.record.reference) == published
+    assert reopened.worker_selection_catalog().item(published.record.reference).width == 1920
+
+
+@pytest.mark.parametrize("receipt_state", ["wrong_digest", "wrong_bytes"])
+def test_a_receipt_that_does_not_match_the_bytes_is_still_rejected(
     tmp_path: Path,
     receipt_state: str,
 ) -> None:
+    """收據可以沒有；但寫了就不能說謊——bytes 的 sha256 才是真的在保護來歷。"""
     content = b"native horizontal stock"
     source = tmp_path / "work-pressure.mp4"
     source.write_bytes(content)
     receipt = _neutral_receipt(content)
-    if receipt_state == "missing":
-        receipt = None
-    elif receipt_state == "wrong_digest":
+    if receipt_state == "wrong_digest":
         receipt = replace(receipt, media_sha256="0" * 64)
     else:
         receipt = replace(receipt, media_bytes=len(content) + 1)
