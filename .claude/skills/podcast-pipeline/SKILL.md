@@ -459,11 +459,11 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" -
   -> E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" --merge-miners
   -> highlights/candidates.json
   -> blind azhe/kevin/shufen + brand + Renee review
-  -> highlights/review_azhe.json
-  -> highlights/review_kevin.json
-  -> highlights/review_shufen.json
-  -> highlights/lens_brand.json
-  -> highlights/lens_renee.json
+  -> highlights/review_azhe.long.json
+  -> highlights/review_kevin.long.json
+  -> highlights/review_shufen.long.json
+  -> highlights/lens_brand.long.json
+  -> highlights/lens_renee.long.json
   -> review schema/coverage/citation QA
   -> E:\nakama\.venv-v2\Scripts\python.exe scripts\run_cut_shortlist.py "<episode>" --format long
   -> Highlight shortlist review gate
@@ -498,7 +498,7 @@ E:\nakama\.venv-v2\Scripts\python.exe `
 ### 開工第一件事：算清楚這一集現在在哪
 
 ```powershell
-python scripts\episode_fanout_status.py "<episode>"
+E:\nakama\.venv-v2\Scripts\python.exe scripts\episode_fanout_status.py "<episode>"
 ```
 
 唯讀。它會把 Editorial Master、開採、兩個格式的盲審與選段、每一支 cut 的
@@ -605,7 +605,7 @@ canonical workflow 在 **`skills/ig-cards/SKILL.md`**（`.claude/skills/ig-cards
 SHA-256 綁它）與 `packaging/cutouts/*.png`。`social_brief.md` 可有可無。
 
 ```powershell
-python scripts/run_podcast_carousel.py "<episode>" --copy-spec "<episode>/ig-carousel/editorial/rNNN/copy_spec.v1.json" --panel-result "<episode>/ig-carousel/editorial/rNNN/panel_result.v1.json" --template-dir <template-dir>
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_podcast_carousel.py "<episode>" --copy-spec "<episode>/ig-carousel/editorial/rNNN/copy_spec.v1.json" --panel-result "<episode>/ig-carousel/editorial/rNNN/panel_result.v1.json" --template-dir <template-dir>
 ```
 
 文案是語意工作：三個盲審 lens（IG Audience／Episode Editorial／Brand and Evidence）跑到收斂。
