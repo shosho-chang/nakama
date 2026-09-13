@@ -383,3 +383,6 @@
 - [給人讀的文件放 Obsidian](feedback_reader_documents_go_to_obsidian.md) — 勘誤單／剪輯清單／選段報告這類修修要讀要改的，直接寫進 `AgentOutputs/interviews/<訪談日>-<來賓>/`；run_log、manifest、SRT 這類機器輸入才留 episode 資料夾
 - [跑到 gate 才停，不要「先給你看一眼」](feedback_run_to_the_gate_dont_stop_to_show.md) — Editorial Master 之後一路做到 packaging 進 gate 才回報；標題／臉／大字是 gate 欄位不是對話題目；停點只有三個，不要自己發明第四個
 - [渲染在跑就不要跑整套測試](feedback_dont_run_full_suite_during_renders.md) — 會被 Resolve／hyperframes 餓到 6 倍慢（19 分變 2 小時），而 `pytest -q` 沒有中途輸出，「慢」和「死」長得一樣；改分段跑，失敗先歸因不要預設是自己弄壞的
+- [人眼驗過的就是定案](feedback_human_verified_is_final.md) — 修修看過並指定的產出（版式、文案、剪輯點）不可用自動 QA 分數推翻或「順手修正」；QA 只對他還沒看過的東西有否決權，不過就先交付再一句話告知
+- [「legacy route」是 stop-the-line](feedback_legacy_route_is_stop_the_line.md) — subagent／code 回報 legacy、deprecated、v1 fallback 時先停下來查是不是走錯線；活的流程要求死掉的前置條件，先懷疑路線不要先補條件（長片視覺線＝ADR-066 `--semantic-worker handoff`）
+- [哪個 Python 跑得動測試](reference_test_interpreters.md) — 只有 `py -3.14` 有完整依賴（3.10 只有 ruff/whisperx、3.12 沒 pytest）；全 repo `tests/` 要兩小時且會被 markdownify 擋死，所以 gate 是「模組目錄＋每個引用改動 API 的檔案」
