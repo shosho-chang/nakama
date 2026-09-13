@@ -244,7 +244,7 @@
           <span class="wk-mut">開任務頁排入下一週的日子</span></div>
         {% for t in view.incomplete %}
           <div class="wk-cf">
-            <span class="wk-box {{ 'done' if t.done }}"></span>
+            <span class="sho-box {{ 'done' if t.done }}"></span>
             <span class="wk-tname">{{ t.title }}</span>
             <span class="wk-rem">剩 {{ [t.est_pomodoros - (view.actual.by_task.get(t.slug, 0)), 0] | max }}🍅</span>
             <a class="sho-btn--ghost" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.next_key }}">排程 ↗</a>
@@ -304,7 +304,7 @@
                                work done' (plan-entry done for this date) — NOT the whole
                                task. Posts /day-done with the day's date; item crosses out
                                but stays. (The task-list checkbox uses /done = whole task.) #}
-                            <form class="wk-box-form" method="post" action="/bridge/weekly/task/{{ it.slug | urlencode }}/day-done">
+                            <form class="sho-box-form" method="post" action="/bridge/weekly/task/{{ it.slug | urlencode }}/day-done">
                               <input type="hidden" name="week" value="{{ view.week.file_key }}">
                               <input type="hidden" name="entry_date" value="{{ day.date }}">
                               <input type="hidden" name="done" value="{{ '0' if it.done else '1' }}">
@@ -422,7 +422,7 @@
                     <span class="wk-tsection-label">{{ label }}</span>
                     <span class="wk-tsection-n">{{ tasks | length }}</span>
                   </div>
-                  {% for t in tasks %}{{ task_row(t, view) }}{% endfor %}
+                  {% for t in tasks %}{{ task_row(t, view, lifetime=True) }}{% endfor %}
                 </section>
               {% endif %}
             {% endfor %}
@@ -501,11 +501,11 @@
     // so without this a rename would lose the tab/scroll and the view would jump (v3-I.4).
     document.addEventListener('submit', function (e) {
       if (!e.target.closest) return;
-      // .wk-box-form = the done-toggle checkbox (in the row summary AND the daily card),
+      // .sho-box-form = the done-toggle checkbox (in the row summary AND the daily card),
       // which lives outside .wk-plan-edit — without it, checking a task jumped the view (修修).
       // .wk-del-form = the delete button — also outside .wk-plan-edit, needs the same treatment.
       if (!e.target.closest('.wk-plan-edit') && !e.target.closest('.wk-rename-form')
-          && !e.target.closest('.wk-box-form') && !e.target.closest('.wk-del-form')) return;
+          && !e.target.closest('.sho-box-form') && !e.target.closest('.wk-del-form')) return;
       try {
         sessionStorage.setItem('wk-tab', activeTab() || '');
         sessionStorage.setItem('wk-open', JSON.stringify(openSlugs()));

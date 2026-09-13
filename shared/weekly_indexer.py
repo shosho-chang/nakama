@@ -30,9 +30,11 @@ import yaml
 from shared.pomodoro_aggregator import (
     POMODORO_MINUTES,
     WeeklyActual,
+    all_time_actual,
     parse_dt,
     weekly_actual,
 )
+from shared.wikilink import strip_wikilink
 
 TAIPEI = ZoneInfo("Asia/Taipei")
 
@@ -69,7 +71,6 @@ _SYNC_CONFLICT_RE = re.compile(
     r"(?P<ts>\d{8}-\d{6})-(?P<device>[^.]+)\.md$"
 )
 _SKIP_FILENAME_RE = re.compile(r"^(?:\..*|.*\.sync-conflict-.*|.*\.tmp|Untitled.*)$")
-_WIKILINK_RE = re.compile(r"\[\[([^\]|]+)(?:\|[^\]]+)?\]\]")
 
 
 # ── Week math ────────────────────────────────────────────────────────────────
@@ -164,10 +165,9 @@ def _as_date(v: object) -> Optional[date]:
 
 
 def _strip_wikilink(v: object) -> str:
-    if not isinstance(v, str):
-        return ""
-    m = _WIKILINK_RE.search(v)
-    return m.group(1).strip() if m else v.strip()
+    """Thin alias kept for this module's call sites — see
+    :func:`shared.wikilink.strip_wikilink` for why there is only one parser."""
+    return strip_wikilink(v)
 
 
 def _link_key(v: str) -> str:
@@ -281,6 +281,7 @@ class WeeklyTask:
     weekly_priority: str = ""  # week file_key this task is a top-3 priority for ("" = none)
     calendar_event_id: str = ""  # set once projected to Google Calendar (41b); "" = not linked
     priority: str = "normal"  # task priority frontmatter: low | normal | high (TaskNotes)
+    stage: str = ""  # project-template stage this task belongs to ("" = 非樣板任務)
 
     def planned_in(self, wk: WeekRef) -> int:
         if self.plan:
@@ -489,6 +490,10 @@ class WeeklyView:
     backlog_count: int  # total open tasks in the backlog (across all three buckets)
     by_project: dict[str, list[WeeklyTask]]
     planned_by_task: dict[str, int]  # slug -> planned 🍅 this week (work only)
+    # slug -> actual 🍅 over the WHOLE history. The 「全部」 tab is a cross-week view,
+    # so a week-scoped count there is always 0 (修修 2026-09-11). 今日/整週 keep
+    # using `actual`, which is the right question for those tabs.
+    actual_all_time: dict[str, int]
     days: tuple[dict, ...]  # 5 day-cards Mon..Fri (the bullet section)
     day_headers: list[dict]  # 7 entries {zh, date, is_weekend, is_today} — editor day-select
     review: Optional[WeeklyReview]
@@ -601,6 +606,8 @@ class WeeklyIndexer:
         wp_raw = fm.get("weekly_priority")
         weekly_priority = _as_date(wp_raw).isoformat() if _as_date(wp_raw) else ""
 
+        stage = str(fm.get("stage") or "").strip()
+
         cal_event_id = str(fm.get("calendar_event_id") or "").strip()
 
         # ADR-041 v3 dual-read (V4): a legacy task-level projection (scheduled +
@@ -661,6 +668,7 @@ class WeeklyIndexer:
             weekly_priority=weekly_priority,
             calendar_event_id=cal_event_id,
             priority=str(fm.get("priority") or "normal").strip().lower() or "normal",
+            stage=stage,
         )
 
     # -- habits --
@@ -885,6 +893,11 @@ class WeeklyIndexer:
             task_time_entries=[(t.slug, t.time_entries) for t in all_tasks if t.is_work],
             work_task_keys=work_slugs,
         )
+        all_time = all_time_actual(
+            self._root,
+            [(t.slug, t.time_entries) for t in all_tasks if t.is_work],
+            work_task_keys=work_slugs,
+        )
         # 🤩 UFO = 75-min deep sessions logged this week (work tasks only).
         ufo_count = sum(t.deep_sessions_in(wk) for t in all_tasks if t.is_work)
 
@@ -957,6 +970,7 @@ class WeeklyIndexer:
             backlog_count=len(backlog),
             by_project=by_project,
             planned_by_task={t.slug: t.planned_in(wk) for t in in_week},
+            actual_all_time=all_time.by_task,
             days=days,
             day_headers=day_headers,
             review=review,

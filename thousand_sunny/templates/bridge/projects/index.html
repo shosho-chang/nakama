@@ -6,7 +6,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bridge · Projects 戰線</title>
+<title>Bridge · Projects 專案</title>
 <script src="/static/shosho/theme.js?v={{ asset_version | default('') }}"></script>
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
@@ -27,13 +27,18 @@
     <header class="pj-head">
       <div>
         <p class="sho-kicker"><span class="sho-kicker-n">[ 001 ]</span> PROJECTS</p>
-        <h1 class="pj-title">戰線</h1>
-        <p class="pj-sub sho-mono">長期推進的工作容器 — 任務在 Weekly 掛入戰線，這裡看跨週全貌</p>
+        <h1 class="pj-title">專案</h1>
+        <p class="pj-sub sho-mono">一組任務的集合 — 點進去看進度、剩餘工作與排程</p>
       </div>
       <form class="pj-new" method="post" action="/bridge/projects/new">
         <input class="pj-new-input" type="text" name="name" maxlength="80" required
-               placeholder="新戰線名稱…" aria-label="新戰線名稱">
-        <button class="sho-btn" type="submit">+ 開戰線</button>
+               placeholder="新專案名稱…" aria-label="新專案名稱">
+        {# 選了類型就一次把該樣板的任務全部開好（config/project-templates.yaml） #}
+        <select class="pj-new-kind" name="kind" aria-label="專案類型">
+          <option value="">空專案（不建任務）</option>
+          {% for key, label in kinds %}<option value="{{ key }}">{{ label }}</option>{% endfor %}
+        </select>
+        <button class="sho-btn" type="submit">+ 開專案</button>
       </form>
     </header>
 
@@ -41,6 +46,7 @@
       <a class="pj-row{% if v.status == 'archived' %} pj-row--archived{% endif %}"
          href="/bridge/projects/{{ v.name | urlencode }}">
         <span class="pj-row-name">{{ v.name }}</span>
+        {% if v.kind_label %}<span class="pj-row-kind">{{ v.kind_label }}</span>{% endif %}
         <span class="pj-row-meta sho-mono">
           {% if v.open_count or v.done_count %}
             <span class="pj-stat" title="完成任務／全部任務">✓ {{ v.done_count }}<span class="pj-frac">/{{ v.done_count + v.open_count }}</span></span>
@@ -57,7 +63,7 @@
       {% for v in active %}
         {{ project_row(v) }}
       {% else %}
-        <p class="pj-empty sho-mono">還沒有戰線 — 開一條，然後在 Weekly 的任務頁把任務掛進來。</p>
+        <p class="pj-empty sho-mono">還沒有專案 — 開一個，選類型就會自動把該類型的任務建好。</p>
       {% endfor %}
     </section>
 

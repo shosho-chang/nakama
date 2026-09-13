@@ -1,0 +1,11 @@
+# Byte-pinned artefacts: these files' SHA-256 is asserted in code, so git must
+# hand them back exactly as committed. Without `-text` a Windows checkout with
+# core.autocrlf=true rewrites LF to CRLF, the digest changes, and the pin fails
+# closed — CI runs on Linux so it stays green while every Windows clone breaks.
+#
+# 2026-09-07: haarcascade_frontalface_default.xml came back 963441 bytes instead
+# of the pinned 930127 — exactly the 33314 CRLF pairs git had inserted — which
+# stopped ADR-066 Finished Cut Production from starting at all.
+
+agents/brook/script_video/finished_cut_production/assets/haarcascade_frontalface_default.xml -text
+agents/brook/script_video/finished_cut_production/amendments/operations/*.py -text

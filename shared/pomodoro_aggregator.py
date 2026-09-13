@@ -41,6 +41,7 @@ TAIPEI = ZoneInfo("Asia/Taipei")
 POMODORO_MINUTES = 25  # TaskNotes config authority (ADR-039 D3)
 
 _DAILY_DIR = "Journals/Daily"
+_DAILY_NOTE_RE = re.compile(r"^(\d{4}-\d{2}-\d{2})\.md$")
 _FRONTMATTER_RE = re.compile(r"^---\n(.*?)\n---\n?(.*)$", re.DOTALL)
 
 
@@ -305,6 +306,58 @@ def weekly_actual(
     intervals = collect_daily_intervals(vault_root, start, end, allowed_task_keys=work_task_keys)
     intervals += collect_timeentry_intervals(task_time_entries, start, end)
     return summarize(intervals)
+
+
+def history_floor(vault_root: Path, task_time_entries: Iterable[tuple[str, list]] = ()) -> date:
+    """Earliest date any counted session could fall on: the oldest daily note, or
+    an older ``timeEntries`` start if one predates the daily-note history."""
+    floor: Optional[date] = None
+    daily = Path(vault_root) / _DAILY_DIR
+    if daily.is_dir():
+        for p in daily.iterdir():
+            m = _DAILY_NOTE_RE.match(p.name)
+            if not m:
+                continue
+            try:
+                d = date.fromisoformat(m.group(1))
+            except ValueError:
+                continue
+            if floor is None or d < floor:
+                floor = d
+    for _slug, entries in task_time_entries:
+        if not isinstance(entries, list):
+            continue
+        for e in entries:
+            if not isinstance(e, dict):
+                continue
+            st = parse_dt(e.get("startTime")) or parse_dt(e.get("endTime"))
+            if st and (floor is None or st.date() < floor):
+                floor = st.date()
+    return floor or datetime.now(TAIPEI).date()
+
+
+def all_time_actual(
+    vault_root: Path,
+    task_time_entries: Iterable[tuple[str, list]],
+    *,
+    work_task_keys: Optional[set[str]] = None,
+) -> WeeklyActual:
+    """Actual 🍅 per task over the WHOLE history, not one week.
+
+    Same D3 union as :func:`weekly_actual` — just an unbounded window. Use it
+    wherever the surface is cross-week: the Weekly dashboard's 「全部」 tab (whose
+    rows are by definition NOT this week, so a week-scoped numerator is always 0
+    — 修修 2026-09-11 hit exactly that: a task with four logged 🍅 read "0 / 4")
+    and the Project dashboard.
+    """
+    entries = list(task_time_entries)
+    return weekly_actual(
+        vault_root,
+        history_floor(vault_root, entries),
+        datetime.now(TAIPEI).date(),
+        task_time_entries=entries,
+        work_task_keys=work_task_keys,
+    )
 
 
 def task_actual(vault_root: Path, task_slug: str, time_entries: list) -> WeeklyActual:

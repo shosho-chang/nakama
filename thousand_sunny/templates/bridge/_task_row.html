@@ -8,15 +8,20 @@
    (_tab_brief.html). ``return_to`` (v3-H Slice 3): when set to a project slug, the
    mutation forms post ``from_project`` so the action lands back on that project's
    Brief tab instead of the dashboard. Weekly call sites omit it → unchanged. #}
-{% macro task_row(t, view, return_to="") %}
+{# `lifetime` (修修 2026-09-11): the 「全部」 tab lists tasks that are by definition
+   NOT this week, so a week-scoped 🍅 numerator there is always 0 — a task with
+   four logged pomodoros read "0 / 4". Those rows show the ALL-TIME actual over the
+   all-time estimate instead. 今日/整週 keep the weekly figures, which is the right
+   question for them. #}
+{% macro task_row(t, view, return_to="", lifetime=False) %}
   {% set timed = t.plan | selectattr('start') | list %}
   <details class="wk-task-d" data-slug="{{ t.slug }}">
     <summary class="wk-task {{ 'done' if t.done }}">
-      <form class="wk-box-form" method="post" action="/bridge/weekly/task/{{ t.slug | urlencode }}/done">
+      <form class="sho-box-form" method="post" action="/bridge/weekly/task/{{ t.slug | urlencode }}/done">
         <input type="hidden" name="week" value="{{ view.week.file_key }}">
         <input type="hidden" name="done" value="{{ '0' if t.done else '1' }}">
         {% if return_to %}<input type="hidden" name="from_project" value="{{ return_to }}">{% endif %}
-        <button type="submit" class="wk-box {{ 'done' if t.done }}"
+        <button type="submit" class="sho-box {{ 'done' if t.done }}"
                 aria-pressed="{{ 'true' if t.done else 'false' }}"
                 aria-label="{{ ('標記未完成：' if t.done else '標記完成：') ~ t.name }}"></button>
       </form>
@@ -54,7 +59,11 @@
       {# v3-I.5: 🍅 actual/estimate only for 工作 tasks — only `work` counts toward the
          weekly 🍅, so a health/growth/misc task shows no count (修修). #}
       <span class="wk-cell wk-pom-cell">
-        {% if t.is_work %}<span class="wk-tnum">{{ view.actual.by_task.get(t.slug, 0) }} / {{ view.planned_by_task.get(t.slug, t.est_pomodoros) }}🍅</span>{% endif %}
+        {% if t.is_work %}
+          {%- set pom_actual = view.actual_all_time.get(t.slug, 0) if lifetime else view.actual.by_task.get(t.slug, 0) -%}
+          {%- set pom_plan = t.est_pomodoros if lifetime else view.planned_by_task.get(t.slug, t.est_pomodoros) -%}
+          <span class="wk-tnum" title="{{ '全期實際 / 預估🍅' if lifetime else '本週實際 / 本週規劃🍅' }}">{{ pom_actual }} / {{ pom_plan }}🍅</span>
+        {% endif %}
       </span>
       <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}" title="開啟任務頁 + 番茄鐘">↗</a>
       <form class="wk-del-form" method="post" action="/bridge/weekly/task/{{ t.slug | urlencode }}/delete"
