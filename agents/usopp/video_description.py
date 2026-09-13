@@ -166,20 +166,28 @@ def chapters_from_authored(episode_dir: Path, cut_id: str) -> list[tuple[float, 
 
 
 def resolve_chapters(episode_dir: Path, cut_id: str) -> list[tuple[float, str]]:
-    """分章來源，由權威到回退：Release 對應表 → 核准剪輯登錄 → agent 切的章節表 → 舊 broll 檔。
+    """分章來源，由權威到回退：plan record → 對應表 → 核准剪輯登錄 → 章節表 → 舊 broll。
 
-    一旦該集建了 publish-timelines 對應表，Release 就是唯一權威——它說沒有分章
-    就是沒有分章，不可以回頭撿 broll，那份是 ADR-065 製作線的舊時間軸
-    （見 agents/usopp/publish_timeline.plan_chapters 的實測）。
+    **權威是 plan record 本身，不是「這一集有沒有對應表」。** ADR-069 把 timeline
+    與 component 寫進紀錄之後，`plan_chapters` 不再需要對應表先指路；但這裡的入口
+    條件沒跟著改，於是「有紀錄、沒有對應表」的長片整個跳過紀錄、掉回 broll 檔——
+    那正是 20260805 value-L02 分章全錯的來源（broll 只到 326.7s，成品 563.7s）。
+    同一個檔裡的 `build_description_prompt` 直接問 `plan_subtitle`，沒有這道閘，
+    所以那個組合產出的是字幕取自成品、分章取自舊時間軸的自相矛盾描述。
 
-    沒有對應表時才輪到登錄檔。它是修修按過核准的那份規劃（`human_approved`），
-    跟成品同源；broll 檔留在最後只為了還沒走 ADR-066 的舊集數。
+    紀錄一旦存在就是唯一權威——它說沒有分章就是沒有分章，不可以回頭撿 broll。
+    沒有紀錄時，對應表的存在仍然代表「這一集走過發布線」，同樣不回退。
+    再往下才輪到登錄檔：它是修修按過核准的那份規劃（`human_approved`），跟成品
+    同源；broll 檔留在最後只為了還沒走 ADR-066 的舊集數。
     """
     from agents.usopp.publish_timeline import load_timeline_map, plan_chapters
 
     episode_dir = Path(episode_dir)
+    recorded = plan_chapters(episode_dir, cut_id)
+    if recorded is not None:
+        return recorded
     if load_timeline_map(episode_dir) is not None:
-        return plan_chapters(episode_dir, cut_id)
+        return []
     registered = chapters_from_registration(episode_dir.name, cut_id)
     if registered:
         return registered

@@ -1016,7 +1016,10 @@ def _release_from_receipt(episode: str, cut_id: str) -> dict | None:
         raise HTTPException(status_code=409, detail="publish_prep receipt 成品路徑越界") from exc
     if not file_path.is_file() or file_path.stat().st_size != int(row.get("file_bytes", -1)):
         raise HTTPException(status_code=409, detail="publish_prep receipt 與成品檔不一致")
-    plan_id = register_release(
+    # 這是**發布資料庫**的 release 身分，跟 ADR-069 的 plan record id 是兩個識別
+    # 空間（同一個 cut 兩者都有，值不一樣）。`export_matches_plan_record` 講的才是
+    # plan record；這裡沿用 release 這個名字，才不會有人把兩者接起來。
+    release_id = register_release(
         episode,
         cut_id,
         str(row.get("format", "")),
@@ -1025,7 +1028,7 @@ def _release_from_receipt(episode: str, cut_id: str) -> dict | None:
         file_bytes=file_path.stat().st_size,
         duration_sec=float(row.get("duration_sec", 0)),
     )
-    ensure_target(plan_id, "youtube")
+    ensure_target(release_id, "youtube")
     logger.info("publish_prep receipt registered: %s/%s", episode, cut_id)
     return get_release(episode, cut_id)
 

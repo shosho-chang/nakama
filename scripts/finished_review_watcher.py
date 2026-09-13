@@ -115,7 +115,17 @@ def _command_id(value: object) -> bool:
 
 
 def _validate_job(value: object, *, episode_id: str) -> dict[str, object]:
-    if not isinstance(value, dict) or set(value) != _JOB_FIELDS:
+    if not isinstance(value, dict):
+        raise RuntimeError("Finished Cut revision job fields are invalid")
+    # ADR-069 之前這一格叫 `release_id`。改名當下已經排進佇列的單子還躺在 feedback
+    # 檔裡，鍵名對不上會被判成「欄位無效」而永遠卡住——那不是壞掉的單子，是還沒
+    # 改名的單子。就地換成新名字；`_update_job` 會把正規化過的這一份寫回去，檔案
+    # 本身也就遷移完了。這條跟 `publish_timeline` 與 `_active_store` 的舊鍵相容是
+    # 同一個決定，當時漏了這裡。
+    value = dict(value)
+    if "release_id" in value and "plan_id" not in value:
+        value["plan_id"] = value.pop("release_id")
+    if set(value) != _JOB_FIELDS:
         raise RuntimeError("Finished Cut revision job fields are invalid")
     if value.get("contract") != _JOB_CONTRACT:
         raise RuntimeError("Finished Cut revision job contract is invalid")

@@ -253,3 +253,36 @@ def test_invalid_v3_job_fails_closed_instead_of_becoming_work(tmp_path: Path) ->
 
     with pytest.raises(RuntimeError, match="plan_id is invalid"):
         pending_revision_jobs(tmp_path)
+
+
+def test_a_job_queued_before_the_rename_still_validates() -> None:
+    """改名當下已經排進佇列的單子不是壞掉的單子，是還沒改名的單子。
+
+    `_JOB_FIELDS` 要的是逐字相符的鍵集合，所以舊的 `release_id` 會被判成「欄位
+    無效」而永遠卡住。這次改名在 `publish_timeline`、`export_matches_plan_record`
+    與 `_active_store` 都留了舊鍵相容，只有這裡漏了。
+    """
+    from scripts.finished_review_watcher import _validate_job
+
+    job = {
+        "contract": "finished-cut-production-revision.v3",
+        "request_id": "finished-revision:" + "a" * 64,
+        "status": "queued",
+        "command_id": None,
+        "production_state": None,
+        "reason_code": None,
+        "requested_at": "2026-09-12T00:00:00Z",
+        "updated_at": "2026-09-12T00:00:00Z",
+        "error": None,
+        "episode_id": "20260901 蘇予昕",
+        "source_manifest_sha256": "b" * 64,
+        "release_id": "plan-af65a1d7a2ac611eb78be493",
+        "cut_id": "punch-L04",
+        "event_id": "event-12",
+        "feedback": "這張卡的字改一下",
+    }
+
+    validated = _validate_job(job, episode_id="20260901 蘇予昕")
+
+    assert validated["plan_id"] == "plan-af65a1d7a2ac611eb78be493"
+    assert "release_id" not in validated
