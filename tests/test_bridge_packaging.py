@@ -250,7 +250,7 @@ def test_board_shows_live_composition_verification(client):
     response = client.get("/bridge/packaging/20260723-xieboran")
 
     assert response.status_code == 200
-    assert response.text.count("COMPOSITION VERIFIED") == 3
+    assert response.text.count("版面已驗證") == 3
 
 
 def test_board_accepts_people_bleeding_past_canvas_edges(client, vault):
@@ -263,7 +263,7 @@ def test_board_accepts_people_bleeding_past_canvas_edges(client, vault):
     response = client.get("/bridge/packaging/20260723-xieboran")
 
     assert response.status_code == 200
-    assert response.text.count("COMPOSITION VERIFIED") == 3
+    assert response.text.count("版面已驗證") == 3
 
 
 def test_board_serves_cutouts_from_its_own_mounted_route(client, vault_with_cutouts):
@@ -294,7 +294,7 @@ def test_board_shows_blocked_composition_reason(client, vault):
     response = client.get("/bridge/packaging/20260723-xieboran")
 
     assert response.status_code == 200
-    assert "COMPOSITION WARNING · HUMAN APPROVAL OVERRIDES" in response.text
+    assert "版面有疑慮 · 你的 Approve 仍然說了算" in response.text
     assert "composition receipt" in response.text
 
 
@@ -654,7 +654,7 @@ def test_board_renders_brief_when_present(client, vault):
 
 def test_board_shows_hint_when_brief_missing(client):
     body = client.get("/bridge/packaging/20260723-xieboran").text
-    assert "無內容速覽" in body
+    assert "這支還沒有內容速覽" in body
 
 
 def test_corrupt_brief_does_not_block_board(client, vault):
@@ -1201,7 +1201,13 @@ def test_render_status_tracks_exact_recipe_and_terminal_thumbnail(
         assert response.status_code == 200
         assert response.json()["status"] == status
         if status == "failed":
-            assert response.json()["error"] == "renderer stopped"
+            # 原始 stderr 搬到 error_detail，畫面上只顯示人話。2026-09-14 修修在
+            # 進度條上讀到一整段 Python traceback，以為系統壞了——實際上只是
+            # 冷啟動逾時。證物要留，但不該是他讀到的第一句。
+            body = response.json()
+            assert body["error"] is None
+            assert body["error_detail"] == "renderer stopped"
+            assert body["message"] == "封面 render 失敗"
 
     state_path.write_text(
         json.dumps(
@@ -1397,7 +1403,8 @@ def test_cutout_preview_urls_are_content_versioned(client, vault_with_all_cutout
     assert board.status_code == 200
     assert "guest_v6_laughing.png?v=" + expected in board.text
     assert 'data-preview-url="/bridge/packaging/20260723-xieboran/cutout/' in board.text
-    assert "laughing · guest_v6_laughing.png" in board.text
+    # 檔名收進 title，畫面上只留表情——同一件事以前印兩次。
+    assert 'title="guest_v6_laughing.png">laughing<' in board.text
 
 
 def test_package_three_recipe_is_loaded_and_switchable(client, vault_with_all_cutouts):
@@ -2624,3 +2631,70 @@ def test_ledger_free_tabs_are_ready_not_guessed(router_client, vault):
     assert 'pkg-tab-status">QUEUED<' not in board.text
     assert 'pkg-tab-status">RUNNING<' not in board.text
     assert 'pkg-tab-status">READY<' in board.text
+
+
+def test_render_timeout_is_explained_not_dumped(client, vault, monkeypatch):
+    """冷啟動逾時要講人話，並告訴他怎麼做——不要把 traceback 丟到他臉上。
+
+    2026-09-14 修修按下「存配方」後看到的是：
+
+        封面 render 失敗：^^^^^ File "C:\\Python314\\Lib\\subprocess.py", line 1664,
+        in _communicate raise TimeoutExpired(self.args, orig_timeout)
+        subprocess.TimeoutExpired: Command '[...]' timed out after 600 seconds
+
+    他的結論是「系統壞了」。實際上那次只是第一次跑 N2 版式、算圖環境冷啟動超過
+    600 秒；同一張暖機後 10–14 秒就出來，重按一次就過。
+    """
+    from thousand_sunny.routers.packaging import _render_failure_sentence
+
+    raw = (
+        "Traceback (most recent call last):\n"
+        '  File "C:\\Python314\\Lib\\subprocess.py", line 1664, in _communicate\n'
+        "    raise TimeoutExpired(self.args, orig_timeout)\n"
+        "subprocess.TimeoutExpired: Command '[...]' timed out after 600 seconds"
+    )
+    sentence = _render_failure_sentence(raw)
+
+    assert "逾時" in sentence
+    assert "再按一次" in sentence
+    # 人話裡不能挾帶任何機器碎片。
+    for machine in ("Traceback", "subprocess", "TimeoutExpired", "C:\\", ".py"):
+        assert machine not in sentence
+
+
+def test_unknown_render_errors_are_not_given_invented_explanations():
+    """認不出來的錯誤就老實說「失敗」。
+
+    硬替不認得的 stderr 編一個人話說明，會比原始 traceback 更誤導——前者看起來
+    像診斷，後者至少誠實地說「我也不知道」。
+    """
+    from thousand_sunny.routers.packaging import _render_failure_sentence
+
+    assert _render_failure_sentence("something nobody has seen before") == "封面 render 失敗"
+    assert _render_failure_sentence(None) == "封面 render 失敗"
+    assert "素材" in _render_failure_sentence("FileNotFoundError: ...")
+
+
+def test_board_does_not_show_machine_identifiers(client):
+    """盤點過的機器訊息不該回到畫面上（修修 2026-09-14 逐條列的那 13 條）。
+
+    這些東西不是沒有價值——追查時有用——所以它們搬進 title 或 <details>，
+    不是被刪掉。這條守的是「不要再印在他眼前」。
+    """
+    body = client.get("/bridge/packaging/20260723-xieboran").text
+
+    # 內部代號與 CLI 名稱
+    assert "gate 零 LLM" not in body
+    assert "title-brainstorm --batch" not in body
+    assert "scripts/packaging_brief.py" not in body
+    assert "N2 橘框與中央圖" not in body
+    assert "render recipe；目前只帶入" not in body
+    # 機器狀態語
+    assert "COMPOSITION VERIFIED" not in body
+    assert "等待查詢" not in body
+    # 把網址當標題印
+    assert "/bridge/packaging/20260723-xieboran · package 裁決" not in body
+
+    # 反過來：人話要在
+    assert "封面與標題裁決" in body
+    assert "版面已驗證" in body

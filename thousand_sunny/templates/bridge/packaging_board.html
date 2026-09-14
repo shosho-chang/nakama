@@ -21,10 +21,12 @@
 
 <section class="page-header page-header--split">
   <div>
-    <div class="nk-caps">/bridge/packaging/{{ episode_slug }} · package 裁決</div>
+    <div class="nk-caps">封面與標題裁決</div>
     <h1 class="page-title">{{ pkg.episode }} <span class="zh">{{ (cut_tabs | length) if cut_tabs else (cuts | length) }} cuts</span></h1>
   </div>
-  <div class="header-meta sho-mono">generated {{ pkg.generated_at }}</div>
+  {#-- ISO 微秒時間戳是機器格式。人要知道的是「哪天做的」，精確到分就夠；
+       原文留在 title 裡，追查時仍然拿得到。 --#}
+  <div class="header-meta sho-mono" title="{{ pkg.generated_at }}">產生於 {{ pkg.generated_at[:16] | replace('T', ' ') }}</div>
 </section>
 
 <main class="page-main page-main--stack">
@@ -79,7 +81,6 @@
     </dl>
   </section>
   {% endif %}
-  <p class="sho-mono pkg-hint">重抽標題或封面 → 回 Cowork 跑 <code>title-brainstorm --batch</code> / <code>thumbnail-brainstorm</code>（gate 零 LLM，只裁決不生成）。</p>
 
   {% for view in cuts %}
   {% set cut = view.cut %}
@@ -87,7 +88,7 @@
   <article class="section pkg-cut"{% if cut_tabs %} id="packaging-panel" role="tabpanel"{% endif %} aria-labelledby="cut-{{ cut.cut_id }}">
     <header class="section-head">
       <div>
-        <div class="section-marker">§ {{ loop.index }} · {{ cut.format | upper }}</div>
+
         <h2 class="section-title" id="cut-{{ cut.cut_id }}">{{ cut.cut_id }}
           <span class="zh">{{ cut.visual_recipe }} · {{ cut.aspect }}</span>
         </h2>
@@ -170,7 +171,7 @@
         {% endif %}
       </details>
       {% else %}
-      <p class="sho-mono pkg-brief-missing">（無內容速覽 — Cowork 端跑 <code>scripts/packaging_brief.py</code> 產生）</p>
+      <p class="sho-mono pkg-brief-missing">（這支還沒有內容速覽）</p>
       {% endif %}
 
       {% if cut.format == 'long' %}
@@ -236,7 +237,7 @@
               {% endfor %}
             </div>
             <p class="sho-mono pkg-recipe-missing" role="status" hidden>
-              這個 package 尚無可還原的 render recipe；目前只帶入它自己的標題與 cutout，其他欄位不會借用別張 package。
+              這個 package 還沒存過配方，所以下面只帶了它自己的標題與臉，其他欄位是空的。
             </p>
             <script type="application/json" class="pkg-recipe-data">{{ view.recipe_payload | tojson }}</script>
           </fieldset>
@@ -336,7 +337,8 @@
                      {% if current == c.vault_path %}checked{% elif not current and loop.first %}checked{% endif %}>
               <img src="/bridge/packaging/{{ episode_slug }}/cutout/{{ c.file }}?v={{ c.version }}"
                    alt="{{ label }} {{ c.emotion }}" loading="lazy">
-              <div class="sho-mono pkg-card-meta">{% if c.emotion %}{{ c.emotion }} · {% endif %}{{ c.file }}</div>
+              {#-- 檔名是機器識別碼，表情才是挑臉的依據。同一件事以前印兩次。 --#}
+              <div class="sho-mono pkg-card-meta" title="{{ c.file }}">{{ c.emotion or c.file }}</div>
             </label>
             {% else %}
             <p class="sho-mono pkg-brief-missing">（這集還沒有 {{ label }} 的 cutout — 桌機端跑 thumbnail-brainstorm 產生）</p>
@@ -466,7 +468,7 @@
                 {% endfor %}
               </div>
               <p class="sho-mono pkg-stage-hint">
-                N2 橘框與中央圖會照這四個圖卡數字重畫；N1 大字仍會在出圖時依左右遮蔽微調 1–2%。
+                中央圖會照這四個數字重畫；大字若沒有勾「用我擺的位置」，出圖時仍會依左右遮蔽微調 1–2%。
               </p>
               <div class="pkg-center-pool">
                 <p class="sho-mono-up pkg-center-pool-label">換中央圖</p>
@@ -522,17 +524,29 @@
                    {% if not req %}hidden{% endif %}>
             <div class="pkg-render-progress-head">
               <strong class="pkg-render-progress-title">封面製作進度</strong>
-              <span class="sho-mono pkg-render-progress-state">等待查詢</span>
+              <span class="sho-mono pkg-render-progress-state">還沒開始</span>
             </div>
             <div class="pkg-render-progress-track" role="progressbar"
                  aria-label="封面 Render 進度"></div>
-            <p class="sho-mono pkg-render-progress-message">配方已保存後，這裡會顯示桌面 Render 狀態。</p>
+            <p class="sho-mono pkg-render-progress-message">存好配方之後，這裡會顯示出圖進度。</p>
+            {#-- 原始 stderr 收在這裡。2026-09-14 修修在進度條上看到一整段 Python
+                 traceback（含絕對路徑與 argv 陣列），以為系統壞了；實際上只是
+                 冷啟動逾時。證物要留，但不該是他讀到的第一句話。 --#}
+            <details class="pkg-render-progress-detail" hidden>
+              <summary class="sho-mono">技術細節（給工程師看的）</summary>
+              <pre class="sho-mono pkg-render-progress-raw"></pre>
+            </details>
           </section>
           {% if req %}
           <p class="sho-mono pkg-title-orig">
-            目前配方：#{{ req.title_rank }} · 大字「{{ req.big_text | join('／') }}」·
-            {{ req.host_cutout.split('/')[-1] }} ＋ {{ req.guest_cutout.split('/')[-1] }}
-            {% if req.rendered_png %}· 已出圖 {{ req.rendered_png }}{% else %}· <strong>等我 render</strong>{% endif %}
+            {#-- 檔名與 vault 路徑是機器識別碼；人要知道的是「用了哪條標題、
+                 哪兩個表情、出圖了沒」。路徑留在 title 裡供追查。 --#}
+            目前配方：標題 #{{ req.title_rank }} · 大字「{{ req.big_text | join('／') }}」·
+            {#-- 檔名是 `host_v1_serious.png`；人要看的只有最後那個表情，
+                 角色與版本號都是機器識別碼。完整路徑留在 title。 --#}
+            <span title="{{ req.host_cutout }}">修修 {{ req.host_cutout.split('/')[-1].replace('.png', '').split('_')[-1] }}</span>
+            ＋ <span title="{{ req.guest_cutout }}">來賓 {{ req.guest_cutout.split('/')[-1].replace('.png', '').split('_')[-1] }}</span>
+            {% if req.rendered_png %}· <span title="{{ req.rendered_png }}">已出圖</span>{% else %}· <strong>等我 render</strong>{% endif %}
           </p>
           {% endif %}
         </form>
@@ -599,7 +613,9 @@
                  data-package-thumbnail-rank="{{ item.pkg.title_rank }}"
                  alt="package {{ item.pkg.title_rank }} 封面：{{ item.title.text if item.title else '' }}" loading="lazy">
             <div class="pkg-card-title">{{ item.title.text if item.title else '（缺 rank ' ~ item.pkg.title_rank ~ ' 標題）' }}</div>
-            <div class="sho-mono pkg-card-meta">#{{ item.pkg.title_rank }} · {{ item.pkg.thumb_archetype_id }} · {{ item.pkg.joint_pairing_id }}</div>
+            {#-- archetype 與配對 ID 是溯源資料，不是挑封面的依據；收進 title。 --#}
+            <div class="sho-mono pkg-card-meta"
+                 title="archetype {{ item.pkg.thumb_archetype_id }} · pairing {{ item.pkg.joint_pairing_id }}">Package #{{ item.pkg.title_rank }}</div>
             {% if cut.cut_id == 'full' %}
             <div class="sho-mono pkg-composition-status" role="status" data-composition-verified="true">
               N1 FULL EPISODE · COMPOSITION GATE NOT APPLICABLE
@@ -608,7 +624,7 @@
             {% else %}
             <div class="sho-mono pkg-composition-status{% if not item.composition.verified %} pkg-composition-status--warning{% endif %}"
                  role="status" data-composition-verified="{{ 'true' if item.composition.verified else 'false' }}">
-              {% if item.composition.verified %}COMPOSITION VERIFIED{% else %}COMPOSITION WARNING · HUMAN APPROVAL OVERRIDES{% endif %}
+              {% if item.composition.verified %}版面已驗證{% else %}版面有疑慮 · 你的 Approve 仍然說了算{% endif %}
               <span>{{ item.composition.reason }}</span>
             </div>
             {% endif %}
@@ -670,7 +686,7 @@
       {% endif %}
 
       {% if approval %}
-      <p class="sho-mono pkg-decided">decided {{ approval.decided_at }}{% if approval.reject_note %} · note：{{ approval.reject_note }}{% endif %}</p>
+      <p class="sho-mono pkg-decided" title="{{ approval.decided_at }}">已裁決 {{ approval.decided_at | string | truncate(16, True, '') | replace('T', ' ') }}{% if approval.reject_note %} · 理由：{{ approval.reject_note }}{% endif %}</p>
       {% endif %}
     </div>
   </article>
@@ -1539,11 +1555,19 @@
     panel.hidden = false;
     panel.querySelector(".pkg-render-progress-state").textContent = (
       attended
-        ? { queued: "QUEUED", running: "RUNNING", done: "DONE", failed: "FAILED" }[payload.status]
-        : "NO WATCHER"
-    ) || "UNKNOWN";
+        ? { queued: "排隊中", running: "出圖中", done: "完成", failed: "失敗" }[payload.status]
+        : "沒有人在做"
+    ) || "狀態不明";
     const message = panel.querySelector(".pkg-render-progress-message");
     message.textContent = payload.error ? `${payload.message}：${payload.error}` : payload.message;
+    // 原始 stderr 收進 <details>，預設不展開。失敗時才出現。
+    const detail = panel.querySelector(".pkg-render-progress-detail");
+    if (detail) {
+      const raw = (payload.error_detail || "").trim();
+      detail.hidden = !raw;
+      detail.open = false;
+      panel.querySelector(".pkg-render-progress-raw").textContent = raw;
+    }
     const bar = panel.querySelector('[role="progressbar"]');
     bar.setAttribute("aria-valuetext", payload.message);
     if (payload.status === "done" && payload.thumbnail_url) {

@@ -76,6 +76,25 @@ _PUBLISH_PREP_TIMEOUT_SECONDS = 7200
 _PUBLISH_PREP_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
 
 
+# 出圖失敗時畫面上該說的話。原始 stderr 是 Python traceback ——
+# 2026-09-14 修修看到的是完整的 `subprocess.TimeoutExpired: Command '[...]'`，
+# 含絕對路徑與 argv 陣列，於是以為系統壞了。實際上那次只是第一次跑 N2 版式，
+# 算圖環境冷啟動超過 600 秒；同一張暖機後只要 10–14 秒，重按一次就過。
+#
+# 只翻譯認得出來的訊號，其餘老實說「失敗」並把原文留在可展開的細節裡——
+# 硬替不認得的錯誤編一個人話說明，會比原始 traceback 更誤導。
+def _render_failure_sentence(raw_error: str | None) -> str:
+    text = raw_error or ""
+    if "TimeoutExpired" in text or "timed out after" in text:
+        return (
+            "封面 render 逾時。第一次跑這個版式要先把算圖環境準備好，"
+            "通常就是這個原因——再按一次「存配方（我再 render）」就會過"
+        )
+    if "FileNotFoundError" in text or "No such file" in text:
+        return "封面 render 失敗：有素材找不到（詳細見下方）"
+    return "封面 render 失敗"
+
+
 def _render_watcher_state_path() -> Path:
     """Desktop watcher state shared with the authenticated Bridge status surface."""
     configured = os.environ.get("NAKAMA_RENDER_WATCHER_STATE")
@@ -1425,13 +1444,17 @@ async def packaging_render_status(
         watching = _watcher_covering(state, episode_slug, cut_id, package_rank)
         attended = watching is not None
         if watching is None:
-            message = (
-                "沒有 render watcher 在看這支——配方存好了，但不會有人做。"
-                "請起一支：scripts/render_watcher.py --render-requests-only "
+            # 警告本身要留——它在說「你按了也不會有事發生」。但「去起一支 watcher」
+            # 的對象不是站在 gate 前面的修修，指令搬進技術細節（2026-09-14 盤點）。
+            message = "配方已存，但現在沒有人在出圖——這支不會自己動起來"
+            error_detail = (
+                "沒有 render watcher 覆蓋這支。桌機端起一支："
+                "scripts/render_watcher.py --render-requests-only "
                 f"--episode-slug {episode_slug} --cut-id {cut_id}"
             )
         else:
-            message = f"配方已儲存，等待桌面 render（watcher 最後回報 {watching}）"
+            message = "配方已存，排隊等出圖"
+            error_detail = f"watcher 最後回報 {watching}"
         error = None
     else:
         raw_status = row.get("status")
@@ -1439,12 +1462,17 @@ async def packaging_render_status(
             # Backward-compatible read of watcher state written before explicit statuses.
             raw_status = "done" if row.get("ok") is True else "failed"
         status = raw_status
+        raw_error = str(row.get("last_error") or "")[:2000] or None
         message = {
             "running": "正在 render 新封面",
             "done": "新封面已完成",
-            "failed": "封面 render 失敗",
+            "failed": _render_failure_sentence(raw_error),
         }[status]
-        error = str(row.get("last_error") or "")[:500] or None
+        # 原文留著，但不再直接印在進度條上——2026-09-14 修修看到的是一整段
+        # `subprocess.TimeoutExpired: Command '[...]'`，那是給工程師追查用的，
+        # 不是給站在 gate 前面的人判斷用的。前端收進可展開的細節裡。
+        error = None
+        error_detail = raw_error
         attended = True
 
     thumbnail_url = None
@@ -1463,6 +1491,9 @@ async def packaging_render_status(
             "attended": attended,
             "message": message,
             "error": error,
+            # 原始 stderr。前端收進 <details>，預設不展開——它是追查用的證物，
+            # 不是裁決用的資訊。
+            "error_detail": error_detail,
             "episode_slug": episode_slug,
             "cut_id": cut_id,
             "package_rank": package_rank,
