@@ -50,6 +50,7 @@ from shared.pricing import calc_cost, get_pricing
 from shared.schemas.approval import ApprovalPayloadV1Adapter, PublishWpPostV1, UpdateWpPostV1
 from shared.schemas.publishing import PublishComplianceGateV1
 from thousand_sunny.auth import check_auth, require_auth_or_key
+from thousand_sunny.build_info import build_stamp
 
 _logger = get_logger("nakama.web.bridge")
 
@@ -1592,6 +1593,21 @@ async def draft_requeue(draft_id: int, nakama_auth: str | None = Cookie(None)):
     except approval_queue.ConcurrentTransitionError as e:
         raise HTTPException(status_code=409, detail=str(e))
     return RedirectResponse("/bridge/drafts", status_code=303)
+
+
+# ---------------------------------------------------------------------------
+# Build identity
+# ---------------------------------------------------------------------------
+
+
+@router.get("/build")
+def build_identity() -> dict:
+    """這個 process 跑的是哪一版，以及它是不是已經落後磁碟上的程式碼。
+
+    chassis header 每頁都會 fetch 它。回傳內容不含祕密——只有 commit、分支、
+    啟動時間。理由與設計見 `thousand_sunny/build_info.py`。
+    """
+    return build_stamp()
 
 
 # ---------------------------------------------------------------------------

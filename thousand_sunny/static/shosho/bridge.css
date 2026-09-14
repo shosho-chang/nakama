@@ -98,6 +98,17 @@ body.sho .chassis-version {
   font-size: 10px;
   color: var(--sho-muted);
   letter-spacing: 0.08em;
+  white-space: nowrap;
+  cursor: help;
+}
+/* 服務落後磁碟上的程式碼——這要被看見，不能是另一個灰字。
+   chassis 底色在兩個主題之間整個翻轉（淺色主題深底、深色主題淺底），所以固定
+   一個琥珀色必然有一邊對比不足；改用 header 自己的前景色拉到滿對比。
+   訊號不靠顏色單獨承載：⚠ 字符與「需重啟」字樣才是主要載體。 */
+body.sho .chassis-version.is-stale {
+  color: var(--sho-bg);
+  font-weight: 700;
+  letter-spacing: 0.04em;
 }
 body.sho .chassis-nav {
   flex: 1;
