@@ -150,6 +150,25 @@ python scripts/podcast_carousel_publish_job.py complete <publish-job.json> `
 
 Never call `complete` before every selected platform has a result. Use `fail` for a job-level executor failure. Respect the lease and fencing token exactly as with correction jobs.
 
+For `meta_api` targets, `scripts/publish_dispatch.py` already performs the whole
+platform action and every state transition above — claim, `start-target`, R2
+staging, the Graph API call, `checkpoint`, R2 cleanup, `complete`. Do not
+re-implement those Graph calls. Dry-run is the default; `--execute` is the only
+thing that writes externally, and it runs every unfinished platform in one pass
+without pausing between them.
+
+```powershell
+# Dry-run first: prints the job id and which platforms are still unfinished.
+python scripts/publish_dispatch.py --carousel-job <publish-job.json>
+
+# Real publish. Reads Meta + R2 settings from the repo-root .env.
+python scripts/publish_dispatch.py --carousel-job <publish-job.json> --execute
+```
+
+Both commands load that dotenv themselves, including from a worktree. If Meta
+settings still come back missing, run `--preflight` — it names the absent
+variables without printing any secret.
+
 ## Artifact contract
 
 Write to `<episode>/ig-carousel/`, next to `packaging/`:

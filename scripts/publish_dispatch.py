@@ -545,5 +545,15 @@ def main(argv: list[str] | None = None) -> int:
     return dispatch_carousel(args)
 
 
+# CLI 進入點才載 .env，不放進 main()。Meta 與 R2 的八個設定值只存在 repo 根的
+# .env，而 publish_dispatch / meta_publish_probe 本來完全不讀它——從 worktree 直接
+# 跑會死在 "missing required Meta settings"，2026-09-14 發蘇予昕輪播時踩到。
+# 放在 main() 裡會反過來弄壞測試：test_publish_dispatch 用 monkeypatch.delenv 拿掉
+# 憑證再斷言失敗，main() 若自己把 .env 讀回來，那些測試就變成「桌機上有沒有 .env」
+# 決定過不過。測試是直接呼叫 main()，不經過這個 guard。
+# load_config() 的 dotenv 尋址會往上走，worktree 裡也找得到根目錄那份。
 if __name__ == "__main__":
+    from shared.config import load_config
+
+    load_config()
     raise SystemExit(main())
