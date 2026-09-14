@@ -109,6 +109,14 @@ _PUBLISH_STATUS_LABELS = {
     "failed": "發布未完成，可重試",
     "superseded": "發布核准已撤回",
 }
+# 認領指令原本把 executor_id 留成 `<agent-id>` 佔位符，複製過去還要自己想一個
+# 換掉——那一步正好抵銷掉一鍵複製。`executor_id` 只是「誰認領的」這筆紀錄
+# （free-form 字串，`shared/schemas/carousel_publish.py:71`），所以沿用
+# `thousand-sunny-autorun` 的命名慣例給固定值，複製完就能直接跑。
+_EXECUTOR_IDS = {
+    "codex": "codex-desktop",
+    "claude_code": "claude-code-desktop",
+}
 _JOB_STATUS_LABELS = {
     "queued": "等待 agent 認領",
     "claimed": "agent 已認領",
@@ -488,7 +496,7 @@ def _publish_job_payload(
         return (
             "python scripts/podcast_carousel_publish_job.py claim "
             f'"{job_file}" --executor {executor} '
-            f"--executor-id <agent-id>{capability_args}"
+            f"--executor-id {_EXECUTOR_IDS[executor]}{capability_args}"
         )
 
     return {

@@ -43,7 +43,9 @@
 .publish-handoff { grid-column:1/-1; display:grid; gap:var(--sho-s-3); }
 .publish-handoff[hidden] { display:none; }
 .publish-handoff label { display:grid; gap:var(--sho-s-2); }
+.publish-handoff__claim { display:grid; gap:var(--sho-s-2); justify-items:start; }
 .publish-handoff code { display:block; overflow-x:auto; padding:var(--sho-s-3); background:var(--sho-text); color:var(--sho-bg); white-space:pre; }
+.publish-handoff__claim code { width:100%; }
 .publish-caption textarea:focus-visible,.publish-platform input:focus-visible,.publish-actions button:focus-visible,.publish-job:focus-visible { outline:none; box-shadow:var(--sho-focus); }
 .publish-job { display:grid; grid-template-columns:minmax(220px,.65fr) minmax(280px,1.35fr); gap:var(--sho-s-5); padding:var(--sho-s-5); border:1px solid var(--sho-line); border-top:2px solid var(--sho-ink); background:var(--sho-bg); }
 .publish-job[hidden] { display:none; }
