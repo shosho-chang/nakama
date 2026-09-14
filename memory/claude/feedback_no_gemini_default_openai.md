@@ -1,8 +1,13 @@
 ---
 name: 停用 Gemini，預設走 OpenAI
-description: 修修裁決全面停用 Gemini model，LLM 呼叫預設改走 OpenAI（經 OpenRouter transport）
+description: 修修裁決全面停用 Gemini（仍有效）；「以 OpenAI 為主」已被 2026-08-19 訂閱-first 政策取代，OpenAI 降為 fallback
 type: feedback
 ---
+
+> **⚠️ 2026-08-19 部分取代**：「以 OpenAI 為主」只活了兩天——實測確認 Agent SDK
+> / CLI 可吃 Claude 訂閱額度後，修修改裁決全面訂閱-first + 最新最強 Claude
+> （見 [[feedback_model_policy_subscription_era]]）。**OpenAI 現在是 fallback**
+> （OpenRouter BYOK 消化既有 credit），不是主力。**Gemini 停用不變，仍然有效。**
 
 修修裁決（2026-08-17）：**全面停用 Gemini**，所有 LLM 呼叫預設以 OpenAI 為主，除非 Google 之後推出新 model 才重新考慮。
 
