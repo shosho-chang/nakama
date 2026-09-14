@@ -54,8 +54,8 @@ def test_override_corrupt_file_returns_empty(tmp_path, monkeypatch):
 
 
 def test_resolution_registry_default_when_nothing_set():
-    # robin/concept_merge 在 registry 宣告為 opus-4-7
-    assert r.get_model("robin", "concept_merge") == "claude-opus-4-7"
+    # 2026-08-19 全面 Opus 5（修修裁決）
+    assert r.get_model("robin", "concept_merge") == "claude-opus-5"
 
 
 def test_resolution_env_beats_registry(monkeypatch):
@@ -78,16 +78,16 @@ def test_resolution_falls_through_to_default_models():
 def test_override_takes_effect_live_via_mtime():
     # 不重啟 process，set_override 後 get_model 立即反映（mtime cache reload）
     before = r.get_model("robin", "kb_search")
-    assert before == "claude-haiku-4-5-20251001"
-    r.set_override("robin", "kb_search", "claude-opus-4-7")
-    assert r.get_model("robin", "kb_search") == "claude-opus-4-7"
+    assert before == "claude-opus-5"
+    r.set_override("robin", "kb_search", "claude-sonnet-5")
+    assert r.get_model("robin", "kb_search") == "claude-sonnet-5"
 
 
 # ── registry + list_model_sites ───────────────────────────────────────────────
 
 
 def test_registry_default_lookup():
-    assert r.registry_default("robin", "daily_review") == "claude-sonnet-4-5-20250929"
+    assert r.registry_default("robin", "daily_review") == "claude-opus-5"
     assert r.registry_default("robin", "no_such_task") is None
     assert r.registry_default(None, "default") is None
 
@@ -99,15 +99,15 @@ def test_list_model_sites_covers_registry_and_marks_source(monkeypatch):
     # default source 標 registry
     cm = next(x for x in rows if x["agent"] == "robin" and x["task"] == "concept_merge")
     assert cm["source"] == "registry"
-    assert cm["model"] == "claude-opus-4-7"
+    assert cm["model"] == "claude-opus-5"
     assert cm["provider"] == "anthropic"
-    # override 後 source 改 override
-    r.set_override("robin", "concept_merge", "gemini-2.5-pro")
+    # override 後 source 改 override（樣本用現役 grok —— gemini 已依停用裁決下架）
+    r.set_override("robin", "concept_merge", "grok-4-fast")
     cm2 = next(
         x for x in r.list_model_sites() if x["agent"] == "robin" and x["task"] == "concept_merge"
     )
     assert cm2["source"] == "override"
-    assert cm2["provider"] == "google"
+    assert cm2["provider"] == "xai"
 
 
 def test_list_model_sites_includes_manual_override_outside_registry():

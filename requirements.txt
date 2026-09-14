@@ -82,4 +82,7 @@ rembg>=2.0               # birefnet-general 模型（首用時自下載 ~970MB �
 onnxruntime>=1.17        # rembg 推論後端（CPU）
 
 # Claude Agent SDK — Nami migration S1: in-process MCP tool server (#1112)
-claude-agent-sdk>=0.2.128,<0.3
+# 釘死 exact：0.2.140 改了 ToolAnnotations 屬性名（CI 2026-08-19 踩到），且
+# bundled CLI 的訂閱認證行為都是對 0.2.128 實測的（VPS 現役版本）。
+# 升級走顯式 PR：先跑 scripts/spikes/merger_sdk_probe.py 探針再動。
+claude-agent-sdk==0.2.128

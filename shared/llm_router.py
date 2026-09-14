@@ -27,18 +27,18 @@ from shared.log import get_logger
 logger = get_logger("nakama.llm_router")
 
 DEFAULT_MODELS: dict[str, str] = {
-    # 2026-06-16: was claude-sonnet-4-20250514 (Sonnet 4.0) — Anthropic 已退役，
-    # API 回 404 not_found，Franky news curate 先踩到（ADR-026 §237 早標的 drift）。
-    # 對齊 feedback_cost_management「daily Sonnet 4.6」。
-    "default": "claude-sonnet-4-6",
+    # 2026-08-19（修修裁決）：訂閱-first 時代 model 政策 —— 內容任務一律最新
+    # 最強 Claude（現為 Opus 5），Anthropic 出新 model 直接採用、不過 eval
+    # （個人使用，調整成本低）。訂閱下無 per-token 成本差，「省錢用 Sonnet」
+    # 的 feedback_cost_management 邏輯不再適用於 agent 呼叫。
+    "default": "claude-opus-5",
+    # 例外：tool_use 是 gateway 路由分類器（每則 Slack 訊息都跑）——純管線
+    # 非內容，Haiku 的低延遲比模型能力重要。要一致化設 MODEL_<AGENT>_TOOL_USE。
     "tool_use": "claude-haiku-4-5",
-    # Translation is high-volume plain text — Sonnet 4.6 is the cost/quality
-    # sweet spot. Caller can still override via MODEL_<AGENT>_TRANSLATE.
-    "translate": "claude-sonnet-4-6",
-    # ADR-033 D4 + D8: thumbnail pipeline uses Sonnet 4.6 with vision for
-    # reference-library style transfer (brainstorm) and frame selection (funnel).
-    "thumbnail_brainstorm": "claude-sonnet-4-6",
-    "thumbnail_funnel": "claude-sonnet-4-6",
+    "translate": "claude-opus-5",
+    # ADR-033 D4 + D8: thumbnail pipeline 用 vision 做 style transfer 與選幀。
+    "thumbnail_brainstorm": "claude-opus-5",
+    "thumbnail_funnel": "claude-opus-5",
 }
 
 
@@ -53,18 +53,20 @@ class ModelSite:
     purpose: str  # 人讀用途（UI 顯示）
 
 
+# 2026-08-19（修修裁決）：全面 Opus 5 —— 訂閱額度下模型選擇只剩品質/延遲考量，
+# 內容任務一律最強。新 Anthropic model 出來直接換這裡，不過 eval。
 MODEL_REGISTRY: tuple[ModelSite, ...] = (
-    ModelSite("robin", "ingest_summary", "claude-sonnet-4-6", "Ingest：Source 摘要"),
-    ModelSite("robin", "concept_merge", "claude-opus-4-7", "Ingest：Concept diff-merge"),
-    ModelSite("robin", "annotation_merge", "claude-opus-4-7", "註解 merge 進 Concept"),
-    ModelSite("robin", "daily_review", "claude-sonnet-4-5-20250929", "每日回顧 P-1/P-2/清掃"),
-    ModelSite("robin", "kb_search", "claude-haiku-4-5-20251001", "KB 檢索 relevance reason"),
-    ModelSite("robin", "project_angle_scan", "claude-haiku-4-5-20251001", "專案 KB-hit 角度掃描"),
-    ModelSite("robin", "project_mechanism", "claude-opus-4-7", "專案機制草稿生成"),
-    ModelSite("nami", "default", "claude-sonnet-4-6", "Nami 對話 / 秘書任務"),
-    ModelSite("zoro", "default", "claude-sonnet-4-6", "Scout 趨勢 / 關鍵字"),
-    ModelSite("brook", "default", "claude-sonnet-4-6", "Composer 撰稿輔助"),
-    ModelSite("sanji", "default", "claude-sonnet-4-6", "社群監控"),
+    ModelSite("robin", "ingest_summary", "claude-opus-5", "Ingest：Source 摘要"),
+    ModelSite("robin", "concept_merge", "claude-opus-5", "Ingest：Concept diff-merge"),
+    ModelSite("robin", "annotation_merge", "claude-opus-5", "註解 merge 進 Concept"),
+    ModelSite("robin", "daily_review", "claude-opus-5", "每日回顧 P-1/P-2/清掃"),
+    ModelSite("robin", "kb_search", "claude-opus-5", "KB 檢索 relevance reason"),
+    ModelSite("robin", "project_angle_scan", "claude-opus-5", "專案 KB-hit 角度掃描"),
+    ModelSite("robin", "project_mechanism", "claude-opus-5", "專案機制草稿生成"),
+    ModelSite("nami", "default", "claude-opus-5", "Nami 對話 / 秘書任務"),
+    ModelSite("zoro", "default", "claude-opus-5", "Scout 趨勢 / 關鍵字"),
+    ModelSite("brook", "default", "claude-opus-5", "Composer 撰稿輔助"),
+    ModelSite("sanji", "default", "claude-opus-5", "社群監控"),
 )
 
 _REGISTRY_BY_KEY: dict[tuple[str, str], ModelSite] = {(s.agent, s.task): s for s in MODEL_REGISTRY}
@@ -72,21 +74,19 @@ _REGISTRY_BY_KEY: dict[tuple[str, str], ModelSite] = {(s.agent, s.task): s for s
 
 # N531 — Bridge /bridge/models 下拉的候選 model 清單。新增可選 model 在此加一行；
 # provider 由前綴自動推（見 _PROVIDER_PREFIXES）。只列已 wire 的 provider（見 shared/llm.py）。
+# 2026-08-19 清單瘦身（修修）：只留現役 model。退役/過期的 dated pin 與
+# Gemini（2026-08-17 停用裁決）全部下架 —— 面板下拉不再出現過期選項。
+# （下架只影響 UI 候選；既有 env/override 若還指著舊 ID 仍可解析。）
 KNOWN_MODELS: tuple[str, ...] = (
-    "claude-opus-4-8",
-    "claude-opus-4-7",
-    "claude-sonnet-4-6",
-    "claude-sonnet-4-5-20250929",
+    "claude-opus-5",
+    "claude-sonnet-5",
     "claude-haiku-4-5",
-    "claude-haiku-4-5-20251001",
-    "gemini-2.5-pro",
-    "gemini-2.5-flash",
     "grok-4-fast",
     # OpenAI — 只在 LLM_TRANSPORT=openrouter 時可用（facade 無原生 OpenAI SDK，走
     # OpenRouter BYOK）；native 時選到會 fail loud。slug 見 shared/openrouter_models.py。
+    "gpt-5.6-terra",
     "gpt-5",
     "gpt-5-mini",
-    "gpt-5.6-terra",
 )
 
 
@@ -182,13 +182,15 @@ _VALID_AUTH_POLICIES: frozenset[str] = frozenset(
 )
 
 DEFAULT_AUTH: dict[str, str] = {
-    # Default api — operators opt in to subscription via `AUTH_<AGENT>` env or
-    # `NAKAMA_REQUIRE_MAX_PLAN=1` (Codex audit §4: "default should not silently
-    # spend money when operator thought they were using Max", and the
-    # contrapositive — default should not silently consume Max Plan quota
-    # when operator didn't opt in).
-    "default": "api",
+    # 2026-08-19 flip（修修 2026-08-18 裁決「都改成預設使用訂閱額度」，ADR-026
+    # §Amendment 2026-08-19）：預設 subscription_preferred —— 有 OAuth token +
+    # CLI 就走訂閱，缺任一條件軟降 api 並記 fallback_reason（可稽核，非 silent）。
+    # 舊預設 "api" 的理由（Codex audit §4「不該默默花錢」）在 2026-08-17 額度
+    # 事故後反轉：現在「默默走 API 計費」才是要防的方向。要強制 API 計費的
+    # caller 用 AUTH_<AGENT>=api 顯式 opt-out。
+    "default": "subscription_preferred",
     # tool_use forced api: CLI subprocess can't carry raw tool-use JSON.
+    # （tool-use 要吃訂閱走 Agent SDK 路徑 —— 見 annotation_merger S2。）
     "tool_use": "api",
 }
 
