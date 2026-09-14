@@ -310,7 +310,12 @@ def test_board_renders_packages_runners_and_flags(client):
     assert "pkg-punch-L1-1.png" in r.text
     assert "角度重複，缺乏差異化" in r.text  # rank4 panel_note
     assert "宣稱療效需 hedge" in r.text  # brand flag
-    assert "短片標題" in r.text  # short cut 可改字欄
+
+    # 短片的改字欄在它自己的 tab 上（2026-09-14 起每一集都有 tab）。改標題這件事
+    # 沒有消失，只是換了位置——這條測試就是用來守住「換位置 ≠ 拿掉」。
+    short_board = client.get("/bridge/packaging/20260723-xieboran?cut=punch-S1")
+    assert short_board.status_code == 200
+    assert "短片標題" in short_board.text
 
 
 def test_board_conflict_409(client, vault):
@@ -1495,11 +1500,18 @@ def test_title_edit_records_original_when_key_exists_as_null(client, vault):
 
 
 def test_focused_board_only_shows_selected_cut(router_client):
+    """面板只渲染被選中的那支；tab 列仍然列出全部（否則就沒有導覽了）。
+
+    2026-09-14 短片也有了自己的 tab，所以「punch-S1 完全不出現」不再是正確的
+    斷言——它會以連結形式出現在 tab 列上。真正要守的是**面板**沒有渲染它。
+    """
     response = router_client.get("/bridge/packaging/20260723-xieboran?cut=punch-L1")
 
     assert response.status_code == 200
-    assert "punch-L1" in response.text
-    assert "punch-S1" not in response.text
+    assert 'aria-labelledby="cut-punch-L1"' in response.text
+    assert 'aria-labelledby="cut-punch-S1"' not in response.text
+    # 短片仍然點得到
+    assert "?cut=punch-S1" in response.text
 
 
 def _write_parallel_packaging_manifest(vault: Path, raw: str | None = None) -> Path:
@@ -1544,13 +1556,15 @@ def test_manifest_enables_full_and_three_long_tabs_with_pending_panels(router_cl
 
     assert board.status_code == 200
     assert 'role="tablist"' in board.text
-    assert board.text.count('class="pkg-tab" role="tab"') == 4
+    # Full + Long 1-3 + 這個 fixture 的那支短片 = 5。短片在 2026-09-14 之前完全
+    # 沒有 tab，而 tab 一開頁面就只渲染選中的那支——等於短片整個點不到。
+    assert board.text.count('class="pkg-tab" role="tab"') == 5
     assert ">Full<" in board.text
     assert ">Long 1<" in board.text
     assert ">Long 2<" in board.text
     assert ">Long 3<" in board.text
     assert 'aria-selected="true"' in board.text
-    assert "punch-S1" not in board.text
+    assert "?cut=punch-S1" in board.text
 
     pending = router_client.get("/bridge/packaging/20260723-xieboran?cut=value-L01")
     assert pending.status_code == 200
@@ -2571,3 +2585,42 @@ def test_compose_defaults_leave_text_position_automatic(client, vault_with_cutou
     assert req["text_position_manual"] is False
     assert req["text_center_pct"] == 50.0
     assert req["text_top_pct"] == 44.0
+
+
+def test_tabs_appear_without_a_resume_ledger(router_client, vault):
+    """沒有 manifest.json 也要有 tab——那是 2026-09-14 兩種版面的唯一成因。
+
+    帳本寫在工作目錄，沒有任何程式碼把它鏡射到 vault，而這一頁是去 vault 讀它。
+    七集裡只有一集湊巧有，於是同一個 packaging 頁長出兩種版面。修修看到後問
+    「為什麼會有差別」，並指定要 tab 那一版。
+
+    tab 需要的東西 packages.json 全都有，而它每一集都在——所以退回它，而不是去
+    補那六個帳本檔（補了下一集還是會缺）。
+    """
+    ep = vault / "Attachments" / "packaging" / "20260723-xieboran"
+    assert not (ep / "manifest.json").is_file()
+
+    board = router_client.get("/bridge/packaging/20260723-xieboran")
+
+    assert board.status_code == 200
+    assert 'role="tablist"' in board.text
+    assert ">Long 1<" in board.text
+
+
+def test_ledger_free_tabs_are_ready_not_guessed(router_client, vault):
+    """退回 packages.json 時每個 tab 都是 ready——那是既成事實，不是猜的。
+
+    原本的 docstring 寫 "without inventing ready assets"；這條守住那句話在
+    fallback 之後仍然成立：只有真的在 packages.json 裡的 cut 才會長出 tab。
+    """
+    assert not (
+        vault / "Attachments" / "packaging" / "20260723-xieboran" / "manifest.json"
+    ).is_file()
+
+    board = router_client.get("/bridge/packaging/20260723-xieboran")
+
+    assert board.status_code == 200
+    # 只看 tab 上的狀態標記；頁面 JS 裡有一份狀態字典也含這些字眼。
+    assert 'pkg-tab-status">QUEUED<' not in board.text
+    assert 'pkg-tab-status">RUNNING<' not in board.text
+    assert 'pkg-tab-status">READY<' in board.text

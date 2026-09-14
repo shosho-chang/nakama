@@ -287,20 +287,37 @@ def _load_approvals(ep_dir: Path, episode: str) -> ApprovalFileV1:
 
 
 def _load_cut_tabs(ep_dir: Path, pkg: PackagesFileV1) -> list[dict]:
-    """Build Full/Long tabs from the resume ledger without inventing ready assets."""
+    """Build Full/Long tabs from the resume ledger, falling back to packages.json.
+
+    帳本（`manifest.json`）的正職是 packaging 段的 resume 紀錄（ADR-054 D14），
+    寫在工作目錄的 packaging 資料夾；**沒有任何程式碼把它鏡射到 vault**，而這一頁
+    是去 vault 讀它。結果是 2026-09-14 七集裡只有 20260805-linzhichen 有這個檔——
+    那份是走了別條路留下的孤例，它自己在 G: 底下連 packaging 資料夾都沒有。其餘
+    六集因此一個 tab 都長不出來，整頁變成一長串。
+
+    修修看到兩種版面問「為什麼不一樣」，並指定要 tab 那一版。補那六個檔是錯的解
+    ——等於把版面綁在一個為別的目的存在、又沒有人負責同步的檔案上，下一集照樣會
+    缺。tab 需要的東西（cut_id、long/short、順序）packages.json 全都有，而它每一
+    集都在。
+
+    帳本在就照舊用它（它能顯示還沒進 packages.json 的 cut 是 queued/running），
+    不在就退回 packages.json。退回時每個 tab 都必然是 ready——因為它就在
+    packages.json 裡，所以原本那句「without inventing ready assets」仍然成立：
+    沒有帳本時不是在猜狀態，是在陳述既成事實。
+    """
     manifest_path = ep_dir / "manifest.json"
-    if not manifest_path.is_file():
-        return []
-    try:
-        manifest = load_manifest(ep_dir)
-    except SystemExit as exc:
-        raise HTTPException(status_code=422, detail=f"manifest.json 驗證失敗：{exc}") from exc
+    manifest_cuts: dict = {}
+    if manifest_path.is_file():
+        try:
+            manifest = load_manifest(ep_dir)
+        except SystemExit as exc:
+            raise HTTPException(status_code=422, detail=f"manifest.json 驗證失敗：{exc}") from exc
+        manifest_cuts = manifest["cuts"]
 
     package_by_id = {cut.cut_id: cut for cut in pkg.cuts}
     ready_by_id = {cut_id: cut for cut_id, cut in package_by_id.items() if cut.format == "long"}
     rows: list[dict] = []
     used_ranks: set[int] = set()
-    manifest_cuts = manifest["cuts"]
     for order, (cut_id, raw) in enumerate(manifest_cuts.items()):
         if not cut_id.strip():
             raise HTTPException(status_code=422, detail="manifest.json cut_id 不可為空")
@@ -387,16 +404,46 @@ def _load_cut_tabs(ep_dir: Path, pkg: PackagesFileV1) -> list[dict]:
         while next_rank in used_ranks:
             next_rank += 1
         if next_rank > 3:
-            raise HTTPException(status_code=422, detail="manifest.json 超過三支 Long Highlight")
+            source = "manifest.json" if manifest_path.is_file() else "packages.json"
+            raise HTTPException(status_code=422, detail=f"{source} 超過三支 Long Highlight")
         row["rank"] = next_rank
         used_ranks.add(next_rank)
     for row in rows:
         if not row["is_full"]:
             row["label"] = f"Long {row['rank']}"
-    return sorted(
-        rows,
-        key=lambda item: (0, 0) if item["is_full"] else (1, item["rank"]),
-    )
+
+    # 短片也要有 tab。帳本那條路刻意跳過 short（它只管長片的 packaging 流程），
+    # 而 tab 一開，頁面就只渲染被選中的那支——短片沒有 tab 就等於整個消失，
+    # 修修再也點不到它的改標題欄。2026-09-14 加 packages.json fallback 時被
+    # test_board_renders_packages_runners_and_flags 抓到。
+    for cut in pkg.cuts:
+        if cut.format != "short":
+            continue
+        rows.append(
+            {
+                "cut_id": cut.cut_id,
+                "rank": None,
+                "label": f"Short · {cut.cut_id}",
+                "title": cut.cut_id,
+                "status": "ready",
+                "video_status": None,
+                "is_full": False,
+                "is_short": True,
+                "order": len(rows),
+            }
+        )
+    for row in rows:
+        row.setdefault("is_short", False)
+
+    # full → long（依 rank）→ short（依 packages.json 順序）
+    def _order(item: dict) -> tuple[int, int]:
+        if item["is_full"]:
+            return (0, 0)
+        if item["is_short"]:
+            return (2, item["order"])
+        return (1, item["rank"])
+
+    return sorted(rows, key=_order)
 
 
 def _scan_episodes() -> list[dict]:
