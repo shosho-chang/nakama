@@ -16,7 +16,7 @@
   │ content via {% call %} block:                                      │
   │                                                                    │
   │   {% from "_chassis_nav.html" import chassis_nav %}                │
-  │   {% call chassis_nav(nav_active='drafts', show_version=true) %}   │
+  │   {% call chassis_nav(nav_active='drafts') %}                      │
   │     <span>CPT <span class="val">SHOSHO</span></span>               │
   │   {% endcall %}                                                    │
   └────────────────────────────────────────────────────────────────────┘
@@ -31,7 +31,7 @@
   See CONTEXT-MAP "chassis-nav" for design principles (dual-axis nav;
   frequency × semantic similarity; task-first for cross-agent workflows).
 #}
-{% macro chassis_nav(nav_active='', show_version=false) -%}
+{% macro chassis_nav(nav_active='') -%}
 {#-- normalize legacy slugs --#}
 {% if nav_active == 'health' %}{% set nav_active = 'franky' %}{% endif %}
 {% if nav_active == 'repurpose' %}{% set nav_active = 'brook' %}{% endif %}
@@ -51,9 +51,11 @@
       </svg>
     </a>
     <a href="/bridge" class="chassis-wordmark{% if nav_active == 'bridge' %} active{% endif %}"{% if nav_active == 'bridge' %} aria-current="page"{% endif %}>NAKAMA</a>
-    {%- if show_version %}
-    <div class="chassis-version">v0.4</div>
-    {%- endif %}
+    {#-- 這顆晶片每一頁都在，不再由 show_version 決定：2026-09-14 之前它只出現在
+         6 個頁面，而真正需要它的是 packaging / publish 那些「行為不對但畫面正常」
+         的地方。內容由 chassis_nav.js 去 /bridge/build 取，所以 50 個 template
+         都不用改、也不用把 build 資訊塞進 25 個 Jinja env 的 context。 --#}
+    <div class="chassis-version" id="chassis-build" data-build-slot>v0.4</div>
   </div>
   <nav class="chassis-nav" aria-label="Bridge sections">
 
