@@ -35,6 +35,10 @@ from ._resolve import (
     TimelineSnapshot,
 )
 from ._resolve_davinci import ResolveTimelineState
+from ._timeline_apply import (
+    BRAND_BADGE_MEDIA_SUFFIX,
+    brand_badge_root,
+)
 
 
 class MaterializationError(ValueError):
@@ -176,7 +180,7 @@ class MaterializationCoordinator:
                 "command, run, plan, and context identities differ",
                 reason_code="authority_chain_mismatch",
             )
-        _validate_final_assets(plan, self._assets)
+        _validate_final_assets(plan, self._assets, episode_root=self._episode_root)
         subtitle_path, preview_path = _materialization_paths(
             self._episode_root,
             plan,
@@ -770,7 +774,42 @@ def _verify_srt_bytes(
         )
 
 
-def _validate_final_assets(plan: MaterializationPlan, assets: AssetResolver) -> None:
+def _validate_brand_badge_assets(plan: MaterializationPlan, *, episode_root: Path) -> None:
+    """品牌 badge 的素材在不在這一集的資料夾裡。
+
+    它有自己的 reason_code，因為它回答的是**另一個**問題：component 的
+    `final_asset_unavailable` 說「DP 要重新取得那支素材」，而 badge 沒有 DP 也沒有
+    取得流程——缺的是每集資料夾裡那支跨集 byte 相同的品牌資產，要補的人是操作的人。
+    兩件事共用一個 code，錯誤訊息就指不到該做事的那一邊。
+
+    這裡只驗「在不在、是不是一個檔」。片長對不對要開 ffprobe，那道門在
+    `_timeline_apply.BrandBadgeAssetCatalog`——它有 probe 接縫，而且在動 Resolve
+    之前就會跑（`preflight_plan`）。
+    """
+
+    root = brand_badge_root(episode_root)
+    for overlay in plan.brand_badge_overlays:
+        path = root / f"{overlay.slug}{BRAND_BADGE_MEDIA_SUFFIX}"
+        try:
+            if not path.is_file():
+                raise MaterializationError(
+                    f"brand badge asset is unavailable in this episode: {path}",
+                    reason_code="brand_badge_asset_unavailable",
+                )
+        except OSError as error:
+            raise MaterializationError(
+                f"brand badge asset is unreadable: {path}",
+                reason_code="brand_badge_asset_unavailable",
+            ) from error
+
+
+def _validate_final_assets(
+    plan: MaterializationPlan,
+    assets: AssetResolver,
+    *,
+    episode_root: Path,
+) -> None:
+    _validate_brand_badge_assets(plan, episode_root=episode_root)
     verified: dict[str, ResolvedAsset] = {}
     for component in plan.components:
         reference = component.asset_ref

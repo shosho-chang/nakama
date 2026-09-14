@@ -21,6 +21,7 @@ from ._resolve import (
     TimelineWorkspace,
 )
 from ._timeline_apply import (
+    BrandBadgeAssetCatalog,
     PreRenderedAssetCatalog,
     TimelinePlacement,
     project_timeline_application,
@@ -242,11 +243,26 @@ class DaVinciResolveTimelineAdapter:
         probe: MediaProbe,
         binding: ResolveProjectBinding,
         assets: PreRenderedAssetCatalog,
+        brand_badge_root: Path | None = None,
     ) -> None:
         self._facade = facade
         self._probe = probe
         self._binding = binding
         self._assets = assets
+        # badge 素材是每集資料夾裡的品牌資產，不在 Active Store，所以不走
+        # `assets` 那本 content-addressed 目錄。片長用同一支 `probe` 驗——定長
+        # 預合成對不上宣告秒數，就是資料夾裡那支不是它宣稱的那一支。
+        #
+        # 沒給目錄不是「這一支沒有 badge」：帶著 overlay 的 plan 會在
+        # `project_timeline_application` 當場 fail loud，不會靜默少鋪一軌。
+        self._brand_badge_assets = (
+            None
+            if brand_badge_root is None
+            else BrandBadgeAssetCatalog(
+                brand_badge_root,
+                duration_probe=lambda path: self._probe.inspect(path).duration_sec,
+            )
+        )
 
     def snapshot(self, timeline: TimelineIdentity) -> TimelineSnapshot:
         self._assert_project()
@@ -296,7 +312,11 @@ class DaVinciResolveTimelineAdapter:
         self._cut_by_id(plan.cut_id)
         if plan.episode_id != self._binding.episode_id:
             raise ResolveTransactionError("typed plan does not match Resolve episode")
-        project_timeline_application(plan, self._assets)
+        project_timeline_application(
+            plan,
+            self._assets,
+            brand_badge_assets=self._brand_badge_assets,
+        )
 
     def duplicate(
         self,
@@ -345,7 +365,11 @@ class DaVinciResolveTimelineAdapter:
             raise ResolveTransactionError("typed plan does not match Resolve episode and cut")
         if work.uid == cut.canonical.uid:
             raise ResolveTransactionError("typed plan cannot mutate canonical Timeline in place")
-        application = project_timeline_application(plan, self._assets)
+        application = project_timeline_application(
+            plan,
+            self._assets,
+            brand_badge_assets=self._brand_badge_assets,
+        )
         self._exact_timeline(work)
         backups = [
             identity
