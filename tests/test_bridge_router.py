@@ -25,6 +25,10 @@ def client(monkeypatch, tmp_path):
     monkeypatch.delenv("WEB_PASSWORD", raising=False)
     monkeypatch.delenv("WEB_SECRET", raising=False)
     monkeypatch.setenv("DISABLE_ROBIN", "1")
+    # `_default_user_id()` 先讀 SLACK_USER_ID_SHOSHO、再讀 NAKAMA_DEFAULT_USER_ID。
+    # 桌機的 .env 有前者，於是 fixture 設的後者被蓋掉，這條測試在本機必紅、在 CI
+    # （沒有 .env）必綠——最難查的那種 flake，而且會訓練人忽略本機紅燈。
+    monkeypatch.delenv("SLACK_USER_ID_SHOSHO", raising=False)
     monkeypatch.setenv("NAKAMA_DEFAULT_USER_ID", "shosho")
     # Phase 9 doc_index uses NAKAMA_DOC_INDEX_DB_PATH for test isolation
     monkeypatch.setenv("NAKAMA_DOC_INDEX_DB_PATH", str(tmp_path / "doc_index.db"))

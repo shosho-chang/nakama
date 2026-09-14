@@ -109,7 +109,7 @@ def layout_doc(tmp_path: Path) -> Path:
 def vault_root(tmp_path: Path) -> Path:
     v = tmp_path / "vault"
     v.mkdir()
-    (v / "CLAUDE.md").write_text("# vault claude")
+    (v / "CLAUDE.md").write_text("# vault claude", encoding="utf-8")
     (v / "Journals").mkdir()
     (v / "KB").mkdir()
     (v / "Projects").mkdir()
@@ -277,7 +277,7 @@ def test_code_path_diff_flags_notable_absences(tmp_path: Path, layout_doc: Path)
     repo = tmp_path / "repo"
     (repo / "agents").mkdir(parents=True)
     bad_py = repo / "agents" / "x.py"
-    bad_py.write_text('PATH = "Files/old-image.png"\n')
+    bad_py.write_text('PATH = "Files/old-image.png"\n', encoding="utf-8")
     findings = audit_code_path_diff(repo, layout_doc)
     errors = [f for f in findings if f.severity == "error"]
     assert any("Files/old-image.png" in f.path for f in errors)
@@ -287,7 +287,7 @@ def test_code_path_diff_flags_undeclared_warns(tmp_path: Path, layout_doc: Path)
     repo = tmp_path / "repo"
     (repo / "shared").mkdir(parents=True)
     (repo / "shared" / "y.py").write_text(
-        'WEIRD = "KB/Wiki/Comparisons/foo.md"\nOK = "KB/Wiki/Sources/foo.md"\n'
+        'WEIRD = "KB/Wiki/Comparisons/foo.md"\nOK = "KB/Wiki/Sources/foo.md"\n', encoding="utf-8"
     )
     findings = audit_code_path_diff(repo, layout_doc)
     warn_paths = {f.path for f in findings if f.severity == "warn"}
@@ -299,7 +299,7 @@ def test_code_path_diff_flags_undeclared_warns(tmp_path: Path, layout_doc: Path)
 def test_code_path_diff_skips_tests_dir(tmp_path: Path, layout_doc: Path):
     repo = tmp_path / "repo"
     (repo / "agents" / "tests").mkdir(parents=True)
-    (repo / "agents" / "tests" / "t.py").write_text('SYN = "Files/test.png"\n')
+    (repo / "agents" / "tests" / "t.py").write_text('SYN = "Files/test.png"\n', encoding="utf-8")
     findings = audit_code_path_diff(repo, layout_doc)
     assert not findings  # tests/ excluded
 
@@ -338,7 +338,8 @@ def test_marker_violations_balanced(vault_root: Path, layout_doc: Path):
     (vault_root / "Projects").mkdir(exist_ok=True)
     p = vault_root / "Projects" / "good.md"
     p.write_text(
-        "## Keywords\n%%agent-zoro-keywords-start%%\ncontent\n%%agent-zoro-keywords-end%%\n"
+        "## Keywords\n%%agent-zoro-keywords-start%%\ncontent\n%%agent-zoro-keywords-end%%\n",
+        encoding="utf-8",
     )
     findings = audit_marker_violations(vault_root, layout_doc)
     assert findings == []
@@ -347,7 +348,7 @@ def test_marker_violations_balanced(vault_root: Path, layout_doc: Path):
 def test_marker_violations_imbalanced(vault_root: Path, layout_doc: Path):
     (vault_root / "Projects").mkdir(exist_ok=True)
     p = vault_root / "Projects" / "bad.md"
-    p.write_text("%%agent-zoro-keywords-start%%\ncontent without end\n")
+    p.write_text("%%agent-zoro-keywords-start%%\ncontent without end\n", encoding="utf-8")
     findings = audit_marker_violations(vault_root, layout_doc)
     assert len(findings) == 1
     assert findings[0].severity == "error"
@@ -357,7 +358,10 @@ def test_marker_violations_imbalanced(vault_root: Path, layout_doc: Path):
 def test_marker_violations_unregistered_section(vault_root: Path, layout_doc: Path):
     (vault_root / "Projects").mkdir(exist_ok=True)
     p = vault_root / "Projects" / "exotic.md"
-    p.write_text("%%agent-foobar-experimental-start%%\nx\n%%agent-foobar-experimental-end%%\n")
+    p.write_text(
+        "%%agent-foobar-experimental-start%%\nx\n%%agent-foobar-experimental-end%%\n",
+        encoding="utf-8",
+    )
     findings = audit_marker_violations(vault_root, layout_doc)
     warns = [f for f in findings if f.severity == "warn"]
     assert any("not registered in §4 Pattern A" in f.detail for f in warns)
@@ -377,7 +381,8 @@ def test_marker_violations_inside_human_only(vault_root: Path, layout_doc: Path)
                 "## Other",
                 "",
             ]
-        )
+        ),
+        encoding="utf-8",
     )
     findings = audit_marker_violations(vault_root, layout_doc)
     errors = [f for f in findings if f.severity == "error"]
@@ -428,7 +433,8 @@ def test_drift_status_regression_signal(vault_root: Path, tmp_path: Path):
 ok
 
 ## 8. End
-"""
+""",
+        encoding="utf-8",
     )
     (vault_root / "Files").mkdir()  # regression — Files/ came back
     repo = tmp_path / "repo"
