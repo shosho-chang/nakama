@@ -50,6 +50,10 @@ DISTINCT_CODES = {
     #: 跟「reference 綁錯」（`final_asset_identity_mismatch`）是兩件事。
     "asset_digest_mismatch",
     "authority_chain_mismatch",
+    #: 這一集資料夾裡缺品牌 badge 的素材。跟 `final_asset_unavailable` 是兩件事：
+    #: 那一條說「DP 要重新取得那支 B-roll」，badge 沒有 DP 也沒有取得流程，缺的是
+    #: `<episode>/assets/broll/<slug>.mov` 那支跨集 byte 相同的品牌資產。
+    "brand_badge_asset_unavailable",
     "final_asset_identity_mismatch",
     "final_asset_unavailable",
     "materialization_journal_conflict",

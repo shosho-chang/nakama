@@ -705,3 +705,39 @@ python scripts/publish_prep.py "<episode>" [--cut <cut-id>]
 
 之後：packaging → `publish_description.py` → `/bridge/publish/<ep>/<cut>` 核准並上傳
 → Campaign Anchor 排程 → `publish_reconcile.py` 確認公開。全圖見 ADR-055。
+
+### 這一集收工時：把最終 timeline 改成短名（修修 2026-09-14）
+
+> 「在 Resolve 開啟最終版本的 timeline 就好，其他關掉，並且 rename 成『長2-final』
+> 這種簡單的名字。」
+
+一集跑完，專案裡會有二十幾條 timeline：原始單機、三機、各版（緊）、以及每物化一次
+就多一條的 `__fcp_backup__…`。**最終那幾條要改成 `長1-final`／`長2-final`／`短1-final`
+這種一眼認得出來的名字**，收工時做，不是製作中途做。
+
+**改名不是只改 Resolve 裡的字。** 有兩個地方靠名字找片，漏掉任何一個，`publish_prep`
+會在 render 前死在「timeline『…』不存在」：
+
+| 要一起改的 | 為什麼 |
+|---|---|
+| `<episode>/highlights/publish-timelines.v1.json` | `publish_prep._pick_timeline` 只要這個檔在就**只讀它**，而且缺項是硬錯誤——所以**每一支 cut 都要有一筆**，長短片都算。沒有這個檔時它會用 `timeline_label()` 的舊慣例（`{長\|短}{rank} - {title}（緊·導播）`）去猜，那條路改名後必然找不到 |
+| `<runtime-root>/config/resolve-<ep>.json` | ADR-066 綁定檔存的是 `timeline_name`，`sync_resolve_config` 拿它去查 uid。名字對不上就查不到，下一次物化報 `canonical_binding_unknown` |
+
+對應表每一筆要 `timeline`／`plan_id`／`release_cut_id`／`expected_duration_sec`。
+長度用**已經驗收過的那份成品**：長片取 plan record 的 `preview.duration_sec`，短片沒有
+record 就用 timeline 自己量的（容忍度 2 秒）。`plan_id` 沒有就明寫 `null`——欄位不見與
+「刻意沒有」必須分得出來。
+
+改完跑這兩個確認，不要靠肉眼：
+
+```bash
+python scripts/sync_resolve_config.py --config <runtime-root>/config/resolve-<ep>.json --check
+```
+
+以及對每一支 cut 跑一次 `resolve_target(load_timeline_map(episode_dir), cut_id)`，
+確認 timeline 名字是新的、長度對得上。
+
+**「其他關掉」做不到，不要假裝做得到。** Resolve 的 scripting API（Project／Timeline／
+MediaPool 三個物件）**沒有任何 close timeline 的方法**——tab 只能人在 UI 上關。
+API 能做的是 `SetCurrentTimeline` 把畫面停在最終那條，以及 `MediaPool.AddSubFolder`
+＋`MoveClips` 把其餘的收進一個 bin。要做後者請先問修修，那會動到他專案的媒體池結構。

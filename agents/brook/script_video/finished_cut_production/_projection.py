@@ -29,6 +29,7 @@ from dataclasses import dataclass
 from typing import Literal, get_args
 
 from ._assets import AssetKind
+from ._brand_badge import BRAND_BADGE_TRACK_INDEX
 
 #: 型別層的 lane 白名單。**這是型別不是資料**，所以無法從 `VOCABULARY` 推導；
 #: `test_finished_cut_layout_versions.py` 鎖住它與 `VOCABULARY` 一致。
@@ -37,6 +38,8 @@ ComponentLane = Literal[
     "identity_card",
     "hero_title",
     "fullscreen_transition",
+    # core-only 的結構性覆蓋層：不是 component，但要有 lane 才查得到 track。
+    "brand_badge",
     # 已退役，僅為既有 receipt／run 保留（見模組 docstring）。
     "visual_effect",
 ]
@@ -148,6 +151,26 @@ VOCABULARY: dict[str, ImplementationSpec] = {
         media_suffix=None,
         worker_selectable=False,
     ),
+    # core-only：品牌 badge。落點由 `_brand_badge.derive_brand_badge_overlays` 依規則
+    # 推導（開場 ＋ 每張滿版轉場卡之後），worker 提案不出來——讓 Director／DP 去提案
+    # 一個規則算得出來的東西，只會多一個它可以做錯的地方（`_brand_badge` 模組
+    # docstring）。素材是每集 `assets/broll/<slug>.mov` 的品牌資產，不經 Active Store、
+    # 不是 content-addressed，所以 `asset_kind=None`（比照 `camera_correction`）；
+    # 也不由 core 渲染，所以 `generated=False`、沒有版位版本。後綴由
+    # `_timeline_apply.BRAND_BADGE_MEDIA_SUFFIX` 管——`MEDIA_SUFFIX_BY_IMPLEMENTATION`
+    # 的語意是「core 產出的檔案後綴」，badge 沒有產出物可言。
+    "brand_badge": ImplementationSpec(
+        semantic_kind="brand_badge",
+        lane="brand_badge",
+        # 「badge 在第幾軌」的唯一宣告在 `_brand_badge`——鑄 overlay 的那一支也讀它，
+        # 這裡抄一份 5 就是第二個真相來源。
+        track_index=BRAND_BADGE_TRACK_INDEX,
+        generated=False,
+        asset_kind=None,
+        layout_version=None,
+        media_suffix=None,
+        worker_selectable=False,
+    ),
     # ⛔ 2026-09-08 退役，比照 supporting_title。它是 ADR-066 第一個 commit
     # （2a5edf12）憑空造出來的第六個語意類別，用來頂替同日退役的 supporting_title。
     # 頻道的創意手冊列的長片視覺語彙裡沒有這一項，整個 `.claude/skills/` grep 不到
@@ -211,13 +234,20 @@ RELEASE_PROJECTIONS: frozenset[tuple[str, str, str]] = (
     | RETIRED_RELEASE_PROJECTIONS
 )
 
+#: worker 提案端看得到的語意類別。core-only 的不在裡面——`camera_correction` 的
+#: `b_roll` 本來就跟 `stock_video` 同名所以看不出差別，`brand_badge` 是第一個自己
+#: 一種的：它進了這個 enum，worker 就可以提案一個規則已經算得出來的東西。
 _ACTIVE_SEMANTIC_KINDS: frozenset[str] = frozenset(
-    {spec.semantic_kind for _kind, spec in _spec_items(retired=False)} | {_INTENTIONAL_AROLL}
+    {spec.semantic_kind for _kind, spec in _spec_items(retired=False) if spec.worker_selectable}
+    | {_INTENTIONAL_AROLL}
 )
 
 #: 順序取自 `ComponentLane` 的宣告順序，不是 `VOCABULARY` 的——它會被寫進 worker
 #: 的 response schema enum（`_codex_semantic.py:789`），順序變了 schema bytes 就變了。
-_ACTIVE_LANES = frozenset(spec.lane for _kind, spec in _spec_items(retired=False))
+#: 同上，只收 worker 提得出來的 lane：`brand_badge` 是 core 鋪的覆蓋層，不是提案項。
+_ACTIVE_LANES = frozenset(
+    spec.lane for _kind, spec in _spec_items(retired=False) if spec.worker_selectable
+)
 _ACTIVE_COMPONENT_LANES: tuple[str, ...] = tuple(
     lane for lane in get_args(ComponentLane) if lane in _ACTIVE_LANES
 )
