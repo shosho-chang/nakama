@@ -402,6 +402,17 @@ class RenderRequestV1(BaseModel):
     # 上一份 spec 撈——2026-08-15 把中間產物搬進 _work/ 就撈不到，整行從封面消失。
     # 收進配方後 gate 看得到也改得動，不再靠檔案系統的巧合。
     guest_credit: str = Field(default="", max_length=40)
+    # 字塊位置。水平本來就是 composition 變數，只是由 render 端的遮蔽平衡自動收斂，
+    # gate 上碰不到；垂直在 composition 裡根本寫死成 top: 44%。2026-09-14 修修要
+    # 自己挪：「我希望也能調整這一整個中間的文字區塊的位置以及大小」（大小早就有
+    # title_max_width，位置沒有）。
+    #
+    # text_position_manual 的用意跟 geometry_manual 完全一樣：沒拖過就維持今天的
+    # 自動平衡（換臉後重解才有意義），拖過就照抄他的值、不再自動收斂。少了這個
+    # 旗標，收斂迴圈第一次寫回值就等於把自己鎖死。
+    text_center_pct: float = Field(default=50.0, ge=0, le=100)
+    text_top_pct: float = Field(default=44.0, ge=0, le=100)
+    text_position_manual: bool = False
     # N1 author interviews use the book as a dark, full-height background.
     # Keeping these values in the package recipe makes a Web rerender lossless;
     # previously render_request.py silently fell back to a plain background.

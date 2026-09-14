@@ -378,7 +378,7 @@
                      src="/bridge/packaging/{{ episode_slug }}/cutout/{{ (req.host_cutout if req else cutouts.host[0].vault_path if cutouts.host else '').split('/')[-1] }}">
                 <img class="st-person st-guest st-adjustable" data-role="guest" alt="來賓" draggable="false"
                      src="/bridge/packaging/{{ episode_slug }}/cutout/{{ (req.guest_cutout if req else cutouts.guest[0].vault_path if cutouts.guest else '').split('/')[-1] }}">
-                <div class="st-text">
+                <div class="st-text st-adjustable" data-role="text">
                   <div class="st-title"></div>
                   <div class="st-credit"></div>
                 </div>
@@ -405,6 +405,10 @@
                 </button>
                 <button class="sho-btn sho-btn--ghost pkg-layer-button" type="button"
                         data-layer-select="guest" aria-pressed="false">來賓</button>
+                {# 字塊本來不是圖層：臉能拖、中央圖能拖，只有大字不能，修修
+                   2026-09-14 想點它卻點不到。加進來之後三者同一套操作。 #}
+                <button class="sho-btn sho-btn--ghost pkg-layer-button" type="button"
+                        data-layer-select="text" aria-pressed="false">大字</button>
                 <span class="pkg-layer-scale" role="group" aria-label="調整選定圖層大小">
                   <button class="sho-btn sho-btn--ghost" type="button" data-layer-scale="down"
                           aria-label="縮小選定圖層">− 縮小</button>
@@ -417,6 +421,18 @@
                        {% if req and req.geometry_manual %}checked{% endif %}>
                 用我調的位置（不勾＝每次重新自動解算）
               </label>
+              {# 字塊的 manual 旗標跟人物分開：只挪字不該連帶鎖住人物的自動解算，
+                 反之亦然。不勾的話 render 端照樣跑遮蔽平衡自動收斂水平位置。 #}
+              <label class="pkg-stage-mode">
+                <input type="checkbox" name="text_position_mode" value="manual"
+                       data-text-manual
+                       {% if req and req.text_position_manual %}checked{% endif %}>
+                大字用我擺的位置（不勾＝自動對齊左右遮蔽平衡）
+              </label>
+              <input type="hidden" name="text_center_pct" data-text-geo="x"
+                     value="{{ req.text_center_pct if req else 50 }}">
+              <input type="hidden" name="text_top_pct" data-text-geo="y"
+                     value="{{ req.text_top_pct if req else 44 }}">
               <div class="pkg-stage-nums">
                 {% for role, label in [('host', '修修'), ('guest', '來賓')] %}
                 {% for axis, ax_label in [('height', '大小'), ('x', '左右'), ('y', '上下')] %}
@@ -879,6 +895,7 @@
   .st-adjustable { pointer-events: none; }
   .pkg-stage-inner[data-selected-role="center"] .st-center,
   .pkg-stage-inner[data-selected-role="host"] .st-host,
+  .pkg-stage-inner[data-selected-role="text"] .st-text,
   .pkg-stage-inner[data-selected-role="guest"] .st-guest { pointer-events: auto; }
   /* 選中的元件要在舞台上看得出來（修修 2026-08-29：「當我選擇某一個元件要調整的
      時候，它必須要有顯示，我才知道我現在已經選擇了那個元件」）。在此之前只有上面
@@ -886,6 +903,7 @@
      PNG，描邊只能畫在它的方框上；outline 不佔版面流，不會動到幾何。 */
   .pkg-stage-inner[data-selected-role="center"] .st-center,
   .pkg-stage-inner[data-selected-role="host"] .st-host,
+  .pkg-stage-inner[data-selected-role="text"] .st-text,
   .pkg-stage-inner[data-selected-role="guest"] .st-guest {
     outline: 2px solid var(--sho-accent);
     outline-offset: 2px;
@@ -902,8 +920,10 @@
     -webkit-mask-image: linear-gradient(to right, transparent 0, #000 var(--fade));
     mask-image: linear-gradient(to right, transparent 0, #000 var(--fade));
   }
+  /* 預設 50%/44% 與 composition 的 #text-block 一致；拖曳時只改這兩個變數。 */
   .st-text {
-    position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%);
+    position: absolute; left: var(--text-x, 50%); top: var(--text-y, 44%);
+    transform: translate(-50%, -50%);
     z-index: 4; width: 580px; text-align: center;
   }
   .st-title {
@@ -1071,6 +1091,12 @@
     }
     const manual = form.querySelector('input[name="geometry_mode"]');
     if (manual) manual.checked = Boolean(recipe?.geometry_manual);
+    // 換 package 分頁時字塊位置也要跟著換，否則會把上一個 package 的位置
+    // 帶到這一個身上（人物幾何本來就是這樣還原的，字塊漏掉就會不一致）。
+    setValue("text_center_pct", recipe?.text_center_pct ?? 50);
+    setValue("text_top_pct", recipe?.text_top_pct ?? 44);
+    const textManual = form.querySelector("[data-text-manual]");
+    if (textManual) textManual.checked = Boolean(recipe?.text_position_manual);
     const centerGeometry = recipe?.center_geometry ?? null;
     for (const input of form.querySelectorAll("[data-center-geo]")) {
       const key = input.dataset.centerGeo;
@@ -1136,6 +1162,20 @@
     return out;
   }
 
+  const TEXT_DEFAULT = { x: 50, y: 44 };
+
+  function textInputs(stage) {
+    const form = stage.closest("form");
+    const out = {};
+    for (const el of form.querySelectorAll("[data-text-geo]")) out[el.dataset.textGeo] = el;
+    return out;
+  }
+
+  function markTextManual(stage) {
+    const box = stage.closest("form").querySelector("[data-text-manual]");
+    if (box && !box.checked) box.checked = true;
+  }
+
   function centerInputs(stage) {
     const form = stage.closest("form");
     const out = {};
@@ -1153,6 +1193,11 @@
       if (Number.isNaN(v)) continue;
       const [role, axis] = key.split("_");
       inner.style.setProperty(`--${role}-${axis === "height" ? "h" : axis}`, v + "%");
+    }
+    for (const [key, el] of Object.entries(textInputs(stage))) {
+      const v = el.value === "" ? TEXT_DEFAULT[key] : parseFloat(el.value);
+      if (Number.isNaN(v)) continue;
+      inner.style.setProperty(`--text-${key}`, v + "%");
     }
     for (const [key, el] of Object.entries(centerInputs(stage))) {
       const v = el.value === "" ? CENTER_DEFAULT[key] : parseFloat(el.value);
@@ -1276,6 +1321,18 @@
 
   function scaleStageLayer(stage, direction) {
     const role = stage.querySelector(".pkg-stage-inner").dataset.selectedRole || "host";
+    if (role === "text") {
+      // 字塊的「大小」就是大字寬度：composition 是整塊縮字不換行，
+      // fontSize = 100 * title_max_width / 實際行寬。改這一格等於改字級。
+      const form = stage.closest("form");
+      const field = form.querySelector('input[name="title_max_width"]');
+      if (field) {
+        const current = parseInt(field.value, 10) || 580;
+        field.value = Math.min(1000, Math.max(300, current + (direction === "up" ? 20 : -20)));
+        fitStageTitle(stage);
+      }
+      return;
+    }
     if (role === "center") {
       const center = centerInputs(stage);
       const value = (key) => center[key].value === "" ? CENTER_DEFAULT[key] : parseFloat(center[key].value);
@@ -1329,6 +1386,15 @@
       e.preventDefault();
       return;
     }
+    if (role === "text") {
+      const text = textInputs(stage);
+      const num = (k) => (text[k].value === "" ? TEXT_DEFAULT[k] : parseFloat(text[k].value));
+      drag = { stage, role, text, x0: e.clientX, y0: e.clientY,
+               sx: num("x"), sy: num("y"), s: stage.clientWidth / 1280 };
+      layer.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
     const inputs = stageInputs(stage);
     const num = (k) => (inputs[k].value === "" ? STAGE_DEFAULT[k] : parseFloat(inputs[k].value));
     drag = { stage, role, inputs, x0: e.clientX, y0: e.clientY,
@@ -1352,6 +1418,15 @@
       markManual(drag.stage);
       return;
     }
+    if (drag.role === "text") {
+      // 字塊是 translate(-50%,-50%) 的中心點定位：x/y 都直接加，沒有 guest 那種
+      // 貼右緣的反號，也沒有人物「y 從底部算」的翻轉。
+      drag.text.x.value = Math.min(100, Math.max(0, drag.sx + dx)).toFixed(2);
+      drag.text.y.value = Math.min(100, Math.max(0, drag.sy + dy)).toFixed(2);
+      applyStage(drag.stage);
+      markTextManual(drag.stage);
+      return;
+    }
     const signX = drag.role === "guest" ? -1 : 1;   // guest 貼右緣，右移＝數字變小
     drag.inputs[drag.role + "_x"].value = (drag.sx + signX * dx).toFixed(2);
     drag.inputs[drag.role + "_y"].value = (drag.sy - dy).toFixed(2);  // y 從底部算
@@ -1366,6 +1441,15 @@
     if (!person) return;
     e.preventDefault();
     const stage = person.closest(".pkg-stage");
+    if (person.dataset.role === "text") {
+      const field = stage.closest("form").querySelector('input[name="title_max_width"]');
+      if (field) {
+        const current = parseInt(field.value, 10) || 580;
+        field.value = Math.min(1000, Math.max(300, current + (e.deltaY < 0 ? 8 : -8)));
+        fitStageTitle(stage);
+      }
+      return;
+    }
     if (person.dataset.role === "center") {
       const center = centerInputs(stage);
       const width = center.width.value === "" ? CENTER_DEFAULT.width : parseFloat(center.width.value);
