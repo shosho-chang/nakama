@@ -1860,7 +1860,11 @@ def test_core_projection_keeps_chapter_hero_and_support_distinct_after_restart(
         events=(
             DirectorEventProposal("chapter-event", ("cue-chapter",), "Open", "第一章", "chapter"),
             DirectorEventProposal(
-                "hero-event", ("cue-hero",), "State thesis", "工作不等於使命", "hero_title"
+                "hero-event",
+                ("cue-hero",),
+                "State thesis",
+                "使命不是找到的，是做出來的",
+                "hero_title",
             ),
             DirectorEventProposal(
                 "support-event",
@@ -2279,7 +2283,9 @@ def test_stage_shape_failures_stay_on_exact_request_without_full_rerun(tmp_path)
     semantic.respond(
         director_request,
         events=(
-            DirectorEventProposal("hero", ("cue-1",), "State the thesis", "核心主張", "hero_title"),
+            DirectorEventProposal(
+                "hero", ("cue-1",), "State the thesis", "主張要站得住，先站得出來", "hero_title"
+            ),
             DirectorEventProposal(
                 "support",
                 ("cue-2",),
