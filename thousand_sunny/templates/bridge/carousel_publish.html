@@ -120,10 +120,16 @@
     <button id="publish-context-retry" class="sho-btn sho-btn--ghost" type="button" hidden>重新檢查後再送出</button>
     <aside id="publish-handoff" class="publish-handoff" hidden>
       <strong>下一步：交給目前的 Codex 或 Claude Code 流程認領</strong>
-      <p>這個頁面只建立本機 handoff contract，不會呼叫 Anthropic API，也不會自行喚醒桌面 agent。若沒有把下方任一認領指令交給目前正在執行的 agent，工作會停在等待中，不會自行前進。</p>
+      <p>這個頁面只建立本機 handoff contract，不會呼叫 Anthropic API，也不會自行喚醒桌面 agent。按鈕是把指令複製起來，還是要你貼給正在執行的 agent；沒有人貼，工作會停在等待中，不會自行前進。</p>
       <span class="sho-mono">工作編號 · <span id="publish-handoff-id"></span></span>
-      <label>Codex 認領指令<code id="publish-claim-codex"></code></label>
-      <label>Claude Code 認領指令<code id="publish-claim-claude"></code></label>
+      <div class="publish-handoff__claim">
+        <button id="publish-claim-codex-copy" class="sho-btn" type="button" data-claim-for="publish-claim-codex" data-label="複製 Codex 認領指令" disabled>複製 Codex 認領指令</button>
+        <code id="publish-claim-codex"></code>
+      </div>
+      <div class="publish-handoff__claim">
+        <button id="publish-claim-claude-copy" class="sho-btn" type="button" data-claim-for="publish-claim-claude" data-label="複製 Claude Code 認領指令" disabled>複製 Claude Code 認領指令</button>
+        <code id="publish-claim-claude"></code>
+      </div>
     </aside>
   </section>
 </main>
@@ -149,6 +155,7 @@ const handoff = document.getElementById('publish-handoff');
 const handoffId = document.getElementById('publish-handoff-id');
 const claimCodex = document.getElementById('publish-claim-codex');
 const claimClaude = document.getElementById('publish-claim-claude');
+const claimCopyButtons = [...document.querySelectorAll('[data-claim-for]')];
 const manifestSha = publishForm.dataset.manifestSha;
 const preflightUrl = publishForm.dataset.preflightUrl;
 const storagePrefix = `podcast-carousel-publish:${window.location.pathname}:${manifestSha}`;
@@ -325,7 +332,54 @@ function renderHandoff(job, payload) {
   handoffId.textContent = payload.job_id || job.jobId || '';
   claimCodex.textContent = commands.codex || '請在目前 Codex task 中提供上方工作編號。';
   claimClaude.textContent = commands.claude_code || '請在目前 Claude Code task 中提供上方工作編號。';
+  // 沒有指令時 <code> 裡放的是提示句。複製一句提示再貼給 agent 是空包彈，
+  // 所以按鈕跟著指令在不在一起開關。
+  syncClaimCopyState({
+    'publish-claim-codex': Boolean(commands.codex),
+    'publish-claim-claude': Boolean(commands.claude_code),
+  });
 }
+function syncClaimCopyState(available) {
+  claimCopyButtons.forEach((button) => {
+    button.disabled = !available[button.dataset.claimFor];
+  });
+}
+// 舊的 execCommand 路。非安全來源（用區網 IP 開這頁）、或瀏覽器把
+// clipboard-write 權限擋掉時，navigator.clipboard 會整個不能用或直接
+// NotAllowedError——那正是實測這顆按鈕時踩到的。execCommand 已 deprecated，
+// 但它不吃那個權限，是目前唯一補得到那個洞的路。
+function copyViaExecCommand(command) {
+  const holder = document.createElement('textarea');
+  holder.value = command;
+  holder.setAttribute('readonly', '');
+  holder.style.position = 'fixed';
+  holder.style.opacity = '0';
+  document.body.append(holder);
+  holder.select();
+  let copied = false;
+  try { copied = document.execCommand('copy'); } catch (error) { copied = false; }
+  holder.remove();
+  return copied;
+}
+function copyClaimCommand(button, command) {
+  const settle = (text) => {
+    button.textContent = text;
+    window.clearTimeout(button.claimCopyTimer);
+    button.claimCopyTimer = window.setTimeout(() => { button.textContent = button.dataset.label; }, 1800);
+  };
+  // 靜靜失敗會讓人以為複製到了、貼出一段舊指令甚至空字串給 agent，所以兩條路
+  // 都走完還是不行時要說出來，而不是裝作成功。
+  const fallback = () => settle(copyViaExecCommand(command) ? '已複製 ✓' : '複製失敗，請手動選取');
+  if (!navigator.clipboard) { fallback(); return; }
+  navigator.clipboard.writeText(command).then(() => settle('已複製 ✓'), fallback);
+}
+claimCopyButtons.forEach((button) => {
+  button.addEventListener('click', () => {
+    const source = document.getElementById(button.dataset.claimFor);
+    const command = source ? source.textContent.trim() : '';
+    if (command) copyClaimCommand(button, command);
+  });
+});
 function rememberPublishedPlatforms(payload) {
   (Array.isArray(payload.results) ? payload.results : []).forEach((result) => {
   });

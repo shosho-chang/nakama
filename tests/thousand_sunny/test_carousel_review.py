@@ -1203,6 +1203,10 @@ def test_publish_submit_is_idempotent_and_refresh_restores_job(client):
     assert "--executor codex" in first.json()["claim_commands"]["codex"]
     assert "--executor claude_code" in first.json()["claim_commands"]["claude_code"]
     assert "--capability browser_session" in first.json()["claim_commands"]["codex"]
+    # 一鍵複製的前提：指令裡不能再留要人手改的欄位。
+    assert "<agent-id>" not in first.json()["claim_commands"]["codex"]
+    assert "--executor-id codex-desktop" in first.json()["claim_commands"]["codex"]
+    assert "--executor-id claude-code-desktop" in first.json()["claim_commands"]["claude_code"]
     jobs = list((root / EPISODE / "ig-carousel" / "publish_jobs").glob("pj-*.json"))
     assert len(jobs) == 1
     assert not (root / EPISODE / "ig-carousel" / "published.json").exists()

@@ -95,6 +95,26 @@ def test_queued_state_exposes_agent_neutral_local_handoff() -> None:
     assert "工作會停在等待中，不會自行前進" in TEMPLATE
 
 
+def test_claim_commands_are_one_click_copyable() -> None:
+    """兩顆複製鈕，外加「按了還是要自己貼」的誠實文案。
+
+    這顆按鈕不會、也不可能把指令送進正在跑的 agent：Bridge 這一側沒有那條通道。
+    所以文案不可以退回成「按一下就交給 agent」——寫成那樣，工作卡住時沒有人
+    知道是自己還沒貼。
+    """
+    assert 'data-claim-for="publish-claim-codex"' in TEMPLATE
+    assert 'data-claim-for="publish-claim-claude"' in TEMPLATE
+    assert "複製 Codex 認領指令" in TEMPLATE
+    assert "複製 Claude Code 認領指令" in TEMPLATE
+    assert "還是要你貼給正在執行的 agent" in TEMPLATE
+    # clipboard API 被權限擋掉時要走 execCommand，並且失敗要說出來。
+    assert "copyViaExecCommand" in TEMPLATE
+    assert "複製失敗，請手動選取" in TEMPLATE
+    # 沒有指令時按鈕停用——不要讓人複製到一句提示再貼給 agent。
+    assert "syncClaimCopyState" in TEMPLATE
+    assert ".publish-handoff__claim" in CSS
+
+
 def test_caption_shows_selected_platform_compatibility_before_handoff() -> None:
     assert 'id="caption-compatibility"' in TEMPLATE
     assert "2,200" in TEMPLATE
