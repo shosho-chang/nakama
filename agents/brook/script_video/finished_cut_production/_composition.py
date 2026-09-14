@@ -17,6 +17,7 @@ from ._approved_cut import (
     FilesystemEditorialMasterVerifier,
 )
 from ._assets import AssetResolver
+from ._brand_badge import BRAND_BADGE_SLUG_SECONDS
 from ._codex_semantic import (
     CodexProcessRunner,
     CodexSemanticAdapter,
@@ -25,6 +26,7 @@ from ._codex_semantic import (
 from ._commands import CommandRejectedError
 from ._correction import RunInspection
 from ._derived_assets import DerivedAssetBuilder
+from ._digest import file_digest
 from ._engine import FinishedCutProduction
 from ._hyperframes_renderer import (
     PinnedHyperFramesRuntime,
@@ -68,7 +70,7 @@ from ._store import (
     _FilesystemProductionStore,
     _FilesystemSemanticDispatchLedger,
 )
-from ._timeline_apply import PreRenderedAssetCatalog
+from ._timeline_apply import PreRenderedAssetCatalog, brand_badge_root
 from ._visual_assets import LongDerivedAssetBuilder, build_long_visual_media_adapters
 from ._worker_packet import (
     InspectionPreviewer,
@@ -436,7 +438,19 @@ class _ActiveStorePreRenderedCatalog(PreRenderedAssetCatalog):
 
 
 class _ProductionMediaIdentityResolver:
-    """Map Resolve media objects to verified Master or Active Store digests."""
+    """Map Resolve media objects to Master, brand badge, or Active Store digests.
+
+    身分有三種，不是兩種。前兩種是**查**出來的（母帶查已驗證契約、素材查 Active
+    Store 的 content-addressed 檔名），第三種是**算**出來的：
+
+    品牌 badge 放在 `<episode>/assets/broll/<slug>.mov`，跨集 byte 相同，刻意不
+    進 Active Store（理由見 `_brand_badge` 模組 docstring：它不是 worker 取得的
+    素材，也不是 core 渲染出來的產物）。於是它的檔名不是 sha256，這裡沒有東西可查。
+
+    2026-09-14：badge 的鋪軌接線補上之後，第一次真的跑到 Resolve 就死在這裡——
+    `Resolve media object is neither the Master nor content-addressed`。接線那一輪
+    的驗證是離線投影，沒有經過媒體識別這一關，所以看不出來。
+    """
 
     def __init__(
         self,
@@ -445,11 +459,17 @@ class _ProductionMediaIdentityResolver:
         episode_id: str,
         editorial_master_content_hash: str,
         assets: ActiveAssetStore,
+        brand_badge_root: Path,
     ) -> None:
         self._editorial_master = editorial_master
         self._episode_id = episode_id
         self._editorial_master_content_hash = editorial_master_content_hash
         self._assets = assets
+        self._brand_badge_root = Path(brand_badge_root)
+        # 同一支 badge 在一次物化裡會被問三次（鋪軌、鋪完覆驗、快照），一支片又有
+        # 六段。算過就記住——檔案在不在每次都還是重驗，那是 `resolve(strict=True)`
+        # 做的事。
+        self._brand_badge_digests: dict[Path, str] = {}
 
     def digest_for(self, media_pool_item: object) -> str:
         getter = getattr(media_pool_item, "GetClipProperty", None)
@@ -468,6 +488,9 @@ class _ProductionMediaIdentityResolver:
         )
         if media_path == contract.master_media_path.resolve(strict=True):
             return contract.master_media_sha256
+        badge_digest = self._brand_badge_digest(media_path)
+        if badge_digest is not None:
+            return badge_digest
         digest = media_path.stem.lower()
         if not _sha256(digest):
             raise ValueError("Resolve media object is neither the Master nor content-addressed")
@@ -475,6 +498,28 @@ class _ProductionMediaIdentityResolver:
         if resolved.path is None or resolved.path.resolve(strict=True) != media_path:
             raise ValueError("Resolve media object differs from the Active Store object")
         return resolved.record.digest
+
+    def _brand_badge_digest(self, media_path: Path) -> str | None:
+        """這支是不是這一集的品牌 badge？是就回它 bytes 的 sha256。
+
+        認定條件是「**宣告過的 slug** ＋ 就放在這一集的 badge 目錄底下」，兩者都要。
+        只比目錄會讓任何丟進 `assets/broll/` 的檔案取得媒體身分；只比檔名則會讓
+        別處的同名檔矇混過去。
+        """
+
+        try:
+            root = self._brand_badge_root.resolve(strict=True)
+        except OSError:
+            return None
+        if media_path.parent != root:
+            return None
+        if media_path.stem not in {slug for slug, _ in BRAND_BADGE_SLUG_SECONDS}:
+            return None
+        cached = self._brand_badge_digests.get(media_path)
+        if cached is None:
+            cached = file_digest(media_path)
+            self._brand_badge_digests[media_path] = cached
+        return cached
 
 
 def _default_resolve_facade_factory(
@@ -539,6 +584,7 @@ def _build_resolve_materialization_composition(
         episode_id=episode_id,
         editorial_master_content_hash=configuration.editorial_master_content_hash,
         assets=assets,
+        brand_badge_root=brand_badge_root(episode_root),
     )
     facade = (ports.facade_factory or _default_resolve_facade_factory)(
         configuration.locator,
@@ -550,6 +596,9 @@ def _build_resolve_materialization_composition(
         probe=probe,
         binding=configuration.binding,
         assets=_ActiveStorePreRenderedCatalog(assets),
+        # 品牌 badge 不在 Active Store：它是這一集資料夾裡的品牌資產。這一行就是
+        # 「落點算得出來」與「真的鋪上 V5」之間的那條線。
+        brand_badge_root=brand_badge_root(episode_root),
     )
     transactions = ResolveTransactionManager(
         timeline,
