@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 from datetime import UTC, datetime
+from pathlib import Path
 from types import SimpleNamespace
 
 from agents.usopp.social_publish import approve_short_targets, ensure_short_targets
@@ -247,3 +248,30 @@ def test_facebook_adapter_rejects_malformed_anchor_before_client_call(tmp_path):
         raise AssertionError("naive Campaign Anchor must fail closed")
 
     assert client.calls == []
+
+
+def test_cli_entrypoints_load_dotenv_outside_main():
+    """兩個 CLI 自己要讀 .env，而且只能在 __main__ guard 裡讀。
+
+    Meta 與 R2 那八個設定只存在 repo 根的 .env。2026-09-14 發蘇予昕輪播時，
+    直接跑 `python scripts/publish_dispatch.py --carousel-job ... --execute`
+    死在 "missing required Meta settings"，因為這兩個檔從來沒載過 dotenv。
+
+    但載入點不能搬進 `main()`：上面那幾條測試用 monkeypatch.delenv 拿掉憑證
+    再斷言失敗，`main()` 若自己把 .env 讀回來，測試結果就取決於跑測試的機器上
+    有沒有 .env。測試直接呼叫 `main()`，不經過 `__main__` guard——這個分界就是
+    兩邊同時成立的原因，別把它合併掉。
+    """
+    repo_root = Path(__file__).resolve().parents[2]
+    for name in ("scripts/publish_dispatch.py", "scripts/meta_publish_probe.py"):
+        source = (repo_root / name).read_text(encoding="utf-8")
+        head, _, guard = source.partition('if __name__ == "__main__":')
+        # 只看程式碼：說明這條規則的註解本身就會提到 load_config()。
+        code_before_guard = [
+            line for line in head.splitlines() if not line.lstrip().startswith("#")
+        ]
+        assert guard, f"{name} 少了 __main__ guard"
+        assert "load_config()" in guard, f"{name} 的 CLI 進入點沒有載 .env"
+        assert not any("load_config()" in line for line in code_before_guard), (
+            f"{name} 把 .env 載進了 import/main，會弄壞 delenv 測試"
+        )

@@ -122,5 +122,10 @@ def main(argv: list[str] | None = None) -> int:
     return 0
 
 
+# 同 publish_dispatch.py 結尾：.env 只在 CLI 進入點載，不能搬進 main()。
+# 理由寫在那邊。
 if __name__ == "__main__":
+    from shared.config import load_config
+
+    load_config()
     raise SystemExit(main())
