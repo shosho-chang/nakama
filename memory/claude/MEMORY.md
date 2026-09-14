@@ -386,3 +386,4 @@
 - [人眼驗過的就是定案](feedback_human_verified_is_final.md) — 修修看過並指定的產出（版式、文案、剪輯點）不可用自動 QA 分數推翻或「順手修正」；QA 只對他還沒看過的東西有否決權，不過就先交付再一句話告知
 - [「legacy route」是 stop-the-line](feedback_legacy_route_is_stop_the_line.md) — subagent／code 回報 legacy、deprecated、v1 fallback 時先停下來查是不是走錯線；活的流程要求死掉的前置條件，先懷疑路線不要先補條件（長片視覺線＝ADR-066 `--semantic-worker handoff`）
 - [哪個 Python 跑得動測試](reference_test_interpreters.md) — 只有 `py -3.14` 有完整依賴（3.10 只有 ruff/whisperx、3.12 沒 pytest）；全 repo `tests/` 要兩小時且會被 markdownify 擋死，所以 gate 是「模組目錄＋每個引用改動 API 的檔案」
+- [Stand-in 素材庫](reference_standin_footage_library.md) — Envato `YuriArcursPeopleimages` 的留鬍亞裔男是**所有** stock footage 的首要人選；先查本地庫 `E:\data\stock footage\asian man`（索引 INDEX.md）再去 Envato；十支是 DCI 4K 不是 16:9、對短片沒用；核臉要防「誤收別人」與「誤退本人」兩個方向
