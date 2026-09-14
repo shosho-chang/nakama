@@ -23,6 +23,8 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
+from shared.schemas.packaging import RenderRequestV1
+
 
 def _title(rank: int, panel_note: str | None = None) -> dict:
     return {
@@ -2464,3 +2466,108 @@ def test_approve_refuses_a_rank_that_has_no_package_yet(client, vault):
         follow_redirects=False,
     )
     assert ok.status_code == 303
+
+
+def test_render_recipe_carries_text_block_position():
+    """字塊位置要能被記住，而且手動旗標跟人物幾何分開。
+
+    2026-09-14 修修：「我希望也能調整這一整個中間的文字區塊的位置以及大小」。
+    大小早就有 title_max_width；位置在此之前水平由 render 端自動收斂、垂直在
+    composition 裡寫死成 top: 44%，gate 上完全碰不到。
+    """
+    req = RenderRequestV1(
+        title_rank=1,
+        host_cutout="Attachments/cutouts/podcast/ep/host_1_serious.png",
+        guest_cutout="Attachments/cutouts/podcast/ep/guest_1_serious.png",
+        big_text=["13 歲前", "先別給 AI"],
+        highlight_text="13 歲前",
+        text_center_pct=41.5,
+        text_top_pct=52.0,
+        text_position_manual=True,
+        requested_at=datetime.now(timezone.utc),
+    )
+
+    assert req.text_center_pct == 41.5
+    assert req.text_top_pct == 52.0
+    assert req.text_position_manual is True
+    # 只挪字不該連帶鎖住人物的自動解算，反之亦然。
+    assert req.geometry_manual is False
+
+    assert RenderRequestV1.model_validate(req.model_dump(mode="json")) == req
+
+
+def test_text_block_defaults_match_the_composition():
+    """預設值必須跟 composition 的 CSS 對齊，否則預覽與成品從第一秒就不同位置。"""
+    req = RenderRequestV1(
+        title_rank=1,
+        host_cutout="Attachments/cutouts/podcast/ep/host_1_serious.png",
+        guest_cutout="Attachments/cutouts/podcast/ep/guest_1_serious.png",
+        big_text=["一行"],
+        requested_at=datetime.now(timezone.utc),
+    )
+    assert (req.text_center_pct, req.text_top_pct) == (50.0, 44.0)
+    assert req.text_position_manual is False
+
+    root = Path(__file__).resolve().parents[1]
+    composition = (root / "video/compositions/thumbnail_full/index.html").read_text(
+        encoding="utf-8"
+    )
+    assert "var(--text-y, 44%)" in composition
+    assert "var(--text-x, 50%)" in composition
+    assert '"text_top_pct":          { "type": "number", "default": 44 }' in composition
+
+    board = (root / "thousand_sunny/templates/bridge/packaging_board.html").read_text(
+        encoding="utf-8"
+    )
+    # 字塊要跟臉、中央圖一樣是可選取可拖曳的圖層——修修點不到它正是這次的起因。
+    assert 'data-layer-select="text"' in board
+    assert 'class="st-text st-adjustable" data-role="text"' in board
+    assert "var(--text-y, 44%)" in board
+
+
+def test_compose_saves_manual_text_block_position(client, vault_with_cutouts):
+    """拖過的字塊位置要原封不動進 render_request（修修 2026-09-14）。
+
+    在此之前字塊是舞台上唯一不能選、不能拖的元件：臉可以、中央圖可以，只有大字
+    不行。水平位置由 render 端的遮蔽平衡自動收斂，垂直位置在 composition 裡寫死
+    成 top: 44%，gate 完全碰不到。
+    """
+    assert (
+        _compose(
+            client,
+            text_position_mode="manual",
+            text_center_pct="45.21",
+            text_top_pct="52.52",
+        ).status_code
+        == 303
+    )
+    req = _saved_req(vault_with_cutouts)
+    assert req["text_position_manual"] is True
+    assert req["text_center_pct"] == 45.21
+    assert req["text_top_pct"] == 52.52
+
+
+def test_text_position_manual_is_independent_of_geometry_manual(client, vault_with_cutouts):
+    """只挪字不該連帶鎖住人物的自動解算，反之亦然。
+
+    兩者共用一個旗標的話，修修挪一下大字就等於把臉的位置也鎖死，之後換一張臉
+    也不會重新解算——那正是 geometry_manual 當初要避免的坑，不該在字塊上重演。
+    """
+    _compose(client, text_position_mode="manual", text_center_pct="45.21", text_top_pct="52.52")
+    req = _saved_req(vault_with_cutouts)
+    assert req["text_position_manual"] is True
+    assert req["geometry_manual"] is False
+
+    _compose(client, geometry_mode="manual", **_GEO)
+    req = _saved_req(vault_with_cutouts)
+    assert req["geometry_manual"] is True
+    assert req["text_position_manual"] is False
+
+
+def test_compose_defaults_leave_text_position_automatic(client, vault_with_cutouts):
+    """沒碰過字塊 → 維持自動：render 端照樣跑遮蔽平衡收斂水平位置。"""
+    assert _compose(client).status_code == 303
+    req = _saved_req(vault_with_cutouts)
+    assert req["text_position_manual"] is False
+    assert req["text_center_pct"] == 50.0
+    assert req["text_top_pct"] == 44.0

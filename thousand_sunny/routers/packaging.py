@@ -1858,6 +1858,11 @@ def packaging_compose(
     center_x_pct: float | None = Form(None),
     center_y_pct: float | None = Form(None),
     geometry_mode: str = Form("auto", max_length=8),
+    # 字塊位置與它自己的 manual 旗標。跟人物的 geometry_mode 分開：只挪字不該連帶
+    # 鎖住人物的自動解算，反之亦然。
+    text_center_pct: float = Form(50.0, ge=0, le=100),
+    text_top_pct: float = Form(44.0, ge=0, le=100),
+    text_position_mode: str = Form("auto", max_length=8),
     host_height_pct: float = Form(0.0),
     host_x_pct: float = Form(0.0),
     host_y_pct: float = Form(0.0),
@@ -2030,6 +2035,9 @@ def packaging_compose(
             requested_at=datetime.now(timezone.utc),
             geometry=geometry,
             geometry_manual=manual,
+            text_center_pct=text_center_pct,
+            text_top_pct=text_top_pct,
+            text_position_manual=text_position_mode == "manual",
         )
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=f"配方驗證失敗：{str(exc)[:300]}") from exc

@@ -84,9 +84,11 @@
       #host  { left: var(--host-x, -2%);  bottom: var(--host-y, 0%);  height: var(--host-h, 108%);  object-position: bottom left; }
       #guest { right: var(--guest-x, -2%); bottom: var(--guest-y, 0%); height: var(--guest-h, 108%); object-position: bottom right; }
 
-      /* 字塊 = 大字 + 來賓 credit，整塊置中於 44%（z4，在人物之下 → 分層） */
+      /* 字塊 = 大字 + 來賓 credit（z4，在人物之下 → 分層）。
+         44% 是預設，不是定律：2026-09-14 修修要能自己挪字塊，而垂直方向在此之前
+         根本沒有變數可調——水平早就有 text_center_pct，只有 top 是寫死的。 */
       #text-block {
-        position: absolute; left: var(--text-x, 50%); top: 44%;
+        position: absolute; left: var(--text-x, 50%); top: var(--text-y, 44%);
         transform: translate(-50%, -50%);
         z-index: 4; width: 580px; text-align: center;
       }
@@ -184,6 +186,7 @@
         "guest_y_pct":           { "type": "number", "default": 0 },
         "title_max_width":       { "type": "number", "default": 580 },
         "text_center_pct":       { "type": "number", "default": 50 },
+        "text_top_pct":          { "type": "number", "default": 44 },
         "palette":               { "type": "object", "default": {} }
       }'
     >
@@ -224,6 +227,8 @@
       document.getElementById("text-block").style.width = maxW + "px";
       if (vars.text_center_pct !== undefined)
         root.style.setProperty("--text-x", vars.text_center_pct + "%");
+      if (vars.text_top_pct !== undefined)
+        root.style.setProperty("--text-y", vars.text_top_pct + "%");
 
       const glowHex = vars.person_glow_color !== undefined ? vars.person_glow_color : "#EE8435";
       if (glowHex) {
