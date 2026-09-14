@@ -47,6 +47,7 @@ from ._derived_assets import (
     DerivedAssetInstruction,
     readable_floor_sec,
 )
+from ._hero_text import is_verbatim_quote
 from ._plan_record import PlanRecord, PlanRecordError, PlanTimeline
 from ._policy import (
     CutPolicyInput,
@@ -1961,6 +1962,14 @@ def _events_for_acceptance(
                 try:
                     anchor = run.editorial_context.derive_anchor(event.master_cue_ids)
                 except ValueError:
+                    return None
+                # Hero 不准只是把字幕放大。這條 2026-09-09 就寫進 longform-cut 手冊、
+                # 也確實接進了 Director 的 prompt（57k 字裡四句判準全在），而 9/14 蘇予昕
+                # punch-L02/L03 的四張 hero 仍然全是逐字複述。prompt 層的指示守不住，
+                # 所以在這裡用機械判準擋；理由與負面對照見 `_hero_text`。
+                if event.semantic_kind == "hero_title" and is_verbatim_quote(
+                    event.display, anchor.text
+                ):
                     return None
                 derived_events.append(
                     EventRecord(
