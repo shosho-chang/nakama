@@ -462,6 +462,10 @@ def main() -> int:
     guest_name = Path(req["guest_cutout"]).name
 
     given_geo = req.get("geometry") if req.get("geometry_manual") else None
+    # 拖過字塊也算人工排版。以前只有拖人物才會鎖住遮蔽平衡，於是修修把字塊
+    # 挪好、存檔、重出圖，字又被自動挪回去——跟 2026-09-04 那次「儲存之後的
+    # random 動作」是同一個坑，只是換一個元素。
+    text_fixed = bool(req.get("text_position_manual"))
     if given_geo:
         # 修修在 gate 上拖過了 → 照他的來，不再解算（2026-08-15：「cutout 的位置跟
         # 大小都沒有很確定」——solver 自洽不等於好看，眼睛是他的）
@@ -564,6 +568,7 @@ def main() -> int:
                 "title_max_width": int(req.get("title_max_width") or 580),
                 "logo_height_px": 92,
                 "text_center_pct": center,
+                "text_top_pct": float(req.get("text_top_pct") or 44),
                 "person_glow_color": "#F37425",
                 "inner_edge_fade_pct": 9,
                 "palette": {"accent": "#F37425"},
@@ -587,7 +592,10 @@ def main() -> int:
     render = str(_SKILL_DIR / "render_still.py")
     occ = str(_SKILL_DIR / "occlusion_check.py")
 
-    center, history = 50.0, []
+    # 起點吃配方值：修修拖過字塊之後，重出圖要從他放的位置出發，不是永遠從
+    # 50 重算。text_position_manual 為真時下面的收斂迴圈會直接跳過，這個值
+    # 就是最終位置。
+    center, history = float(req.get("text_center_pct") or 50.0), []
     for attempt in range(3):
         for textonly, dest in ((False, out), (True, tout)):
             r = _run(
@@ -610,7 +618,7 @@ def main() -> int:
         print(f"  center={center}: 左遮 {left} 右遮 {right} 差 {abs(left - right)}")
         if c.returncode == 0:
             break
-        if given_geo:
+        if given_geo or text_fixed:
             # 修修在 gate 上排好版了 → 不准再自動挪字（他 2026-09-04 的規則：
             # 「經過我人眼驗證的都不用修」）。舊行為是不論 manual 與否都跑三輪
             # ±1.5% 的遮蔽平衡，於是他排好、按存檔，出來的字被挪走，預覽跟成品
@@ -630,7 +638,7 @@ def main() -> int:
     # 橘框四邊等距收斂（修修 2026-08-15：「間隔沒有平均」）。
     # 每個中文字的 ink 在 em 框裡偏移都不同，固定 padding 必然歪；量成品回推兩輪。
     # 同上：manual 模式下橘框 padding 也不自動收斂（它會連帶重出圖、動到字身）。
-    if req.get("highlight_text") and not given_geo:
+    if req.get("highlight_text") and not given_geo and not text_fixed:
         # 量→補→出圖，最後一輪只量（確認收斂才不印警告）。要多輪是因為 text-indent
         # 拉字身時 shrink-to-fit 會跟著縮，單輪只吃掉約六成誤差 → 幾何收斂。
         for _ in range(5):
