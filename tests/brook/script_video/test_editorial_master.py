@@ -485,8 +485,9 @@ def test_cli_seal_fresh_opens_official_stage5_handoff(
             return {"episode_id": "Episode", "subtitle_srt_sha256": "b" * 64}
 
     class FakeStage5Request:
-        def __init__(self, *, subtitle_release_handoff=None):
+        def __init__(self, *, subtitle_release_handoff=None, degraded_release_handoff=None):
             observed["handoff"] = subtitle_release_handoff
+            observed["degraded_handoff"] = degraded_release_handoff
 
         def open(self, root):
             observed["opened"] = Path(root)
@@ -514,6 +515,8 @@ def test_cli_seal_fresh_opens_official_stage5_handoff(
     assert result == 0
     assert observed["opened"] == episode
     assert observed["handoff"] is None
+    # 官方路徑不得帶降級交接——降級是明示例外，不能靠預設值溜進來。
+    assert observed["degraded_handoff"] is None
     assert observed["stage5"]["subtitle_srt_sha256"] == "b" * 64
     assert observed["resolve"] is resolve
 
