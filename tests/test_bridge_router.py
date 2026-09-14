@@ -959,3 +959,25 @@ def test_api_agents_handles_none_token_fields(client, monkeypatch):
     assert agents["brook"]["runs_today"] == 0
     assert agents["brook"]["tok_today"] == 0
     assert agents["brook"]["cost_today"] == 0
+
+
+def test_build_endpoint_reports_running_version_and_staleness(client):
+    """chassis header 每頁都 fetch 這個端點，所以它壞掉等於全站 header 壞掉。"""
+    payload = client.get("/bridge/build").json()
+
+    assert set(payload) >= {
+        "commit",
+        "commit_short",
+        "branch",
+        "current_commit",
+        "stale",
+        "known",
+        "started_at",
+        "uptime_seconds",
+    }
+    assert isinstance(payload["stale"], bool)
+    assert isinstance(payload["known"], bool)
+    assert payload["uptime_seconds"] >= 0
+    # 不含祕密：這支是給 header 用的診斷資訊，不該回傳路徑或設定值。
+    assert "path" not in payload
+    assert "token" not in repr(payload).lower()
