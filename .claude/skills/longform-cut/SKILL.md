@@ -104,7 +104,7 @@ python scripts/run_finished_cut_production.py ... advance <command_id>   # 反�
 |---|---|---|
 | asset-backed B-roll 間隔 | ≤75 秒（含片頭到第一支、最後一支到片尾）| `b_roll_cadence_gap_exceeded` |
 | distinct stock 事件／素材 | 各 ≥3 | `distinct_stock_video_minimum_not_met` |
-| Hero 卡 | ≤4，title-like 密度 ≤2/分，任 15 秒內 ≤2 張 | `hero_title_limit_exceeded` 等 |
+| ~~Hero 卡~~ | **已退役**，見〈視覺語彙〉那一列 | — |
 | 卡片停留秒數 | 轉場卡 ≤4s、字卡 ≤8s、B-roll ≤12s | `visual_placement_duration_exceeded` |
 | 兩張卡疊在一起 | — | `title_placement_overlap` |
 
@@ -355,7 +355,7 @@ roll back。根因有二：(1) 短片語彙是為了留住滑動的人，長片�
 | **品牌 badge** | 識別 | 左下角 logo，**只出現開場（收在名牌進場前，如 7.4s）+ 每個轉場卡結束後 ~8s**。`kind:"badge"` + slug `brand-badge-7s`/`brand-badge-8s`/`brand-badge-10s`：**定長 fade 預合成**（180px、alpha fade in/out 0.5s——源動畫動作區僅 ~87×48px，150px loop 版感知不到「沒有動」）。ffmpeg `-stream_loop` + scale=180 + pad 66:840 + fade，鋪 track 5。源檔 `E:\Projects\張修修的AI創作者新世紀\output\podcast-logo-animation\` | 開場+轉場後 |
 | **來賓名牌** | 介紹 | `chapter_label_wide` `align:"left"` + `sub` + `style:"paper"`＝半透明紙卡＋手繪橘豎筆觸＋**逐元素進退場**（卡落→tick 畫出→姓名滑入→頭銜淡入；修修：「整個區塊一起跑出來沒經過設計」）。落**來賓第一個實質單獨鏡頭內**（查 timeline v1 軌首個 ≥3s 的 CAM2 段，貼切點進、退場收在段內；碎片鏡頭 <1s 掛不了名牌）。⚠️ 開場 badge 窗必須在名牌進場前收掉——左下角同框=擠 | 1 |
 | **論文第一頁卡** | 信任感 | 真 PDF 第一頁彈入（`sticker_pair_wide` center 模式；禁 stock 代打）。唯一的證物類型（書封/人名/數據卡都不做——grill 裁決） | 提到具體研究時 |
-| **Hero 大字卡** | 章內錨點 | 長片唯一配方：`punch_card_wide` tier1 + `style:"paper"`，1080p 每行字級上限 **96px**；紙卡放在說話者負空間，避免壓迫臉部。只留短橘色 accent，不用滿寬大劃線；禁止同一支片混入黑底、橘底或其他 Hero style。方向／步驟等章內列舉可用 compact Hero 或 supporting keyword title，不能升格為滿版轉場。**agent 自裁**（選轉折點、貼原話、驗語檢查把關） | 2–4 |
+| ~~**Hero 大字卡**~~ | **已退役（修修 2026-09-15）** | 「怎麼樣都改不好，直接把它拿掉吧，不要了。」四次改不好：9/08 複述、9/09 提前 84 秒劇透且人稱指向被轉述的個案、9/14 又是逐字複述、9/15 改寫之後看片仍然不對。**Director 不要再產生這個卡種**；既有紀錄裡的 hero 讀得回來，但不再鑄新的。要標記某一句很重要，用章節卡或就不放。 | **0** |
 | **Stock Video（Stock Village）** | 情境具象化 | 描述情境的時刻滿版實拍。**每支 long Highlight 至少 3 個真正 stock footage events**；guest-namecard、Hero Title、transition、badge、紙紋、photo 與 generated card 都不計數。選點走演算法不逐支請示：①先找「比方說/例如」舉例句與具體可拍的動作／地點；抽象論述本身不硬配隱喻，但必須繼續在片內其他具體段落找滿 3 個，找不到就維持 revision-required，不得讓 finished review 假裝完成 ② `content_gaps`（>75s 無強事件）只輔助找 Stock 分佈，每段 1 支、≥100s 可 2 支且間隔 ≥40s ③來源檔本身必須是 native landscape（寬 > 高；4K 優先、1080p 可用），Long Highlight **禁止直式或方形素材裁成橫式的例外**；同支素材全片唯一，長度切齊被強調句、`src_in` 跳廢頭 ④逐支確認動作、人物關係與情緒極性都符合完整句段；不看字幕也應讀得出語意。例如「工作很忙、上有老下有小」要呈現忙亂／負荷，不能用開心家庭團聚代打 | **至少 3；之後依 content gap 加量** |
 
 
@@ -395,7 +395,7 @@ roll back。根因有二：(1) 短片語彙是為了留住滑動的人，長片�
 - 一句話裡出現的名詞（課程、報告、相機）**不是**配畫面的理由。先問「這一段在主張什麼」，
   再問「這個畫面有沒有讓那個主張更清楚」。答不出第二題就標 `intentional_aroll`。
 
-#### Hero 大字卡：不准提前講結論，第一人稱只能是講者本人
+#### ~~Hero 大字卡：不准提前講結論，第一人稱只能是講者本人~~（已退役，留作紀錄）
 
 同一次 review 被刪掉的 Hero「原來這一切的源頭是我爸」落在 **3:50.29**，但講者真正說出
 「因此他看到**原來源頭**」是在 **5:13.96**——卡片比音檔早了 84 秒把結論講完，觀眾還沒
@@ -406,7 +406,11 @@ roll back。根因有二：(1) 短片語彙是為了留住滑動的人，長片�
 - **人稱**：卡片裡的「我」必須是講者本人。轉述第三人的故事時，不准把對方的「我」
   搬到卡片上——這跟轉場卡的主詞規則是同一條（見 `_approved_cut._THIRD_PERSON_OPENER`）。
 
-#### Hero 大字卡的驗收標準：**沒有 punchline 就不要放**
+#### ~~Hero 大字卡的驗收標準：沒有 punchline 就不要放~~（已退役，留作紀錄）
+
+> **2026-09-15 修修裁決：這個卡種整個拿掉，不要了。** 底下兩節留著是為了記住為什麼——
+> 判準寫得很清楚、也接進了 Director 的 prompt（9/14 實際送出 57,277 字），甚至補了機械閘，
+> 四次還是改不好。**規則守不住的東西，最後是把它拿掉，不是再加一道閘。**
 
 修修 2026-09-09 定版：「**如果 hero title 沒有一個很強的 punchline 的話，那出來其實是
 沒意義的。**」Hero 不是「這段很重要所以標一下」，是**觀眾會截圖的那一句**。
