@@ -16,7 +16,10 @@ from agents.brook.script_video.finished_cut_production._assets import (
     ResolvedAsset,
     WorkerSelectionCatalog,
 )
-from agents.brook.script_video.finished_cut_production._commands import ApprovedCutCommand
+from agents.brook.script_video.finished_cut_production._commands import (
+    ApprovedCutCommand,
+    TargetedRevisionCommand,
+)
 from agents.brook.script_video.finished_cut_production._context import (
     CanonicalSection,
     CueAnchor,
@@ -305,8 +308,9 @@ def _stored(
     *,
     plan: MaterializationPlan | None = None,
     context: EditorialCutContext | None = None,
-    command: ApprovedCutCommand | None = None,
+    command: ApprovedCutCommand | TargetedRevisionCommand | None = None,
     run_id: str = "run-1",
+    base_plan_id: str | None = None,
 ) -> object:
     command = command or ApprovedCutCommand(
         command_id="approved-cut:" + "a" * 32,
@@ -319,6 +323,8 @@ def _stored(
     )
     return SimpleNamespace(
         command=command,
+        # 真的 `_StoredRun` 有這一格，revision run 靠它指回被修訂的那份 plan record。
+        base_plan_id=base_plan_id,
         view=SimpleNamespace(
             run_id=run_id,
             command_id=command.command_id,
@@ -1435,3 +1441,151 @@ def test_a_pre_adr069_record_can_still_be_reopened(tmp_path: Path) -> None:
     assert second.record.event_diff == first.record.event_diff
     # 補完之後磁碟上那一份也升級了，不是每次重進入都要重算。
     assert read_plan_record_at(record_path) == second.record
+
+
+_REVISION_ID = "targeted-revision:" + "c" * 32
+
+
+def _revision_command(*, current_plan_id: str, **changes: object) -> TargetedRevisionCommand:
+    values: dict[str, object] = {
+        "command_id": _REVISION_ID,
+        "current_plan_id": current_plan_id,
+        "episode_id": "episode-1",
+        "cut_id": "punch-L04",
+        "format": "long",
+        "event_id": "event-1",
+        "feedback": "這張 Hero 只是把字幕放大，重寫。",
+    }
+    values.update(changes)
+    return TargetedRevisionCommand(**values)  # type: ignore[arg-type]
+
+
+class _RevisionFixture:
+    """一份已經物化過的 approved cut，外加對它發的一次 targeted revision。
+
+    兩次 `prepare` 共用同一個 episode root 與同一套 Resolve 假件，因為真實情況就是
+    這樣：revision 鋪的是同一個專案裡的同一支 cut。
+    """
+
+    def __init__(self, tmp_path: Path) -> None:
+        asset = tmp_path / "title.mov"
+        asset.write_bytes(b"title")
+        self.resolved = _resolved_asset(asset)
+        self.assets = _AssetResolver({self.resolved.record.reference: self.resolved})
+        self.authority = _CanonicalAuthority((_canonical(),))
+        self.adapter = _TimelineAdapter(tmp_path, baseline=_canonical().baseline)
+        self.transaction_root = tmp_path / "transactions"
+        self.tmp_path = tmp_path
+        self.base_plan = _component_plan(self.resolved.record.reference)
+
+    def coordinator(self, stored: object) -> MaterializationCoordinator:
+        manager = ResolveTransactionManager(
+            self.adapter,
+            store=AtomicResolveTransactionStore(self.transaction_root),
+        )
+        lifecycle = PlanRecordStore(
+            self.tmp_path,
+            transactions=manager,
+            preview_probe=lambda path: {
+                "duration_sec": 480.0,
+                "video_codec": "h264",
+                "audio_codec": "aac",
+                "decode_ok": True,
+                "offline_frame_count": 0,
+            },
+        )
+        return MaterializationCoordinator(
+            run_store=_RunStore(stored),
+            canonical_authority=self.authority,
+            assets=self.assets,
+            transactions=manager,
+            records=lifecycle,
+            episode_root=self.tmp_path,
+        )
+
+    def materialize_base(self) -> MaterializationPreparation:
+        return self.coordinator(_stored(plan=self.base_plan)).prepare("approved-cut:" + "a" * 32)
+
+    def revision_plan(self) -> MaterializationPlan:
+        return _plan(
+            components=self.base_plan.components,
+            plan_id="plan-2",
+            command_id=_REVISION_ID,
+            run_id="run-2",
+        )
+
+
+def test_a_targeted_revision_materializes_from_its_base_plan_record(tmp_path: Path) -> None:
+    """改一張字卡再鋪回 Resolve——ADR-066 說要支援的動作，這是它的第一份覆蓋。
+
+    `prepare` 的 authority chain 原本寫死 `isinstance(command, ApprovedCutCommand)`，
+    於是 **每一次** targeted revision 都會被 `authority_chain_mismatch` 擋下來。
+    2026-09-13～15 的 20260901 蘇予昕 punch-L02／L03 六次物化全靠一個沒有進 main 的
+    `--force` 撞過去；沒有測試讓 revision 走到這一步，所以那個洞活了下來。
+    """
+
+    fixture = _RevisionFixture(tmp_path)
+    base = fixture.materialize_base()
+
+    stored = _stored(
+        plan=fixture.revision_plan(),
+        command=_revision_command(current_plan_id=base.record.plan_id),
+        run_id="run-2",
+        base_plan_id=base.record.plan_id,
+    )
+    revision = fixture.coordinator(stored).prepare(_REVISION_ID)
+
+    assert revision.status == "preview_ready"
+    assert revision.command_id == _REVISION_ID
+    assert revision.plan_id == "plan-2"
+    # revision 命令身上沒有這三個欄位，它們必須逐欄沿用被修訂的那份紀錄。
+    assert (
+        revision.record.editorial_master_id,
+        revision.record.winner_id,
+        revision.record.tight_cut_id,
+    ) == (base.record.editorial_master_id, base.record.winner_id, base.record.tight_cut_id)
+    # 兩份紀錄並存：舊的那一輪沒有被蓋掉。
+    inspection = PlanRecordStore(tmp_path).inspect("episode-1")
+    assert sorted(cut.plan_id for cut in inspection.cuts) == ["plan-1", "plan-2"]
+
+
+@pytest.mark.parametrize(
+    ("label", "changes", "base_plan_id"),
+    [
+        # 指名的 base 不是 run 存著的那一份——身分斷鏈，不是「寬鬆一點」就好。
+        ("base named by the command is not the run's base", {}, "plan-does-not-exist"),
+        # 同一份紀錄，但命令講的是別集／別支 cut。
+        ("command names another episode", {"episode_id": "episode-2"}, None),
+        ("command names another cut", {"cut_id": "punch-L02"}, None),
+        # opaque ID 必須是命令自己的。
+        (
+            "command_id is not the command's own",
+            {"command_id": "targeted-revision:" + "d" * 32},
+            None,
+        ),
+    ],
+)
+def test_a_revision_without_an_intact_base_chain_is_refused(
+    tmp_path: Path,
+    label: str,
+    changes: dict[str, object],
+    base_plan_id: str | None,
+) -> None:
+    """接上 base plan record 讓檢查更緊，不是更鬆。"""
+
+    fixture = _RevisionFixture(tmp_path)
+    base = fixture.materialize_base()
+    command_plan_id = (
+        base.record.plan_id if base_plan_id is None else base_plan_id  # type: ignore[assignment]
+    )
+    stored = _stored(
+        plan=fixture.revision_plan(),
+        command=_revision_command(current_plan_id=command_plan_id, **changes),
+        run_id="run-2",
+        base_plan_id=command_plan_id,
+    )
+
+    with pytest.raises(MaterializationError) as error:
+        fixture.coordinator(stored).prepare(_REVISION_ID)
+
+    assert error.value.reason_code == "authority_chain_mismatch", label

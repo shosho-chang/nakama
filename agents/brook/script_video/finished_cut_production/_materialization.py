@@ -13,7 +13,12 @@ from pathlib import Path
 from typing import Literal, Protocol
 
 from ._assets import AssetContractError, AssetKind, AssetResolver, ResolvedAsset
-from ._commands import ApprovedCutCommand, _is_authoritative_approved_cut
+from ._commands import (
+    ApprovedCutCommand,
+    TargetedRevisionCommand,
+    _is_authoritative_approved_cut,
+    _is_authoritative_targeted_revision,
+)
 from ._context import EditorialCutContext
 from ._correction import RunEventDiff, _round_event_diff
 from ._digest import file_digest
@@ -47,6 +52,81 @@ class MaterializationError(ValueError):
     def __init__(self, message: str, *, reason_code: str) -> None:
         super().__init__(message)
         self.reason_code = reason_code
+
+
+@dataclass(frozen=True, slots=True)
+class _CommandAuthority:
+    """一道命令能自己證明的身分，攤平成可比對的形狀。
+
+    `chain` 的六欄與下游比對的對象一一對應：command_id、plan 的 episode／cut／format、
+    Editorial Cut Context 的 editorial_master_id 與 tight_cut_id。`winner_id` 不在
+    `chain` 裡，因為沒有東西可以跟它比——它是鑄新 plan record 時要寫進去的事實。
+    """
+
+    chain: tuple[str, str, str, str, str, str]
+    winner_id: str
+
+
+def _command_authority(
+    command: object,
+    command_id: str,
+    *,
+    base_record: PlanRecord | None,
+) -> _CommandAuthority | None:
+    """這道命令的 authority chain；證明不了就回 None。
+
+    **為什麼要分兩種命令**：`ApprovedCutCommand` 身上有 `editorial_master_id` /
+    `winner_id` / `tight_cut_id`，`TargetedRevisionCommand` 沒有——它只說「改哪一份
+    plan 的哪一個 event」。那三個事實住在被修訂的那份 plan record 上。
+
+    原本這裡寫死 `isinstance(command, ApprovedCutCommand)`，於是**任何一次 targeted
+    revision 都無法物化**：型別測試必然為假，reason code 是 `authority_chain_mismatch`。
+    2026-09-13～15 的 20260901 蘇予昕 punch-L02／L03 就是這樣，六次物化全部靠一個沒有
+    進 main 的 `--force` 撞過去。改一張字卡然後鋪回 Resolve，是 ADR-066 自己文件裡寫著
+    要支援的動作，卻沒有任何一個測試讓 revision 走到這一步，所以這個洞活了下來。
+
+    修法不是放寬檢查，是**把 revision 的身分接到它真正的來源**：base plan record。
+    比對只有更緊——revision 現在還必須證明它指名的 base 就是 run 存著的那一份、而且
+    那份紀錄講的是同一集同一支 cut。
+    """
+
+    if isinstance(command, ApprovedCutCommand):
+        if not _is_authoritative_approved_cut(command, command_id):
+            return None
+        editorial_master_id = command.editorial_master_id
+        tight_cut_id = command.tight_cut_id
+        winner_id = command.winner_id
+    elif isinstance(command, TargetedRevisionCommand):
+        if not _is_authoritative_targeted_revision(command, command_id):
+            return None
+        if base_record is None or base_record.plan_id != command.current_plan_id:
+            return None
+        if (
+            base_record.episode_id,
+            base_record.cut_id,
+            base_record.format,
+        ) != (command.episode_id, command.cut_id, command.format):
+            return None
+        editorial_master_id = base_record.editorial_master_id
+        tight_cut_id = base_record.tight_cut_id
+        winner_id = base_record.winner_id
+    else:
+        return None
+    if re.fullmatch(r"[0-9a-f]{64}", editorial_master_id) is None:
+        return None
+    if not winner_id or winner_id != winner_id.strip():
+        return None
+    return _CommandAuthority(
+        chain=(
+            command.command_id,
+            command.episode_id,
+            command.cut_id,
+            command.format,
+            editorial_master_id,
+            tight_cut_id,
+        ),
+        winner_id=winner_id,
+    )
 
 
 class _ProductionRunReader(Protocol):
@@ -112,6 +192,14 @@ class MaterializationCoordinator:
         self._records = records
         self._episode_root = Path(episode_root)
 
+    def _base_record(self, stored: object) -> PlanRecord | None:
+        """被修訂的那份 plan record。approved-cut run 沒有 base，回 None。"""
+
+        base_plan_id = getattr(stored, "base_plan_id", None)
+        if not isinstance(base_plan_id, str) or not base_plan_id:
+            return None
+        return self._records.resolve(base_plan_id)
+
     def prepare(self, command_id: str) -> MaterializationPreparation:
         stored = self._run_store.load_run(command_id)
         if stored is None:
@@ -140,26 +228,18 @@ class MaterializationCoordinator:
                 "Materialization authority is not a typed current plan and context",
                 reason_code="authority_chain_mismatch",
             )
-        if (
-            not isinstance(command, ApprovedCutCommand)
-            or not _is_authoritative_approved_cut(command, command_id)
-            or re.fullmatch(r"[0-9a-f]{64}", command.editorial_master_id) is None
-            or (
-                command.command_id,
-                command.episode_id,
-                command.cut_id,
-                command.format,
-                command.editorial_master_id,
-                command.tight_cut_id,
-            )
-            != (
-                command_id,
-                plan.episode_id,
-                plan.cut_id,
-                plan.format,
-                context.editorial_master_id,
-                context.tight_cut_id,
-            )
+        authority = _command_authority(
+            command,
+            command_id,
+            base_record=self._base_record(stored),
+        )
+        if authority is None or authority.chain != (
+            command_id,
+            plan.episode_id,
+            plan.cut_id,
+            plan.format,
+            context.editorial_master_id,
+            context.tight_cut_id,
         ):
             raise MaterializationError(
                 "command, plan, and Editorial Cut Context do not share one authority chain",
@@ -205,7 +285,8 @@ class MaterializationCoordinator:
         if prior_record is not None:
             return self._reopen_prior_record(
                 prior_record,
-                command=command,
+                command_id=command_id,
+                winner_id=authority.winner_id,
                 plan=plan,
                 context=context,
                 subtitle_path=subtitle_path,
@@ -251,7 +332,8 @@ class MaterializationCoordinator:
             # duplicate 一次會把衍生軌疊第二層。
             return self._resume_prepared_transaction(
                 resumable,
-                command=command,
+                command_id=command_id,
+                winner_id=authority.winner_id,
                 plan=plan,
                 context=context,
                 inspection=inspection,
@@ -287,7 +369,7 @@ class MaterializationCoordinator:
         )
         record = self._stage_record(
             plan,
-            command=command,
+            winner_id=authority.winner_id,
             context=context,
             transaction_id=transaction.transaction_id,
             timeline=_transaction_timeline(transaction),
@@ -310,7 +392,8 @@ class MaterializationCoordinator:
         self,
         transaction: ResolveTransaction,
         *,
-        command: ApprovedCutCommand,
+        command_id: str,
+        winner_id: str,
         plan: MaterializationPlan,
         context: EditorialCutContext,
         inspection: CanonicalTimelineInspection,
@@ -373,7 +456,7 @@ class MaterializationCoordinator:
         _verify_srt_bytes(subtitle_payload, context, expected_digest=subtitle_sha256)
         record = self._stage_record(
             plan,
-            command=command,
+            winner_id=winner_id,
             context=context,
             transaction_id=transaction.transaction_id,
             timeline=_transaction_timeline(transaction),
@@ -383,7 +466,7 @@ class MaterializationCoordinator:
         )
         write_plan_record(record_path, record)
         return MaterializationPreparation(
-            command_id=command.command_id,
+            command_id=command_id,
             run_id=plan.run_id,
             plan_id=plan.plan_id,
             status="preview_ready",
@@ -396,7 +479,8 @@ class MaterializationCoordinator:
         self,
         prior: PlanRecord,
         *,
-        command: ApprovedCutCommand,
+        command_id: str,
+        winner_id: str,
         plan: MaterializationPlan,
         context: EditorialCutContext,
         subtitle_path: Path,
@@ -444,7 +528,7 @@ class MaterializationCoordinator:
         timeline = _inspected_timeline(transaction)
         fresh = self._stage_record(
             plan,
-            command=command,
+            winner_id=winner_id,
             context=context,
             transaction_id=prior.transaction_id,
             timeline=timeline or prior.timeline,
@@ -480,7 +564,7 @@ class MaterializationCoordinator:
                 reason_code="materialization_journal_conflict",
             )
         return MaterializationPreparation(
-            command_id=command.command_id,
+            command_id=command_id,
             run_id=plan.run_id,
             plan_id=plan.plan_id,
             status="preview_ready",
@@ -493,7 +577,7 @@ class MaterializationCoordinator:
         self,
         plan: MaterializationPlan,
         *,
-        command: ApprovedCutCommand,
+        winner_id: str,
         context: EditorialCutContext,
         transaction_id: str,
         timeline: PlanTimeline,
@@ -505,7 +589,7 @@ class MaterializationCoordinator:
             return self._records.stage(
                 plan,
                 editorial_master_id=context.editorial_master_id,
-                winner_id=command.winner_id,
+                winner_id=winner_id,
                 tight_cut_id=context.tight_cut_id,
                 transaction_id=transaction_id,
                 timeline=timeline,
