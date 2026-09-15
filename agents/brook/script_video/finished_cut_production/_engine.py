@@ -602,6 +602,30 @@ class FinishedCutProduction:
             raise CommandRejectedError("downstream derived-asset work is already current")
         target = next(event for event in selection.base.events if event.event_id == event_id)
         upstream = selection.current_prefix[-1] if selection.current_prefix else None
+        # 鏈首的 parent 不是 None。對 targeted revision 來說它是**被修訂的那份 plan 的
+        # director acceptance**——`_current_chain_is_exact` 就是這樣認鏈的（見它的
+        # `expected_first_parent`）。
+        #
+        # director 階段的 correction 會把 `current_prefix` 清成空的，於是舊寫法鑄出
+        # parent=None 的請求；`_request_base_is_current` 永遠不同意，`_advance_existing`
+        # 把 run 丟進 needs_review，而 advance 遇到 needs_review 就 return——互相咬死。
+        # 三條出路也全部關著：retry-failed-dispatch 要求「終端派工失敗」（這裡是派工
+        # 從未發生），request-correction 擋在「另一個修正還在進行中」。
+        #
+        # 2026-09-15 蘇予昕 punch-L02 實際卡死：hero01 用 request_revision 走完四關，
+        # 接著對同一個 run 的 director 發 correction 改 hero02，run 就再也推不動。
+        # 上面 545 行那段註解把「修訂 run 不准再 correction」的擋板拿掉了，卻沒有補上
+        # 鏈首 parent 這一半。
+        parent_acceptance_id = upstream.acceptance_id if upstream is not None else None
+        if upstream is None and isinstance(stored.command, TargetedRevisionCommand):
+            base_record = (
+                self._plan_records.resolve(stored.base_plan_id)
+                if stored.base_plan_id is not None
+                else None
+            )
+            parent_acceptance_id = (
+                base_record.director_acceptance_id if base_record is not None else None
+            )
         request_id = f"request-{uuid4().hex}"
         dp_catalog = (
             _live_catalog(self._asset_resolver, stored.worker_catalog) if stage == "dp" else None
@@ -617,7 +641,7 @@ class FinishedCutProduction:
             attempt=selection.base.attempt + 1,
             scope="event_retry",
             event_id=event_id,
-            parent_acceptance_id=(upstream.acceptance_id if upstream is not None else None),
+            parent_acceptance_id=parent_acceptance_id,
             base_acceptance_id=selection.base.acceptance_id,
             events=(target,),
             placement_candidates=(
