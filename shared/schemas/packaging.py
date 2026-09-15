@@ -479,7 +479,11 @@ PackageV1.model_rebuild()
 
 
 class PackagingRevisionJobV1(BaseModel):
-    """A human rejection queued for a desktop packaging revision agent."""
+    """A human rejection queued for a desktop packaging revision agent.
+
+    Retired 2026-09-15 along with the Reject button; nothing creates these any more.
+    The model stays so existing approval.json files still validate — see ApprovalV1.
+    """
 
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -526,6 +530,7 @@ class ApprovalV1(BaseModel):
     cut_id: str
     approved: bool
     primary_package: int = Field(ge=1, le=3)
+    # 同 revision_job：Reject 拿掉之後只讀不寫，既有值原樣保留不覆寫。
     reject_note: str | None = None
     decided_at: AwareDatetime
     # 真的按了 Approve／Reject 才有值；None = 只是挑了變體或打了大字，還沒裁決。
@@ -542,8 +547,10 @@ class ApprovalV1(BaseModel):
     center_search_request: str | None = None
     # 「先選好、再 render 一次」的配方（每支最多一份；要換就覆蓋）。
     render_request: RenderRequestV1 | None = None
-    # Reject 會建立一筆 revision job；桌機 watcher 認領後交給獨立 Agent 重做，
-    # 完成只回到 ready_for_review，永遠不由 worker 自動核准。
+    # 2026-09-15 起不再寫入：Reject 整條拿掉（修修裁決——他實際的工作方式是自己改
+    # 標題、自己組封面，不是打回去叫機器重做）。欄位留著純粹是為了讀得動舊檔：
+    # extra="forbid" 之下，拔掉欄位會讓帶著它的既有 approval.json 直接驗證失敗，
+    # 整個 board 422（20260805 林之晨 full 就有一筆 ready_for_review 的舊紀錄）。
     revision_job: PackagingRevisionJobV1 | None = None
 
 

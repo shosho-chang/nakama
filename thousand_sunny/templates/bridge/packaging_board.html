@@ -93,44 +93,18 @@
           <span class="zh">{{ cut.visual_recipe }} · {{ cut.aspect }}</span>
         </h2>
       </div>
-      {# decision 是 2026-08-14 新增：只挑變體不算裁決。舊檔沒這欄（None）→ 用
-         approved 回退判讀，維持既有集數的顯示。#}
+      {#-- Reject 於 2026-09-15 移除（修修裁決），所以這裡只剩兩態：核准了，或還沒。
+           舊集數的 approval.json 仍可能帶 decision='reject' 與 revision_job——欄位留在
+           schema 讀得動，但不再是畫面上的一種狀態，那些支一律顯示為還沒裁決。
+           順帶修掉一個舊誤標：原本「沒 decision 又沒挑過變體／大字／配方」會被歸進
+           REJECTED，於是一支全新、根本沒人碰過的 cut 在畫面上寫著「被否決」。 --#}
       {% if approval and approval.approved %}
       <span class="sho-tag sho-tag--accent">APPROVED · PKG {{ approval.primary_package }}</span>
-      {% elif approval and approval.revision_job and approval.revision_job.status == 'queued' %}
-      <span class="sho-tag pkg-tag-revision">REVISION QUEUED</span>
-      {% elif approval and approval.revision_job and approval.revision_job.status == 'running' %}
-      <span class="sho-tag pkg-tag-revision">REVISION RUNNING</span>
-      {% elif approval and approval.revision_job and approval.revision_job.status == 'ready_for_review' %}
-      <span class="sho-tag pkg-tag-ready">READY FOR RE-REVIEW</span>
-      {% elif approval and approval.revision_job and approval.revision_job.status == 'failed' %}
-      <span class="sho-tag pkg-tag-rejected">REVISION FAILED</span>
-      {% elif approval and (approval.decision == 'reject' or (approval.decision is none and approval.selected_variant is none and approval.bigtext_request is none and approval.render_request is none)) %}
-      <span class="sho-tag pkg-tag-rejected">REJECTED</span>
       {% else %}
       <span class="section-status idle">PENDING</span>
       {% endif %}
     </header>
     <div class="section-body">
-
-      {% if approval and approval.revision_job %}
-      <div class="pkg-revision-state pkg-revision-state--{{ approval.revision_job.status }}" role="status" aria-live="polite"{% if approval.revision_job.status in ['queued', 'running'] %} data-revision-live="true"{% endif %}>
-        <div>
-          <strong class="sho-mono-up">PACKAGING REVISION · {{ approval.revision_job.status | replace('_', ' ') }}</strong>
-          <p>{{ approval.revision_job.feedback }}</p>
-          <span class="sho-mono">request {{ approval.revision_job.request_id }} · attempt {{ approval.revision_job.attempt }}</span>
-          {% if approval.revision_job.error %}
-          <p class="pkg-revision-error">{{ approval.revision_job.error }}</p>
-          {% endif %}
-        </div>
-        {% if approval.revision_job.status == 'failed' %}
-        <form method="post" action="/bridge/packaging/{{ episode_slug }}/revision/retry">
-          <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
-          <button class="sho-btn sho-btn--ghost" type="submit">Retry revision</button>
-        </form>
-        {% endif %}
-      </div>
-      {% endif %}
 
       {% if cut.brand_flags %}
       <div class="pkg-brand-flags" role="alert">
@@ -170,8 +144,8 @@
         {% endif %}
         {% endif %}
       </details>
-      {% else %}
-      <p class="sho-mono pkg-brief-missing">（這支還沒有內容速覽）</p>
+      {#-- 沒有速覽時原本印「（這支還沒有內容速覽）」。那句在說「本來想給你這支在講
+           什麼，但桌機端還沒生」——對站在 gate 前面的人，它給不出任何能做的事。 --#}
       {% endif %}
 
       {% if cut.format == 'long' %}
@@ -180,8 +154,10 @@
          submit 混在一起。#}
       <section class="pkg-title-edit" id="title-edit-{{ cut.cut_id }}">
         <div class="pkg-title-edit-head">
-          <h3 class="sho-mono-up">YouTube 上架標題（不會改封面大字）</h3>
-          <p>先改你要採用的 Package 標題並按「儲存標題」，再到下方選同一個 Package Approve。</p>
+          {#-- 原本是「YouTube 上架標題（不會改封面大字）」＋一句操作順序。括號在防一個
+               誤會，卻用否定句講；順序那句則把「Package」當成他認得的詞。改成直接指路。 --#}
+          <h3 class="sho-mono-up">YouTube 影片標題</h3>
+          <p>上架用的標題。封面上的大字在下面〈組封面〉改。</p>
         </div>
         {% for t in cut.titles|sort(attribute='rank') %}
         <form method="post" action="/bridge/packaging/{{ episode_slug }}/title" class="pkg-title-form">
@@ -206,7 +182,9 @@
          gate 只寫配方，出圖在桌機端——所以這裡沒有預覽，只有「存配方」。#}
       <details class="pkg-compose" id="compose-{{ cut.cut_id }}"
                {% if composed_cut == cut.cut_id %}open{% endif %}>
-        <summary class="sho-mono-up">組封面：選標題 ＋ 打大字 ＋ 挑臉（存完我再 render 一次）</summary>
+        {#-- 原本把下面的欄位名在標題上再念一次（選標題＋打大字＋挑臉）。 --#}
+        <summary class="sho-mono-up">組封面</summary>
+        <p class="pkg-compose-lede">選一組來改。存完之後桌機端才會出圖。</p>
         {% set editor = namespace(pkg=none, recipe=none, state=none) %}
         {% for item in view.packages %}
           {% if editor.pkg is none and editor_package_rank and item.pkg.title_rank == editor_package_rank %}{% set editor.pkg = item.pkg %}{% set editor.recipe = item.editor_recipe %}{% set editor.state = item.recipe_state %}{% endif %}
@@ -226,7 +204,7 @@
           <input type="hidden" name="center_visual_asset" value="{{ req.center_visual_asset if req and req.center_visual_asset else '' }}">
 
           <fieldset class="pkg-recipe-picker">
-            <legend class="sho-mono-up">編輯哪一個 package</legend>
+            <legend class="sho-mono-up">在改哪一組</legend>
             <div class="pkg-recipe-tabs" role="tablist" aria-label="選擇要編輯的 package">
               {% for item in view.packages %}
               <button type="button" class="sho-btn sho-btn--ghost pkg-recipe-tab"
@@ -237,7 +215,7 @@
               {% endfor %}
             </div>
             <p class="sho-mono pkg-recipe-missing" role="status" hidden>
-              這個 package 還沒存過配方，所以下面只帶了它自己的標題與臉，其他欄位是空的。
+              這一組還沒組過，大字和位置都是空的。
             </p>
             <script type="application/json" class="pkg-recipe-data">{{ view.recipe_payload | tojson }}</script>
           </fieldset>
@@ -349,7 +327,7 @@
               <div class="sho-mono pkg-card-meta" title="{{ c.file }}">{{ c.emotion or c.file }}</div>
             </label>
             {% else %}
-            <p class="sho-mono pkg-brief-missing">（這集還沒有 {{ label }} 的 cutout — 桌機端跑 thumbnail-brainstorm 產生）</p>
+            <p class="sho-mono pkg-cutout-missing">（這集還沒有 {{ label }} 的臉，要先在桌機端做出來）</p>
             {% endfor %}
           </fieldset>
           {% endfor %}
@@ -426,19 +404,27 @@
                           aria-label="放大選定圖層">＋ 放大</button>
                 </span>
               </div>
-              <label class="pkg-stage-mode">
-                <input type="checkbox" name="geometry_mode" value="manual"
-                       {% if req and req.geometry_manual %}checked{% endif %}>
-                用我調的位置（不勾＝每次重新自動解算）
-              </label>
-              {# 字塊的 manual 旗標跟人物分開：只挪字不該連帶鎖住人物的自動解算，
-                 反之亦然。不勾的話 render 端照樣跑遮蔽平衡自動收斂水平位置。 #}
-              <label class="pkg-stage-mode">
-                <input type="checkbox" name="text_position_mode" value="manual"
-                       data-text-manual
-                       {% if req and req.text_position_manual %}checked{% endif %}>
-                大字用我擺的位置（不勾＝自動對齊左右遮蔽平衡）
-              </label>
+              {#-- 這兩格本來是 checkbox，修修 2026-09-15：「只要我按下『存配方』，就是
+                   叫系統用我調的位置啊，那我為什麼還要再勾？」——他本來就不必勾，拖過
+                   就自動勾了（見 markManual）。問題是它長得像待辦事項，讀起來像在跟他
+                   要東西。旗標本身要留：它決定換臉之後出圖端要不要重新自動對齊，永遠
+                   手動的話新的臉會照舊座標擺、壓到大字上。所以改成回報狀態＋一個還原
+                   按鈕，值收進 hidden input 由拖曳與還原鈕維護。
+                   人物與大字分開兩個旗標：只挪字不該連帶鎖住人物的自動解算，反之亦然。 --#}
+              {% for lock, label, auto_text, manual_text in [
+                ('geometry', '人物位置', '自動對齊（換臉會重新算）', '你自己擺的'),
+                ('text', '大字位置', '自動對齊左右留白', '你自己擺的')
+              ] %}
+              <p class="pkg-stage-lock" data-lock="{{ lock }}" role="status">
+                <input type="hidden" data-lock-input
+                       name="{{ 'geometry_mode' if lock == 'geometry' else 'text_position_mode' }}"
+                       value="{% if req and (req.geometry_manual if lock == 'geometry' else req.text_position_manual) %}manual{% else %}auto{% endif %}">
+                <span class="pkg-stage-lock-label">{{ label }}：</span>
+                <span class="pkg-stage-lock-text"
+                      data-auto-text="{{ auto_text }}" data-manual-text="{{ manual_text }}"></span>
+                <button type="button" class="pkg-stage-lock-reset" data-lock-reset>改回自動</button>
+              </p>
+              {% endfor %}
               <input type="hidden" name="text_center_pct" data-text-geo="x"
                      value="{{ req.text_center_pct if req else 50 }}">
               <input type="hidden" name="text_top_pct" data-text-geo="y"
@@ -475,9 +461,9 @@
                 </label>
                 {% endfor %}
               </div>
-              <p class="sho-mono pkg-stage-hint">
-                中央圖會照這四個數字重畫；大字若沒有勾「用我擺的位置」，出圖時仍會依左右遮蔽微調 1–2%。
-              </p>
+              {#-- 原本在這裡解釋四個數字怎麼用、以及沒勾那個 checkbox 時大字會被微調
+                   1–2%。checkbox 換成狀態句之後這句連指涉對象都沒了，而數字欄位本身
+                   已經標著「圖卡寬度／高度／左右／上下」。 --#}
               <div class="pkg-center-pool">
                 <p class="sho-mono-up pkg-center-pool-label">換中央圖</p>
                 {% if view.center_candidates %}
@@ -652,28 +638,47 @@
           {% endfor %}
         </fieldset>
 
+        {#-- 修修 2026-09-15：「我希望把評分、Persona 評的評分，以及落選理由都列在這邊，
+             或許我看了會有一些 idea，再去自己修改上面入選的標題。」
+
+             數字評分與 persona 原話在桌機端的 title_trace.json 裡，但那些檔今天對不上
+             cut（同一集三種檔名、根目錄那顆裝的是哪一支是隨機的，多數 panel_rounds 還
+             是空的），所以本區只用 packages.json 上每條標題都保證有的欄位：角度、payoff、
+             落選理由。要接 title_trace 得先修桌機端的寫檔慣例，那是另一題。 --#}
         {% if view.runners_up %}
         <details class="pkg-runners">
-          <summary class="sho-mono-up">落選標題（rank 4–5）</summary>
-          <ul>
+          <summary class="sho-mono-up">落選標題（第 4–5 名）</summary>
+          {#-- 順帶回答修修 2026-09-15 的疑問（「列了 5 個標題，下面的封面只有 3 組，
+               為什麼會有這種差異？」）：封面只配前 3 名，而上架標題取自你 Approve 的
+               那一組，所以第 4–5 名要用就得把文字搬進前三名的格子。 --#}
+          <p class="pkg-runners-lede">
+            這兩條沒有配封面。想用它的文字就複製到上面〈YouTube 影片標題〉的格子——
+            上架標題只會從有封面的那三條裡挑。
+          </p>
+          <ol class="pkg-runner-list">
             {% for t in view.runners_up %}
-            <li><span class="pkg-runner-text">{{ t.text }}</span>
-                <span class="sho-mono">— {{ t.panel_note }}</span></li>
+            <li class="pkg-runner">
+              <p class="pkg-runner-text">#{{ t.rank }}　{{ t.text }}</p>
+              {% if t.angle_combo %}
+              <p class="pkg-runner-angles">
+                {% for a in t.angle_combo %}<span class="pkg-runner-angle">{{ a }}</span>{% endfor %}
+              </p>
+              {% endif %}
+              {% if t.payoff %}
+              <p class="pkg-runner-row"><span class="pkg-runner-key">看完會得到</span>{{ t.payoff }}</p>
+              {% endif %}
+              {% if t.panel_note %}
+              <p class="pkg-runner-row"><span class="pkg-runner-key">為什麼排這裡</span>{{ t.panel_note }}</p>
+              {% endif %}
+            </li>
             {% endfor %}
-          </ul>
+          </ol>
         </details>
         {% endif %}
 
-        <div class="field">
-          <label class="field-label" for="note-{{ cut.cut_id }}">REJECT NOTE ·（否決理由，taste capture — Reject 必填，approve 免填）</label>
-          <textarea class="sho-input pkg-note" id="note-{{ cut.cut_id }}" name="reject_note"
-                    rows="2" maxlength="2000">{{ approval.reject_note or '' if approval else '' }}</textarea>
-        </div>
         <div class="pkg-actions">
-          <button class="sho-btn" type="submit" name="decision" value="approve">Approve（人工決定優先）</button>
-          <button class="sho-btn sho-btn--ghost" type="submit" name="decision" value="reject">Reject（附理由）</button>
+          <button class="sho-btn" type="submit">Approve（人工決定優先）</button>
         </div>
-        <p class="sho-mono pkg-approve-error" role="alert" aria-live="assertive"></p>
       </form>
 
       {% else %}{# short cut #}
@@ -692,21 +697,14 @@
       <form method="post" action="/bridge/packaging/{{ episode_slug }}/approve" class="pkg-approve-form pkg-approve-form--short">
         <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
         <input type="hidden" name="primary_package" value="1">
-        <div class="field">
-          <label class="field-label" for="snote-{{ cut.cut_id }}">REJECT NOTE ·（Reject 必填，approve 免填）</label>
-          <textarea class="sho-input pkg-note" id="snote-{{ cut.cut_id }}" name="reject_note"
-                    rows="2" maxlength="2000">{{ approval.reject_note or '' if approval else '' }}</textarea>
-        </div>
-        <p class="sho-mono pkg-approve-error" role="alert" aria-live="assertive"></p>
         <div class="pkg-actions">
-          <button class="sho-btn" type="submit" name="decision" value="approve">Approve</button>
-          <button class="sho-btn sho-btn--ghost" type="submit" name="decision" value="reject">Reject</button>
+          <button class="sho-btn" type="submit">Approve</button>
         </div>
       </form>
       {% endif %}
 
       {% if approval %}
-      <p class="sho-mono pkg-decided" title="{{ approval.decided_at }}">已裁決 {{ approval.decided_at | string | truncate(16, True, '') | replace('T', ' ') }}{% if approval.reject_note %} · 理由：{{ approval.reject_note }}{% endif %}</p>
+      <p class="sho-mono pkg-decided" title="{{ approval.decided_at }}">已裁決 {{ approval.decided_at | string | truncate(16, True, '') | replace('T', ' ') }}</p>
       {% endif %}
     </div>
   </article>
@@ -761,15 +759,6 @@
     color: var(--sho-error); border: 1px solid color-mix(in oklch, var(--sho-error) 45%, transparent);
     border-radius: var(--sho-r-1); padding: 2px var(--sho-s-2); font-size: 12px;
   }
-  .pkg-tag-rejected { color: var(--sho-error); border-color: color-mix(in oklch, var(--sho-error) 45%, transparent); }
-  .pkg-tag-revision { color: var(--sho-info); border-color: color-mix(in oklch, var(--sho-info) 45%, transparent); }
-  .pkg-tag-ready { color: var(--sho-success); border-color: color-mix(in oklch, var(--sho-success) 45%, transparent); }
-  .pkg-revision-state { display: flex; justify-content: space-between; gap: var(--sho-s-4); align-items: start; padding: var(--sho-s-3); border: 1px solid var(--sho-line); border-radius: var(--sho-r-1); background: var(--sho-bg-2); }
-  .pkg-revision-state p { margin: var(--sho-s-1) 0; color: var(--sho-text-2); }
-  .pkg-revision-state--queued, .pkg-revision-state--running { border-color: color-mix(in oklch, var(--sho-info) 45%, var(--sho-line)); }
-  .pkg-revision-state--ready_for_review { border-color: color-mix(in oklch, var(--sho-success) 45%, var(--sho-line)); }
-  .pkg-revision-state--failed { border-color: color-mix(in oklch, var(--sho-error) 45%, var(--sho-line)); }
-  .pkg-revision-error { color: var(--sho-error) !important; }
   .pkg-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: var(--sho-s-4); border: 0; padding: 0; margin: 0 0 var(--sho-s-4); }
   .pkg-cards legend { margin-bottom: var(--sho-s-3); color: var(--sho-muted); }
   .pkg-card {
@@ -824,8 +813,36 @@
   .pkg-card-meta { margin-top: var(--sho-s-1); }
   .pkg-card--primary { border-color: var(--sho-accent); }
   .pkg-runners { margin-bottom: var(--sho-s-4); }
-  .pkg-runners ul { margin: var(--sho-s-2) 0 0; padding-left: var(--sho-s-4); }
-  .pkg-runners li { line-height: 1.7; color: var(--sho-text-2); }
+  .pkg-runners-lede { margin: var(--sho-s-2) 0 0; color: var(--sho-text-2); }
+  .pkg-runner-list { margin: var(--sho-s-3) 0 0; padding: 0; list-style: none; }
+  .pkg-runner {
+    padding: var(--sho-s-3);
+    border: 1px solid var(--sho-line);
+    border-radius: var(--sho-r-2);
+    background: var(--sho-bg-2);
+  }
+  .pkg-runner + .pkg-runner { margin-top: var(--sho-s-2); }
+  .pkg-runner-text { margin: 0; color: var(--sho-text); font-weight: 600; line-height: 1.5; }
+  .pkg-runner-angles {
+    display: flex; flex-wrap: wrap; gap: var(--sho-s-1);
+    margin: var(--sho-s-2) 0 0;
+  }
+  .pkg-runner-angle {
+    padding: 2px var(--sho-s-2);
+    border: 1px solid var(--sho-line-2);
+    border-radius: var(--sho-r-pill);
+    color: var(--sho-text-2);
+    font-size: 0.85em;
+  }
+  /* key 固定寬度成兩欄：「看完會得到」與「為什麼排這裡」對齊才掃得快 */
+  .pkg-runner-row {
+    display: grid; grid-template-columns: 6.5rem 1fr; gap: var(--sho-s-2);
+    margin: var(--sho-s-2) 0 0; color: var(--sho-text-2); line-height: 1.6;
+  }
+  .pkg-runner-key { color: var(--sho-muted); font-size: 0.9em; }
+  @media (max-width: 560px) {
+    .pkg-runner-row { grid-template-columns: 1fr; gap: 0; }
+  }
 
   /* 內容速覽 — 判斷標題前先知道這支在講什麼 */
   .pkg-brief { margin-bottom: var(--sho-s-4); }
@@ -842,7 +859,8 @@
   .pkg-brief-quotes li + li { margin-top: var(--sho-s-2); }
   .pkg-brief-at { color: var(--sho-muted); margin-right: var(--sho-s-2); }
   .pkg-brief-speaker { font-weight: 600; margin-right: var(--sho-s-1); }
-  .pkg-brief-missing { color: var(--sho-muted); margin: 0 0 var(--sho-s-4); }
+  .pkg-compose-lede { margin: var(--sho-s-2) 0 0; color: var(--sho-text-2); }
+  .pkg-cutout-missing { color: var(--sho-muted); margin: 0 0 var(--sho-s-4); }
 
   /* 標題手改字 */
   .pkg-title-edit {
@@ -857,7 +875,6 @@
   .pkg-title-row .sho-input { flex: 1 1 auto; min-width: 0; }
   .pkg-title-row .sho-btn { flex: 0 0 auto; }
   .pkg-title-orig { margin: var(--sho-s-1) 0 0; color: var(--sho-muted); }
-  .pkg-note { width: 100%; resize: vertical; }
   .pkg-actions {
     display: flex; flex-wrap: wrap; align-items: center;
     gap: var(--sho-s-3); margin-top: var(--sho-s-3);
@@ -1037,7 +1054,24 @@
   }
 
   .pkg-layer-scale { display: flex; gap: var(--sho-s-2); margin-left: auto; }
-  .pkg-stage-mode { display: flex; gap: var(--sho-s-2); align-items: center; }
+  /* 位置鎖狀態：報告句，不是待辦。manual 時才長出「改回自動」。 */
+  .pkg-stage-lock {
+    display: flex; flex-wrap: wrap; align-items: baseline;
+    gap: var(--sho-s-2); margin: var(--sho-s-2) 0 0;
+    color: var(--sho-text-2);
+  }
+  .pkg-stage-lock-label { color: var(--sho-muted); }
+  .pkg-stage-lock[data-lock-state="manual"] .pkg-stage-lock-text {
+    color: var(--sho-text); font-weight: 600;
+  }
+  .pkg-stage-lock-reset {
+    background: none; border: 0; padding: 0;
+    color: var(--sho-text-2); text-decoration: underline;
+    text-underline-offset: 3px; cursor: pointer; font: inherit;
+  }
+  .pkg-stage-lock-reset:hover { color: var(--sho-accent-2); }
+  .pkg-stage-lock-reset:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
+  .pkg-stage-lock-reset[hidden] { display: none; }
   .pkg-stage-nums {
     display: grid; grid-template-columns: repeat(6, 1fr);
     gap: var(--sho-s-2); margin-top: var(--sho-s-2);
@@ -1165,14 +1199,12 @@
         .replace("_x", "_x_pct").replace("_y", "_y_pct");
       input.value = geometry?.[key] ?? "";
     }
-    const manual = form.querySelector('input[name="geometry_mode"]');
-    if (manual) manual.checked = Boolean(recipe?.geometry_manual);
+    setLock(form, "geometry", Boolean(recipe?.geometry_manual));
     // 換 package 分頁時字塊位置也要跟著換，否則會把上一個 package 的位置
     // 帶到這一個身上（人物幾何本來就是這樣還原的，字塊漏掉就會不一致）。
     setValue("text_center_pct", recipe?.text_center_pct ?? 50);
     setValue("text_top_pct", recipe?.text_top_pct ?? 44);
-    const textManual = form.querySelector("[data-text-manual]");
-    if (textManual) textManual.checked = Boolean(recipe?.text_position_manual);
+    setLock(form, "text", Boolean(recipe?.text_position_manual));
     const centerGeometry = recipe?.center_geometry ?? null;
     for (const input of form.querySelectorAll("[data-center-geo]")) {
       const key = input.dataset.centerGeo;
@@ -1197,6 +1229,11 @@
   document.addEventListener("click", (event) => {
     const tab = event.target.closest(".pkg-recipe-tab");
     if (tab) loadPackageRecipe(tab);
+    const reset = event.target.closest("[data-lock-reset]");
+    if (reset) {
+      const row = reset.closest(".pkg-stage-lock");
+      setLock(reset.closest("form"), row.dataset.lock, false);
+    }
   });
 
   // ── 換中央圖（修修 2026-08-29：「來源的圖要多一點」）───────────────────────
@@ -1248,9 +1285,20 @@
     return out;
   }
 
+  // 「人物／大字位置是自動還是你自己擺的」——這一行只報告狀態，不跟修修要輸入。
+  // 值本身進 hidden input；拖曳會呼叫這裡設 true，「改回自動」設回 false。
+  function setLock(form, lock, manual) {
+    const row = form?.querySelector(`.pkg-stage-lock[data-lock="${lock}"]`);
+    if (!row) return;
+    row.querySelector("[data-lock-input]").value = manual ? "manual" : "auto";
+    row.dataset.lockState = manual ? "manual" : "auto";
+    const text = row.querySelector(".pkg-stage-lock-text");
+    text.textContent = manual ? text.dataset.manualText : text.dataset.autoText;
+    row.querySelector("[data-lock-reset]").hidden = !manual;
+  }
+
   function markTextManual(stage) {
-    const box = stage.closest("form").querySelector("[data-text-manual]");
-    if (box && !box.checked) box.checked = true;
+    setLock(stage.closest("form"), "text", true);
   }
 
   function centerInputs(stage) {
@@ -1584,8 +1632,7 @@
 
   // 手動動過就自動勾「用我調的位置」——不然辛苦拖完按存檔又被 solver 蓋掉
   function markManual(stage) {
-    const box = stage.closest("form").querySelector('input[name="geometry_mode"]');
-    if (box && !box.checked) box.checked = true;
+    setLock(stage.closest("form"), "geometry", true);
     // 勾 manual 的當下，把還空著的欄位補成「預覽正在用的那個值」。
     // applyStage 遇到空字串會退回 STAGE_DEFAULT 去畫預覽，但空字串送到後端
     // 會落在 Form 的預設 0.0 上、撞 GeometryV1 的 gt=0 → 400。結果是
@@ -1633,6 +1680,12 @@
     for (const stage of document.querySelectorAll(".pkg-stage")) stageScale(stage);
   });
   syncStages();
+  // 先照伺服器送來的值把狀態句寫出來，再讓分頁還原覆蓋。沒有這步的話，
+  // 任何沒跑到 loadPackageRecipe 的表單會留下一行空白的「人物位置：」。
+  for (const row of document.querySelectorAll(".pkg-stage-lock")) {
+    setLock(row.closest("form"), row.dataset.lock,
+            row.querySelector("[data-lock-input]").value === "manual");
+  }
   for (const tab of document.querySelectorAll('.pkg-recipe-tab[aria-selected="true"]')) {
     loadPackageRecipe(tab);
   }
@@ -1756,19 +1809,6 @@
   };
   window.setTimeout(pollRelease, 5000);
 
-  // server 端 reject 必填 feedback（400）；前端先擋住，避免整頁跳 JSON 錯誤丟失表單狀態
-  for (const form of document.querySelectorAll(".pkg-approve-form")) {
-    form.addEventListener("submit", (event) => {
-      if (event.submitter?.value !== "reject") return;
-      const note = form.querySelector('textarea[name="reject_note"]');
-      if (note && note.value.trim()) return;
-      event.preventDefault();
-      const error = form.querySelector(".pkg-approve-error");
-      if (error) error.textContent = "Reject 需要填寫 feedback，Agent 才能重做。";
-      note?.focus();
-    });
-  }
-
 </script>
 {% endif %}
 {% if description_pending and description_state == 'generating' %}
@@ -1794,13 +1834,6 @@
     window.setTimeout(pollDescription, 3000);
   };
   window.setTimeout(pollDescription, 3000);
-</script>
-{% endif %}
-{% if revision_polling %}
-<script>
-  if (document.querySelector('[data-revision-live="true"]')) {
-    window.setTimeout(() => window.location.reload(), 5000);
-  }
 </script>
 {% endif %}
 </body>

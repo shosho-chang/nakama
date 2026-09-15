@@ -19,17 +19,14 @@ from PIL import Image
 from scripts.render_watcher import (
     _validate_full_episode_layout,
     dispatch_packaging_agent,
-    dispatch_revision_agent,
     filter_render_requests,
     find_packaging_dir,
     load_state,
     main,
     pending_packaging_jobs,
     pending_requests,
-    pending_revision_jobs,
     render_one,
     run_packaging_job,
-    run_revision_job,
     save_state,
 )
 
@@ -249,7 +246,7 @@ def _neutralise_watcher_preflight(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr("scripts.render_watcher.RENDER_REQUEST", request_stub)
 
 
-def test_render_requests_only_cli_skips_revision_and_initial_jobs(monkeypatch, tmp_path):
+def test_render_requests_only_cli_skips_the_initial_packaging_job(monkeypatch, tmp_path):
     calls: list[tuple[str, str]] = []
     render_jobs = [
         {
@@ -265,17 +262,11 @@ def test_render_requests_only_cli_skips_revision_and_initial_jobs(monkeypatch, t
             "key": "20260805-linzhichen/value-L01/r1",
         },
     ]
-    revision = {"key": "revision-job"}
     initial = {"key": "initial-packaging-job"}
     _neutralise_watcher_preflight(monkeypatch, tmp_path)
     monkeypatch.setattr("scripts.render_watcher.get_vault_path", lambda: tmp_path)
-    monkeypatch.setattr("scripts.render_watcher.pending_revision_jobs", lambda vault: [revision])
     monkeypatch.setattr("scripts.render_watcher.pending_requests", lambda vault, state: render_jobs)
     monkeypatch.setattr("scripts.render_watcher.pending_packaging_jobs", lambda vault: [initial])
-    monkeypatch.setattr(
-        "scripts.render_watcher.run_revision_job",
-        lambda job, log_path=None: calls.append(("revision", job["key"])),
-    )
     monkeypatch.setattr(
         "scripts.render_watcher.render_one",
         lambda job, state, state_path, log_path: calls.append(("render", job["key"])),
@@ -307,13 +298,11 @@ def test_render_requests_only_cli_skips_revision_and_initial_jobs(monkeypatch, t
     assert calls == [("render", "20260805-linzhichen/value-L01/r1")]
 
 
-def test_default_cli_still_runs_all_three_job_classes(monkeypatch, tmp_path):
+def test_default_cli_still_runs_both_job_classes(monkeypatch, tmp_path):
+    """本來是三類，2026-09-15 Reject 拿掉之後只剩存配方 render 與初始 packaging。"""
     calls: list[str] = []
     _neutralise_watcher_preflight(monkeypatch, tmp_path)
     monkeypatch.setattr("scripts.render_watcher.get_vault_path", lambda: tmp_path)
-    monkeypatch.setattr(
-        "scripts.render_watcher.pending_revision_jobs", lambda vault: [{"key": "revision"}]
-    )
     monkeypatch.setattr(
         "scripts.render_watcher.pending_requests",
         lambda vault, state: [
@@ -327,10 +316,6 @@ def test_default_cli_still_runs_all_three_job_classes(monkeypatch, tmp_path):
     )
     monkeypatch.setattr(
         "scripts.render_watcher.pending_packaging_jobs", lambda vault: [{"key": "initial"}]
-    )
-    monkeypatch.setattr(
-        "scripts.render_watcher.run_revision_job",
-        lambda job, log_path=None: calls.append(job["key"]),
     )
     monkeypatch.setattr(
         "scripts.render_watcher.render_one",
@@ -353,35 +338,24 @@ def test_default_cli_still_runs_all_three_job_classes(monkeypatch, tmp_path):
     )
 
     assert main() == 0
-    assert calls == ["revision", "render", "initial"]
+    assert calls == ["render", "initial"]
 
 
-def test_queued_rejection_is_a_pending_agent_revision(vault):
-    path = vault / "Attachments" / "packaging" / "20260721-zhengguowei" / "approval.json"
-    payload = _approval(None)
-    payload["approvals"][0]["decision"] = "reject"
-    payload["approvals"][0]["reject_note"] = "換更好的 cutout，書封白底要去掉"
-    payload["approvals"][0]["revision_job"] = {
-        "contract": "packaging-revision-job-v1",
-        "request_id": "revision-0123456789abcdef",
-        "feedback": "換更好的 cutout，書封白底要去掉",
-        "requested_at": "2026-08-21T06:00:00+00:00",
-        "source_packages_sha256": "a" * 64,
-        "source_assets": {},
-        "status": "queued",
-        "attempt": 0,
-        "started_at": None,
-        "finished_at": None,
-        "result_receipt": None,
-        "error": None,
-    }
-    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+def test_watcher_no_longer_knows_how_to_run_a_packaging_revision(tmp_path):
+    """Reject 的後端一起退場：殘留的 revision_job 不會再被任何人撿走。
 
-    jobs = pending_revision_jobs(vault)
-    assert len(jobs) == 1
-    assert jobs[0]["slug"] == "20260721-zhengguowei"
-    assert jobs[0]["cut_id"] == "full"
-    assert jobs[0]["request_id"] == "revision-0123456789abcdef"
+    gate 上已經沒有產生 revision job 的入口；如果 watcher 還留著 runner，舊檔裡
+    那些 job 會在某次重啟後突然被執行，拿一份過期的 feedback 去重做整包封面。
+    """
+    import scripts.render_watcher as watcher
+
+    for gone in (
+        "pending_revision_jobs",
+        "run_revision_job",
+        "dispatch_revision_agent",
+        "_update_revision_job",
+    ):
+        assert not hasattr(watcher, gone), gone
 
 
 def _queued_packaging_manifest(vault: Path) -> tuple[Path, Path]:
@@ -583,196 +557,6 @@ def test_initial_packaging_success_becomes_ready_and_failure_becomes_failed(vaul
     assert "exit 7" in failed["cuts"]["value-L02"]["packaging"]["error"]
 
 
-def test_revision_dispatch_uses_writable_reviewed_codex_environment(tmp_path, monkeypatch):
-    job_dir = tmp_path / "job"
-    job_dir.mkdir()
-    captured: dict = {}
-
-    def fake_run(command, **kwargs):
-        captured["command"] = command
-        captured["kwargs"] = kwargs
-        return SimpleNamespace(returncode=0, stdout="done", stderr="")
-
-    monkeypatch.setattr("scripts.render_watcher._codex_command", lambda: "codex.exe")
-    monkeypatch.setattr("scripts.render_watcher.subprocess.run", fake_run)
-    for name in (
-        "CODEX_PERMISSION_PROFILE",
-        "CODEX_SANDBOX_NETWORK_DISABLED",
-        "CODEX_SESSION_ID",
-        "CODEX_THREAD_ID",
-    ):
-        monkeypatch.setenv(name, "inherited")
-
-    dispatch_revision_agent(
-        {
-            "request_id": "revision-0123456789abcdef",
-            "cut_id": "full",
-            "job_dir": str(job_dir),
-            "request_path": str(job_dir / "request.json"),
-            "working_packaging_dir": str(tmp_path / "working"),
-            "working_episode_dir": str(tmp_path / "episode"),
-            "vault_packaging_dir": str(tmp_path / "vault-packaging"),
-            "vault_cutout_dir": str(tmp_path / "vault-cutouts"),
-        }
-    )
-
-    command = captured["command"]
-    assert "--approve-for-me" in command
-    assert "--ignore-rules" in command
-    assert "--ignore-user-config" not in command
-    assert "--sandbox" not in command
-    child_env = captured["kwargs"]["env"]
-    assert all(
-        name not in child_env
-        for name in (
-            "CODEX_PERMISSION_PROFILE",
-            "CODEX_SANDBOX_NETWORK_DISABLED",
-            "CODEX_SESSION_ID",
-            "CODEX_THREAD_ID",
-        )
-    )
-
-
-def test_revision_agent_success_is_backed_up_and_returns_to_review(tmp_path):
-    vault = tmp_path / "vault"
-    vault_ep = vault / "Attachments" / "packaging" / "episode-slug"
-    working = tmp_path / "episode" / "packaging"
-    vault_ep.mkdir(parents=True)
-    working.mkdir(parents=True)
-    packages = {
-        "episode": "episode name",
-        "generated_at": "2026-08-21T06:00:00+00:00",
-        "cuts": [
-            {
-                "cut_id": "full",
-                "format": "long",
-                "information_origin": "full_text",
-                "visual_recipe": "podcast",
-                "aspect": "16:9",
-                "titles": [
-                    {
-                        "text": f"title {rank}",
-                        "archetype_id": "T-A3",
-                        "angle_combo": ["angle"],
-                        "payoff": "payoff",
-                        "cite": "release.srt#1",
-                        "rank": rank,
-                        **({"panel_note": "not selected"} if rank >= 4 else {}),
-                    }
-                    for rank in range(1, 6)
-                ],
-                "packages": [
-                    {
-                        "title_rank": rank,
-                        "thumbnail_png": f"Attachments/packaging/episode-slug/pkg-full-{rank}.png",
-                        "thumb_archetype_id": "T-V8",
-                        "joint_pairing_id": f"JP-{rank}",
-                        "host_cutout": "Attachments/cutouts/podcast/episode-slug/host.png",
-                        "guest_cutout": "Attachments/cutouts/podcast/episode-slug/guest.png",
-                    }
-                    for rank in range(1, 4)
-                ],
-                "citations": [],
-                "brand_flags": [],
-            }
-        ],
-    }
-    packages_bytes = (json.dumps(packages, ensure_ascii=False, indent=2) + "\n").encode()
-    for root in (vault_ep, working):
-        (root / "packages.json").write_bytes(packages_bytes)
-        for rank in range(1, 4):
-            Image.new("RGB", (1280, 720), "black").save(root / f"pkg-full-{rank}.png")
-    cutout_dir = vault / "Attachments" / "cutouts" / "podcast" / "episode-slug"
-    cutout_dir.mkdir(parents=True)
-    Image.new("RGBA", (900, 900), (255, 255, 255, 255)).save(cutout_dir / "host.png")
-    Image.new("RGBA", (900, 900), (255, 255, 255, 255)).save(cutout_dir / "guest.png")
-    source_assets = {
-        f"Attachments/packaging/episode-slug/pkg-full-{rank}.png": __import__("hashlib")
-        .sha256((vault_ep / f"pkg-full-{rank}.png").read_bytes())
-        .hexdigest()
-        for rank in range(1, 4)
-    }
-    approval = {
-        "episode": "episode name",
-        "approvals": [
-            {
-                "cut_id": "full",
-                "approved": False,
-                "primary_package": 1,
-                "reject_note": "背景書封要去白底",
-                "decided_at": "2026-08-21T06:00:00+00:00",
-                "decision": "reject",
-                "revision_job": {
-                    "contract": "packaging-revision-job-v1",
-                    "request_id": "revision-0123456789abcdef",
-                    "feedback": "背景書封要去白底",
-                    "requested_at": "2026-08-21T06:00:00+00:00",
-                    "source_packages_sha256": __import__("hashlib")
-                    .sha256(packages_bytes)
-                    .hexdigest(),
-                    "source_assets": source_assets,
-                    "status": "queued",
-                    "attempt": 0,
-                    "started_at": None,
-                    "finished_at": None,
-                    "result_receipt": None,
-                    "error": None,
-                },
-            }
-        ],
-    }
-    approval_path = vault_ep / "approval.json"
-    approval_path.write_text(json.dumps(approval, ensure_ascii=False), encoding="utf-8")
-    job = pending_revision_jobs(vault)[0]
-
-    def fake_agent(context: dict) -> SimpleNamespace:
-        for path in (Path(context["working_packaging_dir"]), Path(context["vault_packaging_dir"])):
-            for rank in range(1, 4):
-                Image.new("RGB", (1280, 720), "white").save(path / f"pkg-full-{rank}.png")
-        (working / "briefs").mkdir()
-        (working / "briefs" / "full.json").write_text(
-            json.dumps({"book_cover": {"title": "book"}}), encoding="utf-8"
-        )
-        specs = []
-        for rank in range(1, 4):
-            render_spec = working / f"spec-full-{rank}.json"
-            render_spec.write_text(
-                json.dumps(
-                    {
-                        "composition": "thumbnail_full",
-                        "variables": {
-                            "title_lines": ["line one", "line two"],
-                            "book_cover_opacity": 0.42,
-                            "book_cover_brightness": 0.38,
-                            "book_cover_height_pct": 100,
-                        },
-                        "images": {"book_cover_data_url": "book.png"},
-                    }
-                ),
-                encoding="utf-8",
-            )
-            specs.append(
-                {
-                    "title_rank": rank,
-                    "thumbnail": str(working / f"pkg-full-{rank}.png"),
-                    "render_spec": str(render_spec),
-                }
-            )
-        (working / "specs.json").write_text(json.dumps(specs), encoding="utf-8")
-        return SimpleNamespace(returncode=0, stdout="done", stderr="")
-
-    assert run_revision_job(job, packaging_dir=working, agent_runner=fake_agent)
-    saved = json.loads(approval_path.read_text(encoding="utf-8"))["approvals"][0]
-    assert saved["approved"] is False
-    assert saved["revision_job"]["status"] == "ready_for_review"
-    assert saved["revision_job"]["attempt"] == 1
-    receipt = working / saved["revision_job"]["result_receipt"]
-    assert receipt.is_file()
-    before = working / "revisions" / "revision-0123456789abcdef" / "before"
-    assert (before / "packages.json").read_bytes() == packages_bytes
-    assert (before / "pkg-full-1.png").is_file()
-
-
 def test_full_episode_rejects_long_highlight_layout_and_tight_cutout(tmp_path):
     packaging = tmp_path / "packaging"
     vault = tmp_path / "vault"
@@ -818,46 +602,6 @@ def test_full_episode_rejects_long_highlight_layout_and_tight_cutout(tmp_path):
             vault_root=vault,
             cut=SimpleNamespace(packages=[package]),
         )
-
-
-def test_revision_failure_is_visible_and_never_approves(vault, tmp_path):
-    path = vault / "Attachments" / "packaging" / "20260721-zhengguowei" / "approval.json"
-    payload = _approval(None)
-    payload["approvals"][0]["decision"] = "reject"
-    payload["approvals"][0]["reject_note"] = "重做"
-    payload["approvals"][0]["revision_job"] = {
-        "contract": "packaging-revision-job-v1",
-        "request_id": "revision-fedcba9876543210",
-        "feedback": "重做",
-        "requested_at": "2026-08-21T06:00:00+00:00",
-        "source_packages_sha256": "a" * 64,
-        "source_assets": {},
-        "status": "queued",
-        "attempt": 0,
-        "started_at": None,
-        "finished_at": None,
-        "result_receipt": None,
-        "error": None,
-    }
-    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-    working = tmp_path / "episode" / "packaging"
-    working.mkdir(parents=True)
-
-    called = False
-
-    def must_not_run(_context: dict) -> SimpleNamespace:
-        nonlocal called
-        called = True
-        return SimpleNamespace(returncode=0, stdout="", stderr="")
-
-    assert not run_revision_job(
-        pending_revision_jobs(vault)[0], packaging_dir=working, agent_runner=must_not_run
-    )
-    saved = json.loads(path.read_text(encoding="utf-8"))["approvals"][0]
-    assert called is False
-    assert saved["approved"] is False
-    assert saved["revision_job"]["status"] == "failed"
-    assert saved["revision_job"]["error"]
 
 
 def test_broken_approval_json_does_not_crash_the_loop(vault):

@@ -7,8 +7,8 @@
   寫入例外：短片標題改字（D4）與 compose 存配方（per-package `render_recipe`，
   2026-08-21 cutout-cache 熱修收編），皆整檔過 PackagesFileV1 驗證後才落盤
 - approval.json  — 本 router 唯一寫入者（ApprovalFileV1；與 packages.json 分檔
-  縮小 Syncthing conflict 破壞面 — ADR-054 A10③）；reject 時同步排入
-  `revision_job`（PackagingRevisionJobV1，桌機 Cowork revision 流程消費）
+  縮小 Syncthing conflict 破壞面 — ADR-054 A10③）。2026-09-15 起只寫 Approve；
+  `reject_note` / `revision_job` 仍在 schema 裡（舊集數讀得動），但不再寫入
 
 **UI 零 LLM**（D11）：無 brainstorm / reroll 按鈕；重抽路徑 = 回 Cowork 跑
 thumbnail-brainstorm。
@@ -50,7 +50,6 @@ from shared.schemas.packaging import (
     CenterProvenanceV1,
     GeometryV1,
     PackagesFileV1,
-    PackagingRevisionJobV1,
     RenderRequestV1,
     parse_approval_file,
     parse_packages,
@@ -1630,12 +1629,6 @@ def packaging_board(
     ctx["description_pending"] = bool(description_pending)
     ctx["description_state"] = description_state
     ctx["description_error"] = description_error
-    ctx["revision_polling"] = any(
-        view["approval"]
-        and view["approval"].revision_job
-        and view["approval"].revision_job.status in {"queued", "running"}
-        for view in ctx["cuts"]
-    )
     return _templates.TemplateResponse(request, "packaging_board.html", ctx)
 
 
@@ -1643,22 +1636,21 @@ def packaging_board(
 def packaging_approve(
     episode_slug: str,
     cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
-    decision: str = Form(...),
     primary_package: int | None = Form(None),
-    reject_note: str = Form("", max_length=_NOTE_MAX),
     nakama_auth: str | None = Cookie(None),
 ):
-    """寫 approval.json（upsert 該 cut 的裁決）— 本 router 唯一寫這個檔。"""
+    """寫 approval.json（upsert 該 cut 的核准）— 本 router 唯一寫這個檔。
+
+    2026-09-15 起只剩 Approve。原本還有一顆 Reject：填理由 → 寫一筆 revision job →
+    桌機 watcher 派 Codex agent 把整包標題與封面重做。修修用過一次之後的評語是
+    「我不知道這裡的 reject 按下去會有什麼行為」，裁決整條拿掉——他實際的工作方式
+    是自己改標題、自己組封面，不是打回去叫機器重做。
+    """
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/packaging", status_code=302)
-    if decision not in ("approve", "reject"):
-        raise HTTPException(status_code=400, detail=f"unknown decision: {decision!r}")
-    approved = decision == "approve"
-    feedback = reject_note.strip()
-    if approved and primary_package is None:
+    approved = True
+    if primary_package is None:
         raise HTTPException(status_code=400, detail="approve 需要指定 primary_package (1–3)")
-    if not approved and not feedback:
-        raise HTTPException(status_code=400, detail="Reject 需要填寫 feedback，Agent 才能重做")
 
     ctx = _board_context(episode_slug)  # 同時擋 conflict / 壞檔
     pkg: PackagesFileV1 = ctx["pkg"]
@@ -1682,51 +1674,30 @@ def packaging_approve(
     existing = _load_approvals(ep_dir, pkg.episode)
     prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
     decided_at = datetime.now(timezone.utc)
-    revision_job = None
-    if not approved:
-        source_assets: dict[str, str] = {}
-        for package in cut.packages:
-            asset = get_vault_path() / package.thumbnail_png
-            if asset.is_file():
-                source_assets[package.thumbnail_png] = hashlib.sha256(
-                    asset.read_bytes()
-                ).hexdigest()
-        request_seed = "\0".join((pkg.episode, cut_id, decided_at.isoformat(), feedback)).encode(
-            "utf-8"
-        )
-        revision_job = PackagingRevisionJobV1(
-            request_id=f"revision-{hashlib.sha256(request_seed).hexdigest()[:16]}",
-            feedback=feedback,
-            requested_at=decided_at,
-            source_packages_sha256=hashlib.sha256(
-                (ep_dir / "packages.json").read_bytes()
-            ).hexdigest(),
-            source_assets=source_assets,
-        )
     entry = ApprovalV1(
         cut_id=cut_id,
-        approved=approved,
-        primary_package=primary_package if approved else 1,
-        reject_note=feedback or None,
+        approved=True,
+        primary_package=primary_package,
+        # 兩個欄位只為讀得動舊檔而留在 schema 裡；Reject 拿掉後永遠不再寫入，
+        # 但已經有值的舊集數（例如 20260805 林之晨 full）要原樣保留，不去覆寫歷史。
+        reject_note=prev.reject_note if prev else None,
         decided_at=decided_at,
-        decision=decision,
+        decision="approve",
         # 挑臉／打大字是另一支 form 寫的，approve 不可以把它們洗掉
         # （2026-08-14 browser UAT 抓到：勾完變體再 approve，選擇整個不見）。
         selected_variant=prev.selected_variant if prev else None,
         bigtext_request=prev.bigtext_request if prev else None,
         center_search_request=prev.center_search_request if prev else None,
         render_request=prev.render_request if prev else None,
-        revision_job=revision_job,
+        revision_job=prev.revision_job if prev else None,
     )
     others = [a for a in existing.approvals if a.cut_id != cut_id]
     updated = ApprovalFileV1(episode=pkg.episode, approvals=[*others, entry])
     (ep_dir / "approval.json").write_text(
         updated.model_dump_json(indent=2) + "\n", encoding="utf-8"
     )
-    logger.info("packaging approve: %s/%s approved=%s", episode_slug, cut_id, approved)
+    logger.info("packaging approve: %s/%s", episode_slug, cut_id)
     focused_board = f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}"
-    if not approved:
-        return RedirectResponse(focused_board, status_code=303)
     release = _release_from_receipt(pkg.episode, cut_id)
     if release is None:
         _ensure_publish_prep(pkg.episode, cut_id)
@@ -1760,49 +1731,6 @@ async def packaging_retry_description(
         _start_description_draft(ctx["pkg"].episode, cut_id, int(target["id"]))
     focused_board = f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}"
     return RedirectResponse(f"{focused_board}&description_pending=1", status_code=303)
-
-
-@page_router.post("/{episode_slug}/revision/retry")
-async def packaging_retry_revision(
-    episode_slug: str,
-    cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
-    nakama_auth: str | None = Cookie(None),
-):
-    """Requeue one failed revision; the worker still cannot approve the result."""
-    if not check_auth(nakama_auth):
-        return RedirectResponse("/login?next=/bridge/packaging", status_code=302)
-    ctx = _board_context(episode_slug)
-    ep_dir = _packaging_root() / episode_slug
-    approvals = _load_approvals(ep_dir, ctx["pkg"].episode)
-    previous = next((row for row in approvals.approvals if row.cut_id == cut_id), None)
-    if previous is None or previous.revision_job is None:
-        raise HTTPException(status_code=404, detail="revision job not found")
-    if previous.revision_job.status != "failed":
-        raise HTTPException(status_code=409, detail="只有 failed revision 可以重試")
-    revision = previous.revision_job.model_copy(
-        update={
-            "status": "queued",
-            "started_at": None,
-            "finished_at": None,
-            "result_receipt": None,
-            "error": None,
-        }
-    )
-    retried = previous.model_copy(
-        update={"approved": False, "decision": "reject", "revision_job": revision}
-    )
-    updated = ApprovalFileV1(
-        episode=approvals.episode,
-        approvals=[retried if row.cut_id == cut_id else row for row in approvals.approvals],
-    )
-    pending = ep_dir / "approval.json.tmp"
-    pending.write_text(updated.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    pending.replace(ep_dir / "approval.json")
-    logger.info("packaging revision retry: %s/%s", episode_slug, cut_id)
-    return RedirectResponse(
-        f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}",
-        status_code=303,
-    )
 
 
 @page_router.post("/{episode_slug}/variant")
@@ -1844,8 +1772,6 @@ def packaging_select_variant(
     ep_dir = _packaging_root() / episode_slug
     existing = _load_approvals(ep_dir, pkg.episode)
     prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
-    if prev and prev.revision_job and prev.revision_job.status in {"queued", "running"}:
-        raise HTTPException(status_code=409, detail="Packaging revision 正在處理，完成後再改變體")
     entry = ApprovalV1(
         cut_id=cut_id,
         approved=prev.approved if prev else False,
@@ -2177,8 +2103,6 @@ def packaging_compose(
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=f"配方驗證失敗：{str(exc)[:300]}") from exc
 
-    if prev and prev.revision_job and prev.revision_job.status in {"queued", "running"}:
-        raise HTTPException(status_code=409, detail="Packaging revision 正在處理，完成後再存配方")
     entry = ApprovalV1(
         cut_id=cut_id,
         approved=prev.approved if prev else False,

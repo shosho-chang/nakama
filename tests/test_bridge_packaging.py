@@ -368,107 +368,6 @@ def test_approve_writes_approval_file_and_reload_shows_state(client, vault, monk
     assert ">1<" in lst.text or "1</td>" in lst.text.replace(" ", "")
 
 
-def test_reject_with_note_upserts(client, vault, monkeypatch):
-    _write_composition_receipt(vault, rank=1)
-    _stub_publish_prep(monkeypatch)
-    client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
-        follow_redirects=False,
-    )
-    client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "三張表情太像，重抽"},
-        follow_redirects=False,
-    )
-    from shared.schemas.packaging import parse_approval_file
-
-    ap = parse_approval_file(
-        vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
-    )
-    assert len([a for a in ap.approvals if a.cut_id == "punch-L1"]) == 1
-    entry = next(a for a in ap.approvals if a.cut_id == "punch-L1")
-    assert entry.approved is False
-    assert entry.reject_note == "三張表情太像，重抽"
-
-    # reject 現在同時排入 revision job（agent 重做），board 顯示 REVISION QUEUED
-    board = client.get("/bridge/packaging/20260723-xieboran")
-    assert "REVISION QUEUED" in board.text
-
-
-def test_reject_with_feedback_queues_agent_revision(client, vault):
-    response = client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={
-            "cut_id": "punch-L1",
-            "decision": "reject",
-            "reject_note": "人物 cutout 不自然，書封白底要去掉",
-        },
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-
-    approval_path = vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
-    entry = json.loads(approval_path.read_text(encoding="utf-8"))["approvals"][0]
-    assert entry["approved"] is False
-    assert entry["revision_job"]["status"] == "queued"
-    assert entry["revision_job"]["feedback"] == "人物 cutout 不自然，書封白底要去掉"
-    assert entry["revision_job"]["request_id"].startswith("revision-")
-
-    board = client.get("/bridge/packaging/20260723-xieboran")
-    assert "REVISION QUEUED" in board.text
-
-
-def test_reject_without_feedback_does_not_queue_revision(client, vault):
-    response = client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "   "},
-        follow_redirects=False,
-    )
-    assert response.status_code == 400
-    assert "Agent" in response.text
-    assert not (
-        vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
-    ).exists()
-
-
-def test_failed_revision_can_be_retried_without_approving(client, vault):
-    client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "重做 cutout"},
-        follow_redirects=False,
-    )
-    approval_path = vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
-    payload = json.loads(approval_path.read_text(encoding="utf-8"))
-    job = payload["approvals"][0]["revision_job"]
-    job.update(
-        {
-            "status": "failed",
-            "attempt": 1,
-            "started_at": "2026-08-21T06:00:00+00:00",
-            "finished_at": "2026-08-21T06:01:00+00:00",
-            "error": "renderer failed",
-        }
-    )
-    approval_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-
-    board = client.get("/bridge/packaging/20260723-xieboran")
-    assert "REVISION FAILED" in board.text
-    assert "renderer failed" in board.text
-
-    response = client.post(
-        "/bridge/packaging/20260723-xieboran/revision/retry",
-        data={"cut_id": "punch-L1"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    saved = json.loads(approval_path.read_text(encoding="utf-8"))["approvals"][0]
-    assert saved["approved"] is False
-    assert saved["revision_job"]["status"] == "queued"
-    assert saved["revision_job"]["attempt"] == 1
-    assert saved["revision_job"]["error"] is None
-
-
 def test_approve_requires_primary_package(client):
     r = client.post(
         "/bridge/packaging/20260723-xieboran/approve",
@@ -499,32 +398,6 @@ def test_approve_long_highlight_is_not_vetoed_by_a_missing_composition_receipt(c
         follow_redirects=False,
     )
     assert r.status_code == 303
-
-
-def test_reject_requires_feedback(client):
-    r = client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "reject"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 400
-
-
-def test_reject_creates_revision_job(client, vault):
-    client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "三張表情太像，重抽"},
-        follow_redirects=False,
-    )
-    saved = json.loads(
-        (vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    job = saved["approvals"][0]["revision_job"]
-    assert job["status"] == "queued"
-    assert job["feedback"] == "三張表情太像，重抽"
-    assert job["request_id"].startswith("revision-")
 
 
 # ---------------------------------------------------------------------------
@@ -652,9 +525,16 @@ def test_board_renders_brief_when_present(client, vault):
     assert "轉述極端派立場" in body
 
 
-def test_board_shows_hint_when_brief_missing(client):
+def test_board_says_nothing_when_the_brief_is_missing(client):
+    """沒有速覽就什麼都不說。
+
+    舊行為是印「（這支還沒有內容速覽）」——那句在說「本來想給你這支在講什麼，但
+    桌機端還沒生」，對站在 gate 前面的人給不出任何能做的事（修修 2026-09-15 點名）。
+    """
     body = client.get("/bridge/packaging/20260723-xieboran").text
-    assert "這支還沒有內容速覽" in body
+    assert "這支還沒有內容速覽" not in body
+    assert "pkg-brief-missing" not in body
+    assert "Approve" in body  # 速覽缺席不影響裁決
 
 
 def test_corrupt_brief_does_not_block_board(client, vault):
@@ -678,7 +558,10 @@ def test_title_edit_is_always_visible_and_distinguishes_youtube_title(client):
 
     body = client.get("/bridge/packaging/20260723-xieboran?edited=punch-L1").text
     assert '<section class="pkg-title-edit" id="title-edit-punch-L1">' in body
-    assert "YouTube 上架標題（不會改封面大字）" in body
+    assert "YouTube 影片標題" in body
+    # 「（不會改封面大字）」用否定句防誤會，改成直接指路（修修 2026-09-15）
+    assert "不會改封面大字" not in body
+    assert "封面上的大字在下面〈組封面〉改" in body
     assert "Package #1" in body
     assert 'name="title_text"' in body
 
@@ -825,7 +708,11 @@ def test_approve_does_not_wipe_selected_variant(client, vault_with_variants, mon
 
 
 def test_variant_pick_alone_is_not_a_rejection(client, vault_with_variants):
-    """2026-08-14 browser UAT：只挑變體時 board 顯示 REJECTED，會誤導。"""
+    """2026-08-14 browser UAT：只挑變體時 board 顯示 REJECTED，會誤導。
+
+    2026-09-15 Reject 拿掉之後只剩兩態，這條順勢守住「沒有任何一條路會再寫出
+    REJECTED」——包含那個舊誤標：沒 decision 又沒挑過東西也曾被歸進 REJECTED。
+    """
     client.post(
         "/bridge/packaging/20260723-xieboran/variant",
         data={"cut_id": "punch-L1", "selected_variant": "r1-a"},
@@ -834,37 +721,6 @@ def test_variant_pick_alone_is_not_a_rejection(client, vault_with_variants):
     board = client.get("/bridge/packaging/20260723-xieboran")
     assert "PENDING" in board.text
     assert "REJECTED" not in board.text
-    # 真的按 Reject 才會建立 revision queue
-    client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "臉不對"},
-        follow_redirects=False,
-    )
-    assert "REVISION QUEUED" in client.get("/bridge/packaging/20260723-xieboran").text
-
-
-def test_legacy_approval_without_decision_still_shows_rejected(client, vault):
-    """舊檔沒有 decision 欄位 → 用 approved 回退判讀，既有集數顯示不變。"""
-    ep = vault / "Attachments" / "packaging" / "20260723-xieboran"
-    (ep / "approval.json").write_text(
-        json.dumps(
-            {
-                "episode": "20260723 謝伯讓",
-                "approvals": [
-                    {
-                        "cut_id": "punch-L1",
-                        "approved": False,
-                        "primary_package": 1,
-                        "reject_note": "舊檔",
-                        "decided_at": "2026-07-30T00:00:00+00:00",
-                    }
-                ],
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-    assert "REJECTED" in client.get("/bridge/packaging/20260723-xieboran").text
 
 
 # ---------------------------------------------------------------------------
@@ -2832,3 +2688,133 @@ def test_highlight_verdict_reuses_the_preview_match_instead_of_redoing_it():
     assert "setHighlightVerdict(form, hl, framedLine, occurrences)" in syncer
     verdict = board.split("function setHighlightVerdict(")[1].split("function syncStageText")[0]
     assert "indexOf" not in verdict
+
+
+# ---------------------------------------------------------------------------
+# Reject 退場（修修 2026-09-15：「reject note 這個框框以及 reject 按鈕完全都不用了，
+# 我不知道這裡的 reject 按下去會有什麼行為」）
+# ---------------------------------------------------------------------------
+
+
+def test_gate_offers_no_way_to_reject(client):
+    """畫面上不再有 Reject：沒有按鈕、沒有理由欄、沒有 revision 狀態。"""
+    body = client.get("/bridge/packaging/20260723-xieboran").text
+
+    assert "Approve" in body
+    assert "Reject" not in body
+    assert "REJECT NOTE" not in body
+    assert 'name="reject_note"' not in body
+    assert "REVISION" not in body
+    assert "revision/retry" not in body
+
+
+def test_approve_endpoint_no_longer_accepts_a_rejection(client, vault, monkeypatch):
+    """就算有人手工 POST decision=reject，也不會寫出否決或 revision job。
+
+    Reject 的整條後端（watcher 的 run_revision_job）一起拿掉了；如果這裡還認得
+    decision=reject，就會排出一筆永遠不會有人處理的 job，把那支 cut 卡死。
+    """
+    _write_composition_receipt(vault, rank=1)
+    _stub_publish_prep(monkeypatch)
+    response = client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={
+            "cut_id": "punch-L1",
+            "decision": "reject",
+            "reject_note": "三張表情太像，重抽",
+            "primary_package": "1",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    entry = json.loads(
+        (vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
+            encoding="utf-8"
+        )
+    )["approvals"][0]
+    assert entry["approved"] is True
+    assert entry["decision"] == "approve"
+    assert entry["revision_job"] is None
+    assert entry["reject_note"] is None
+
+
+def test_old_episodes_carrying_a_revision_job_still_open(client, vault):
+    """舊檔的 reject_note／revision_job 必須還讀得動，而且不再被當成一種狀態。
+
+    schema 是 extra="forbid"：把欄位拔掉會讓帶著它們的既有 approval.json 直接驗證
+    失敗、整個 board 422。真實 vault 裡就有一筆（20260805 林之晨 full）。
+    """
+    ep = vault / "Attachments" / "packaging" / "20260723-xieboran"
+    (ep / "approval.json").write_text(
+        json.dumps(
+            {
+                "episode": "20260723 謝伯讓",
+                "approvals": [
+                    {
+                        "cut_id": "punch-L1",
+                        "approved": False,
+                        "primary_package": 1,
+                        "reject_note": "封面套錯版面了",
+                        "decided_at": "2026-08-21T00:00:00+00:00",
+                        "decision": "reject",
+                        "revision_job": {
+                            "contract": "packaging-revision-job-v1",
+                            "request_id": "revision-" + "a" * 16,
+                            "feedback": "封面套錯版面了",
+                            "requested_at": "2026-08-21T00:00:00+00:00",
+                            "source_packages_sha256": "b" * 64,
+                            "source_assets": {},
+                            "status": "ready_for_review",
+                        },
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert board.status_code == 200
+    assert "PENDING" in board.text
+    assert "REJECTED" not in board.text
+    assert "封面套錯版面了" not in board.text
+
+
+def test_a_queued_legacy_revision_no_longer_blocks_saving_a_recipe(client, vault_with_cutouts):
+    """殘留的 queued 舊 job 不可以把 cut 鎖死。
+
+    原本 compose 遇到 queued/running 會回 409「revision 正在處理，完成後再存配方」。
+    處理它的 worker 已經不存在了，那道閘留著就是永久封鎖。
+    """
+    ep = vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran"
+    (ep / "approval.json").write_text(
+        json.dumps(
+            {
+                "episode": "20260723 謝伯讓",
+                "approvals": [
+                    {
+                        "cut_id": "punch-L1",
+                        "approved": False,
+                        "primary_package": 1,
+                        "decided_at": "2026-08-21T00:00:00+00:00",
+                        "revision_job": {
+                            "contract": "packaging-revision-job-v1",
+                            "request_id": "revision-" + "c" * 16,
+                            "feedback": "重做",
+                            "requested_at": "2026-08-21T00:00:00+00:00",
+                            "source_packages_sha256": "d" * 64,
+                            "source_assets": {},
+                            "status": "queued",
+                        },
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    assert _compose(client, package_rank="1").status_code == 303
