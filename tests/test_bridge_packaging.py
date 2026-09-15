@@ -2698,3 +2698,137 @@ def test_board_does_not_show_machine_identifiers(client):
     # 反過來：人話要在
     assert "封面與標題裁決" in body
     assert "版面已驗證" in body
+
+
+# ---------------------------------------------------------------------------
+# 存配方之後畫面要說話（2026-09-14 修修：「按下『存配方』，但是什麼事情都沒有發生」）
+# ---------------------------------------------------------------------------
+
+
+def _set_saved_recipe(vault: Path, *, rank: int = 1, **fields) -> None:
+    """直接改 packages.json 裡那份**已存**配方的欄位（模擬桌機端回填）。"""
+    path = vault / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    recipe = data["cuts"][0]["packages"][rank - 1]["render_recipe"]
+    assert recipe is not None, "先 compose 才有配方可以改"
+    recipe.update(fields)
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
+def test_saved_recipe_says_the_cover_is_now_out_of_date(client, vault_with_cutouts):
+    """修修的處境：配方存進去了，但下面那張封面是上一版配方出的。
+
+    gate 只寫配方、不出圖（ADR-054 D11），所以存完就是原地刷新、預覽幾乎沒差。
+    沒有這行字，「存好了但還沒出圖」跟「按了沒反應」在畫面上一模一樣。
+    """
+    assert _compose(client, package_rank="1").status_code == 303
+
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert board.status_code == 200
+    assert 'data-recipe-state="stale"' in board.text
+    assert "配方比封面新，需重出圖" in board.text
+
+
+def test_saved_recipe_without_any_cover_says_it_has_not_been_rendered(client, vault_with_cutouts):
+    """還沒出過圖的 package：講「尚未出圖」，不是「封面過期」——沒有封面可以過期。"""
+    ep = vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran"
+    (ep / "pkg-punch-L1-1.png").unlink()
+    assert _compose(client, package_rank="1").status_code == 303
+
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert 'data-recipe-state="unrendered"' in board.text
+    assert "配方已存 · 尚未出圖" in board.text
+
+
+def test_recipe_marked_rendered_once_the_desktop_writes_the_png_back(client, vault_with_cutouts):
+    """桌機端回填 rendered_png＝這份配方自己出的圖，第三態要消失。"""
+    assert _compose(client, package_rank="1").status_code == 303
+    _set_saved_recipe(
+        vault_with_cutouts,
+        rendered_png="Attachments/packaging/20260723-xieboran/pkg-punch-L1-1.png",
+    )
+
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert 'data-recipe-state="rendered"' in board.text
+    assert "已出圖 · 與配方相符" in board.text
+    assert "配方比封面新，需重出圖" not in board.text
+
+
+def test_package_without_a_saved_recipe_claims_no_state_at_all(client, vault_with_cutouts):
+    """沒人按過「存配方」就沒有三態可言。
+
+    board 會為舊 N2 package 從 receipt 水合出一份唯讀 recipe 餵編輯器；那份不是
+    存下來的配方，把它標成「配方比封面新」等於憑空生出一條待辦。
+    """
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert board.status_code == 200
+    assert "data-recipe-state" in board.text  # 元素在（hidden），只是沒有值
+    assert 'data-recipe-state=""' in board.text
+    assert "配方比封面新，需重出圖" not in board.text
+    assert "配方已存 · 尚未出圖" not in board.text
+
+
+def test_render_status_carries_the_same_three_state_as_the_board(
+    client, vault_with_cutouts, monkeypatch, tmp_path
+):
+    """輪詢與整頁重載必須由同一次判定產生，否則兩句話會互相打臉。
+
+    進度條寫「新封面已完成」、旁邊的狀態卻停在「尚未出圖」，人不知道要信哪個。
+    """
+    import thousand_sunny.routers.packaging as pkg_module
+
+    monkeypatch.setattr(
+        pkg_module, "_render_watcher_state_path", lambda: tmp_path / "missing-state.json"
+    )
+    assert _compose(client, package_rank="1").status_code == 303
+    requested_at = _saved_req(vault_with_cutouts)["requested_at"]
+    endpoint = "/bridge/packaging/20260723-xieboran/render-status/punch-L1/1"
+
+    stale = client.get(endpoint, params={"requested_at": requested_at})
+    assert stale.status_code == 200
+    assert stale.json()["recipe_state"]["state"] == "stale"
+
+    _set_saved_recipe(
+        vault_with_cutouts,
+        rendered_png="Attachments/packaging/20260723-xieboran/pkg-punch-L1-1.png",
+    )
+    rendered = client.get(endpoint, params={"requested_at": requested_at})
+    assert rendered.json()["recipe_state"]["state"] == "rendered"
+    assert rendered.json()["recipe_state"]["label"] == "已出圖 · 與配方相符"
+
+
+# ---------------------------------------------------------------------------
+# 橘框詞打錯不能默默消失（2026-09-14 修修：「我無法點選『橘框』這個圖層」）
+# ---------------------------------------------------------------------------
+
+
+def test_highlight_word_gets_a_live_verdict_next_to_its_input(client):
+    """打錯一個字，橘框就從預覽消失且不報錯——判定結果要寫在格子底下。"""
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert board.status_code == 200
+    assert 'id="hl-verdict-punch-L1"' in board.text
+    assert 'aria-describedby="hl-verdict-punch-L1"' in board.text
+    assert "data-hl-verdict" in board.text
+    assert "這個詞不在大字裡，不會有橘框" in board.text
+    assert "會框在${where}" in board.text
+
+
+def test_highlight_verdict_reuses_the_preview_match_instead_of_redoing_it():
+    """判定與預覽必須共用同一次 `line.indexOf(hl)`。
+
+    寫成兩份的話，預覽的橘框與底下那行提示遲早會各說各話——而修修看到的正是
+    橘框消失、沒有任何解釋。這條守住「規則只有一份」。
+    """
+    board = Path("thousand_sunny/templates/bridge/packaging_board.html").read_text(encoding="utf-8")
+
+    assert board.count("line.indexOf(hl)") == 1
+    # 判定值由 syncStageText 算完後交出去，setHighlightVerdict 自己不做比對
+    syncer = board.split("function syncStageText(stage)")[1].split("function fitStageTitle")[0]
+    assert "setHighlightVerdict(form, hl, framedLine, occurrences)" in syncer
+    verdict = board.split("function setHighlightVerdict(")[1].split("function syncStageText")[0]
+    assert "indexOf" not in verdict

@@ -544,6 +544,9 @@ def _board_context(episode_slug: str) -> dict:
                     "pkg": package,
                     "title": titles_by_rank.get(package.title_rank),
                     "editor_recipe": editor_recipe,
+                    "recipe_state": _recipe_render_state(
+                        package.render_recipe, package.thumbnail_png
+                    ),
                     "composition": _composition_status(
                         ep_dir,
                         episode=pkg.episode,
@@ -566,6 +569,9 @@ def _board_context(episode_slug: str) -> dict:
                 "recipe": (
                     item["editor_recipe"].model_dump(mode="json") if item["editor_recipe"] else None
                 ),
+                # 三態是 per-package 的：換分頁沒換這塊，就會拿 Package #1 的
+                # 「已出圖」去描述 Package #2 尚未存過的配方。
+                "recipe_state": item["recipe_state"],
                 "center_visual_url": (
                     f"/bridge/packaging/{episode_slug}/center-visual/"
                     f"{cut.cut_id}/{item['pkg'].title_rank}"
@@ -774,6 +780,52 @@ def _legacy_reaction_recipe(
             y_pct=(center.y + center.height / 2) / canvas_h * 100,
         ),
     )
+
+
+# 存完配方之後，畫面上唯一會變的東西就是這三個字。gate 只寫配方、不出圖（D11），
+# 所以「按下去什麼都沒發生」是必然的觀感——修修 2026-09-14：「我更新完之後，按下
+# 『存配方』，但是什麼事情都沒有發生。」他當時的真實狀態是第三態：封面在，但那是
+# 舊配方出的，新拖的位置要等桌機端再 render 一次才看得到。
+#
+# 判定只靠兩個事實，不靠時間比對：
+#   - `render_recipe.rendered_png` 是桌機端 render 完回填的，指向它自己出的那張
+#   - compose POST 每次都重建 RenderRequestV1，不帶 rendered_png（見 packaging_compose）
+# 所以「存過新配方」在資料上就等於 `rendered_png is None`；此時 package 的
+# `thumbnail_png` 若仍在磁碟上，那張就是舊配方的成品 → 第三態。
+_RECIPE_STATE_TEXT: dict[str, tuple[str, str]] = {
+    "unrendered": (
+        "配方已存 · 尚未出圖",
+        "存配方不會出圖。封面要等桌機端 render 過才會出現。",
+    ),
+    "rendered": (
+        "已出圖 · 與配方相符",
+        "下面看到的封面就是這份配方出的。",
+    ),
+    "stale": (
+        "配方比封面新，需重出圖",
+        "配方已經存好了，但下面那張封面是上一版配方出的——"
+        "要看到你剛改的大字與位置，得等桌機端再 render 一次。",
+    ),
+}
+
+
+def _recipe_render_state(recipe, thumbnail_png: str) -> dict | None:
+    """這份**已存**配方跟現有封面的關係（三態），沒存過配方則 None。
+
+    只吃 `package.render_recipe`（真的存過的那份），不吃 board 為舊 N2 package
+    水合出來的 `_legacy_reaction_recipe`——後者沒人按過「存配方」，把它標成
+    「配方比封面新」會是憑空捏造的待辦。
+    """
+    if recipe is None:
+        return None
+    if recipe.rendered_png:
+        state = "rendered"
+    elif thumbnail_png and (get_vault_path() / thumbnail_png).is_file():
+        state = "stale"
+    else:
+        state = "unrendered"
+    label, hint = _RECIPE_STATE_TEXT[state]
+    return {"state": state, "label": label, "hint": hint}
 
 
 def _composition_status(
@@ -1483,12 +1535,17 @@ async def packaging_render_status(
         thumbnail_url = (
             f"/bridge/packaging/{quote(episode_slug, safe='')}/thumbnail/{filename}?v={version}"
         )
+    # 進度（queued/running/done/failed）講的是「桌機端這一輪做到哪」，配方三態講的
+    # 是「現有封面配不配得上這份配方」。兩者必須由同一次讀檔算出來，否則進度條寫著
+    # 「新封面已完成」、旁邊的狀態卻還停在「尚未出圖」，人不知道要信哪一個。
+    recipe_state = _recipe_render_state(package.render_recipe, package.thumbnail_png)
     return JSONResponse(
         {
             "status": status,
             # 有沒有人在做。false 時前端要停掉進度條動畫——會動的條就是在說
             # 「正在處理」，而那時候其實沒有任何人在處理。
             "attended": attended,
+            "recipe_state": recipe_state,
             "message": message,
             "error": error,
             # 原始 stderr。前端收進 <details>，預設不展開——它是追查用的證物，

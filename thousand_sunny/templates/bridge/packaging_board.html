@@ -207,17 +207,17 @@
       <details class="pkg-compose" id="compose-{{ cut.cut_id }}"
                {% if composed_cut == cut.cut_id %}open{% endif %}>
         <summary class="sho-mono-up">組封面：選標題 ＋ 打大字 ＋ 挑臉（存完我再 render 一次）</summary>
-        {% set editor = namespace(pkg=none, recipe=none) %}
+        {% set editor = namespace(pkg=none, recipe=none, state=none) %}
         {% for item in view.packages %}
-          {% if editor.pkg is none and editor_package_rank and item.pkg.title_rank == editor_package_rank %}{% set editor.pkg = item.pkg %}{% set editor.recipe = item.editor_recipe %}{% endif %}
+          {% if editor.pkg is none and editor_package_rank and item.pkg.title_rank == editor_package_rank %}{% set editor.pkg = item.pkg %}{% set editor.recipe = item.editor_recipe %}{% set editor.state = item.recipe_state %}{% endif %}
         {% endfor %}
         {% for item in view.packages %}
-          {% if editor.pkg is none and item.pkg.render_recipe %}{% set editor.pkg = item.pkg %}{% set editor.recipe = item.editor_recipe %}{% endif %}
+          {% if editor.pkg is none and item.pkg.render_recipe %}{% set editor.pkg = item.pkg %}{% set editor.recipe = item.editor_recipe %}{% set editor.state = item.recipe_state %}{% endif %}
         {% endfor %}
         {% for item in view.packages %}
-          {% if editor.pkg is none and item.editor_recipe %}{% set editor.pkg = item.pkg %}{% set editor.recipe = item.editor_recipe %}{% endif %}
+          {% if editor.pkg is none and item.editor_recipe %}{% set editor.pkg = item.pkg %}{% set editor.recipe = item.editor_recipe %}{% set editor.state = item.recipe_state %}{% endif %}
         {% endfor %}
-        {% if editor.pkg is none and view.packages %}{% set editor.pkg = view.packages[0].pkg %}{% set editor.recipe = view.packages[0].editor_recipe %}{% endif %}
+        {% if editor.pkg is none and view.packages %}{% set editor.pkg = view.packages[0].pkg %}{% set editor.recipe = view.packages[0].editor_recipe %}{% set editor.state = view.packages[0].recipe_state %}{% endif %}
         {% set req = editor.recipe %}
         <form method="post" action="/bridge/packaging/{{ episode_slug }}/compose" class="pkg-compose-form">
           <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
@@ -306,7 +306,15 @@
             <div class="field">
               <label class="field-label" for="hl-{{ cut.cut_id }}">橘框詞（要在大字裡）</label>
               <input class="sho-input" id="hl-{{ cut.cut_id }}" name="highlight_text" maxlength="40"
+                     aria-describedby="hl-verdict-{{ cut.cut_id }}"
                      value="{{ req.highlight_text if req else '' }}">
+              {#-- 打錯一個字，橘框就從預覽上消失，而且不報錯——修修 2026-09-14 以為是
+                   自己點不到那個圖層（「我無法點選『橘框』這個圖層」）。規則有兩條
+                   （必須是某一行的連續子字串、只框第一次出現），兩條都只活在
+                   syncStageText 裡。這行把判定結果講出來，值由 syncStageText 同一次
+                   比對填，不另外寫一份規則。 --#}
+              <p class="sho-mono pkg-hl-verdict" id="hl-verdict-{{ cut.cut_id }}"
+                 role="status" data-hl-verdict hidden></p>
             </div>
             <div class="field">
               {# composition 是整塊縮字不換行：fontSize = 100 * 這個值 / 實際行寬。
@@ -516,6 +524,16 @@
 
           <div class="pkg-actions">
             <button class="sho-btn" type="submit">存配方（我再 render）</button>
+            {#-- 按下去之後畫面唯一會變的東西。沒有這塊，存配方＝原地刷新＋預覽
+                 一模一樣（拖 1% 肉眼看不出來），跟「沒反應」無法區分
+                 ——修修 2026-09-14。三態由 router 的 _recipe_render_state 算，
+                 前端 poll 回來的同一份值會蓋寫，兩邊不會各說各話。 --#}
+            <p class="pkg-recipe-state" role="status"
+               data-recipe-state="{{ editor.state.state if editor.state else '' }}"
+               {% if not editor.state %}hidden{% endif %}>
+              <strong class="pkg-recipe-state-label">{{ editor.state.label if editor.state else '' }}</strong>
+              <span class="pkg-recipe-state-hint">{{ editor.state.hint if editor.state else '' }}</span>
+            </p>
           </div>
           <section class="pkg-render-progress"
                    aria-live="polite"
@@ -546,7 +564,9 @@
                  角色與版本號都是機器識別碼。完整路徑留在 title。 --#}
             <span title="{{ req.host_cutout }}">修修 {{ req.host_cutout.split('/')[-1].replace('.png', '').split('_')[-1] }}</span>
             ＋ <span title="{{ req.guest_cutout }}">來賓 {{ req.guest_cutout.split('/')[-1].replace('.png', '').split('_')[-1] }}</span>
-            {% if req.rendered_png %}· <span title="{{ req.rendered_png }}">已出圖</span>{% else %}· <strong>等我 render</strong>{% endif %}
+            {#-- 出圖與否原本也掛在這行（「已出圖」／「等我 render」）。現在按鈕旁邊的
+                 三態說得更準——它分得出「還沒出過圖」與「封面過期」——同一件事講兩次
+                 只會讓人去猜哪個才算數，所以這行只留配方內容。 --#}
           </p>
           {% endif %}
         </form>
@@ -838,7 +858,47 @@
   .pkg-title-row .sho-btn { flex: 0 0 auto; }
   .pkg-title-orig { margin: var(--sho-s-1) 0 0; color: var(--sho-muted); }
   .pkg-note { width: 100%; resize: vertical; }
-  .pkg-actions { display: flex; gap: var(--sho-s-3); margin-top: var(--sho-s-3); }
+  .pkg-actions {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: var(--sho-s-3); margin-top: var(--sho-s-3);
+  }
+  /* 存配方按下去的結果就寫在按鈕旁邊。三態靠左側色條分辨，不只靠字：
+     灰＝還沒出圖、綠＝封面就是這份配方出的、橘＝封面過期要重出圖。 */
+  .pkg-recipe-state {
+    flex: 1 1 22rem; margin: 0;
+    display: flex; flex-wrap: wrap; align-items: baseline;
+    column-gap: var(--sho-s-2); row-gap: var(--sho-s-1);
+    padding: var(--sho-s-2) var(--sho-s-3);
+    border: 1px solid var(--sho-line);
+    border-left: 3px solid var(--sho-line-2);
+    border-radius: var(--sho-r-2);
+    background: var(--sho-bg-2);
+  }
+  .pkg-recipe-state[hidden] { display: none; }
+  .pkg-recipe-state-hint { color: var(--sho-text-2); }
+  .pkg-recipe-state[data-recipe-state="rendered"] {
+    border-left-color: var(--sho-success);
+  }
+  .pkg-recipe-state[data-recipe-state="stale"] {
+    border-left-color: var(--sho-accent);
+    background: var(--sho-accent-soft);
+  }
+  .pkg-recipe-state-label { color: var(--sho-text); }
+  /* 橘框詞的判定：打錯字時橘框只是消失，字要自己說出原因。
+     警告態用底色與框線標，字仍維持 --sho-text-2——--sho-warning 當前景色在
+     亮色底上只有 ~2.5:1，讀不到的警告等於沒有警告。 */
+  .pkg-hl-verdict {
+    margin: var(--sho-s-1) 0 0;
+    color: var(--sho-text-2);
+    padding: var(--sho-s-1) var(--sho-s-2);
+    border: 1px solid transparent;
+    border-radius: var(--sho-r-1);
+  }
+  .pkg-hl-verdict[data-hl-verdict="miss"] {
+    background: color-mix(in oklch, var(--sho-warning) 18%, transparent);
+    border-color: color-mix(in oklch, var(--sho-warning) 40%, transparent);
+  }
+  .pkg-hl-verdict[hidden] { display: none; }
   .pkg-decided { margin-top: var(--sho-s-3); }
   .pkg-coverframe-note { margin: var(--sho-s-3) 0; }
   .pkg-cut + .pkg-cut { margin-top: var(--sho-s-5); }
@@ -1120,6 +1180,7 @@
       input.value = centerGeometry?.[recipeKey] ?? "";
     }
     form.querySelector(".pkg-recipe-missing").hidden = Boolean(recipe);
+    showRecipeState(form, row.recipe_state);
     for (const tab of form.querySelectorAll(".pkg-recipe-tab")) {
       tab.setAttribute("aria-selected", String(tab === button));
     }
@@ -1227,6 +1288,26 @@
     stage.style.setProperty("--s", stage.clientWidth / 1280);
   }
 
+  const HL_LINE_NAMES = ["第一行", "第二行", "第三行"];
+
+  // 把 syncStageText 剛算完的比對結果講成人話。這裡不做任何比對。
+  function setHighlightVerdict(form, hl, framedLine, occurrences) {
+    const out = form.querySelector("[data-hl-verdict]");
+    if (!out) return;
+    if (!hl) { out.hidden = true; out.textContent = ""; return; }
+    out.hidden = false;
+    if (!framedLine) {
+      out.dataset.hlVerdict = "miss";
+      out.textContent = "⚠ 這個詞不在大字裡，不會有橘框——要一字不差地出現在某一行裡面。";
+      return;
+    }
+    out.dataset.hlVerdict = "hit";
+    const where = HL_LINE_NAMES[framedLine - 1] || `第 ${framedLine} 行`;
+    out.textContent = occurrences > 1
+      ? `✓ 會框在${where}（出現 ${occurrences} 次，只框第一次）`
+      : `✓ 會框在${where}`;
+  }
+
   // 大字：把 highlight_text 那段包成橘框（跟 composition 同規則：只包第一次）
   function syncStageText(stage) {
     const form = stage.closest("form");
@@ -1236,9 +1317,17 @@
     const box = stage.querySelector(".st-title");
     box.textContent = "";
     let used = false;
+    // 判定橘框落在哪一行，順手從下面這一次比對裡撿出來——不要為了底下那行提示
+    // 另外再比對一次，兩份規則遲早會漂，預覽跟提示就會各說各話。
+    // 行號數的是「畫面上看得到的第幾行」（空行不算），因為橘框就畫在那上面。
+    let framedLine = 0;
+    let occurrences = 0;
+    let lineNo = 0;
     for (const line of [val("b1"), val("b2"), val("b3")].map((s) => s.trim()).filter(Boolean)) {
+      lineNo += 1;
       const div = document.createElement("div");
       const i = hl ? line.indexOf(hl) : -1;
+      if (i >= 0) occurrences += 1;
       if (i >= 0 && !used) {
         div.append(line.slice(0, i));
         const span = document.createElement("span");
@@ -1246,11 +1335,13 @@
         span.textContent = hl;
         div.append(span, line.slice(i + hl.length));
         used = true;
+        framedLine = lineNo;
       } else {
         div.textContent = line;
       }
       box.append(div);
     }
+    setHighlightVerdict(form, hl, framedLine, occurrences);
     // credit 是配方的一部分了，預覽直接顯示真值（空的話跟 composition 一樣收合）
     const credit = stage.querySelector(".st-credit");
     credit.textContent = val("gc").trim();
@@ -1546,6 +1637,22 @@
     loadPackageRecipe(tab);
   }
 
+  function selectedPackageRank(form) {
+    const tab = form?.querySelector('.pkg-recipe-tab[aria-selected="true"]');
+    return tab ? tab.dataset.packageRank : null;
+  }
+
+  // 配方三態：進度面板與 package 分頁都會餵它，所以吃 form 不吃 panel。
+  function showRecipeState(form, state) {
+    const box = form?.querySelector(".pkg-recipe-state");
+    if (!box) return;
+    if (!state) { box.hidden = true; return; }
+    box.hidden = false;
+    box.dataset.recipeState = state.state;
+    box.querySelector(".pkg-recipe-state-label").textContent = state.label;
+    box.querySelector(".pkg-recipe-state-hint").textContent = state.hint;
+  }
+
   function showRenderState(panel, payload) {
     panel.dataset.status = payload.status;
     // attended=false → 配方存好了但沒有 watcher 在看，永遠不會被撿走。標成
@@ -1567,6 +1674,16 @@
       detail.hidden = !raw;
       detail.open = false;
       panel.querySelector(".pkg-render-progress-raw").textContent = raw;
+    }
+    // 配方三態跟著同一份 payload 走。少了這段，桌機端出完圖之後進度條寫「完成」、
+    // 旁邊的狀態卻還停在「尚未出圖」，兩句話互相打臉到下次整頁重載為止。
+    //
+    // 但進度面板的 URL 綁死在整頁載入時那個 package 上，換分頁不會跟著換；輪詢
+    // 每 1.5 秒回來一次，沒有這道閘就會把 Package #1 的狀態一直蓋到你正在看的
+    // Package #2 頭上。面板講的不是這一頁的 package 時，就不要碰三態。
+    const form = panel.closest("form");
+    if (payload.recipe_state !== undefined && panel.dataset.packageRank === selectedPackageRank(form)) {
+      showRecipeState(form, payload.recipe_state);
     }
     const bar = panel.querySelector('[role="progressbar"]');
     bar.setAttribute("aria-valuetext", payload.message);
