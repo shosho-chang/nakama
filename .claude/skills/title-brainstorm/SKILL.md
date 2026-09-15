@@ -76,7 +76,8 @@ Obsidian Interview 資料夾 `<VAULT_PATH>/AgentOutputs/interviews/<集數資料
 **批次模式（`--batch`）**：組成以下 JSON 送入 `python scripts/emit_packages.py <packaging_dir>`：
 ```json
 {
-  "episode": "<episode_slug>",
+  "episode": "<footage 資料夾名，例如 20260901 蘇予昕>",
+  "episode_slug": "<ASCII slug，例如 20260901-suyuxin>",
   "cut_id": "<cut_id>",
   "format": "long" | "short",
   "information_origin": "full_text" | "one_liner",

@@ -1710,7 +1710,7 @@ def test_full_episode_does_not_require_long_highlight_composition_receipt(
     assert "COMPOSITION GATE NOT APPLICABLE" not in board.text
     assert "版面已驗證" not in board.text
     assert "版面有疑慮" not in board.text
-    assert "Approve（人工決定優先）" in board.text
+    assert "Approve" in board.text
     assert "COMPOSITION BLOCKED：中央主圖或保護區尚未通過驗證。" not in board.text
 
     response = router_client.post(

@@ -87,7 +87,7 @@ def _render_failure_sentence(raw_error: str | None) -> str:
     if "TimeoutExpired" in text or "timed out after" in text:
         return (
             "封面 render 逾時。第一次跑這個版式要先把算圖環境準備好，"
-            "通常就是這個原因——再按一次「存配方（我再 render）」就會過"
+            "通常就是這個原因——再按一次「存配方」就會過"
         )
     if "FileNotFoundError" in text or "No such file" in text:
         return "封面 render 失敗：有素材找不到（詳細見下方）"
