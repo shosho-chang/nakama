@@ -62,6 +62,29 @@ def _is_authoritative_approved_cut(command: ApprovedCutCommand, command_id: str)
     )
 
 
+def _is_authoritative_targeted_revision(command: TargetedRevisionCommand, command_id: str) -> bool:
+    """A revision command is authoritative for its own opaque ID and nothing else.
+
+    它與 `_is_authoritative_approved_cut` 比對的欄位不同，因為它身上的欄位就不同：
+    revision 沒有 `editorial_master_id` / `winner_id` / `tight_cut_id`——那三個是被修訂
+    的那份 plan record 的事實，不是這道命令自己的。命令這一層能證明的只有「我指名的
+    base 是哪一份 plan、我要改哪一個 event」。
+    """
+
+    identities = (
+        command.episode_id,
+        command.cut_id,
+        command.current_plan_id,
+        command.event_id,
+    )
+    return (
+        command.command_id == command_id
+        and command_id.startswith("targeted-revision:")
+        and command.format == "long"
+        and all(_is_identity(value) for value in identities)
+    )
+
+
 def _is_identity(value: str) -> bool:
     return (
         isinstance(value, str)
