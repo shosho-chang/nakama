@@ -1,5 +1,7 @@
 # Memory Index
 
+- [feedback_explain_before_asking_options.md](feedback_explain_before_asking_options.md) — **長說明之後不要立刻跳選項框**（2026-09-15 修修：「我還沒有看清楚你的說明，就跳一個問題框出來，我根本沒辦法選擇」）：論述跟選項不要擠在同一個回合，選項寫進正文讓他自己回
+- [reference_no_jq_use_gh_builtin.md](reference_no_jq_use_gh_builtin.md) — **這台桌機沒有 `jq`**，Monitor 腳本 pipe 給 jq 會靜默空轉（兩個 monitor 跑滿 30 分鐘零事件）；用 `gh --jq`，且 `gh pr checks` 有 pending 時 exit 8 要 `|| true`。lint-and-test 正常就是 75–78 分鐘
 - [feedback_no_gemini_default_openai.md](feedback_no_gemini_default_openai.md) — **全面停用 Gemini，LLM 預設走 OpenAI**（修修 2026-08-17 裁決，除非 Google 出新 model）。三類依賴處置不同：生產路由直接換、音訊多模態（`ask_with_audio` 只有 Google 一家實作）結構性卡住要新開發、panel review 腳本另換
 - [reference_agent_sdk_supports_oauth.md](reference_agent_sdk_supports_oauth.md) — **Agent SDK 可以走訂閱額度，「不支援」的舊記載是錯的**（2026-08-18 實測：拔 API key + 無效 OAuth token → 回 401 OAuth invalid）。做法是 `ClaudeAgentOptions.env` 傳 token 並**同時清空** `ANTHROPIC_API_KEY`
 - [../shared/reference/fleet_community_stack.md](../shared/reference/fleet_community_stack.md) — **自由艦隊社群站是 `fleet.shosho.tw` 不是 `shosho.tw` 主站**（FluentCommunity / FluentCart / FluentCRM 全裝這邊，主站一個都沒有）；SSH `nakama-vps` → `/var/www/fleet.shosho.tw`，DB `db2_fleet_shosho` prefix `zcjf_`，wp-cli 要 `sudo -u u2_fleet_shosho`。LiteSpeed object cache 開著、測試帳號是 user 8/9/10。領域知識在 `agents/sanji/CONTEXT.md`
