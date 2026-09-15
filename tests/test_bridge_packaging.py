@@ -364,7 +364,15 @@ def test_approve_writes_approval_file_and_reload_shows_state(client, vault, monk
     assert entry.primary_package == 2
 
     board = client.get("/bridge/packaging/20260723-xieboran")
-    assert "APPROVED · PKG 2" in board.text
+    # 封面卡下的「Package #N」2026-09-15 拿掉（修修：「這種標示也拿掉」），所以
+    # 這裡也不能再引用一個畫面上看不到的編號；選中的那張靠 --primary 邊框標示。
+    assert "APPROVED" in board.text
+    assert "PKG 2" not in board.text
+    assert "pkg-card--primary" in board.text
+    # 編號只剩 title 屬性（#1266 慣例：內部識別碼收進 title，不是刪掉），
+    # 畫面上不再有那顆 chip
+    assert ">Package #2<" not in board.text
+    assert 'title="Package #2 · archetype' in board.text
 
     lst = client.get("/bridge/packaging")
     assert ">1<" in lst.text or "1</td>" in lst.text.replace(" ", "")
@@ -962,17 +970,27 @@ def test_compose_rejects_absurd_title_max_width(client, vault_with_cutouts):
     assert _compose(client, title_max_width="4000").status_code == 422
 
 
-def test_geometry_inputs_use_step_any(client, vault_with_cutouts):
-    """step 必須是 any（2026-08-15 browser UAT）。
+def test_geometry_inputs_cannot_reject_a_dragged_value(client, vault_with_cutouts):
+    """拖出來的兩位小數不可以被瀏覽器擋下來。
 
-    Chrome 的 step 基準點是初始 value，不是 0——step="0.1" 配上兩位小數的種子值
-    會讓合法值變成 -21.69/-21.59/…，拖曳出來的數字幾乎都落在格子外，按存配方
-    就跳「請輸入有效值」。修修回報的「數字不符合」就是這個。
+    舊守法是盯著 `step="any"`：Chrome 的 step 基準點是初始 value，不是 0，所以
+    step="0.1" 配上兩位小數的種子值會讓合法值變成 -21.69/-21.59/…，拖曳出來的數字
+    幾乎都落在格子外，按存配方就跳「請輸入有效值」（修修 2026-08-15「數字不符合」）。
+
+    2026-09-15 那十格收成 hidden（他說「這個欄位全部拿掉，因為我用不到」，排版一律
+    用拖曳與滾輪），hidden input 根本不做數值驗證——同一個 bug 從此不可能發生。
+    這條改守「它們不是會驗證的數字輸入格」，值仍照常送得出去。
     """
     _compose(client, geometry_mode="manual", **_GEO)
     board = client.get("/bridge/packaging/20260723-xieboran")
-    assert 'step="any" data-geo=' in board.text
-    assert 'step="0.1" data-geo=' not in board.text
+
+    assert 'type="number" step="any" data-geo=' not in board.text
+    assert 'type="number"' not in board.text.split("data-geo=")[0][-60:]
+    assert 'type="hidden" data-geo="host_height"' in board.text
+    assert 'type="hidden" data-center-geo="width"' in board.text
+    # 值照送：欄位名稱不能跟著版面一起消失
+    assert 'name="host_height_pct"' in board.text
+    assert 'name="center_height_px"' in board.text
 
 
 def test_compose_rejects_out_of_range_geometry(client, vault_with_cutouts):
@@ -1018,8 +1036,13 @@ def test_layout_stage_exposes_rule_of_thirds_and_explicit_layer_controls(
         assert f'class="st-grid-line st-grid-line--{line}"' in board.text
     for role in ("center", "host", "guest"):
         assert f'data-layer-select="{role}"' in board.text
-    assert 'data-layer-scale="down"' in board.text
-    assert 'data-layer-scale="up"' in board.text
+    # 「− 縮小／＋ 放大」2026-09-15 拿掉：滾輪對三種圖層本來就都生效，按鈕是
+    # 同一件事的第二個入口（修修：「我都是用滑鼠滾輪」）。
+    assert "data-layer-scale" not in board.text
+    # 十格數字也收成 hidden；排版只剩拖曳與滾輪
+    assert 'class="pkg-stage-nums"' not in board.text
+    assert "修修大小" not in board.text
+    assert "圖卡寬度" not in board.text
     assert 'class="pkg-render-progress"' in board.text
     assert 'aria-live="polite"' in board.text
     assert 'role="progressbar"' in board.text

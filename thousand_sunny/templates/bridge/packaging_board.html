@@ -99,7 +99,7 @@
            順帶修掉一個舊誤標：原本「沒 decision 又沒挑過變體／大字／配方」會被歸進
            REJECTED，於是一支全新、根本沒人碰過的 cut 在畫面上寫著「被否決」。 --#}
       {% if approval and approval.approved %}
-      <span class="sho-tag sho-tag--accent">APPROVED · PKG {{ approval.primary_package }}</span>
+      <span class="sho-tag sho-tag--accent">APPROVED</span>
       {% else %}
       <span class="section-status idle">PENDING</span>
       {% endif %}
@@ -164,7 +164,7 @@
           <input type="hidden" name="cut_id" value="{{ cut.cut_id }}">
           <input type="hidden" name="rank" value="{{ t.rank }}">
           <label class="field-label" for="t-{{ cut.cut_id }}-{{ t.rank }}">
-            Package #{{ t.rank }}{% if t.original_text %} · 已手改{% endif %}
+            標題 #{{ t.rank }}{% if t.original_text %} · 已手改{% endif %}
           </label>
           <div class="pkg-title-row">
             <input class="sho-input" id="t-{{ cut.cut_id }}-{{ t.rank }}" name="title_text"
@@ -208,7 +208,7 @@
               <button type="button" class="sho-btn sho-btn--ghost pkg-recipe-tab"
                       role="tab" data-package-rank="{{ item.pkg.title_rank }}"
                       aria-selected="{{ 'true' if editor.pkg and editor.pkg.title_rank == item.pkg.title_rank else 'false' }}">
-                Package #{{ item.pkg.title_rank }}
+                封面 {{ item.pkg.title_rank }}
               </button>
               {% endfor %}
             </div>
@@ -391,12 +391,9 @@
                    2026-09-14 想點它卻點不到。加進來之後三者同一套操作。 #}
                 <button class="sho-btn sho-btn--ghost pkg-layer-button" type="button"
                         data-layer-select="text" aria-pressed="false">大字</button>
-                <span class="pkg-layer-scale" role="group" aria-label="調整選定圖層大小">
-                  <button class="sho-btn sho-btn--ghost" type="button" data-layer-scale="down"
-                          aria-label="縮小選定圖層">− 縮小</button>
-                  <button class="sho-btn sho-btn--ghost" type="button" data-layer-scale="up"
-                          aria-label="放大選定圖層">＋ 放大</button>
-                </span>
+                {#-- 原本這裡有「− 縮小／＋ 放大」。修修 2026-09-15：「縮小、放大那兩格
+                     也拿掉，因為我都是用滑鼠滾輪。」滾輪對三種圖層（人物／中央圖／大字）
+                     本來就都生效，按鈕只是同一件事的第二個入口。 --#}
               </div>
               {#-- 這兩格本來是 checkbox，修修 2026-09-15：「只要我按下『存配方』，就是
                    叫系統用我調的位置啊，那我為什麼還要再勾？」——他本來就不必勾，拖過
@@ -424,38 +421,35 @@
                      value="{{ req.text_center_pct if req else 50 }}">
               <input type="hidden" name="text_top_pct" data-text-geo="y"
                      value="{{ req.text_top_pct if req else 44 }}">
-              <div class="pkg-stage-nums">
-                {% for role, label in [('host', '修修'), ('guest', '來賓')] %}
-                {% for axis, ax_label in [('height', '大小'), ('x', '左右'), ('y', '上下')] %}
-                <label class="field">
-                  <span class="field-label">{{ label }}{{ ax_label }}</span>
-                  {# step 必須是 any：Chrome 的 step 基準點是 **初始 value**，不是 0。
-                     step="0.1" 配上兩位小數的種子值（-21.69）會讓合法值變成
-                     -21.69/-21.59/…，拖曳出來的數字十次有九次落在格子外，按存配方
-                     就跳「請輸入有效值」。修修 2026-08-15 回報的「數字不符合」。 #}
-                  <input class="sho-input" type="number" step="any" data-geo="{{ role }}_{{ axis }}"
-                         name="{{ role }}_{{ axis }}_pct"
-                         value="{{ g[role ~ '_' ~ axis ~ '_pct'] if g else '' }}">
-                </label>
-                {% endfor %}
-                {% endfor %}
-              </div>
+              {#-- 這十格原本是看得見、可以直接打字的數字（修修大小／左右／上下、來賓
+                   三格、圖卡四格）。修修 2026-09-15：「這個欄位全部拿掉，因為我用不到。」
+                   他排版一律用拖曳與滾輪。
+
+                   欄位本身**不能刪**：它們就是送出去的幾何值。刪掉的話 compose 會落在
+                   Form 的預設 0.0 上、撞 GeometryV1 的 gt=0 → 400，畫面正常但存不進去。
+                   所以收成 hidden，值仍由拖曳與滾輪維護。
+
+                   收成 hidden 順帶根治一類舊 bug：`type="number"` 的 step 基準點是初始
+                   value，拖出來的兩位小數常常落在格子外，按存配方會跳「請輸入有效值」
+                   （修修 2026-08-15 回報的「數字不符合」）。hidden input 不做驗證。 --#}
+              {% for role in ['host', 'guest'] %}
+              {% for axis in ['height', 'x', 'y'] %}
+              <input type="hidden" data-geo="{{ role }}_{{ axis }}"
+                     name="{{ role }}_{{ axis }}_pct"
+                     value="{{ g[role ~ '_' ~ axis ~ '_pct'] if g else '' }}">
+              {% endfor %}
+              {% endfor %}
               {% set cg = req.center_geometry if req and req.center_geometry else none %}
-              <div class="pkg-stage-nums pkg-stage-center-nums">
-                {% for key, label, value in [
-                  ('width', '圖卡寬度', cg.width_pct if cg else ''),
-                  ('height', '圖卡高度', cg.height_px if cg else ''),
-                  ('x', '圖卡左右', cg.x_pct if cg else ''),
-                  ('y', '圖卡上下', cg.y_pct if cg else '')
-                ] %}
-                <label class="field">
-                  <span class="field-label">{{ label }}</span>
-                  <input class="sho-input" type="number" step="any" data-center-geo="{{ key }}"
-                         name="center_{{ key }}_{{ 'px' if key == 'height' else 'pct' }}"
-                         value="{{ value }}">
-                </label>
-                {% endfor %}
-              </div>
+              {% for key, value in [
+                ('width', cg.width_pct if cg else ''),
+                ('height', cg.height_px if cg else ''),
+                ('x', cg.x_pct if cg else ''),
+                ('y', cg.y_pct if cg else '')
+              ] %}
+              <input type="hidden" data-center-geo="{{ key }}"
+                     name="center_{{ key }}_{{ 'px' if key == 'height' else 'pct' }}"
+                     value="{{ value }}">
+              {% endfor %}
               {#-- 原本在這裡解釋四個數字怎麼用、以及沒勾那個 checkbox 時大字會被微調
                    1–2%。checkbox 換成狀態句之後這句連指涉對象都沒了，而數字欄位本身
                    已經標著「圖卡寬度／高度／左右／上下」。 --#}
@@ -605,6 +599,7 @@
         <fieldset class="pkg-cards" aria-label="選一組封面 Approve">
           {% for item in view.packages %}
           <label class="pkg-card{% if approval and approval.approved and approval.primary_package == item.pkg.title_rank %} pkg-card--primary{% endif %}"
+                 title="Package #{{ item.pkg.title_rank }} · archetype {{ item.pkg.thumb_archetype_id }} · pairing {{ item.pkg.joint_pairing_id }}"
                  data-composition-verified="{{ 'true' if cut.cut_id == 'full' or item.composition.verified else 'false' }}">
             <input type="radio" name="primary_package" value="{{ item.pkg.title_rank }}"
                    {% if approval and approval.approved and approval.primary_package == item.pkg.title_rank %}checked{% endif %}
@@ -613,9 +608,9 @@
                  data-package-thumbnail-rank="{{ item.pkg.title_rank }}"
                  alt="package {{ item.pkg.title_rank }} 封面：{{ item.title.text if item.title else '' }}" loading="lazy">
             <div class="pkg-card-title">{{ item.title.text if item.title else '（缺 rank ' ~ item.pkg.title_rank ~ ' 標題）' }}</div>
-            {#-- archetype 與配對 ID 是溯源資料，不是挑封面的依據；收進 title。 --#}
-            <div class="sho-mono pkg-card-meta"
-                 title="archetype {{ item.pkg.thumb_archetype_id }} · pairing {{ item.pkg.joint_pairing_id }}">Package #{{ item.pkg.title_rank }}</div>
+            {#-- 原本在標題下面掛一顆「Package #N」。修修 2026-09-15 點名拿掉——他是
+                 看封面挑的，編號只在我們的資料結構裡有意義。選中的那張靠 --primary
+                 邊框標示。溯源資料（archetype／pairing／編號）留在 label 的 title。 --#}
             {#-- full 集原本印「N1 FULL EPISODE · COMPOSITION GATE NOT APPLICABLE」加一句
                  解釋。那是在公告「有一項檢查對這一集不適用」——對要挑封面的人，一個不適用
                  的檢查等於沒有這項檢查，不必出現。長精華的版面結果仍然照常顯示。 --#}
@@ -1051,7 +1046,6 @@
     border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
   }
 
-  .pkg-layer-scale { display: flex; gap: var(--sho-s-2); margin-left: auto; }
   /* 位置鎖：只在「你自己擺過」時出現，附一個還原出口。 */
   .pkg-stage-lock {
     display: flex; flex-wrap: wrap; align-items: baseline;
@@ -1066,11 +1060,6 @@
   }
   .pkg-stage-lock-reset:hover { color: var(--sho-accent-2); }
   .pkg-stage-lock-reset:focus-visible { outline: none; box-shadow: var(--sho-focus); border-radius: var(--sho-r-1); }
-  .pkg-stage-nums {
-    display: grid; grid-template-columns: repeat(6, 1fr);
-    gap: var(--sho-s-2); margin-top: var(--sho-s-2);
-  }
-  .pkg-stage-center-nums { grid-template-columns: repeat(4, 1fr); }
   .pkg-stage-hint { margin: var(--sho-s-2) 0 0; color: var(--sho-muted); }
   .pkg-center-pool { margin-top: var(--sho-s-4); }
   .pkg-center-pool-label { margin: 0 0 var(--sho-s-2); color: var(--sho-muted); }
@@ -1140,8 +1129,6 @@
   @media (prefers-reduced-motion: reduce) {
     .pkg-render-progress-track::after { animation: none !important; left: 31%; }
   }
-  @media (max-width: 720px) { .pkg-stage-nums { grid-template-columns: repeat(3, 1fr); } }
-  @media (max-width: 720px) { .pkg-layer-scale { margin-left: 0; width: 100%; } }
 </style>
 <script>
   document.addEventListener("click", (e) => {
@@ -1465,44 +1452,6 @@
     }
   }
 
-  function scaleStageLayer(stage, direction) {
-    const role = stage.querySelector(".pkg-stage-inner").dataset.selectedRole || "host";
-    if (role === "text") {
-      // 字塊的「大小」就是大字寬度：composition 是整塊縮字不換行，
-      // fontSize = 100 * title_max_width / 實際行寬。改這一格等於改字級。
-      const form = stage.closest("form");
-      const field = form.querySelector('input[name="title_max_width"]');
-      if (field) {
-        const current = parseInt(field.value, 10) || 580;
-        field.value = Math.min(1000, Math.max(300, current + (direction === "up" ? 20 : -20)));
-        fitStageTitle(stage);
-      }
-      return;
-    }
-    if (role === "center") {
-      const center = centerInputs(stage);
-      const value = (key) => center[key].value === "" ? CENTER_DEFAULT[key] : parseFloat(center[key].value);
-      const factor = direction === "up" ? 1.04 : 0.96;
-      const x = value("x");
-      const y = value("y");
-      const maxWidth = 2 * Math.min(x, 100 - x);
-      const nextWidth = Math.min(maxWidth, Math.max(50, value("width") * factor));
-      const maxHeight = 720 * 2 * Math.min(y, 100 - y) / 100;
-      const nextHeight = Math.min(maxHeight, nextWidth * 12.8 - 1,
-        Math.max(120, value("height") * factor));
-      center.width.value = nextWidth.toFixed(2);
-      center.height.value = nextHeight.toFixed(2);
-    } else {
-      const inputs = stageInputs(stage);
-      const key = role + "_height";
-      const current = inputs[key].value === "" ? STAGE_DEFAULT[key] : parseFloat(inputs[key].value);
-      inputs[key].value = Math.min(400, Math.max(20,
-        current + (direction === "up" ? 5 : -5))).toFixed(2);
-    }
-    applyStage(stage);
-    markManual(stage);
-  }
-
   function syncStages() {
     for (const stage of document.querySelectorAll(".pkg-stage")) {
       stageScale(stage);
@@ -1657,11 +1606,6 @@
       if (stage) selectStageLayer(stage, layerButton.dataset.layerSelect);
       return;
     }
-    const scaleButton = e.target.closest("[data-layer-scale]");
-    if (scaleButton) {
-      const stage = scaleButton.closest("form")?.querySelector(".pkg-stage");
-      if (stage) scaleStageLayer(stage, scaleButton.dataset.layerScale);
-    }
   });
   // <details> 收合時 clientWidth 是 0，展開才量得到縮放比
   document.addEventListener("toggle", (e) => {
@@ -1735,7 +1679,7 @@
       const rank = panel.dataset.packageRank;
       const image = document.querySelector(`[data-package-thumbnail-rank="${rank}"]`);
       if (image) image.src = payload.thumbnail_url;
-      message.textContent = `${payload.message}；下方 Package #${rank} 已更新。`;
+      message.textContent = `${payload.message}；下面第 ${rank} 張封面已更新。`;
     }
   }
 
