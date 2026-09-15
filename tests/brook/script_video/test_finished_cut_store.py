@@ -2583,3 +2583,158 @@ def test_a_receipt_only_projection_still_cannot_be_minted() -> None:
             t1=4.0,
             asset_ref=None,
         )
+
+
+def test_director_correction_on_a_revision_run_keeps_advancing(tmp_path) -> None:
+    """修訂 run 的 director correction 不可以把 run 卡死。
+
+    2026-09-15 蘇予昕 punch-L02 實際踩到：hero-1 用 `request_revision` 走完
+    director → dp → visual_review，接著對**同一個 run** 的 director 發 correction
+    改 hero-2，run 就再也推不動：
+
+        status = needs_review   outstanding_stage = dp   build_state = not_started
+
+    原因是 `_select_correction` 對 director 階段回傳空的 `current_prefix`，於是請求
+    鑄出 `parent_acceptance_id = None`；而 `_current_chain_is_exact` 對
+    TargetedRevisionCommand 要求鏈首的 parent 必須是**被修訂那份 plan 的 director
+    acceptance**。兩邊對不上 → `_request_base_is_current` 永遠 False →
+    `_advance_existing` 丟進 needs_review → `advance` 遇到 needs_review 就 return。
+
+    三條出路當時全部關著：`retry-failed-dispatch` 要求「終端派工失敗」（這裡是派工
+    從未發生），`request_correction` 擋在「另一個修正還在進行中」。
+    """
+    root = tmp_path / "finished-cut-authority"
+    command = _approved_cut()
+    context = EditorialCutContext(
+        episode_id="episode-1",
+        cut_id="cut-1",
+        format="long",
+        editorial_master_id="master-1",
+        tight_cut_id="tight-1",
+        duration_sec=45.0,
+        source_ranges=(CutSourceRange(0.0, 45.0),),
+        cues=(
+            CueAnchor("cue-1", "第一個事件的證據", 1.0, 3.0, "section-1"),
+            CueAnchor("cue-2", "第二個事件的證據", 5.0, 7.0, "section-1"),
+        ),
+        sections=(CanonicalSection("section-1", "重點", 0.0),),
+    )
+    approved_cuts = InMemoryApprovedCutStore((command,))
+    semantic = InMemorySemanticAdapter()
+    current = InMemoryPlanRecordIndex()
+    resolver = InMemoryAssetResolver(())
+    builder = _ReadyDerivedAssetBuilder(resolver)
+
+    def reopen() -> FinishedCutProduction:
+        return FinishedCutProduction(
+            store_root=root,
+            approved_cut_store=approved_cuts,
+            asset_resolver=resolver,
+            semantic_adapter=semantic,
+            derived_asset_builder=builder,
+            context_resolver=InMemoryEditorialCutContextResolver((context,)),
+            plan_records=current,
+        )
+
+    # ── 第一輪：整支跑完 ────────────────────────────────────────────────
+    process = reopen()
+    process.advance(command.command_id)
+    semantic.respond(
+        _current_request(process, semantic, command.command_id),
+        events=(
+            DirectorEventProposal("hero-1", ("cue-1",), "第一張", "起點是一句話", "hero_title"),
+            DirectorEventProposal("hero-2", ("cue-2",), "第二張", "終點是另一句", "hero_title"),
+        ),
+    )
+    process = reopen()
+    process.advance(command.command_id)
+    semantic.respond(
+        _current_request(process, semantic, command.command_id),
+        events=(
+            DPEventProposal("hero-1", "hero_title", "hero_title", None, ("cue-1",)),
+            DPEventProposal("hero-2", "hero_title", "hero_title", None, ("cue-2",)),
+        ),
+    )
+    process = reopen()
+    process.advance(command.command_id)
+    semantic.respond(
+        _current_request(process, semantic, command.command_id),
+        events=(
+            VisualEventProposal("hero-1", "approved"),
+            VisualEventProposal("hero-2", "approved"),
+        ),
+    )
+    reopen().advance(command.command_id)
+    ready_process = reopen()
+    ready_process.advance(command.command_id)
+    original_plan = _run_authority(ready_process, command.command_id).materialization_plan
+    assert original_plan is not None
+
+    artifact = ReleaseArtifact(path="fixture", bytes=1, sha256="a" * 64, duration_sec=45.0)
+    release = plan_record(
+        plan_id="release-current",
+        episode_id=command.episode_id,
+        cut_id=command.cut_id,
+        format=command.format,
+        command_id=command.command_id,
+        run_id=original_plan.run_id,
+        editorial_master_id="master-1",
+        winner_id="winner-1",
+        tight_cut_id="tight-1",
+        director_acceptance_id=original_plan.director_acceptance_id,
+        dp_acceptance_id=original_plan.dp_acceptance_id,
+        visual_acceptance_id=original_plan.visual_acceptance_id,
+        events=original_plan.events,
+        components=original_plan.components,
+        preview=artifact,
+        subtitle=artifact,
+    )
+    current.publish((release,))
+
+    # ── 第二輪：revision 改 hero-1，走完三關 ────────────────────────────
+    revision_id = reopen().request_revision(release.plan_id, "hero-1", "這張是逐字複述，重寫")
+    process = reopen()
+    process.advance(revision_id)
+    semantic.respond(
+        _current_request(process, semantic, revision_id),
+        events=(DirectorEventProposal("hero-1", ("cue-1",), "重寫過", "換一個說法", "hero_title"),),
+    )
+    process = reopen()
+    process.advance(revision_id)
+    semantic.respond(
+        _current_request(process, semantic, revision_id),
+        events=(DPEventProposal("hero-1", "hero_title", "hero_title", None, ("cue-1",)),),
+    )
+    process = reopen()
+    process.advance(revision_id)
+    semantic.respond(
+        _current_request(process, semantic, revision_id),
+        events=(VisualEventProposal("hero-1", "approved"),),
+    )
+    reopen().advance(revision_id)
+
+    # ── 第三輪：對同一個 run 的 director 發 correction 改 hero-2 ─────────
+    reopen().request_correction(revision_id, "director", "hero-2", "這張也是逐字複述，重寫")
+    process = reopen()
+    process.advance(revision_id)
+    correction_request = _current_request(process, semantic, revision_id)
+
+    # 這就是修掉的那個坑：鏈首的 parent 不是 None，是被修訂那份 plan 的 director
+    # acceptance。鑄成 None 的話 `_current_chain_is_exact` 永遠不同意。
+    assert correction_request.stage == "director"
+    assert correction_request.parent_acceptance_id == release.director_acceptance_id
+
+    semantic.respond(
+        correction_request,
+        events=(
+            DirectorEventProposal("hero-2", ("cue-2",), "也重寫過", "另一個說法", "hero_title"),
+        ),
+    )
+    process = reopen()
+    after = process.advance(revision_id)
+
+    # 真正要守的行為：它要往下走，不是卡在 needs_review。
+    assert after.status != "needs_review"
+    dp_request = _current_request(process, semantic, revision_id)
+    assert dp_request.stage == "dp"
+    assert (dp_request.scope, dp_request.event_id) == ("event_retry", "hero-2")
