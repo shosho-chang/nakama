@@ -586,7 +586,9 @@ def _board_context(episode_slug: str) -> dict:
             "cut": cut,
             "approval": approval_by_cut.get(cut.cut_id),
             "packages": package_views,
-            "runners_up": [t for t in cut.titles if t.rank >= 4],
+            # 前 5 名都在上面（標題欄位與「用哪一條標題」下拉），再列一次沒有意義
+            # ——修修 2026-09-15。這裡只放沒進前 5 名的候選。
+            "title_pool": _title_pool(ep_dir, cut.cut_id, {t.text.strip() for t in cut.titles}),
             "brief": _load_brief(ep_dir, cut.cut_id),
             "recipe_payload": recipe_payload,
             "center_candidates": [
@@ -825,6 +827,143 @@ def _recipe_render_state(recipe, thumbnail_png: str) -> dict | None:
         state = "unrendered"
     label, hint = _RECIPE_STATE_TEXT[state]
     return {"state": state, "label": label, "hint": hint}
+
+
+# 修修 2026-09-15：「你在下面的落選標題把 4 到 5 名放進來，根本一點意義都沒有，因為
+# 4 到 5 名就已經在上面有出現了。我要的是 5 名以外的，或許有漏網之魚、我覺得不錯的，
+# 至少再列 10 個出來。」
+#
+# 那些候選只活在桌機端 title-brainstorm 的 title_trace：panel 每一輪評過的候選（帶分數）
+# 加上 tier2/tier3 的疊加候選（沒分數，但有角度與 payoff）。本區把它們攤開，扣掉已經
+# 進前 5 名的那幾條。
+#
+# 讀檔一律**先核對 cut_id**。同一集目前有三種檔名寫法，而 episode 根目錄那顆
+# `title_trace.json` 裝的是哪一支是隨機的（20260805 林之晨那顆裝的是 value-L02），
+# 不核對就會把別支影片的候選與分數當成這一支的端到他面前。
+_TITLE_POOL_MAX = 12
+
+
+def _title_trace(ep_dir: Path, cut_id: str) -> dict | None:
+    """這一支自己的 title_trace；找不到或 cut_id 對不上都回 None（寧可不顯示）。"""
+    safe = cut_id.replace("/", "_").replace("\\", "_")
+    for candidate in (
+        ep_dir / safe / "title_trace.json",
+        ep_dir / f"title_trace-{safe}.json",
+        ep_dir / "title_trace.json",
+    ):
+        if not candidate.is_file():
+            continue
+        try:
+            data = json.loads(candidate.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(data, dict) or data.get("cut_id") != cut_id:
+            continue
+        trace = data.get("title_trace")
+        return trace if isinstance(trace, dict) else None
+    return None
+
+
+def _panel_totals(row: dict) -> list[int]:
+    """每個 persona 的總分。trace 有兩種寫法，兩種都吃，看不懂就回空。
+
+    A（punch-L04）：``{"scores": {"A": [4, 5, 5, 5, 19], ...}}`` — 最後一項是總分
+    B（value-L02）：``{"A": {"score": [...], "total": 17}, ...}``
+    """
+    totals: list[int] = []
+    scores = row.get("scores")
+    if isinstance(scores, dict):
+        for value in scores.values():
+            if isinstance(value, list) and value and isinstance(value[-1], int):
+                totals.append(value[-1])
+        return totals
+    for key, value in row.items():
+        if key in {"id", "title", "gate", "feedback"} or not isinstance(value, dict):
+            continue
+        total = value.get("total")
+        if isinstance(total, int):
+            totals.append(total)
+        elif isinstance(value.get("score"), list):
+            nums = [n for n in value["score"] if isinstance(n, int)]
+            if nums:
+                totals.append(sum(nums))
+    return totals
+
+
+def _panel_note(row: dict) -> str:
+    """評審對這條的一句話；沒有就把硬旗標（標題黨／術語…）當註記。"""
+    feedback = row.get("feedback")
+    if isinstance(feedback, str) and feedback.strip():
+        return feedback.strip()
+    flags: list[str] = []
+    for key, value in row.items():
+        if key in {"id", "title", "gate", "scores"} or not isinstance(value, dict):
+            continue
+        for flag in value.get("flags") or []:
+            if isinstance(flag, str) and flag not in flags:
+                flags.append(flag)
+    return "評審標記：" + "、".join(flags) if flags else ""
+
+
+def _title_pool(ep_dir: Path, cut_id: str, taken: set[str]) -> list[dict]:
+    """沒進前 5 名的候選標題，分數高的排前面。沒有 trace 就是空的。"""
+    trace = _title_trace(ep_dir, cut_id)
+    if trace is None:
+        return []
+    rows: dict[str, dict] = {}
+
+    for round_row in trace.get("panel_rounds") or []:
+        if not isinstance(round_row, dict):
+            continue
+        for candidate in round_row.get("candidates") or []:
+            if not isinstance(candidate, dict):
+                continue
+            text = str(candidate.get("title") or "").strip()
+            if not text or text in taken:
+                continue
+            totals = _panel_totals(candidate)
+            previous = rows.get(text)
+            # 同一條可能評過兩輪；留分數較高（也就是改寫後）的那一次。
+            if previous and sum(previous["totals"] or [0]) >= sum(totals or [0]):
+                continue
+            rows[text] = {
+                "text": text,
+                "totals": totals,
+                "total": sum(totals) if totals else None,
+                "note": _panel_note(candidate),
+                "angles": [],
+                "payoff": "",
+            }
+
+    for tier in ("tier2", "tier3"):
+        for candidate in trace.get(tier) or []:
+            if not isinstance(candidate, dict):
+                continue
+            text = str(candidate.get("text") or "").strip()
+            if not text or text in taken:
+                continue
+            angles = [a for a in (candidate.get("angles") or []) if isinstance(a, str)]
+            payoff = str(candidate.get("payoff") or "").strip()
+            # 沒被 panel 評到的也要列（那正是「漏網之魚」）；評過的就只補角度與 payoff。
+            row = rows.setdefault(
+                text,
+                {
+                    "text": text,
+                    "totals": [],
+                    "total": None,
+                    "note": str(candidate.get("later_rejected_reason") or "").strip(),
+                    "angles": [],
+                    "payoff": "",
+                },
+            )
+            row["angles"] = row["angles"] or angles
+            row["payoff"] = row["payoff"] or payoff
+
+    ordered = sorted(
+        rows.values(),
+        key=lambda row: (row["total"] is None, -(row["total"] or 0), row["text"]),
+    )
+    return ordered[:_TITLE_POOL_MAX]
 
 
 def _composition_status(

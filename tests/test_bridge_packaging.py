@@ -308,7 +308,9 @@ def test_board_renders_packages_runners_and_flags(client):
     assert r.status_code == 200
     assert "標題 rank 1" in r.text
     assert "pkg-punch-L1-1.png" in r.text
-    assert "角度重複，缺乏差異化" in r.text  # rank4 panel_note
+    # 第 4–5 名的 panel_note 不再單獨列一區——那兩條在上面的標題欄位與「用哪一條
+    # 標題」下拉本來就看得到（修修 2026-09-15：「根本一點意義都沒有」）。
+    assert "落選標題" not in r.text
     assert "宣稱療效需 hedge" in r.text  # brand flag
 
     # 短片的改字欄在它自己的 tab 上（2026-09-14 起每一集都有 tab）。改標題這件事
@@ -1680,7 +1682,11 @@ def test_full_episode_does_not_require_long_highlight_composition_receipt(
 
     board = router_client.get("/bridge/packaging/20260723-xieboran")
     assert board.status_code == 200
-    assert "N1 FULL EPISODE · COMPOSITION GATE NOT APPLICABLE" in board.text
+    # 舊行為是印一則「本檢查對這一集不適用」的告示。對要挑封面的人，一個不適用的
+    # 檢查等於沒有這項檢查，不必出現（修修 2026-09-15）。重點是它**不會**被擋。
+    assert "COMPOSITION GATE NOT APPLICABLE" not in board.text
+    assert "版面已驗證" not in board.text
+    assert "版面有疑慮" not in board.text
     assert "Approve（人工決定優先）" in board.text
     assert "COMPOSITION BLOCKED：中央主圖或保護區尚未通過驗證。" not in board.text
 
@@ -2818,3 +2824,98 @@ def test_a_queued_legacy_revision_no_longer_blocks_saving_a_recipe(client, vault
     )
 
     assert _compose(client, package_rank="1").status_code == 303
+
+
+# ---------------------------------------------------------------------------
+# 沒進前 5 名的候選標題（修修 2026-09-15：「我要的是 5 名以外的，或許有漏網之魚」）
+# ---------------------------------------------------------------------------
+
+
+def _write_title_trace(vault: Path, name: str, payload: dict) -> Path:
+    path = vault / "Attachments" / "packaging" / "20260723-xieboran" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def _trace_payload(cut_id: str = "punch-L1") -> dict:
+    return {
+        "episode": "20260723 謝伯讓",
+        "cut_id": cut_id,
+        "title_trace": {
+            "panel_rounds": [
+                {
+                    "round": 1,
+                    "candidates": [
+                        # 兩種 trace 寫法都要吃：scores dict（最後一項是總分）
+                        {
+                            "title": "沒選上但分數很高的那一條",
+                            "gate": ["pass", "pass", "pass"],
+                            "scores": {"A": [4, 5, 5, 5, 19], "B": [4, 4, 5, 5, 18]},
+                            "feedback": "畫面與反轉最強",
+                        },
+                        # 以及 persona dict（各自帶 total 與 flags）
+                        {
+                            "id": "R1-02",
+                            "title": "被評審標成標題黨的那一條",
+                            "A": {
+                                "gate": "pass",
+                                "score": [2, 2, 2, 2],
+                                "total": 8,
+                                "flags": ["標題黨"],
+                            },
+                            "B": {"gate": "pass", "score": [3, 2, 2, 2], "total": 9, "flags": []},
+                        },
+                        # 進了前 5 名的不該再出現在這一區
+                        {"title": "標題 rank 1", "scores": {"A": [5, 5, 5, 5, 20]}},
+                    ],
+                }
+            ],
+            "tier2": [
+                {
+                    "text": "根本沒被評到的漏網之魚",
+                    "angles": ["反直覺", "生存風險"],
+                    "payoff": "看懂安逸背後的代價",
+                }
+            ],
+        },
+    }
+
+
+def test_title_pool_lists_candidates_that_never_made_the_top_five(client, vault):
+    """前 5 名以外的候選要列出來，含各 persona 的試讀分數。"""
+    _write_title_trace(vault, "title_trace-punch-L1.json", _trace_payload())
+
+    body = client.get("/bridge/packaging/20260723-xieboran").text
+
+    assert "沒進前 5 名的候選" in body
+    assert "沒選上但分數很高的那一條" in body
+    assert "根本沒被評到的漏網之魚" in body  # tier2 也算候選
+    assert "19 ／ 18" in body and "合計 37" in body
+    assert "畫面與反轉最強" in body
+    assert "評審標記：標題黨" in body  # 沒有 feedback 就用硬旗標
+    assert "看懂安逸背後的代價" in body
+    # 已經進前 5 名的不會在這一區重複出現
+    pool = body.split('<details class="pkg-runners">')[1].split("</details>")[0]
+    assert "標題 rank 1" not in pool
+
+
+def test_title_pool_never_shows_another_cuts_candidates(client, vault):
+    """episode 根目錄那顆 title_trace.json 裝的是哪一支是隨機的——cut_id 對不上就不顯示。
+
+    真實 vault 裡 20260805 林之晨的 `title_trace.json` 裝的是 value-L02，而板上看的是
+    full。不核對就會把別支影片的候選與分數端到他面前。
+    """
+    _write_title_trace(vault, "title_trace.json", _trace_payload(cut_id="another-cut"))
+
+    body = client.get("/bridge/packaging/20260723-xieboran").text
+
+    assert "沒進前 5 名的候選" not in body
+    assert "沒選上但分數很高的那一條" not in body
+
+
+def test_title_pool_is_absent_when_the_desktop_never_wrote_a_trace(client):
+    """沒有 trace 就整區不顯示，不留一個空殼在那裡。"""
+    body = client.get("/bridge/packaging/20260723-xieboran").text
+
+    assert "沒進前 5 名的候選" not in body
