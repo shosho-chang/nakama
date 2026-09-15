@@ -6,7 +6,8 @@
 
 輸入 JSON (stdin):
     {
-      "episode": "20260723-xieboran",   # ASCII slug — packages.json / vault 子目錄名
+      "episode": "20260723 謝伯讓",      # footage 資料夾名，**不是** slug（見下）
+      "episode_slug": "20260723-xieboran",  # ASCII slug — vault 子目錄名
       "cut_id": "punch-L1",
       "format": "long" | "short",
       "information_origin": "full_text" | "one_liner",
@@ -42,6 +43,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import sys
 from datetime import datetime, timezone
@@ -128,6 +130,32 @@ def _ensure_keywords_cache(packaging_dir: Path, input_data: dict) -> tuple[Path,
 # --------------------------------------------------------------------------
 
 
+# `episode` 是 **footage 資料夾名**（`20260901 蘇予昕`），不是 vault 子目錄的 ASCII slug
+# （`20260901-suyuxin`）。兩者長得像、意義完全不同：
+#
+#   - `_episode_dir()` 拿 `episode` 去解 `PODCAST_EPISODES_ROOT/<episode>`——填 slug 就
+#     指到一個不存在的資料夾，發布流程 404
+#   - composition receipt 的 identity 檢查逐欄比對 `episode`，packages.json 與 receipt
+#     只要有一邊填錯，gate 上該支就永遠顯示「版面有疑慮」
+#   - board 頁標題直接印 `episode`，修修看到的就是一串拼音
+#
+# 2026-09-15 vault 裡七集有兩集填成 slug（蘇予昕、抹布），而且蘇予昕那集連內部都不一致
+# ——punch-L04 的 receipt 是對的、L02/L03 是 slug。根因是本 script 的 docstring 與
+# SKILL.md 當初就寫著「episode: ASCII slug」，照著填的人沒有錯。文件已改，這道閘負責
+# 讓下一次填錯當場停下來，而不是三週後在 gate 上被看見。
+_SLUG_SHAPED = re.compile(r"^\d{8}-[A-Za-z0-9._-]+$")
+
+
+def _require_episode_name(episode: str) -> None:
+    if _SLUG_SHAPED.match(episode.strip()):
+        raise ValueError(
+            f"episode={episode!r} 看起來是 ASCII slug，但這一欄要的是 footage 資料夾名"
+            f"（例如 '20260901 蘇予昕'）。slug 請放 episode_slug。"
+            f"填錯會讓發布流程找不到 footage 目錄、composition receipt 對不上、"
+            f"board 頁標題變成一串拼音。"
+        )
+
+
 def emit(
     input_data: dict,
     packaging_dir: Path,
@@ -144,6 +172,7 @@ def emit(
     # 的 `episode` 欄。attach_packages.py 一直吃 `--episode-slug`，emit 端卻沿用
     # `episode` → 同一集會生出兩個 vault 目錄（2026-07-29 謝伯讓集實際踩到）。
     episode_slug: str = input_data.get("episode_slug") or episode
+    _require_episode_name(episode)
     cut_id: str = input_data["cut_id"]
     fmt: str = input_data["format"]
     info_origin: str = input_data.get("information_origin", "full_text")

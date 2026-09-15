@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Desktop media worker — package renders plus packaging revisions.
+"""Desktop media worker — package renders plus initial packaging jobs.
 
 修修：「我按下存配方了，所以你不會自動 render 嗎？」——不會，因為 render 需要
 Chrome／hyperframes／LINE Seed 字型，那些只在桌機（ADR-054 D11：VPS 叫不到桌機）。
@@ -16,8 +16,6 @@ Chrome／hyperframes／LINE Seed 字型，那些只在桌機（ADR-054 D11：VPS
   `episode` 欄位對回來（vault 端沒有這個路徑，也不該有——D10 硬規則①）
 - 失敗不靜默：寫 log、記進 state 的 `last_error`，下一輪不會無限重試同一份
   （requested_at 沒變就不再跑，避免壞配方把 GPU/CPU 打滿）
-- Reject + feedback 產生的 `revision_job.status=queued` → 備份舊版、啟動一個 bounded
-  Codex packaging agent、驗證 working/vault/schema/PNG 後只標 `ready_for_review`；永不自動核准
 - Highlight shortlist 產生的 `packaging.status=queued` → 以 sol 啟動完整 title + thumbnail
   Packaging agent；驗證三組 package 後標 `ready`。中斷的 running job 由下次 watcher 續跑
 
@@ -26,7 +24,7 @@ Chrome／hyperframes／LINE Seed 字型，那些只在桌機（ADR-054 D11：VPS
     python scripts/render_watcher.py             # 常駐
     python scripts/render_watcher.py --render-requests-only `
       --episode-slug 20260805-linzhichen --cut-id value-L01 --package-rank 1
-        # 只 render 指定 Long package，不消耗其他 revision / initial packaging job
+        # 只 render 指定 Long package，不消耗 initial packaging job
 """
 
 from __future__ import annotations
@@ -216,34 +214,6 @@ def filter_render_requests(
     ]
 
 
-def pending_revision_jobs(vault: Path) -> list[dict]:
-    """Return queued packaging rejections awaiting a desktop revision agent."""
-    out: list[dict] = []
-    root = vault / "Attachments" / "packaging"
-    if not root.is_dir():
-        return out
-    for approval_path in sorted(root.glob("*/approval.json")):
-        try:
-            data = json.loads(approval_path.read_text(encoding="utf-8"))
-        except (json.JSONDecodeError, OSError):
-            continue
-        for entry in data.get("approvals", []):
-            job = entry.get("revision_job")
-            if not job or job.get("status") != "queued":
-                continue
-            out.append(
-                {
-                    "slug": approval_path.parent.name,
-                    "episode": data.get("episode", approval_path.parent.name),
-                    "cut_id": entry["cut_id"],
-                    "request_id": job["request_id"],
-                    "job": job,
-                    "approval_path": approval_path,
-                }
-            )
-    return out
-
-
 def pending_packaging_jobs(vault: Path) -> list[dict]:
     """Return queued initial Packaging jobs, including interrupted running work."""
     out: list[dict] = []
@@ -314,41 +284,8 @@ def _atomic_json(path: Path, data: dict) -> None:
     pending.replace(path)
 
 
-def _update_revision_job(
-    approval_path: Path,
-    *,
-    cut_id: str,
-    request_id: str,
-    updates: dict,
-) -> dict:
-    data = json.loads(approval_path.read_text(encoding="utf-8"))
-    entry = next((row for row in data.get("approvals", []) if row.get("cut_id") == cut_id), None)
-    if entry is None:
-        raise RuntimeError(f"approval cut disappeared: {cut_id}")
-    current = entry.get("revision_job") or {}
-    if current.get("request_id") != request_id:
-        raise RuntimeError(f"revision request changed while worker was running: {request_id}")
-    current.update(updates)
-    entry["revision_job"] = current
-    # A revision worker may never approve its own output.
-    entry["approved"] = False
-    entry["decision"] = "reject"
-    _atomic_json(approval_path, data)
-    return current
-
-
 def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
-
-
-def _revision_fingerprint(packages_bytes: bytes, assets: dict[str, str]) -> str:
-    digest = hashlib.sha256(packages_bytes)
-    for name, value in sorted(assets.items()):
-        digest.update(b"\0")
-        digest.update(name.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update(value.encode("ascii"))
-    return digest.hexdigest()
 
 
 def _codex_command() -> str:
@@ -369,96 +306,8 @@ def _codex_command() -> str:
             return str(candidate)
     found = shutil.which("codex")
     if not found:
-        raise RuntimeError("找不到 Codex CLI，無法啟動 Packaging revision agent")
+        raise RuntimeError("找不到 Codex CLI，無法啟動 Packaging agent")
     return found
-
-
-def dispatch_revision_agent(context: dict) -> subprocess.CompletedProcess[str]:
-    """Run one bounded, non-interactive Codex packaging revision agent."""
-    job_dir = Path(context["job_dir"])
-    prompt = f"""你是獨立的 Podcast Packaging Revision Agent。
-
-先完整讀取 `{_REPO / ".claude" / "skills" / "thumbnail-brainstorm" / "SKILL.md"}`，嚴格遵守。
-工作請求在 `{context["request_path"]}`，使用者 feedback 必須逐項處理。
-
-允許修改的 production 範圍只有：
-- working packaging: `{context["working_packaging_dir"]}`
-- vault packaging mirror: `{context["vault_packaging_dir"]}`
-- 本集 cutouts: `{context["vault_cutout_dir"]}`
-
-硬規則：
-1. 不改任何 repo code、skill、approval.json、字幕、Resolve、YouTube 或發布狀態。
-2. 不覆寫 revisions/{context["request_id"]}/before 裡的舊版；舊版必須可回復。
-3. 依 feedback 重做 `{context["cut_id"]}` 的 package。若是封面問題，要重新檢查候選
-   frame、cutout 邊緣與背景透明度，不能只改 JSON 宣稱完成。
-   `cut_id=full` 是完整節目 N1：必須使用 `thumbnail_full`，絕對不得使用
-   長精華 N2 `thumbnail_reaction`。作者訪談若 brief 含書封，書封必須放大、
-   變暗並作為背景；封面必須有兩行大字。
-   人物必須使用含完整雙肩的上半身 cutout；緊頭裁切、肩膀被原圖邊界切斷
-   一律不得交付。
-4. 新封面使用新的 request-id 檔名，更新 working 與 vault 的 packages.json；兩邊
-   JSON 與所有輸出 PNG bytes 必須一致。
-5. 每張封面必須為 1280×720 PNG。長精華 N2 產生／更新 composition
-   measurement receipt；完整節目 N1 必須更新 `specs.json` 與 render spec。
-6. 至少執行 packages schema、圖片尺寸、layout-specific QA。不可自動 Approve。
-7. Cutout 去背必須 bounded：若沒有 GPU provider，先裁切人物並把最長邊縮到 1024px
-   以下再推論；單一去背程序 5 分鐘沒有產物就停止並改走較快的既有 pipeline，不可讓
-   full-resolution CPU BiRefNet 無界執行。
-8. 完成後把簡短摘要寫到 `{job_dir / "agent-summary.md"}`，然後正常結束；若無法
-   符合 feedback，非零退出並說明 blocker。
-"""
-    command = [
-        _codex_command(),
-        "exec",
-        "--ephemeral",
-        "--ignore-rules",
-        "--skip-git-repo-check",
-        "--approve-for-me",
-        "--cd",
-        str(job_dir),
-        "--add-dir",
-        context["working_episode_dir"],
-        "--add-dir",
-        context["vault_packaging_dir"],
-        "--add-dir",
-        context["vault_cutout_dir"],
-        "--output-last-message",
-        str(job_dir / "agent-last-message.txt"),
-        "-",
-    ]
-    child_env = os.environ.copy()
-    for inherited_name in (
-        "CODEX_PERMISSION_PROFILE",
-        "CODEX_SANDBOX_NETWORK_DISABLED",
-        "CODEX_SESSION_ID",
-        "CODEX_THREAD_ID",
-    ):
-        child_env.pop(inherited_name, None)
-    stdout_path = job_dir / "agent.stdout.log"
-    stderr_path = job_dir / "agent.stderr.log"
-    with (
-        stdout_path.open("w", encoding="utf-8") as stdout_fh,
-        stderr_path.open("w", encoding="utf-8") as stderr_fh,
-    ):
-        result = subprocess.run(
-            command,
-            input=prompt,
-            stdout=stdout_fh,
-            stderr=stderr_fh,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            cwd=str(job_dir),
-            env=child_env,
-            shell=(os.name == "nt"),
-            timeout=7200,
-        )
-    return subprocess.CompletedProcess(
-        command,
-        result.returncode,
-        stdout_path.read_text(encoding="utf-8", errors="replace"),
-        stderr_path.read_text(encoding="utf-8", errors="replace"),
-    )
 
 
 def dispatch_packaging_agent(context: dict) -> subprocess.CompletedProcess[str]:
@@ -548,7 +397,7 @@ def dispatch_packaging_agent(context: dict) -> subprocess.CompletedProcess[str]:
     )
 
 
-def _validate_revision_outputs(
+def _validate_packaging_outputs(
     *,
     packaging_dir: Path,
     vault_packaging_dir: Path,
@@ -602,7 +451,7 @@ def _validate_initial_packaging_outputs(
     cut_id: str,
 ) -> dict[str, object]:
     """Prove that the initial agent emitted a complete reviewable long package."""
-    packages_bytes, assets = _validate_revision_outputs(
+    packages_bytes, assets = _validate_packaging_outputs(
         packaging_dir=packaging_dir,
         vault_packaging_dir=vault_packaging_dir,
         vault_root=vault_root,
@@ -676,174 +525,6 @@ def _validate_full_episode_layout(*, packaging_dir: Path, vault_root: Path, cut)
                     f"完整節目 rank {package.title_rank} {role} cutout 過窄，"
                     "疑似緊頭裁切，無法保證雙肩完整"
                 )
-
-
-def run_revision_job(
-    job: dict,
-    *,
-    packaging_dir: Path | None = None,
-    agent_runner: Callable[[dict], subprocess.CompletedProcess[str]] = dispatch_revision_agent,
-    log_path: Path | None = None,
-) -> bool:
-    """Back up, dispatch and validate one queued packaging revision."""
-    approval_path = Path(job["approval_path"])
-    request = job["job"]
-    request_id = job["request_id"]
-    cut_id = job["cut_id"]
-    packaging_dir = packaging_dir or find_packaging_dir(
-        job["slug"], episode_name=job.get("episode")
-    )
-    if packaging_dir is None:
-        _update_revision_job(
-            approval_path,
-            cut_id=cut_id,
-            request_id=request_id,
-            updates={
-                "status": "failed",
-                "finished_at": datetime.now(timezone.utc).isoformat(),
-                "error": "working-set packaging dir not found",
-            },
-        )
-        return False
-    vault_packaging_dir = approval_path.parent
-    vault_root = approval_path.parents[3]
-    working_packages = packaging_dir / "packages.json"
-    vault_packages = vault_packaging_dir / "packages.json"
-    job_dir = packaging_dir / "revisions" / request_id
-    before_dir = job_dir / "before"
-    try:
-        source_bytes = vault_packages.read_bytes()
-        if hashlib.sha256(source_bytes).hexdigest() != request["source_packages_sha256"]:
-            raise RuntimeError("Reject 後 packages.json 已漂移，拒絕對錯版套 feedback")
-        if working_packages.read_bytes() != source_bytes:
-            raise RuntimeError("Reject 當下 working/vault packages.json 不一致")
-        for rel, expected in request.get("source_assets", {}).items():
-            vault_asset = vault_root / rel
-            working_asset = packaging_dir / Path(rel).name
-            if _sha256(vault_asset) != expected or _sha256(working_asset) != expected:
-                raise RuntimeError(f"Reject 當下封面已漂移：{rel}")
-
-        before_dir.mkdir(parents=True, exist_ok=True)
-        (before_dir / "packages.json").write_bytes(source_bytes)
-        for rel in request.get("source_assets", {}):
-            source = vault_root / rel
-            (before_dir / source.name).write_bytes(source.read_bytes())
-        request_path = job_dir / "request.json"
-        _atomic_json(
-            request_path,
-            {
-                "contract": "packaging-revision-request-v1",
-                "episode_slug": job["slug"],
-                "cut_id": cut_id,
-                **request,
-            },
-        )
-        started_at = datetime.now(timezone.utc)
-        _update_revision_job(
-            approval_path,
-            cut_id=cut_id,
-            request_id=request_id,
-            updates={
-                "status": "running",
-                "attempt": int(request.get("attempt", 0)) + 1,
-                "started_at": started_at.isoformat(),
-                "finished_at": None,
-                "result_receipt": None,
-                "error": None,
-            },
-        )
-        context = {
-            "request_id": request_id,
-            "cut_id": cut_id,
-            "job_dir": str(job_dir),
-            "request_path": str(request_path),
-            "working_packaging_dir": str(packaging_dir),
-            "working_episode_dir": str(packaging_dir.parent),
-            "vault_packaging_dir": str(vault_packaging_dir),
-            "vault_cutout_dir": str(
-                vault_root / "Attachments" / "cutouts" / "podcast" / job["slug"]
-            ),
-        }
-        result = agent_runner(context)
-        (job_dir / "agent.stdout.log").write_text(result.stdout or "", encoding="utf-8")
-        (job_dir / "agent.stderr.log").write_text(result.stderr or "", encoding="utf-8")
-        if result.returncode != 0:
-            detail = (result.stderr or "")[-500:]
-            raise RuntimeError(f"Packaging revision agent exit {result.returncode}: {detail}")
-        output_packages, output_assets = _validate_revision_outputs(
-            packaging_dir=packaging_dir,
-            vault_packaging_dir=vault_packaging_dir,
-            vault_root=vault_root,
-            cut_id=cut_id,
-        )
-        before_fingerprint = _revision_fingerprint(source_bytes, request.get("source_assets", {}))
-        after_fingerprint = _revision_fingerprint(output_packages, output_assets)
-        if after_fingerprint == before_fingerprint:
-            raise RuntimeError("Agent 沒有產生任何可驗證的 package 變更")
-        finished_at = datetime.now(timezone.utc)
-        receipt_rel = Path("revisions") / request_id / "result.json"
-        _atomic_json(
-            packaging_dir / receipt_rel,
-            {
-                "contract": "packaging-revision-result-v1",
-                "request_id": request_id,
-                "cut_id": cut_id,
-                "feedback": request["feedback"],
-                "started_at": started_at.isoformat(),
-                "finished_at": finished_at.isoformat(),
-                "before_fingerprint": before_fingerprint,
-                "after_fingerprint": after_fingerprint,
-                "output_packages_sha256": hashlib.sha256(output_packages).hexdigest(),
-                "output_assets": output_assets,
-                "agent_stdout_sha256": _sha256(job_dir / "agent.stdout.log"),
-                "agent_stderr_sha256": _sha256(job_dir / "agent.stderr.log"),
-                "approved": False,
-            },
-        )
-        _update_revision_job(
-            approval_path,
-            cut_id=cut_id,
-            request_id=request_id,
-            updates={
-                "status": "ready_for_review",
-                "finished_at": finished_at.isoformat(),
-                "result_receipt": receipt_rel.as_posix(),
-                "error": None,
-            },
-        )
-        _log(f"REVISION READY {job['slug']}/{cut_id} {request_id}", log_path)
-        return True
-    except KeyboardInterrupt:
-        try:
-            _update_revision_job(
-                approval_path,
-                cut_id=cut_id,
-                request_id=request_id,
-                updates={
-                    "status": "failed",
-                    "finished_at": datetime.now(timezone.utc).isoformat(),
-                    "error": "Packaging revision worker interrupted",
-                },
-            )
-        finally:
-            _log(f"REVISION INTERRUPTED {job['slug']}/{cut_id} {request_id}", log_path)
-        raise
-    except Exception as exc:
-        try:
-            _update_revision_job(
-                approval_path,
-                cut_id=cut_id,
-                request_id=request_id,
-                updates={
-                    "status": "failed",
-                    "finished_at": datetime.now(timezone.utc).isoformat(),
-                    "error": str(exc)[-1000:],
-                },
-            )
-        except Exception as update_exc:
-            _log(f"REVISION STATUS WRITE FAILED {request_id}: {update_exc}", log_path)
-        _log(f"REVISION FAIL {job['slug']}/{cut_id} {request_id}: {exc}", log_path)
-        return False
 
 
 def run_packaging_job(
@@ -1043,7 +724,7 @@ def main() -> int:
     ap.add_argument(
         "--render-requests-only",
         action="store_true",
-        help="只處理存配方 render request；跳過 revision 與 initial packaging jobs",
+        help="只處理存配方 render request；跳過 initial packaging job",
     )
     ap.add_argument("--episode-slug", help="只處理完全相符 episode slug 的 render request")
     ap.add_argument("--cut-id", help="只處理完全相符 cut id 的 render request")
@@ -1090,9 +771,6 @@ def main() -> int:
             now=datetime.now(timezone.utc).isoformat(),
         )
         save_state(args.state, state)
-        if not args.render_requests_only:
-            for revision in pending_revision_jobs(vault):
-                run_revision_job(revision, log_path=args.log)
         render_jobs = filter_render_requests(
             pending_requests(vault, state),
             episode_slug=args.episode_slug,

@@ -68,9 +68,10 @@ _KEYWORDS = {
 }
 
 
-def _long_input(episode: str = "20260723-xieboran") -> dict:
+def _long_input(episode: str = "20260723 謝伯讓") -> dict:
     return {
         "episode": episode,
+        "episode_slug": "20260723-xieboran",
         "keywords": _KEYWORDS,
         "cut_id": "punch-L1",
         "format": "long",
@@ -84,9 +85,10 @@ def _long_input(episode: str = "20260723-xieboran") -> dict:
     }
 
 
-def _short_input(episode: str = "20260723-xieboran") -> dict:
+def _short_input(episode: str = "20260723 謝伯讓") -> dict:
     return {
         "episode": episode,
+        "episode_slug": "20260723-xieboran",
         "keywords": _KEYWORDS,
         "cut_id": "short-S1",
         "format": "short",
@@ -204,9 +206,7 @@ class TestVaultCopy:
         packaging_dir = tmp_path / "packaging"
         vault_path = tmp_path / "vault"
 
-        emit_mod.emit(
-            _short_input(episode="20260723-xieboran"), packaging_dir, vault_path=vault_path
-        )
+        emit_mod.emit(_short_input(), packaging_dir, vault_path=vault_path)
 
         vault_ep = vault_path / "Attachments" / "packaging" / "20260723-xieboran"
         assert (vault_ep / "packages.json").exists()
@@ -418,3 +418,42 @@ class TestKeywordsCache:
 
         with pytest.raises(ValueError, match="keywords.json"):
             emit_mod.emit(payload, tmp_path)
+
+
+class TestEpisodeIsNotASlug:
+    """`episode` 是 footage 資料夾名，`episode_slug` 才是 ASCII slug。
+
+    2026-09-15 在 vault 裡發現七集有兩集（蘇予昕、抹布）把 slug 填進 `episode`，
+    而且蘇予昕那集連內部都不一致——punch-L04 的 composition receipt 是對的、
+    L02/L03 是 slug。根因不是有人粗心：本 script 的 docstring 與 SKILL.md 當初就
+    寫著「episode: ASCII slug」，照著填的人沒有錯。文件改了，這裡負責讓下一次
+    填錯當場停下來。
+    """
+
+    def test_a_slug_shaped_episode_is_refused(self, tmp_path):
+        mod = _load_emit_module()
+        payload = {**_long_input(), "episode": "20260901-suyuxin"}
+
+        with pytest.raises(ValueError) as exc:
+            mod.emit(payload, tmp_path, vault_path=None)
+
+        assert "episode_slug" in str(exc.value)
+        # 失敗要在寫檔之前：半套的 packages.json 比沒有更難收拾
+        assert not (tmp_path / "packages.json").exists()
+
+    def test_a_real_episode_name_passes(self, tmp_path):
+        mod = _load_emit_module()
+
+        mod.emit({**_long_input(), "episode": "20260901 蘇予昕"}, tmp_path, vault_path=None)
+
+        written = json.loads((tmp_path / "packages.json").read_text(encoding="utf-8"))
+        assert written["episode"] == "20260901 蘇予昕"
+
+    def test_an_english_guest_name_is_not_mistaken_for_a_slug(self, tmp_path):
+        """`20250604 Ray 不平等優勢` 這種真實集名不可以被閘擋下來。"""
+        mod = _load_emit_module()
+
+        mod.emit({**_long_input(), "episode": "20250604 Ray 不平等優勢"}, tmp_path, vault_path=None)
+
+        written = json.loads((tmp_path / "packages.json").read_text(encoding="utf-8"))
+        assert written["episode"] == "20250604 Ray 不平等優勢"

@@ -9,18 +9,17 @@ description: >
   /thumbnail-brainstorm、「配封面」、「出 package」。創意判斷（配對、表情、
   大字）在本手冊；schema／render／去背／檔名慣例歸 shared/ 與 scripts/，
   本 skill 只呼叫、不重新發明。
-  Reject feedback 也會觸發本 skill：desktop packaging worker 會建立 immutable
-  revision request，交給獨立 Agent 重做後回到 Packaging re-review。
 ---
 
 # thumbnail-brainstorm — 封面 brainstorm 手冊（v3.2）
 
-**版本：v3.3（2026-09-04，cutout 裁切框必須裁 y、且交付前強制並排對照樣板；
+**版本：v3.4（2026-09-15，Packaging gate 的 Reject 退場，Step 4.9 整節移除；
+v3.3 = 2026-09-04，cutout 裁切框必須裁 y、且交付前強制並排對照樣板；
 v3.2 = 2026-08-27，封面 cutout 排除 boom arm；
 v3.1 = N2 橫框可延伸到人物後方，人物重疊不是失敗；
 v3.0 = 人物 cutout 雙肩完整且前景不可挖洞；
 v2.9 = 人物 cutout 必須保留完整麥克風；
-v2.8 = Reject feedback → desktop revision agent；
+v2.8 = Reject feedback → desktop revision agent（**已於 v3.4 退場**）；
 v2.7 = 作者訪談的暗色書封中景；
 v2.6 = 鄭國威集——內側 fade 吃臉事故 + gate 變體板；
 v2.5 = 安吉集三輪事故定版——scale 每角色鎖定、
@@ -422,25 +421,14 @@ PNG hash，通過後自動把中央圖、measurement sidecar 與 receipt 寫到 
 中央卡不是至少 50% 畫布寬的橫向卡，都會 `COMPOSITION BLOCKED`。人物元素可出血並壓在
 中央卡前方；這是 N2 版式的一部分。短片不走此 gate。
 
-### Step 4.9 — Reject feedback → desktop revision agent（v2.8）
+### ~~Step 4.9 — Reject feedback → desktop revision agent~~（v2.8，**v3.4 移除**）
 
-Packaging gate 的 Reject 不再只留 note。Bridge 只寫 `approval.json` 的
-`revision_job`（`packaging-revision-job-v1`），封存 feedback、Reject 當下的
-`packages.json` SHA-256 與每張封面 SHA-256，狀態從 `queued` 開始。Bridge 本身仍零 LLM。
+Packaging gate 的 Reject 按鈕與 `revision_job` 整條於 2026-09-15 退場（修修裁決：
+「reject note 這個框框以及 reject 按鈕完全都不用了，我不知道這裡的 reject 按下去會有
+什麼行為」）。他實際的工作方式是在 gate 上自己改標題、自己組封面，不是打回去叫 Agent
+重做整包。gate 現在只剩 Approve，`scripts/render_watcher.py` 也不再有 revision runner。
 
-桌機 `scripts/render_watcher.py` 認領後必須依序：
-
-1. 驗證 source hashes；任一漂移即 `failed`，不可把 feedback 套到錯版。
-2. 備份至 `<episode>/packaging/revisions/<request_id>/before/`。
-3. 啟動 bounded Codex Agent；只可修改該集 working/vault packaging 與該集 cutouts，
-   禁止碰 code、approval.json、Resolve、YouTube 或發布狀態。
-4. 重新跑本 skill 的素材選擇、去背、render 與 QA；不得只改 JSON 宣稱完成。
-5. worker 重驗 PackagesFileV1、working/vault bytes、1280×720 PNG 與 before/after
-   fingerprint。通過才寫 `packaging-revision-result-v1` 並標 `ready_for_review`。
-
-Agent **永遠不得自動 Approve**。失敗顯示 error 且不自動重試；只有修修在 gate 按
-`Retry revision` 才把同一 request 重新排回 `queued`。新的 Reject 會建立新的 request，
-舊 revision 目錄保持可回復。
+要重做整包封面就直接重跑本 skill。
 
 ### 強表情素材怎麼找（不要只抽你想得到的那幾段）
 

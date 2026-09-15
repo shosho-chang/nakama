@@ -7,8 +7,8 @@
   寫入例外：短片標題改字（D4）與 compose 存配方（per-package `render_recipe`，
   2026-08-21 cutout-cache 熱修收編），皆整檔過 PackagesFileV1 驗證後才落盤
 - approval.json  — 本 router 唯一寫入者（ApprovalFileV1；與 packages.json 分檔
-  縮小 Syncthing conflict 破壞面 — ADR-054 A10③）；reject 時同步排入
-  `revision_job`（PackagingRevisionJobV1，桌機 Cowork revision 流程消費）
+  縮小 Syncthing conflict 破壞面 — ADR-054 A10③）。2026-09-15 起只寫 Approve；
+  `reject_note` / `revision_job` 仍在 schema 裡（舊集數讀得動），但不再寫入
 
 **UI 零 LLM**（D11）：無 brainstorm / reroll 按鈕；重抽路徑 = 回 Cowork 跑
 thumbnail-brainstorm。
@@ -50,7 +50,6 @@ from shared.schemas.packaging import (
     CenterProvenanceV1,
     GeometryV1,
     PackagesFileV1,
-    PackagingRevisionJobV1,
     RenderRequestV1,
     parse_approval_file,
     parse_packages,
@@ -88,7 +87,7 @@ def _render_failure_sentence(raw_error: str | None) -> str:
     if "TimeoutExpired" in text or "timed out after" in text:
         return (
             "封面 render 逾時。第一次跑這個版式要先把算圖環境準備好，"
-            "通常就是這個原因——再按一次「存配方（我再 render）」就會過"
+            "通常就是這個原因——再按一次「存配方」就會過"
         )
     if "FileNotFoundError" in text or "No such file" in text:
         return "封面 render 失敗：有素材找不到（詳細見下方）"
@@ -544,6 +543,9 @@ def _board_context(episode_slug: str) -> dict:
                     "pkg": package,
                     "title": titles_by_rank.get(package.title_rank),
                     "editor_recipe": editor_recipe,
+                    "recipe_state": _recipe_render_state(
+                        package.render_recipe, package.thumbnail_png
+                    ),
                     "composition": _composition_status(
                         ep_dir,
                         episode=pkg.episode,
@@ -566,6 +568,9 @@ def _board_context(episode_slug: str) -> dict:
                 "recipe": (
                     item["editor_recipe"].model_dump(mode="json") if item["editor_recipe"] else None
                 ),
+                # 三態是 per-package 的：換分頁沒換這塊，就會拿 Package #1 的
+                # 「已出圖」去描述 Package #2 尚未存過的配方。
+                "recipe_state": item["recipe_state"],
                 "center_visual_url": (
                     f"/bridge/packaging/{episode_slug}/center-visual/"
                     f"{cut.cut_id}/{item['pkg'].title_rank}"
@@ -581,7 +586,9 @@ def _board_context(episode_slug: str) -> dict:
             "cut": cut,
             "approval": approval_by_cut.get(cut.cut_id),
             "packages": package_views,
-            "runners_up": [t for t in cut.titles if t.rank >= 4],
+            # 前 5 名都在上面（標題欄位與「用哪一條標題」下拉），再列一次沒有意義
+            # ——修修 2026-09-15。這裡只放沒進前 5 名的候選。
+            "title_pool": _title_pool(ep_dir, cut.cut_id, {t.text.strip() for t in cut.titles}),
             "brief": _load_brief(ep_dir, cut.cut_id),
             "recipe_payload": recipe_payload,
             "center_candidates": [
@@ -774,6 +781,189 @@ def _legacy_reaction_recipe(
             y_pct=(center.y + center.height / 2) / canvas_h * 100,
         ),
     )
+
+
+# 存完配方之後，畫面上唯一會變的東西就是這三個字。gate 只寫配方、不出圖（D11），
+# 所以「按下去什麼都沒發生」是必然的觀感——修修 2026-09-14：「我更新完之後，按下
+# 『存配方』，但是什麼事情都沒有發生。」他當時的真實狀態是第三態：封面在，但那是
+# 舊配方出的，新拖的位置要等桌機端再 render 一次才看得到。
+#
+# 判定只靠兩個事實，不靠時間比對：
+#   - `render_recipe.rendered_png` 是桌機端 render 完回填的，指向它自己出的那張
+#   - compose POST 每次都重建 RenderRequestV1，不帶 rendered_png（見 packaging_compose）
+# 所以「存過新配方」在資料上就等於 `rendered_png is None`；此時 package 的
+# `thumbnail_png` 若仍在磁碟上，那張就是舊配方的成品 → 第三態。
+_RECIPE_STATE_TEXT: dict[str, tuple[str, str]] = {
+    "unrendered": (
+        "配方已存 · 尚未出圖",
+        "存配方不會出圖。封面要等桌機端 render 過才會出現。",
+    ),
+    "rendered": (
+        "已出圖 · 與配方相符",
+        "下面看到的封面就是這份配方出的。",
+    ),
+    "stale": (
+        "配方比封面新，需重出圖",
+        "配方已經存好了，但下面那張封面是上一版配方出的——"
+        "要看到你剛改的大字與位置，得等桌機端再 render 一次。",
+    ),
+}
+
+
+def _recipe_render_state(recipe, thumbnail_png: str) -> dict | None:
+    """這份**已存**配方跟現有封面的關係（三態），沒存過配方則 None。
+
+    只吃 `package.render_recipe`（真的存過的那份），不吃 board 為舊 N2 package
+    水合出來的 `_legacy_reaction_recipe`——後者沒人按過「存配方」，把它標成
+    「配方比封面新」會是憑空捏造的待辦。
+    """
+    if recipe is None:
+        return None
+    if recipe.rendered_png:
+        state = "rendered"
+    elif thumbnail_png and (get_vault_path() / thumbnail_png).is_file():
+        state = "stale"
+    else:
+        state = "unrendered"
+    label, hint = _RECIPE_STATE_TEXT[state]
+    return {"state": state, "label": label, "hint": hint}
+
+
+# 修修 2026-09-15：「你在下面的落選標題把 4 到 5 名放進來，根本一點意義都沒有，因為
+# 4 到 5 名就已經在上面有出現了。我要的是 5 名以外的，或許有漏網之魚、我覺得不錯的，
+# 至少再列 10 個出來。」
+#
+# 那些候選只活在桌機端 title-brainstorm 的 title_trace：panel 每一輪評過的候選（帶分數）
+# 加上 tier2/tier3 的疊加候選（沒分數，但有角度與 payoff）。本區把它們攤開，扣掉已經
+# 進前 5 名的那幾條。
+#
+# 讀檔一律**先核對 cut_id**。同一集目前有三種檔名寫法，而 episode 根目錄那顆
+# `title_trace.json` 裝的是哪一支是隨機的（20260805 林之晨那顆裝的是 value-L02），
+# 不核對就會把別支影片的候選與分數當成這一支的端到他面前。
+_TITLE_POOL_MAX = 12
+
+
+def _title_trace(ep_dir: Path, cut_id: str) -> dict | None:
+    """這一支自己的 title_trace；找不到或 cut_id 對不上都回 None（寧可不顯示）。"""
+    safe = cut_id.replace("/", "_").replace("\\", "_")
+    for candidate in (
+        ep_dir / safe / "title_trace.json",
+        ep_dir / f"title_trace-{safe}.json",
+        ep_dir / "title_trace.json",
+    ):
+        if not candidate.is_file():
+            continue
+        try:
+            data = json.loads(candidate.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            continue
+        if not isinstance(data, dict) or data.get("cut_id") != cut_id:
+            continue
+        trace = data.get("title_trace")
+        return trace if isinstance(trace, dict) else None
+    return None
+
+
+def _panel_totals(row: dict) -> list[int]:
+    """每個 persona 的總分。trace 有兩種寫法，兩種都吃，看不懂就回空。
+
+    A（punch-L04）：``{"scores": {"A": [4, 5, 5, 5, 19], ...}}`` — 最後一項是總分
+    B（value-L02）：``{"A": {"score": [...], "total": 17}, ...}``
+    """
+    totals: list[int] = []
+    scores = row.get("scores")
+    if isinstance(scores, dict):
+        for value in scores.values():
+            if isinstance(value, list) and value and isinstance(value[-1], int):
+                totals.append(value[-1])
+        return totals
+    for key, value in row.items():
+        if key in {"id", "title", "gate", "feedback"} or not isinstance(value, dict):
+            continue
+        total = value.get("total")
+        if isinstance(total, int):
+            totals.append(total)
+        elif isinstance(value.get("score"), list):
+            nums = [n for n in value["score"] if isinstance(n, int)]
+            if nums:
+                totals.append(sum(nums))
+    return totals
+
+
+def _panel_note(row: dict) -> str:
+    """評審對這條的一句話；沒有就把硬旗標（標題黨／術語…）當註記。"""
+    feedback = row.get("feedback")
+    if isinstance(feedback, str) and feedback.strip():
+        return feedback.strip()
+    flags: list[str] = []
+    for key, value in row.items():
+        if key in {"id", "title", "gate", "scores"} or not isinstance(value, dict):
+            continue
+        for flag in value.get("flags") or []:
+            if isinstance(flag, str) and flag not in flags:
+                flags.append(flag)
+    return "評審標記：" + "、".join(flags) if flags else ""
+
+
+def _title_pool(ep_dir: Path, cut_id: str, taken: set[str]) -> list[dict]:
+    """沒進前 5 名的候選標題，分數高的排前面。沒有 trace 就是空的。"""
+    trace = _title_trace(ep_dir, cut_id)
+    if trace is None:
+        return []
+    rows: dict[str, dict] = {}
+
+    for round_row in trace.get("panel_rounds") or []:
+        if not isinstance(round_row, dict):
+            continue
+        for candidate in round_row.get("candidates") or []:
+            if not isinstance(candidate, dict):
+                continue
+            text = str(candidate.get("title") or "").strip()
+            if not text or text in taken:
+                continue
+            totals = _panel_totals(candidate)
+            previous = rows.get(text)
+            # 同一條可能評過兩輪；留分數較高（也就是改寫後）的那一次。
+            if previous and sum(previous["totals"] or [0]) >= sum(totals or [0]):
+                continue
+            rows[text] = {
+                "text": text,
+                "totals": totals,
+                "total": sum(totals) if totals else None,
+                "note": _panel_note(candidate),
+                "angles": [],
+                "payoff": "",
+            }
+
+    for tier in ("tier2", "tier3"):
+        for candidate in trace.get(tier) or []:
+            if not isinstance(candidate, dict):
+                continue
+            text = str(candidate.get("text") or "").strip()
+            if not text or text in taken:
+                continue
+            angles = [a for a in (candidate.get("angles") or []) if isinstance(a, str)]
+            payoff = str(candidate.get("payoff") or "").strip()
+            # 沒被 panel 評到的也要列（那正是「漏網之魚」）；評過的就只補角度與 payoff。
+            row = rows.setdefault(
+                text,
+                {
+                    "text": text,
+                    "totals": [],
+                    "total": None,
+                    "note": str(candidate.get("later_rejected_reason") or "").strip(),
+                    "angles": [],
+                    "payoff": "",
+                },
+            )
+            row["angles"] = row["angles"] or angles
+            row["payoff"] = row["payoff"] or payoff
+
+    ordered = sorted(
+        rows.values(),
+        key=lambda row: (row["total"] is None, -(row["total"] or 0), row["text"]),
+    )
+    return ordered[:_TITLE_POOL_MAX]
 
 
 def _composition_status(
@@ -1483,12 +1673,17 @@ async def packaging_render_status(
         thumbnail_url = (
             f"/bridge/packaging/{quote(episode_slug, safe='')}/thumbnail/{filename}?v={version}"
         )
+    # 進度（queued/running/done/failed）講的是「桌機端這一輪做到哪」，配方三態講的
+    # 是「現有封面配不配得上這份配方」。兩者必須由同一次讀檔算出來，否則進度條寫著
+    # 「新封面已完成」、旁邊的狀態卻還停在「尚未出圖」，人不知道要信哪一個。
+    recipe_state = _recipe_render_state(package.render_recipe, package.thumbnail_png)
     return JSONResponse(
         {
             "status": status,
             # 有沒有人在做。false 時前端要停掉進度條動畫——會動的條就是在說
             # 「正在處理」，而那時候其實沒有任何人在處理。
             "attended": attended,
+            "recipe_state": recipe_state,
             "message": message,
             "error": error,
             # 原始 stderr。前端收進 <details>，預設不展開——它是追查用的證物，
@@ -1573,12 +1768,6 @@ def packaging_board(
     ctx["description_pending"] = bool(description_pending)
     ctx["description_state"] = description_state
     ctx["description_error"] = description_error
-    ctx["revision_polling"] = any(
-        view["approval"]
-        and view["approval"].revision_job
-        and view["approval"].revision_job.status in {"queued", "running"}
-        for view in ctx["cuts"]
-    )
     return _templates.TemplateResponse(request, "packaging_board.html", ctx)
 
 
@@ -1586,22 +1775,21 @@ def packaging_board(
 def packaging_approve(
     episode_slug: str,
     cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
-    decision: str = Form(...),
     primary_package: int | None = Form(None),
-    reject_note: str = Form("", max_length=_NOTE_MAX),
     nakama_auth: str | None = Cookie(None),
 ):
-    """寫 approval.json（upsert 該 cut 的裁決）— 本 router 唯一寫這個檔。"""
+    """寫 approval.json（upsert 該 cut 的核准）— 本 router 唯一寫這個檔。
+
+    2026-09-15 起只剩 Approve。原本還有一顆 Reject：填理由 → 寫一筆 revision job →
+    桌機 watcher 派 Codex agent 把整包標題與封面重做。修修用過一次之後的評語是
+    「我不知道這裡的 reject 按下去會有什麼行為」，裁決整條拿掉——他實際的工作方式
+    是自己改標題、自己組封面，不是打回去叫機器重做。
+    """
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/packaging", status_code=302)
-    if decision not in ("approve", "reject"):
-        raise HTTPException(status_code=400, detail=f"unknown decision: {decision!r}")
-    approved = decision == "approve"
-    feedback = reject_note.strip()
-    if approved and primary_package is None:
+    approved = True
+    if primary_package is None:
         raise HTTPException(status_code=400, detail="approve 需要指定 primary_package (1–3)")
-    if not approved and not feedback:
-        raise HTTPException(status_code=400, detail="Reject 需要填寫 feedback，Agent 才能重做")
 
     ctx = _board_context(episode_slug)  # 同時擋 conflict / 壞檔
     pkg: PackagesFileV1 = ctx["pkg"]
@@ -1625,51 +1813,30 @@ def packaging_approve(
     existing = _load_approvals(ep_dir, pkg.episode)
     prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
     decided_at = datetime.now(timezone.utc)
-    revision_job = None
-    if not approved:
-        source_assets: dict[str, str] = {}
-        for package in cut.packages:
-            asset = get_vault_path() / package.thumbnail_png
-            if asset.is_file():
-                source_assets[package.thumbnail_png] = hashlib.sha256(
-                    asset.read_bytes()
-                ).hexdigest()
-        request_seed = "\0".join((pkg.episode, cut_id, decided_at.isoformat(), feedback)).encode(
-            "utf-8"
-        )
-        revision_job = PackagingRevisionJobV1(
-            request_id=f"revision-{hashlib.sha256(request_seed).hexdigest()[:16]}",
-            feedback=feedback,
-            requested_at=decided_at,
-            source_packages_sha256=hashlib.sha256(
-                (ep_dir / "packages.json").read_bytes()
-            ).hexdigest(),
-            source_assets=source_assets,
-        )
     entry = ApprovalV1(
         cut_id=cut_id,
-        approved=approved,
-        primary_package=primary_package if approved else 1,
-        reject_note=feedback or None,
+        approved=True,
+        primary_package=primary_package,
+        # 兩個欄位只為讀得動舊檔而留在 schema 裡；Reject 拿掉後永遠不再寫入，
+        # 但已經有值的舊集數（例如 20260805 林之晨 full）要原樣保留，不去覆寫歷史。
+        reject_note=prev.reject_note if prev else None,
         decided_at=decided_at,
-        decision=decision,
+        decision="approve",
         # 挑臉／打大字是另一支 form 寫的，approve 不可以把它們洗掉
         # （2026-08-14 browser UAT 抓到：勾完變體再 approve，選擇整個不見）。
         selected_variant=prev.selected_variant if prev else None,
         bigtext_request=prev.bigtext_request if prev else None,
         center_search_request=prev.center_search_request if prev else None,
         render_request=prev.render_request if prev else None,
-        revision_job=revision_job,
+        revision_job=prev.revision_job if prev else None,
     )
     others = [a for a in existing.approvals if a.cut_id != cut_id]
     updated = ApprovalFileV1(episode=pkg.episode, approvals=[*others, entry])
     (ep_dir / "approval.json").write_text(
         updated.model_dump_json(indent=2) + "\n", encoding="utf-8"
     )
-    logger.info("packaging approve: %s/%s approved=%s", episode_slug, cut_id, approved)
+    logger.info("packaging approve: %s/%s", episode_slug, cut_id)
     focused_board = f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}"
-    if not approved:
-        return RedirectResponse(focused_board, status_code=303)
     release = _release_from_receipt(pkg.episode, cut_id)
     if release is None:
         _ensure_publish_prep(pkg.episode, cut_id)
@@ -1703,49 +1870,6 @@ async def packaging_retry_description(
         _start_description_draft(ctx["pkg"].episode, cut_id, int(target["id"]))
     focused_board = f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}"
     return RedirectResponse(f"{focused_board}&description_pending=1", status_code=303)
-
-
-@page_router.post("/{episode_slug}/revision/retry")
-async def packaging_retry_revision(
-    episode_slug: str,
-    cut_id: str = Form(..., max_length=_EP_SLUG_MAX),
-    nakama_auth: str | None = Cookie(None),
-):
-    """Requeue one failed revision; the worker still cannot approve the result."""
-    if not check_auth(nakama_auth):
-        return RedirectResponse("/login?next=/bridge/packaging", status_code=302)
-    ctx = _board_context(episode_slug)
-    ep_dir = _packaging_root() / episode_slug
-    approvals = _load_approvals(ep_dir, ctx["pkg"].episode)
-    previous = next((row for row in approvals.approvals if row.cut_id == cut_id), None)
-    if previous is None or previous.revision_job is None:
-        raise HTTPException(status_code=404, detail="revision job not found")
-    if previous.revision_job.status != "failed":
-        raise HTTPException(status_code=409, detail="只有 failed revision 可以重試")
-    revision = previous.revision_job.model_copy(
-        update={
-            "status": "queued",
-            "started_at": None,
-            "finished_at": None,
-            "result_receipt": None,
-            "error": None,
-        }
-    )
-    retried = previous.model_copy(
-        update={"approved": False, "decision": "reject", "revision_job": revision}
-    )
-    updated = ApprovalFileV1(
-        episode=approvals.episode,
-        approvals=[retried if row.cut_id == cut_id else row for row in approvals.approvals],
-    )
-    pending = ep_dir / "approval.json.tmp"
-    pending.write_text(updated.model_dump_json(indent=2) + "\n", encoding="utf-8")
-    pending.replace(ep_dir / "approval.json")
-    logger.info("packaging revision retry: %s/%s", episode_slug, cut_id)
-    return RedirectResponse(
-        f"/bridge/packaging/{quote(episode_slug, safe='')}?cut={quote(cut_id, safe='')}",
-        status_code=303,
-    )
 
 
 @page_router.post("/{episode_slug}/variant")
@@ -1787,8 +1911,6 @@ def packaging_select_variant(
     ep_dir = _packaging_root() / episode_slug
     existing = _load_approvals(ep_dir, pkg.episode)
     prev = next((a for a in existing.approvals if a.cut_id == cut_id), None)
-    if prev and prev.revision_job and prev.revision_job.status in {"queued", "running"}:
-        raise HTTPException(status_code=409, detail="Packaging revision 正在處理，完成後再改變體")
     entry = ApprovalV1(
         cut_id=cut_id,
         approved=prev.approved if prev else False,
@@ -2120,8 +2242,6 @@ def packaging_compose(
     except ValidationError as exc:
         raise HTTPException(status_code=400, detail=f"配方驗證失敗：{str(exc)[:300]}") from exc
 
-    if prev and prev.revision_job and prev.revision_job.status in {"queued", "running"}:
-        raise HTTPException(status_code=409, detail="Packaging revision 正在處理，完成後再存配方")
     entry = ApprovalV1(
         cut_id=cut_id,
         approved=prev.approved if prev else False,

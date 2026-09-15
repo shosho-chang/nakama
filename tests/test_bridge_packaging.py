@@ -308,7 +308,9 @@ def test_board_renders_packages_runners_and_flags(client):
     assert r.status_code == 200
     assert "標題 rank 1" in r.text
     assert "pkg-punch-L1-1.png" in r.text
-    assert "角度重複，缺乏差異化" in r.text  # rank4 panel_note
+    # 第 4–5 名的 panel_note 不再單獨列一區——那兩條在上面的標題欄位與「用哪一條
+    # 標題」下拉本來就看得到（修修 2026-09-15：「根本一點意義都沒有」）。
+    assert "落選標題" not in r.text
     assert "宣稱療效需 hedge" in r.text  # brand flag
 
     # 短片的改字欄在它自己的 tab 上（2026-09-14 起每一集都有 tab）。改標題這件事
@@ -362,111 +364,18 @@ def test_approve_writes_approval_file_and_reload_shows_state(client, vault, monk
     assert entry.primary_package == 2
 
     board = client.get("/bridge/packaging/20260723-xieboran")
-    assert "APPROVED · PKG 2" in board.text
+    # 封面卡下的「Package #N」2026-09-15 拿掉（修修：「這種標示也拿掉」），所以
+    # 這裡也不能再引用一個畫面上看不到的編號；選中的那張靠 --primary 邊框標示。
+    assert "APPROVED" in board.text
+    assert "PKG 2" not in board.text
+    assert "pkg-card--primary" in board.text
+    # 編號只剩 title 屬性（#1266 慣例：內部識別碼收進 title，不是刪掉），
+    # 畫面上不再有那顆 chip
+    assert ">Package #2<" not in board.text
+    assert 'title="Package #2 · archetype' in board.text
 
     lst = client.get("/bridge/packaging")
     assert ">1<" in lst.text or "1</td>" in lst.text.replace(" ", "")
-
-
-def test_reject_with_note_upserts(client, vault, monkeypatch):
-    _write_composition_receipt(vault, rank=1)
-    _stub_publish_prep(monkeypatch)
-    client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
-        follow_redirects=False,
-    )
-    client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "三張表情太像，重抽"},
-        follow_redirects=False,
-    )
-    from shared.schemas.packaging import parse_approval_file
-
-    ap = parse_approval_file(
-        vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
-    )
-    assert len([a for a in ap.approvals if a.cut_id == "punch-L1"]) == 1
-    entry = next(a for a in ap.approvals if a.cut_id == "punch-L1")
-    assert entry.approved is False
-    assert entry.reject_note == "三張表情太像，重抽"
-
-    # reject 現在同時排入 revision job（agent 重做），board 顯示 REVISION QUEUED
-    board = client.get("/bridge/packaging/20260723-xieboran")
-    assert "REVISION QUEUED" in board.text
-
-
-def test_reject_with_feedback_queues_agent_revision(client, vault):
-    response = client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={
-            "cut_id": "punch-L1",
-            "decision": "reject",
-            "reject_note": "人物 cutout 不自然，書封白底要去掉",
-        },
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-
-    approval_path = vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
-    entry = json.loads(approval_path.read_text(encoding="utf-8"))["approvals"][0]
-    assert entry["approved"] is False
-    assert entry["revision_job"]["status"] == "queued"
-    assert entry["revision_job"]["feedback"] == "人物 cutout 不自然，書封白底要去掉"
-    assert entry["revision_job"]["request_id"].startswith("revision-")
-
-    board = client.get("/bridge/packaging/20260723-xieboran")
-    assert "REVISION QUEUED" in board.text
-
-
-def test_reject_without_feedback_does_not_queue_revision(client, vault):
-    response = client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "   "},
-        follow_redirects=False,
-    )
-    assert response.status_code == 400
-    assert "Agent" in response.text
-    assert not (
-        vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
-    ).exists()
-
-
-def test_failed_revision_can_be_retried_without_approving(client, vault):
-    client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "重做 cutout"},
-        follow_redirects=False,
-    )
-    approval_path = vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json"
-    payload = json.loads(approval_path.read_text(encoding="utf-8"))
-    job = payload["approvals"][0]["revision_job"]
-    job.update(
-        {
-            "status": "failed",
-            "attempt": 1,
-            "started_at": "2026-08-21T06:00:00+00:00",
-            "finished_at": "2026-08-21T06:01:00+00:00",
-            "error": "renderer failed",
-        }
-    )
-    approval_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
-
-    board = client.get("/bridge/packaging/20260723-xieboran")
-    assert "REVISION FAILED" in board.text
-    assert "renderer failed" in board.text
-
-    response = client.post(
-        "/bridge/packaging/20260723-xieboran/revision/retry",
-        data={"cut_id": "punch-L1"},
-        follow_redirects=False,
-    )
-    assert response.status_code == 303
-    saved = json.loads(approval_path.read_text(encoding="utf-8"))["approvals"][0]
-    assert saved["approved"] is False
-    assert saved["revision_job"]["status"] == "queued"
-    assert saved["revision_job"]["attempt"] == 1
-    assert saved["revision_job"]["error"] is None
 
 
 def test_approve_requires_primary_package(client):
@@ -499,32 +408,6 @@ def test_approve_long_highlight_is_not_vetoed_by_a_missing_composition_receipt(c
         follow_redirects=False,
     )
     assert r.status_code == 303
-
-
-def test_reject_requires_feedback(client):
-    r = client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "reject"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 400
-
-
-def test_reject_creates_revision_job(client, vault):
-    client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "三張表情太像，重抽"},
-        follow_redirects=False,
-    )
-    saved = json.loads(
-        (vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
-            encoding="utf-8"
-        )
-    )
-    job = saved["approvals"][0]["revision_job"]
-    assert job["status"] == "queued"
-    assert job["feedback"] == "三張表情太像，重抽"
-    assert job["request_id"].startswith("revision-")
 
 
 # ---------------------------------------------------------------------------
@@ -652,9 +535,16 @@ def test_board_renders_brief_when_present(client, vault):
     assert "轉述極端派立場" in body
 
 
-def test_board_shows_hint_when_brief_missing(client):
+def test_board_says_nothing_when_the_brief_is_missing(client):
+    """沒有速覽就什麼都不說。
+
+    舊行為是印「（這支還沒有內容速覽）」——那句在說「本來想給你這支在講什麼，但
+    桌機端還沒生」，對站在 gate 前面的人給不出任何能做的事（修修 2026-09-15 點名）。
+    """
     body = client.get("/bridge/packaging/20260723-xieboran").text
-    assert "這支還沒有內容速覽" in body
+    assert "這支還沒有內容速覽" not in body
+    assert "pkg-brief-missing" not in body
+    assert "Approve" in body  # 速覽缺席不影響裁決
 
 
 def test_corrupt_brief_does_not_block_board(client, vault):
@@ -678,7 +568,10 @@ def test_title_edit_is_always_visible_and_distinguishes_youtube_title(client):
 
     body = client.get("/bridge/packaging/20260723-xieboran?edited=punch-L1").text
     assert '<section class="pkg-title-edit" id="title-edit-punch-L1">' in body
-    assert "YouTube 上架標題（不會改封面大字）" in body
+    assert "YouTube 影片標題" in body
+    # 「（不會改封面大字）」用否定句防誤會，改成直接指路（修修 2026-09-15）
+    assert "不會改封面大字" not in body
+    assert "封面上的大字在下面〈組封面〉改" in body
     assert "Package #1" in body
     assert 'name="title_text"' in body
 
@@ -825,7 +718,11 @@ def test_approve_does_not_wipe_selected_variant(client, vault_with_variants, mon
 
 
 def test_variant_pick_alone_is_not_a_rejection(client, vault_with_variants):
-    """2026-08-14 browser UAT：只挑變體時 board 顯示 REJECTED，會誤導。"""
+    """2026-08-14 browser UAT：只挑變體時 board 顯示 REJECTED，會誤導。
+
+    2026-09-15 Reject 拿掉之後只剩兩態，這條順勢守住「沒有任何一條路會再寫出
+    REJECTED」——包含那個舊誤標：沒 decision 又沒挑過東西也曾被歸進 REJECTED。
+    """
     client.post(
         "/bridge/packaging/20260723-xieboran/variant",
         data={"cut_id": "punch-L1", "selected_variant": "r1-a"},
@@ -834,37 +731,6 @@ def test_variant_pick_alone_is_not_a_rejection(client, vault_with_variants):
     board = client.get("/bridge/packaging/20260723-xieboran")
     assert "PENDING" in board.text
     assert "REJECTED" not in board.text
-    # 真的按 Reject 才會建立 revision queue
-    client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "reject", "reject_note": "臉不對"},
-        follow_redirects=False,
-    )
-    assert "REVISION QUEUED" in client.get("/bridge/packaging/20260723-xieboran").text
-
-
-def test_legacy_approval_without_decision_still_shows_rejected(client, vault):
-    """舊檔沒有 decision 欄位 → 用 approved 回退判讀，既有集數顯示不變。"""
-    ep = vault / "Attachments" / "packaging" / "20260723-xieboran"
-    (ep / "approval.json").write_text(
-        json.dumps(
-            {
-                "episode": "20260723 謝伯讓",
-                "approvals": [
-                    {
-                        "cut_id": "punch-L1",
-                        "approved": False,
-                        "primary_package": 1,
-                        "reject_note": "舊檔",
-                        "decided_at": "2026-07-30T00:00:00+00:00",
-                    }
-                ],
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
-    assert "REJECTED" in client.get("/bridge/packaging/20260723-xieboran").text
 
 
 # ---------------------------------------------------------------------------
@@ -1104,17 +970,27 @@ def test_compose_rejects_absurd_title_max_width(client, vault_with_cutouts):
     assert _compose(client, title_max_width="4000").status_code == 422
 
 
-def test_geometry_inputs_use_step_any(client, vault_with_cutouts):
-    """step 必須是 any（2026-08-15 browser UAT）。
+def test_geometry_inputs_cannot_reject_a_dragged_value(client, vault_with_cutouts):
+    """拖出來的兩位小數不可以被瀏覽器擋下來。
 
-    Chrome 的 step 基準點是初始 value，不是 0——step="0.1" 配上兩位小數的種子值
-    會讓合法值變成 -21.69/-21.59/…，拖曳出來的數字幾乎都落在格子外，按存配方
-    就跳「請輸入有效值」。修修回報的「數字不符合」就是這個。
+    舊守法是盯著 `step="any"`：Chrome 的 step 基準點是初始 value，不是 0，所以
+    step="0.1" 配上兩位小數的種子值會讓合法值變成 -21.69/-21.59/…，拖曳出來的數字
+    幾乎都落在格子外，按存配方就跳「請輸入有效值」（修修 2026-08-15「數字不符合」）。
+
+    2026-09-15 那十格收成 hidden（他說「這個欄位全部拿掉，因為我用不到」，排版一律
+    用拖曳與滾輪），hidden input 根本不做數值驗證——同一個 bug 從此不可能發生。
+    這條改守「它們不是會驗證的數字輸入格」，值仍照常送得出去。
     """
     _compose(client, geometry_mode="manual", **_GEO)
     board = client.get("/bridge/packaging/20260723-xieboran")
-    assert 'step="any" data-geo=' in board.text
-    assert 'step="0.1" data-geo=' not in board.text
+
+    assert 'type="number" step="any" data-geo=' not in board.text
+    assert 'type="number"' not in board.text.split("data-geo=")[0][-60:]
+    assert 'type="hidden" data-geo="host_height"' in board.text
+    assert 'type="hidden" data-center-geo="width"' in board.text
+    # 值照送：欄位名稱不能跟著版面一起消失
+    assert 'name="host_height_pct"' in board.text
+    assert 'name="center_height_px"' in board.text
 
 
 def test_compose_rejects_out_of_range_geometry(client, vault_with_cutouts):
@@ -1160,8 +1036,13 @@ def test_layout_stage_exposes_rule_of_thirds_and_explicit_layer_controls(
         assert f'class="st-grid-line st-grid-line--{line}"' in board.text
     for role in ("center", "host", "guest"):
         assert f'data-layer-select="{role}"' in board.text
-    assert 'data-layer-scale="down"' in board.text
-    assert 'data-layer-scale="up"' in board.text
+    # 「− 縮小／＋ 放大」2026-09-15 拿掉：滾輪對三種圖層本來就都生效，按鈕是
+    # 同一件事的第二個入口（修修：「我都是用滑鼠滾輪」）。
+    assert "data-layer-scale" not in board.text
+    # 十格數字也收成 hidden；排版只剩拖曳與滾輪
+    assert 'class="pkg-stage-nums"' not in board.text
+    assert "修修大小" not in board.text
+    assert "圖卡寬度" not in board.text
     assert 'class="pkg-render-progress"' in board.text
     assert 'aria-live="polite"' in board.text
     assert 'role="progressbar"' in board.text
@@ -1824,8 +1705,12 @@ def test_full_episode_does_not_require_long_highlight_composition_receipt(
 
     board = router_client.get("/bridge/packaging/20260723-xieboran")
     assert board.status_code == 200
-    assert "N1 FULL EPISODE · COMPOSITION GATE NOT APPLICABLE" in board.text
-    assert "Approve（人工決定優先）" in board.text
+    # 舊行為是印一則「本檢查對這一集不適用」的告示。對要挑封面的人，一個不適用的
+    # 檢查等於沒有這項檢查，不必出現（修修 2026-09-15）。重點是它**不會**被擋。
+    assert "COMPOSITION GATE NOT APPLICABLE" not in board.text
+    assert "版面已驗證" not in board.text
+    assert "版面有疑慮" not in board.text
+    assert "Approve" in board.text
     assert "COMPOSITION BLOCKED：中央主圖或保護區尚未通過驗證。" not in board.text
 
     response = router_client.post(
@@ -2698,3 +2583,362 @@ def test_board_does_not_show_machine_identifiers(client):
     # 反過來：人話要在
     assert "封面與標題裁決" in body
     assert "版面已驗證" in body
+
+
+# ---------------------------------------------------------------------------
+# 存配方之後畫面要說話（2026-09-14 修修：「按下『存配方』，但是什麼事情都沒有發生」）
+# ---------------------------------------------------------------------------
+
+
+def _set_saved_recipe(vault: Path, *, rank: int = 1, **fields) -> None:
+    """直接改 packages.json 裡那份**已存**配方的欄位（模擬桌機端回填）。"""
+    path = vault / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    recipe = data["cuts"][0]["packages"][rank - 1]["render_recipe"]
+    assert recipe is not None, "先 compose 才有配方可以改"
+    recipe.update(fields)
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+
+def test_saved_recipe_says_the_cover_is_now_out_of_date(client, vault_with_cutouts):
+    """修修的處境：配方存進去了，但下面那張封面是上一版配方出的。
+
+    gate 只寫配方、不出圖（ADR-054 D11），所以存完就是原地刷新、預覽幾乎沒差。
+    沒有這行字，「存好了但還沒出圖」跟「按了沒反應」在畫面上一模一樣。
+    """
+    assert _compose(client, package_rank="1").status_code == 303
+
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert board.status_code == 200
+    assert 'data-recipe-state="stale"' in board.text
+    assert "配方比封面新，需重出圖" in board.text
+
+
+def test_saved_recipe_without_any_cover_says_it_has_not_been_rendered(client, vault_with_cutouts):
+    """還沒出過圖的 package：講「尚未出圖」，不是「封面過期」——沒有封面可以過期。"""
+    ep = vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran"
+    (ep / "pkg-punch-L1-1.png").unlink()
+    assert _compose(client, package_rank="1").status_code == 303
+
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert 'data-recipe-state="unrendered"' in board.text
+    assert "配方已存 · 尚未出圖" in board.text
+
+
+def test_recipe_marked_rendered_once_the_desktop_writes_the_png_back(client, vault_with_cutouts):
+    """桌機端回填 rendered_png＝這份配方自己出的圖，第三態要消失。"""
+    assert _compose(client, package_rank="1").status_code == 303
+    _set_saved_recipe(
+        vault_with_cutouts,
+        rendered_png="Attachments/packaging/20260723-xieboran/pkg-punch-L1-1.png",
+    )
+
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert 'data-recipe-state="rendered"' in board.text
+    assert "已出圖 · 與配方相符" in board.text
+    assert "配方比封面新，需重出圖" not in board.text
+
+
+def test_package_without_a_saved_recipe_claims_no_state_at_all(client, vault_with_cutouts):
+    """沒人按過「存配方」就沒有三態可言。
+
+    board 會為舊 N2 package 從 receipt 水合出一份唯讀 recipe 餵編輯器；那份不是
+    存下來的配方，把它標成「配方比封面新」等於憑空生出一條待辦。
+    """
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert board.status_code == 200
+    assert "data-recipe-state" in board.text  # 元素在（hidden），只是沒有值
+    assert 'data-recipe-state=""' in board.text
+    assert "配方比封面新，需重出圖" not in board.text
+    assert "配方已存 · 尚未出圖" not in board.text
+
+
+def test_render_status_carries_the_same_three_state_as_the_board(
+    client, vault_with_cutouts, monkeypatch, tmp_path
+):
+    """輪詢與整頁重載必須由同一次判定產生，否則兩句話會互相打臉。
+
+    進度條寫「新封面已完成」、旁邊的狀態卻停在「尚未出圖」，人不知道要信哪個。
+    """
+    import thousand_sunny.routers.packaging as pkg_module
+
+    monkeypatch.setattr(
+        pkg_module, "_render_watcher_state_path", lambda: tmp_path / "missing-state.json"
+    )
+    assert _compose(client, package_rank="1").status_code == 303
+    requested_at = _saved_req(vault_with_cutouts)["requested_at"]
+    endpoint = "/bridge/packaging/20260723-xieboran/render-status/punch-L1/1"
+
+    stale = client.get(endpoint, params={"requested_at": requested_at})
+    assert stale.status_code == 200
+    assert stale.json()["recipe_state"]["state"] == "stale"
+
+    _set_saved_recipe(
+        vault_with_cutouts,
+        rendered_png="Attachments/packaging/20260723-xieboran/pkg-punch-L1-1.png",
+    )
+    rendered = client.get(endpoint, params={"requested_at": requested_at})
+    assert rendered.json()["recipe_state"]["state"] == "rendered"
+    assert rendered.json()["recipe_state"]["label"] == "已出圖 · 與配方相符"
+
+
+# ---------------------------------------------------------------------------
+# 橘框詞打錯不能默默消失（2026-09-14 修修：「我無法點選『橘框』這個圖層」）
+# ---------------------------------------------------------------------------
+
+
+def test_highlight_word_gets_a_live_verdict_next_to_its_input(client):
+    """打錯一個字，橘框就從預覽消失且不報錯——判定結果要寫在格子底下。"""
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert board.status_code == 200
+    assert 'id="hl-verdict-punch-L1"' in board.text
+    assert 'aria-describedby="hl-verdict-punch-L1"' in board.text
+    assert "data-hl-verdict" in board.text
+    assert "這個詞不在大字裡，不會有橘框" in board.text
+    assert "會框在${where}" in board.text
+
+
+def test_highlight_verdict_reuses_the_preview_match_instead_of_redoing_it():
+    """判定與預覽必須共用同一次 `line.indexOf(hl)`。
+
+    寫成兩份的話，預覽的橘框與底下那行提示遲早會各說各話——而修修看到的正是
+    橘框消失、沒有任何解釋。這條守住「規則只有一份」。
+    """
+    board = Path("thousand_sunny/templates/bridge/packaging_board.html").read_text(encoding="utf-8")
+
+    assert board.count("line.indexOf(hl)") == 1
+    # 判定值由 syncStageText 算完後交出去，setHighlightVerdict 自己不做比對
+    syncer = board.split("function syncStageText(stage)")[1].split("function fitStageTitle")[0]
+    assert "setHighlightVerdict(form, hl, framedLine, occurrences)" in syncer
+    verdict = board.split("function setHighlightVerdict(")[1].split("function syncStageText")[0]
+    assert "indexOf" not in verdict
+
+
+# ---------------------------------------------------------------------------
+# Reject 退場（修修 2026-09-15：「reject note 這個框框以及 reject 按鈕完全都不用了，
+# 我不知道這裡的 reject 按下去會有什麼行為」）
+# ---------------------------------------------------------------------------
+
+
+def test_gate_offers_no_way_to_reject(client):
+    """畫面上不再有 Reject：沒有按鈕、沒有理由欄、沒有 revision 狀態。"""
+    body = client.get("/bridge/packaging/20260723-xieboran").text
+
+    assert "Approve" in body
+    assert "Reject" not in body
+    assert "REJECT NOTE" not in body
+    assert 'name="reject_note"' not in body
+    assert "REVISION" not in body
+    assert "revision/retry" not in body
+
+
+def test_approve_endpoint_no_longer_accepts_a_rejection(client, vault, monkeypatch):
+    """就算有人手工 POST decision=reject，也不會寫出否決或 revision job。
+
+    Reject 的整條後端（watcher 的 run_revision_job）一起拿掉了；如果這裡還認得
+    decision=reject，就會排出一筆永遠不會有人處理的 job，把那支 cut 卡死。
+    """
+    _write_composition_receipt(vault, rank=1)
+    _stub_publish_prep(monkeypatch)
+    response = client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={
+            "cut_id": "punch-L1",
+            "decision": "reject",
+            "reject_note": "三張表情太像，重抽",
+            "primary_package": "1",
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 303
+    entry = json.loads(
+        (vault / "Attachments" / "packaging" / "20260723-xieboran" / "approval.json").read_text(
+            encoding="utf-8"
+        )
+    )["approvals"][0]
+    assert entry["approved"] is True
+    assert entry["decision"] == "approve"
+    assert entry["revision_job"] is None
+    assert entry["reject_note"] is None
+
+
+def test_old_episodes_carrying_a_revision_job_still_open(client, vault):
+    """舊檔的 reject_note／revision_job 必須還讀得動，而且不再被當成一種狀態。
+
+    schema 是 extra="forbid"：把欄位拔掉會讓帶著它們的既有 approval.json 直接驗證
+    失敗、整個 board 422。真實 vault 裡就有一筆（20260805 林之晨 full）。
+    """
+    ep = vault / "Attachments" / "packaging" / "20260723-xieboran"
+    (ep / "approval.json").write_text(
+        json.dumps(
+            {
+                "episode": "20260723 謝伯讓",
+                "approvals": [
+                    {
+                        "cut_id": "punch-L1",
+                        "approved": False,
+                        "primary_package": 1,
+                        "reject_note": "封面套錯版面了",
+                        "decided_at": "2026-08-21T00:00:00+00:00",
+                        "decision": "reject",
+                        "revision_job": {
+                            "contract": "packaging-revision-job-v1",
+                            "request_id": "revision-" + "a" * 16,
+                            "feedback": "封面套錯版面了",
+                            "requested_at": "2026-08-21T00:00:00+00:00",
+                            "source_packages_sha256": "b" * 64,
+                            "source_assets": {},
+                            "status": "ready_for_review",
+                        },
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    board = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert board.status_code == 200
+    assert "PENDING" in board.text
+    assert "REJECTED" not in board.text
+    assert "封面套錯版面了" not in board.text
+
+
+def test_a_queued_legacy_revision_no_longer_blocks_saving_a_recipe(client, vault_with_cutouts):
+    """殘留的 queued 舊 job 不可以把 cut 鎖死。
+
+    原本 compose 遇到 queued/running 會回 409「revision 正在處理，完成後再存配方」。
+    處理它的 worker 已經不存在了，那道閘留著就是永久封鎖。
+    """
+    ep = vault_with_cutouts / "Attachments" / "packaging" / "20260723-xieboran"
+    (ep / "approval.json").write_text(
+        json.dumps(
+            {
+                "episode": "20260723 謝伯讓",
+                "approvals": [
+                    {
+                        "cut_id": "punch-L1",
+                        "approved": False,
+                        "primary_package": 1,
+                        "decided_at": "2026-08-21T00:00:00+00:00",
+                        "revision_job": {
+                            "contract": "packaging-revision-job-v1",
+                            "request_id": "revision-" + "c" * 16,
+                            "feedback": "重做",
+                            "requested_at": "2026-08-21T00:00:00+00:00",
+                            "source_packages_sha256": "d" * 64,
+                            "source_assets": {},
+                            "status": "queued",
+                        },
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+    assert _compose(client, package_rank="1").status_code == 303
+
+
+# ---------------------------------------------------------------------------
+# 沒進前 5 名的候選標題（修修 2026-09-15：「我要的是 5 名以外的，或許有漏網之魚」）
+# ---------------------------------------------------------------------------
+
+
+def _write_title_trace(vault: Path, name: str, payload: dict) -> Path:
+    path = vault / "Attachments" / "packaging" / "20260723-xieboran" / name
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def _trace_payload(cut_id: str = "punch-L1") -> dict:
+    return {
+        "episode": "20260723 謝伯讓",
+        "cut_id": cut_id,
+        "title_trace": {
+            "panel_rounds": [
+                {
+                    "round": 1,
+                    "candidates": [
+                        # 兩種 trace 寫法都要吃：scores dict（最後一項是總分）
+                        {
+                            "title": "沒選上但分數很高的那一條",
+                            "gate": ["pass", "pass", "pass"],
+                            "scores": {"A": [4, 5, 5, 5, 19], "B": [4, 4, 5, 5, 18]},
+                            "feedback": "畫面與反轉最強",
+                        },
+                        # 以及 persona dict（各自帶 total 與 flags）
+                        {
+                            "id": "R1-02",
+                            "title": "被評審標成標題黨的那一條",
+                            "A": {
+                                "gate": "pass",
+                                "score": [2, 2, 2, 2],
+                                "total": 8,
+                                "flags": ["標題黨"],
+                            },
+                            "B": {"gate": "pass", "score": [3, 2, 2, 2], "total": 9, "flags": []},
+                        },
+                        # 進了前 5 名的不該再出現在這一區
+                        {"title": "標題 rank 1", "scores": {"A": [5, 5, 5, 5, 20]}},
+                    ],
+                }
+            ],
+            "tier2": [
+                {
+                    "text": "根本沒被評到的漏網之魚",
+                    "angles": ["反直覺", "生存風險"],
+                    "payoff": "看懂安逸背後的代價",
+                }
+            ],
+        },
+    }
+
+
+def test_title_pool_lists_candidates_that_never_made_the_top_five(client, vault):
+    """前 5 名以外的候選要列出來，含各 persona 的試讀分數。"""
+    _write_title_trace(vault, "title_trace-punch-L1.json", _trace_payload())
+
+    body = client.get("/bridge/packaging/20260723-xieboran").text
+
+    assert "沒進前 5 名的候選" in body
+    assert "沒選上但分數很高的那一條" in body
+    assert "根本沒被評到的漏網之魚" in body  # tier2 也算候選
+    assert "19 ／ 18" in body and "合計 37" in body
+    assert "畫面與反轉最強" in body
+    assert "評審標記：標題黨" in body  # 沒有 feedback 就用硬旗標
+    assert "看懂安逸背後的代價" in body
+    # 已經進前 5 名的不會在這一區重複出現
+    pool = body.split('<details class="pkg-runners">')[1].split("</details>")[0]
+    assert "標題 rank 1" not in pool
+
+
+def test_title_pool_never_shows_another_cuts_candidates(client, vault):
+    """episode 根目錄那顆 title_trace.json 裝的是哪一支是隨機的——cut_id 對不上就不顯示。
+
+    真實 vault 裡 20260805 林之晨的 `title_trace.json` 裝的是 value-L02，而板上看的是
+    full。不核對就會把別支影片的候選與分數端到他面前。
+    """
+    _write_title_trace(vault, "title_trace.json", _trace_payload(cut_id="another-cut"))
+
+    body = client.get("/bridge/packaging/20260723-xieboran").text
+
+    assert "沒進前 5 名的候選" not in body
+    assert "沒選上但分數很高的那一條" not in body
+
+
+def test_title_pool_is_absent_when_the_desktop_never_wrote_a_trace(client):
+    """沒有 trace 就整區不顯示，不留一個空殼在那裡。"""
+    body = client.get("/bridge/packaging/20260723-xieboran").text
+
+    assert "沒進前 5 名的候選" not in body
