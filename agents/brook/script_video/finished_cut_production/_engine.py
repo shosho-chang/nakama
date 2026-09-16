@@ -48,6 +48,7 @@ from ._derived_assets import (
     readable_floor_sec,
 )
 from ._hero_text import is_verbatim_quote
+from ._long_visual_renderer import recipe_document_digest
 from ._plan_record import PlanRecord, PlanRecordError, PlanTimeline
 from ._policy import (
     CutPolicyInput,
@@ -1565,6 +1566,19 @@ def _derived_asset_request(
                     "target_height": geometry.target_height,
                     "layout_identity": geometry.layout_identity,
                 },
+                # 「畫面的函數」漏掉的那一項：渲染器本身。少了它，改了卡片設計會
+                # **靜默地什麼都不發生**——`find_exact_recipe` 命中舊 identity，舊
+                # bytes 再上片一次，沒有 diagnostic。2026-09-16 章節卡字級改成定值
+                # 104px 時實測到：五張卡的 identity 一個字都沒變。
+                "render_document": recipe_document_digest(
+                    implementation_kind=event.implementation_kind,
+                    display=event.display,
+                    target_width=geometry.target_width,
+                    target_height=geometry.target_height,
+                    # 不套 round：建置時渲染器吃的是 `instruction.show_sec`
+                    # （t1 - t0，未取整）。摘要要描述**真的會被畫出來的那份**文件。
+                    duration_sec=placement.t1 - placement.t0,
+                ),
             }
             digest = hashlib.sha256(
                 json.dumps(

@@ -100,8 +100,13 @@
       .style-scrim .kicker { color: rgba(246, 244, 241, 0.72); }
 
       .title-clip { overflow: hidden; padding-bottom: 0.08em; }
+      /* 字級是定值，不照字數降級——階梯（168/128/104）讓同一支影片裡的卡片差 62%。
+         104px 一行載得下：max-width 1600px，LINE Seed TW 900 在 Chromium 實測
+         （2026-09-16）13 字 1366px、14 字 1471px、15 字 1576px，都還沒換行。
+         這份與 `_long_visual_renderer.py:_paper_hand_chapter_document` 是同一張卡
+         的兩份實作，改一邊就要改另一邊。 */
       .title {
-        font-size: 168px;
+        font-size: 104px;
         font-weight: 900;
         line-height: 1.12;
         white-space: pre-line;
@@ -110,11 +115,6 @@
         text-align: center;
         will-change: transform;
       }
-      .title.long { font-size: 128px; }
-      /* 13 字以上：CJK 字寬約 1em，13×128px = 1664px 會撞破 max-width 1600px，
-         斷成孤字掉第二行（「拖延症不是懶，是想法太勤勞」變成「…太勤／勞」）。
-         skill 訂的章節標題範圍是 6–14 字，卡片就要載得動，不是回頭砍文案。 */
-      .title.longer { font-size: 104px; }
       .style-paper .title, .style-paper_hand .title { color: #1c1915; }
       .style-scrim .title { color: #f6f4f1; }
 
@@ -189,10 +189,9 @@
       document.getElementById("kicker").textContent = vars.kicker ?? "01";
       const titleEl = document.getElementById("title");
       titleEl.textContent = titleText;
-      // 字級三階，跟下面手繪底線的長度共用同一個值——兩邊各算一次就會漂掉。
-      const titleFontPx = titleText.length > 12 ? 104 : titleText.length > 9 ? 128 : 168;
-      if (titleFontPx === 128) titleEl.classList.add("long");
-      else if (titleFontPx === 104) titleEl.classList.add("longer");
+      // 字級是定值（見 .title 的註解），跟下面手繪底線的長度共用同一個值——
+      // 兩邊各寫一次就會漂掉。改這裡要同步改 .title 的 font-size。
+      const titleFontPx = 104;
 
       const tl = gsap.timeline({
         paused: true,
