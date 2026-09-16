@@ -154,13 +154,13 @@ def _pick_timeline(project, episode_dir: Path, cut: dict):
     except PublishTimelineError as exc:
         raise SystemExit(str(exc)) from exc
     logger.info(
-        "%s: timeline「%s」對上 Release %s（%.3fs）",
+        "%s: timeline「%s」對上 plan record %s（%.3fs）",
         cut["id"],
         target.timeline,
-        target.release_id,
+        target.plan_id,
         target.expected_duration_sec,
     )
-    return timeline, target.timeline, target.release_id
+    return timeline, target.timeline, target.plan_id
 
 
 def _render_master(
@@ -314,7 +314,7 @@ def _probe(path: Path) -> tuple[float, int]:
 
 def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
     """單支 cut：render → （短片燒字幕）→ exports/<cut_id>.mp4。"""
-    timeline, label, release_id = _pick_timeline(project, episode_dir, cut)
+    timeline, label, plan_id = _pick_timeline(project, episode_dir, cut)
     project.SetCurrentTimeline(timeline)
     out_dir = episode_dir / EXPORTS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -354,9 +354,18 @@ def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
         "file_bytes": size,
         "cc_srt": str(srt_path) if srt_path else None,
         "timeline": label,
-        # 這支成品是哪一版 Release 的內容。amendment 重封 Release 時片長不變，
-        # 長度護欄看不出差別；沒有這個欄位，下一次核准會直接沿用舊畫面。
-        "release_id": release_id,
+        # 這支成品是哪一版 plan record 的內容。重鑄一份 plan 可以不改變片長
+        # （移一支 b-roll、拿掉另一支，長度分毫不差），長度護欄看不出差別；
+        # 沒有這個欄位，下一次核准會直接沿用舊畫面（2026-08-29 long3 就是這樣）。
+        #
+        # ⚠️ 欄位名是 `plan_id` 不是 `release_id`——`release_id` 在這支 script 裡
+        # 另有所指（`register_release` 回的 DB 列 id，下面會寫進同一個 dict）。
+        # ADR-069 把身分從 `release_id` 改名成 `plan_id` 時這裡漏改，於是
+        # `_pick_timeline` 讀 `target.release_id` 直接 AttributeError，整條
+        # publish_prep 對「有對應表的集數」全掛；就算補上，第 414 行也會拿 DB 列 id
+        # 把它蓋掉。`export_matches_plan_record` 讀的是 `plan_id`（舊檔 fallback
+        # `release_id`），拿到數字就永遠對不上、永遠重 render。
+        "plan_id": plan_id,
     }
 
 
