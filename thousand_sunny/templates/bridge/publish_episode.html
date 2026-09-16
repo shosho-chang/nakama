@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · Publish · {{ episode }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='publish') }}
+
+{% from "_breadcrumb.html" import breadcrumb %}
+{{ breadcrumb([
+  {"label": "PUBLISH · 發布審核", "href": "/bridge/publish", "is_current": false},
+  {"label": episode, "href": none, "is_current": true},
+]) }}
+
+<section class="page-header page-header--split">
+  <div>
+    <div class="nk-caps">/bridge/publish · 這一集有什麼可以發</div>
+    <h1 class="page-title">{{ episode }}
+      <span class="zh">
+        {%- if ready_count %}{{ ready_count }} 支可以發布{% else %}目前沒有可以發布的成品{% endif -%}
+      </span>
+    </h1>
+  </div>
+  <nav aria-label="發布檢視">
+    <a class="sho-btn--ghost" href="/bridge/publish">← 所有集數</a>
+    <a class="sho-btn--ghost" href="/bridge/publish/calendar">發布月曆</a>
+  </nav>
+</section>
+
+<main class="page-main page-main--stack">
+  <article class="section" aria-labelledby="sec-cuts">
+    <header class="section-head">
+      <div>
+        <div class="section-marker">§ 1 · Cuts</div>
+        <h2 class="section-title" id="sec-cuts">已登錄的成品</h2>
+      </div>
+      <span class="section-status idle">{{ rows | length }} 支</span>
+    </header>
+    <div class="section-body">
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">內容</th>
+            <th scope="col">格式</th>
+            <th scope="col">長度 / 大小</th>
+            <th scope="col">狀態</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td>
+              <a class="sho-lk" href="/bridge/publish/{{ row.episode | urlencode }}/{{ row.cut_id | urlencode }}">{{ row.display_title }}</a>
+              <div class="col-mono col-muted" style="font-size: 11.5px;">{{ row.cut_id }}</div>
+            </td>
+            <td class="col-mono">{{ row.format | upper }}</td>
+            <td class="col-mono col-muted">
+              {{ (row.duration_sec / 60) | round(1) }} min · {{ (row.file_bytes / 1000000) | round | int }} MB
+            </td>
+            <td>
+              {% if row.state == 'ready' %}
+              <span class="sho-tag sho-tag--accent">可以發布</span>
+              {% elif row.state == 'done' %}
+              <span class="sho-tag">已上架</span>
+              {% if row.video_url %}
+              <a class="sho-lk" href="{{ row.video_url }}" target="_blank" rel="noopener">看影片</a>
+              {% endif %}
+              {% elif row.state == 'in_flight' %}
+              <span class="sho-tag">上傳中</span>
+              {% elif row.state == 'failed' %}
+              <span class="col-error">失敗{% if row.missing %} · {{ row.missing | join('、') }}{% endif %}</span>
+              {% else %}
+              <span class="col-muted">還缺：{{ row.missing | join('、') }}</span>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+</main>
+</body>
+</html>
