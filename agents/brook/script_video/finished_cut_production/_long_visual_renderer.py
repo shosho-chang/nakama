@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import hashlib
 import math
 from dataclasses import dataclass
 from html import escape
 from pathlib import Path
 from typing import Literal, Protocol
 
-from ._projection import layout_identity
+from ._projection import BROWSER_ROLE_BY_IMPLEMENTATION, layout_identity
 
 LongVisualRole = Literal[
     "chapter",
@@ -206,6 +207,49 @@ class LongVisualRenderer:
         ):
             raise LongVisualRenderError("browser result violates the exact visual recipe")
         return RenderedLongVisual(recipe=recipe, media=media)
+
+
+def recipe_document_digest(
+    *,
+    implementation_kind: str,
+    display: str,
+    target_width: int,
+    target_height: int,
+    duration_sec: float,
+) -> str | None:
+    """這筆指令**現在**會被畫成什麼樣——回傳該 HTML 的 sha256。
+
+    `_engine._derived_asset_request` 的 recipe identity 立過一條規矩：「必須是畫面
+    的函數，只放真的會改變輸出像素的欄位」。它漏了最直接的那一項——渲染器本身。
+    後果不是壞掉，是**靜默地什麼都不會發生**：改了卡片設計、跑完整條 run，
+    `find_exact_recipe` 照樣命中舊 identity，舊 bytes 原封不動再上片一次，
+    沒有任何 diagnostic。
+
+    2026-09-16 實測：章節卡字級從三階梯改成定值 104px 之後，蘇予昕長2 五張卡的
+    recipe identity 一個字都沒變，全部命中 9/10 那批 168px／128px 的舊 MOV。
+
+    把文件雜湊放進 identity，這件事就不必再靠人記得——`layout_version` 那個旋鈕
+    還在，但忘了轉不再等於改動消失。同 bytes 不同 identity 由
+    `ActiveAssetStore.publish` 接住（兩個配方算出同一個畫面就共用那份媒體），
+    所以沒改到像素的卡只會多 render 一次，不會衝突。
+    """
+
+    role = BROWSER_ROLE_BY_IMPLEMENTATION.get(implementation_kind)
+    if role is None:
+        return None
+    values = _RECIPES[role]  # type: ignore[index]
+    document = _html_document(
+        display=display,
+        role=role,  # type: ignore[arg-type]
+        style_name=str(values["style_name"]),
+        font_size_px=int(values["font_size_px"]),  # type: ignore[arg-type]
+        content_width_ratio=float(values["content_width_ratio"]),  # type: ignore[arg-type]
+        full_frame=bool(values["full_frame"]),
+        canvas_width=target_width,
+        canvas_height=target_height,
+        duration_sec=duration_sec,
+    )
+    return hashlib.sha256(document.encode("utf-8")).hexdigest()
 
 
 _HERO_LINE_BREAKS = "，、。：；！？"

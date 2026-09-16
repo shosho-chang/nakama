@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import ast
+import hashlib
 from pathlib import Path
 
 import pytest
@@ -155,6 +156,80 @@ def test_chapter_title_font_size_does_not_track_length(tmp_path: Path) -> None:
     assert "font-size: 168px" not in "".join(documents)
     assert "font-size: 128px" not in "".join(documents)
     assert "min(92%, 1460px)" not in "".join(documents)
+
+
+def test_recipe_document_digest_describes_the_document_that_gets_rendered(tmp_path: Path) -> None:
+    """摘要必須是**真的會被畫出來的那份** HTML，否則 identity 又在說謊。
+
+    `_engine._derived_asset_request` 把這個摘要放進 recipe identity，好讓「改了卡片
+    設計」能真的走到螢幕上。要是摘要跟渲染器實際用的文件對不上（參數接錯、時長
+    取整方式不同），identity 就會在該變的時候不變、或在不該變的時候亂變。
+    """
+    browser = _Browser(tmp_path)
+    renderer = LongVisualRenderer(browser=browser)
+
+    for implementation_kind, display in (
+        ("fullscreen_transition", "你誤植了快樂的因果"),
+        ("identity_card", "蘇予昕｜諮商心理師"),
+    ):
+        role = renderer_module.BROWSER_ROLE_BY_IMPLEMENTATION[implementation_kind]
+        output = renderer.render(
+            LongVisualRenderRequest(
+                recipe_identity=f"recipe:{role}:digest",
+                event_id=f"event-{role}",
+                role=role,
+                display=display,
+                duration_sec=3.0,
+                target_width=1920,
+                target_height=1080,
+                layout_identity=layout_identity(implementation_kind),
+            )
+        )
+        expected = hashlib.sha256(output.recipe.html_document.encode("utf-8")).hexdigest()
+        assert (
+            renderer_module.recipe_document_digest(
+                implementation_kind=implementation_kind,
+                display=display,
+                target_width=1920,
+                target_height=1080,
+                duration_sec=3.0,
+            )
+            == expected
+        ), implementation_kind
+
+    # 吃現成素材的實作不經渲染器，沒有文件可摘要。
+    assert (
+        renderer_module.recipe_document_digest(
+            implementation_kind="stock_video",
+            display="又要上班了",
+            target_width=1920,
+            target_height=1080,
+            duration_sec=3.0,
+        )
+        is None
+    )
+
+
+def test_recipe_document_digest_moves_when_the_card_design_moves(monkeypatch) -> None:
+    """改了卡片設計，摘要就要變——這是「改了設計成品卻沒動」的機械擋。
+
+    2026-09-16 實測：章節卡字級從三階梯改成定值 104px 之後，蘇予昕長2 五張卡的
+    recipe identity 一個字都沒變，`find_exact_recipe` 全數命中 9/10 那批 168px／
+    128px 的舊 MOV——整個改動靜默地沒有到達螢幕，而且沒有任何 diagnostic。
+    """
+    kwargs = {
+        "implementation_kind": "fullscreen_transition",
+        "display": "你誤植了快樂的因果",
+        "target_width": 1920,
+        "target_height": 1080,
+        "duration_sec": 3.0,
+    }
+    before = renderer_module.recipe_document_digest(**kwargs)
+    monkeypatch.setattr(renderer_module, "_CHAPTER_TITLE_FONT_PX", 168)
+    after = renderer_module.recipe_document_digest(**kwargs)
+
+    assert before is not None
+    assert before != after
 
 
 def test_long_visual_recipe_is_self_contained_and_escapes_display_text(tmp_path: Path) -> None:

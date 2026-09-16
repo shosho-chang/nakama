@@ -294,6 +294,18 @@ MEDIA_SUFFIX_BY_IMPLEMENTATION: dict[str, str] = {
     if spec.generated and spec.media_suffix is not None
 }
 
+#: 實作 → 瀏覽器渲染角色。渲染器的配方表與 identity 的文件雜湊都讀這一份。
+#:
+#: 原本只有 `_visual_assets._BROWSER_ROLES` 一份，`_long_visual_renderer` 要用就得
+#: 自己再寫一份——今天修的兩個 bug（字級階梯、底線寬度）都是「一張卡兩份實作」，
+#: 不再多造一個。
+BROWSER_ROLE_BY_IMPLEMENTATION: dict[str, str] = {
+    "fullscreen_transition": "chapter",
+    "hero_title": "hero_title",
+    "identity_card": "identity_card",
+    "visual_effect": "visual_effect",
+}
+
 #: 每個渲染實作目前的版位版本。指令的 geometry 與渲染器接受的配方都讀這一份。
 LAYOUT_VERSIONS: dict[str, str] = {
     kind: spec.layout_version
