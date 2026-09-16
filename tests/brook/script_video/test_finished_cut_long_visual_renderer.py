@@ -94,9 +94,10 @@ def test_chapter_restores_approved_paper_hand_recipe(tmp_path: Path) -> None:
     assert '<svg class="kbar"' in chapter.html_document
     assert 'class="kbar"' in chapter.html_document
     assert 'class="uline"' in chapter.html_document
-    # 章節標題字級是「照字數降級」的規則（>12 字 104px、>9 字 128px、其餘 168px），
-    # 不是配方裡那個固定值——CJK 一字約 1em，14 字 ×128px 會換行成孤字。
-    # 這一條測的是規則本身：這個 14 字標題必須降到 104px。
+    # 章節標題字級是定值 104px，不是配方裡那個字級，也不再照字數降級。
+    # 這一條守的是長標題那一端：14 字在 104px 下實測 1471px，還在 max-width
+    # 1600px 內，一行載得下（舊的 128px 會撞破，斷成孤字掉第二行）。
+    # 短標題那一端由 test_chapter_title_font_size_does_not_track_length 守。
     assert "font-size: 104px" in chapter.html_document
     assert "translateY(108%)" in chapter.html_document
     assert hero.full_frame is False
@@ -109,6 +110,51 @@ def test_chapter_restores_approved_paper_hand_recipe(tmp_path: Path) -> None:
     assert hero.safe_region == "lower"
     assert 'data-composition-id="punch_card_wide"' in hero.html_document
     assert chapter.style_name != hero.style_name
+
+
+def test_chapter_title_font_size_does_not_track_length(tmp_path: Path) -> None:
+    """同一支影片裡的章節卡必須一樣大，短標題不准放大回去。
+
+    舊規則是三階梯（>12 字 104px、>9 字 128px、其餘 168px），本意是擋孤字，
+    但也讓蘇予昕長2（punch-L03）的五張章節卡落在 168 / 128 / 128 / 104 / 104
+    三個字級。修修 2026-09-16 看成品：「有 transition 的字型還是太大，不是已經
+    統一了嗎？」——那次統一的是兩份程式碼，不是視覺大小。
+    """
+    browser = _Browser(tmp_path)
+    renderer = LongVisualRenderer(browser=browser)
+
+    # 舊階梯的兩個分界（9/10 字、12/13 字），外加一個明顯更短的標題。
+    displays = (
+        "先不要做",  # 4 字
+        "孩子才是父母的老師",  # 9 字 — 舊規則的 168px
+        "每天回抓你的限制信念",  # 10 字 — 舊規則的 128px
+        "今年撐過就好，然後永遠在撐",  # 13 字 — 舊規則的 104px
+    )
+    documents = tuple(
+        renderer.render(
+            LongVisualRenderRequest(
+                recipe_identity=f"recipe:chapter:{index}",
+                event_id=f"event-chapter-{index}",
+                role="chapter",
+                display=display,
+                duration_sec=3.0,
+                target_width=1920,
+                target_height=1080,
+                layout_identity=layout_identity("fullscreen_transition"),
+            )
+        ).recipe.html_document
+        for index, display in enumerate(displays)
+    )
+
+    for display, document in zip(displays, documents, strict=True):
+        assert "font-size: 104px" in document, display
+        # 手繪底線跟字等長（transition_title_wide.html 一直是這樣算的）。這一份
+        # 先前寫死 min(92%, 1460px)：168px 的卡底線比字短、104px 的卡底線比字長
+        # 兩百多 px，兩份畫出來不是同一張卡。
+        assert f".uline {{ width: {round(len(display) * 104 * 1.01)}px;" in document, display
+    assert "font-size: 168px" not in "".join(documents)
+    assert "font-size: 128px" not in "".join(documents)
+    assert "min(92%, 1460px)" not in "".join(documents)
 
 
 def test_long_visual_recipe_is_self_contained_and_escapes_display_text(tmp_path: Path) -> None:

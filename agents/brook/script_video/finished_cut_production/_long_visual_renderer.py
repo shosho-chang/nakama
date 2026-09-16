@@ -468,6 +468,21 @@ html, body {{ margin: 0; width: {canvas_width}px; height: {canvas_height}px;
 </html>"""
 
 
+# 章節卡的字級是定值，不照字數降級。
+#
+# 2026-09-08 之前這裡是三階梯（>12 字 104px、>9 字 128px、其餘 168px），本意是
+# 「長標題不要斷成孤字」。它確實擋掉了孤字，但也讓同一支影片裡的卡片差 62%：
+# 蘇予昕長2（punch-L03）五張章節卡落在 168 / 128 / 128 / 104 / 104 三個字級，
+# 168px 那張的字橫跨 1920 裡的約 1510px，手繪底線跟字等長，底線就不再讀成底線。
+# 修修 2026-09-16：「有 transition 的字型還是太大，不是已經統一了嗎？」——當初
+# 統一的是這份與 transition_title_wide.html 兩份程式碼，不是視覺大小。
+#
+# 104px 一行載得下，所以字數不必再換字級：.stage 扣掉左右 160px 之後有 1600px，
+# LINE Seed TW 900 在 Chromium 實測（2026-09-16）13 字 1366px、14 字 1471px、
+# 15 字 1576px，都還沒換行。蘇予昕那一集的章節標題落在 9–13 字。
+_CHAPTER_TITLE_FONT_PX = 104
+
+
 def _paper_hand_chapter_document(
     *,
     display: str,
@@ -482,11 +497,12 @@ def _paper_hand_chapter_document(
     # transition_title_wide.html` 的第二份實作。兩邊的字級規則必須一致——2026-09-08
     # 修好了那一份，這一份沒動，於是 pipeline 渲出來的卡照樣斷成孤字，visual_review
     # 退了三張，人卻看不出兩份的差別在哪。
-    #
-    # CJK 字寬約 1em，.stage 扣掉左右 160px 之後只有 1600px 可用：13 字 ×128px =
-    # 1664px 就會換行，第二行只剩一兩個孤字（「拖延症不是懶，是想法太勤勞」變成
-    # 「…太勤／勞」）。章節標題的規格範圍是 6–14 字，卡片要載得動，不是回頭砍文案。
-    title_font_px = 104 if len(display) > 12 else 128 if len(display) > 9 else 168
+    title_font_px = _CHAPTER_TITLE_FONT_PX
+    # 手繪底線跟字等長（修修六輪：「跟字等長才像畫線」），寬度用字數×字級算，
+    # 不量 DOM——字型載入時序在 hyperframes capture 下不可靠。
+    # transition_title_wide.html 一直是這樣算的；這一份先前寫死 min(92%, 1460px)，
+    # 於是 168px 的卡底線比字短、104px 的卡底線比字長兩百多 px，兩份畫出來不是同一張卡。
+    underline_width_px = round(len(display) * title_font_px * 1.01)
     paper_texture = (
         "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'"
         " width='360' height='360' viewBox='0 0 360 360'%3E"
@@ -524,7 +540,7 @@ html, body {{ margin: 0; width: {canvas_width}px; height: {canvas_height}px;
 .title {{ max-width: 1600px; color: #1c1915; font-size: {title_font_px}px;
   font-weight: 900; line-height: 1.12; letter-spacing: .01em; text-align: center;
   animation: title-enter .55s .10s cubic-bezier(.22,.75,.2,1) both; }}
-.uline {{ width: min(92%, 1460px); height: 28px; overflow: visible;
+.uline {{ width: {underline_width_px}px; height: 28px; overflow: visible;
   transform-origin: left center; animation: underline-enter .42s .28s ease-out both; }}
 @keyframes kicker-enter {{
   from {{ opacity: 0; transform: translateX(-18px); }}
