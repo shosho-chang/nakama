@@ -1750,6 +1750,32 @@ def _local_snapshot(model: str, revision: str) -> Path:
         ) from exc
 
 
+def _clip_duration_ms(clip: Path) -> int:
+    """Exact PCM duration of one major-audio clip, from its own header."""
+
+    with wave.open(str(clip), "rb") as handle:
+        frame_rate, frame_count = handle.getframerate(), handle.getnframes()
+    if frame_rate <= 0 or frame_count <= 0:
+        raise SubtitleReleaseError(f"major-audio clip has an invalid WAV clock: {clip}")
+    return round(frame_count * 1000 / frame_rate)
+
+
+# 對齊器以固定幀長量化，clip 長度卻是由 cue 邊界＋padding 算出來的，兩者不整除時
+# 最後一格必然進位到 clip 尾巴之外。片段不可能結束在音檔結束之後，所以夾回來——
+# 這是量化假影，不是觀測。
+# 20260722 李海碩 cue-1953：clip 12120ms、Qwen 對齊器 80ms 幀，末段回報 12160ms，
+# 被 `_validate_model_evidence` 的 2ms 容差擋下整條線。
+# 只夾「不到一幀」等級的溢出；超過這個量級代表單位或位移真的算錯了，要讓它炸，
+# 不能靜默把整段壓到結尾。
+_ALIGNER_QUANTISATION_SLACK_MS = 250
+
+
+def _clamped_segment_end_ms(end_ms: int, clip_duration_ms: int) -> int:
+    if clip_duration_ms < end_ms <= clip_duration_ms + _ALIGNER_QUANTISATION_SLACK_MS:
+        return clip_duration_ms
+    return end_ms
+
+
 def _create_major_provider_runner(
     *,
     family: str,
@@ -1830,12 +1856,13 @@ def _create_major_provider_runner(
     )
 
     def run_qwen(**kwargs: object) -> Mapping[str, object]:
-        clip = kwargs["clip"]
+        clip = Path(str(kwargs["clip"]))
         result = recognizer.transcribe(audio=str(clip), language=None, return_time_stamps=True)[0]
+        clip_duration_ms = _clip_duration_ms(clip)
         segments = [
             {
                 "start_ms": round(segment.start_time * 1000),
-                "end_ms": round(segment.end_time * 1000),
+                "end_ms": _clamped_segment_end_ms(round(segment.end_time * 1000), clip_duration_ms),
                 "text": segment.text.strip(),
             }
             for segment in (getattr(result, "time_stamps", None) or [])
