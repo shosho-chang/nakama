@@ -2967,20 +2967,101 @@ def test_a_repeated_timeout_stops_telling_him_to_press_again():
         assert machine not in repeated
 
 
+def _hb(seen_at, **extra):
+    row = {"episode_slug": None, "cut_id": None, "package_rank": None, "seen_at": seen_at}
+    row.update(extra)
+    return {"_watchers": {"*/*/r*": row}}
+
+
 def test_timeout_streak_is_read_from_the_watcher_heartbeat():
+    from datetime import datetime, timezone
+
     from thousand_sunny.routers.packaging import _timeout_streak
 
+    now = datetime.now(timezone.utc).isoformat()
     assert _timeout_streak({}) == 0
     assert _timeout_streak({"_watchers": "not a dict"}) == 0
-    assert _timeout_streak({"_watchers": {"*/*/r*": {"pid": 1}}}) == 0
-    assert (
-        _timeout_streak(
-            {
-                "_watchers": {
-                    "a": {"pid": 1, "consecutive_timeouts": 2},
-                    "b": {"pid": 2, "consecutive_timeouts": 5},
+    assert _timeout_streak(_hb(now)) == 0
+    assert _timeout_streak(_hb(now, consecutive_timeouts=5)) == 5
+
+
+def test_a_dead_watcher_cannot_poison_the_streak_forever():
+    """死掉的 watcher 的 row 沒人刪，重啟換 scope 還會換 key、舊 row 原地不動。
+
+    不濾新鮮度的話，一支卡死的 watcher 留下的連號會永遠掛在畫面上——照著畫面上那句
+    「重啟它」做一百次也清不掉。判準與 `_watcher_covering` 對齊。
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from thousand_sunny.routers.packaging import _WATCHER_STALE_SEC, _timeout_streak
+
+    stale = (datetime.now(timezone.utc) - timedelta(seconds=_WATCHER_STALE_SEC + 60)).isoformat()
+
+    assert _timeout_streak(_hb(stale, consecutive_timeouts=5)) == 0
+
+
+def test_a_broken_state_file_does_not_500_the_status_endpoint():
+    from datetime import datetime, timezone
+
+    from thousand_sunny.routers.packaging import _timeout_streak
+
+    now = datetime.now(timezone.utc).isoformat()
+    assert _timeout_streak(_hb(now, consecutive_timeouts="五次")) == 0
+    assert _timeout_streak(_hb("not a timestamp", consecutive_timeouts=5)) == 0
+
+
+def test_a_non_timeout_failure_never_gets_the_restart_advice(
+    client, vault_with_cutouts, monkeypatch, tmp_path
+):
+    """素材找不到的時候不該叫人去重啟 watcher。
+
+    連號是 watcher 的健康指標，跟「這一次為什麼失敗」是兩件事。只用 streak 當條件的話，
+    watcher 曾經卡過、而這一次是 `FileNotFoundError`，畫面也會叫他去重啟——那正是這支
+    檔案自己寫過的「硬替不認得的錯誤編一個人話說明，會比原始 traceback 更誤導」。
+    """
+    import json as _json
+    from datetime import datetime, timezone
+
+    import thousand_sunny.routers.packaging as pkg_module
+
+    assert _compose(client, package_rank="1").status_code == 303
+    req = _saved_req(vault_with_cutouts)
+    requested_at = req["requested_at"]
+    state_path = tmp_path / "render-watcher-state.json"
+    monkeypatch.setattr(pkg_module, "_render_watcher_state_path", lambda: state_path)
+    endpoint = "/bridge/packaging/20260723-xieboran/render-status/punch-L1/1"
+    now = datetime.now(timezone.utc).isoformat()
+
+    def _write(last_error: str) -> dict:
+        state_path.write_text(
+            _json.dumps(
+                {
+                    "20260723-xieboran/punch-L1/r1": {
+                        "requested_at": requested_at,
+                        "status": "failed",
+                        "last_error": last_error,
+                    },
+                    "_watchers": {
+                        "*/*/r*": {
+                            "episode_slug": None,
+                            "cut_id": None,
+                            "package_rank": None,
+                            "seen_at": now,
+                            "consecutive_timeouts": 4,
+                        }
+                    },
                 }
-            }
+            ),
+            encoding="utf-8",
         )
-        == 5
+        return client.get(endpoint, params={"requested_at": requested_at}).json()
+
+    material = _write("FileNotFoundError: cutout.png")
+    assert "素材" in material["message"]
+    assert "render_watcher.py" not in (material["error_detail"] or ""), (
+        "素材找不到卻叫人重啟 watcher——連號不該蓋過這一次失敗的真正原因"
     )
+
+    timed_out = _write("subprocess.TimeoutExpired: Command '[...]' timed out after 600 seconds")
+    assert "再按一次不會過" in timed_out["message"]
+    assert "scripts/render_watcher.py" in timed_out["error_detail"]

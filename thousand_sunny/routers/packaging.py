@@ -42,6 +42,7 @@ from shared.background_job import atomic_job_write, job_expired, load_job, new_j
 from shared.config import get_db_path, get_vault_path
 from shared.log import get_logger
 from shared.release_store import ensure_target, get_release, register_release, update_target
+from shared.render_timeout import looks_like_render_timeout
 from shared.schemas.packaging import (
     ApprovalFileV1,
     ApprovalV1,
@@ -83,21 +84,39 @@ _PUBLISH_PREP_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
 # 只翻譯認得出來的訊號，其餘老實說「失敗」並把原文留在可展開的細節裡——
 # 硬替不認得的錯誤編一個人話說明，會比原始 traceback 更誤導。
 def _timeout_streak(state: dict) -> int:
-    """桌機端連續逾時幾次（watcher 寫在心跳上的）。"""
+    """桌機端連續逾時幾次（watcher 寫在心跳上的）。
+
+    只算**還新鮮**的心跳。死掉的 watcher 的 row 沒人刪，而重啟換 scope 會換 heartbeat
+    key、舊 row 原地不動——不濾掉的話，一支卡死的 watcher 留下的連號會永遠掛在畫面上，
+    照著畫面上那句「重啟它」做一百次也清不掉。判準與 `_watcher_covering` 對齊。
+    """
     watchers = state.get("_watchers")
     if not isinstance(watchers, dict):
         return 0
-    counts = [
-        int(row.get("consecutive_timeouts") or 0)
-        for row in watchers.values()
-        if isinstance(row, dict)
-    ]
+    now = datetime.now(timezone.utc)
+    counts: list[int] = []
+    for row in watchers.values():
+        if not isinstance(row, dict):
+            continue
+        try:
+            seen = datetime.fromisoformat(str(row.get("seen_at")))
+        except (TypeError, ValueError):
+            continue
+        if seen.tzinfo is None:
+            seen = seen.replace(tzinfo=timezone.utc)
+        if (now - seen).total_seconds() > _WATCHER_STALE_SEC:
+            continue
+        try:
+            counts.append(int(row.get("consecutive_timeouts") or 0))
+        except (TypeError, ValueError):
+            # 手改壞的 state 不該讓整個 render-status 端點 500。
+            continue
     return max(counts, default=0)
 
 
 def _render_failure_sentence(raw_error: str | None, *, timeout_streak: int = 0) -> str:
     text = raw_error or ""
-    if "TimeoutExpired" in text or "timed out after" in text:
+    if looks_like_render_timeout(text):
         if timeout_streak >= 2:
             # 一次逾時可能是冷啟動；**連續**逾時不是。2026-09-17 蘇予昕 punch-L02
             # 連五次撐到 600 秒，而同一條命令在前景跑 11 秒就出圖——卡住的是那支
@@ -1686,12 +1705,13 @@ async def packaging_render_status(
         # 不是給站在 gate 前面的人判斷用的。前端收進可展開的細節裡。
         error = None
         error_detail = raw_error
-        if status == "failed" and streak >= 2:
+        if status == "failed" and streak >= 2 and looks_like_render_timeout(raw_error):
             # 重啟指令給工程師看，不印在進度條上——但它必須在畫面上拿得到，否則
             # 「要重啟」這句話沒有下一步。
             error_detail = (
-                f"桌機端 render watcher 連續 {streak} 次逾時。停掉那支行程再重起：\n"
-                "  python scripts/render_watcher.py --interval 5\n\n"
+                f"桌機端 render watcher 連續 {streak} 次逾時。停掉目前那支 "
+                "scripts/render_watcher.py 行程再重起"
+                "（開機是由 scripts/start_thousand_sunny.ps1 起的）。\n\n"
                 f"{raw_error or ''}"
             )
         attended = True

@@ -10,6 +10,8 @@
 from __future__ import annotations
 
 import json
+import os
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -674,21 +676,15 @@ def test_a_second_watcher_does_not_erase_the_first():
     assert len(state["_watchers"]) == 2
 
 
-def test_a_timeout_streak_is_counted_on_the_heartbeat(monkeypatch, tmp_path):
-    """連續逾時是**這支行程**的健康指標，不是某一份配方的問題。
+_CHILD_TIMEOUT_STDERR = (
+    "Traceback (most recent call last):\n"
+    '  File "render_request.py", line 101, in _run\n'
+    "subprocess.TimeoutExpired: Command '[...]' timed out after 600 seconds"
+)
 
-    2026-09-17 蘇予昕 punch-L02：同一支 cut 連續五次撐到 600 秒逾時，而同一條命令在
-    前景跑 11 秒就出圖。卡的是那支活了十四小時的 watcher 行程——重啟之後 13 秒就過。
-    """
-    import subprocess as sp
 
-    from scripts import render_watcher as rw
-
-    state_path = tmp_path / "state.json"
-    state: dict = {}
-    rw.record_heartbeat(state, episode_slug=None, cut_id=None, package_rank=None, now="t0")
-
-    job = {
+def _timeout_job() -> dict:
+    return {
         "slug": "ep",
         "cut_id": "punch-L02",
         "package_rank": 1,
@@ -696,41 +692,151 @@ def test_a_timeout_streak_is_counted_on_the_heartbeat(monkeypatch, tmp_path):
         "key": "ep/punch-L02/r1",
         "req": {"requested_at": "t0", "big_text": []},
     }
+
+
+def test_a_child_timeout_counts_even_though_the_watcher_never_sees_TimeoutExpired(
+    monkeypatch, tmp_path
+):
+    """真實事故走的是 returncode 這條路，不是例外那條。
+
+    600 秒的逾時不是 watcher 這一層丟的：`render_request.py` 自己用 `timeout=600` 跑
+    `render_still.py`，而且沒有 try/except 包住它，所以 child 帶著 traceback 以 exit
+    code 1 結束、watcher 的 `subprocess.run` **正常回傳**。只認 `TimeoutExpired` 的話，
+    2026-09-17 蘇予昕 punch-L02 連五次逾時一次都不會被算到，畫面永遠說「再按一次」。
+    """
+    from scripts import render_watcher as rw
+
+    state_path = tmp_path / "state.json"
+    state: dict = {}
+    now = datetime.now(timezone.utc).isoformat()
+    rw.record_heartbeat(state, episode_slug=None, cut_id=None, package_rank=None, now=now)
     monkeypatch.setattr(rw, "find_packaging_dir", lambda *a, **k: tmp_path)
     monkeypatch.setattr(
-        rw.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(sp.TimeoutExpired("x", 600))
+        rw.subprocess,
+        "run",
+        lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr=_CHILD_TIMEOUT_STDERR),
+    )
+
+    rw.render_one(_timeout_job(), state, state_path, None)
+
+    assert rw._timeout_streak(state) == 1, "child 逾時沒被算到——只認例外是不夠的"
+
+
+def test_the_streak_survives_the_heartbeat_at_the_top_of_each_loop(monkeypatch, tmp_path):
+    """真實迴圈是 load_state → record_heartbeat → render。
+
+    心跳每一圈都重寫那筆 row，如果它把剛累加的連號洗掉，計數就永遠停在 1、永遠不會
+    達到 ≥2 的門檻。這條就是在守那個——在同一個 dict 上連呼叫 `render_one` 測不出來。
+    """
+    from scripts import render_watcher as rw
+
+    state_path = tmp_path / "state.json"
+    state: dict = {}
+    monkeypatch.setattr(rw, "find_packaging_dir", lambda *a, **k: tmp_path)
+    monkeypatch.setattr(
+        rw.subprocess,
+        "run",
+        lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr=_CHILD_TIMEOUT_STDERR),
     )
 
     for expected in (1, 2, 3):
-        rw.render_one(job, state, state_path, None)
+        # 每一圈都重新讀檔、重寫心跳，跟 main() 一樣
+        state = load_state(state_path) if state_path.is_file() else state
+        rw.record_heartbeat(
+            state,
+            episode_slug=None,
+            cut_id=None,
+            package_rank=None,
+            now=datetime.now(timezone.utc).isoformat(),
+        )
+        save_state(state_path, state)
+        rw.render_one(_timeout_job(), state, state_path, None)
         assert rw._timeout_streak(state) == expected
 
-    # 跑得完就不是卡住——不管成功失敗，連號歸零
+
+def test_a_run_that_finishes_resets_the_streak(monkeypatch, tmp_path):
+    """跑得完就不是卡住——成功失敗都算。"""
+    from scripts import render_watcher as rw
+
+    state_path = tmp_path / "state.json"
+    state: dict = {}
+    now = datetime.now(timezone.utc).isoformat()
+    rw.record_heartbeat(state, episode_slug=None, cut_id=None, package_rank=None, now=now)
+    monkeypatch.setattr(rw, "find_packaging_dir", lambda *a, **k: tmp_path)
     monkeypatch.setattr(
-        rw.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr="x")
+        rw.subprocess,
+        "run",
+        lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr=_CHILD_TIMEOUT_STDERR),
     )
-    rw.render_one(job, state, state_path, None)
+    rw.render_one(_timeout_job(), state, state_path, None)
+    assert rw._timeout_streak(state) == 1
+
+    monkeypatch.setattr(
+        rw.subprocess,
+        "run",
+        lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr="FileNotFoundError: x"),
+    )
+    rw.render_one(_timeout_job(), state, state_path, None)
+
     assert rw._timeout_streak(state) == 0
 
 
-def test_a_new_process_does_not_inherit_the_old_streak(monkeypatch, tmp_path):
-    """重啟就是為了清掉這個狀態——新行程的心跳不能沿用舊行程的連號。"""
+def test_a_restarted_process_does_not_inherit_the_old_streak(monkeypatch, tmp_path):
+    """重啟就是為了清掉這個狀態。
+
+    身分不能用 pid：Windows 會回收 pid，而事故裡那支 watcher 活了十四小時。用
+    `pid: 999999` 當測資永遠碰不到碰撞，所以測不到真正的風險——這裡改成讓新行程拿到
+    **一模一樣的 pid**，只有 run_id 不同。
+    """
     from scripts import render_watcher as rw
 
+    now = datetime.now(timezone.utc).isoformat()
     state = {
         "_watchers": {
             "*/*/r*": {
                 "episode_slug": None,
                 "cut_id": None,
                 "package_rank": None,
-                "seen_at": "t0",
-                "pid": 999999,
+                "seen_at": now,
+                "pid": os.getpid(),  # 同一個 pid——pid 回收後就是這個樣子
+                "run_id": "a-dead-watcher",
                 "consecutive_timeouts": 5,
-                "last_timeout_at": "t0",
+                "last_timeout_at": now,
             }
         }
     }
 
-    rw.record_heartbeat(state, episode_slug=None, cut_id=None, package_rank=None, now="t1")
+    rw.record_heartbeat(state, episode_slug=None, cut_id=None, package_rank=None, now=now)
 
+    assert rw._timeout_streak(state) == 0
+
+
+def test_the_heartbeat_prunes_watchers_that_stopped_reporting(tmp_path):
+    """死掉的 watcher 的 row 沒人刪，而 Bridge 讀的是所有 row 的最大值。
+
+    重啟換 scope 會換 heartbeat key，舊 row 原地不動——不清掉的話，一支卡死的 watcher
+    留下的連號會永遠掛在畫面上，照著「重啟它」做一百次也清不掉。
+    """
+    from scripts import render_watcher as rw
+
+    stale = (datetime.now(timezone.utc) - timedelta(seconds=rw.WATCHER_STALE_SEC + 60)).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
+    state = {
+        "_watchers": {
+            "ep/punch-L02/r1": {
+                "episode_slug": "ep",
+                "cut_id": "punch-L02",
+                "package_rank": 1,
+                "seen_at": stale,
+                "pid": 4242,
+                "run_id": "a-dead-watcher",
+                "consecutive_timeouts": 5,
+                "last_timeout_at": stale,
+            }
+        }
+    }
+
+    rw.record_heartbeat(state, episode_slug=None, cut_id=None, package_rank=None, now=now)
+
+    assert list(state["_watchers"]) == ["*/*/r*"], "過期的 row 應該被掃掉"
     assert rw._timeout_streak(state) == 0

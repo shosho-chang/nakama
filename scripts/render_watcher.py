@@ -60,6 +60,7 @@ from scripts.packaging_manifest import (  # noqa: E402
     load_manifest,
 )
 from shared.config import get_vault_path  # noqa: E402
+from shared.render_timeout import looks_like_render_timeout  # noqa: E402
 from shared.schemas.packaging import parse_packages  # noqa: E402
 from thousand_sunny.routers.packaging import _load_composition_receipt  # noqa: E402
 
@@ -114,6 +115,30 @@ def save_state(path: Path, state: dict) -> None:
 WATCHER_HEARTBEAT_KEY = "_watchers"
 
 
+#: 這一支行程的身分。**不能用 pid**：Windows 會回收 pid，而事故裡那支 watcher 活了
+#: 十四小時——重啟後拿到同一個 pid 就會繼承舊行程的連號，一上線就被當成「快重啟我」。
+RUN_ID = uuid.uuid4().hex
+
+#: 超過這麼久沒回報就當那支 watcher 不在了。與 Bridge 的 `_WATCHER_STALE_SEC` 對齊。
+WATCHER_STALE_SEC = 120
+
+
+def _is_fresh(row: object, now: str) -> bool:
+    """這一筆心跳還新鮮嗎？看不懂的一律當不新鮮。"""
+    if not isinstance(row, dict):
+        return False
+    try:
+        seen = datetime.fromisoformat(str(row.get("seen_at")))
+        current = datetime.fromisoformat(now)
+    except (TypeError, ValueError):
+        return False
+    if seen.tzinfo is None:
+        seen = seen.replace(tzinfo=timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return 0 <= (current - seen).total_seconds() <= WATCHER_STALE_SEC
+
+
 def heartbeat_key(episode_slug: str | None, cut_id: str | None, package_rank: int | None) -> str:
     return f"{episode_slug or '*'}/{cut_id or '*'}/r{package_rank if package_rank else '*'}"
 
@@ -128,20 +153,27 @@ def record_heartbeat(
         "package_rank": package_rank,
     }
     key = heartbeat_key(episode_slug, cut_id, package_rank)
-    watchers = dict(state.get(WATCHER_HEARTBEAT_KEY) or {})
+    # 死掉的 watcher 的 row 永遠沒人刪，而 Bridge 讀的是所有 row 的最大值——不清掉的
+    # 話，一支卡死的 watcher 留下的連號會永遠掛在畫面上，重啟一百次也清不掉（重啟
+    # 換 scope 還會換 key，舊 row 原地不動）。心跳這一圈順手把過期的掃掉。
+    watchers = {
+        existing_key: row
+        for existing_key, row in (state.get(WATCHER_HEARTBEAT_KEY) or {}).items()
+        if existing_key == key or _is_fresh(row, now)
+    }
     previous = watchers.get(key) or {}
+    same_process = previous.get("run_id") == RUN_ID
     watchers[key] = {
         **scope,
         "seen_at": now,
         "pid": os.getpid(),
+        "run_id": RUN_ID,
         # 連續逾時是**這支行程**健康與否的指標，不是某一份配方的問題——所以記在
         # 心跳上，不是記在工作上。見 `record_render_outcome`。
         "consecutive_timeouts": int(previous.get("consecutive_timeouts") or 0)
-        if previous.get("pid") == os.getpid()
+        if same_process
         else 0,
-        "last_timeout_at": previous.get("last_timeout_at")
-        if previous.get("pid") == os.getpid()
-        else None,
+        "last_timeout_at": previous.get("last_timeout_at") if same_process else None,
     }
     state[WATCHER_HEARTBEAT_KEY] = watchers
     return state
@@ -161,7 +193,7 @@ def record_render_outcome(state: dict, *, timed_out: bool, now: str) -> dict:
     watchers = dict(state.get(WATCHER_HEARTBEAT_KEY) or {})
     changed = {}
     for key, row in watchers.items():
-        if not isinstance(row, dict) or row.get("pid") != os.getpid():
+        if not isinstance(row, dict) or row.get("run_id") != RUN_ID:
             changed[key] = row
             continue
         count = int(row.get("consecutive_timeouts") or 0)
@@ -183,7 +215,7 @@ def _timeout_streak(state: dict) -> int:
         (
             int(row.get("consecutive_timeouts") or 0)
             for row in watchers.values()
-            if isinstance(row, dict) and row.get("pid") == os.getpid()
+            if isinstance(row, dict) and row.get("run_id") == RUN_ID
         ),
         default=0,
     )
@@ -698,6 +730,17 @@ def run_packaging_job(
         return False
 
 
+def _warn_on_timeout_streak(state: dict, log_path: Path | None) -> None:
+    """連續第二次起就喊一聲——一次可能是冷啟動，連續不是。"""
+    streak = _timeout_streak(state)
+    if streak >= 2:
+        _log(
+            f"⚠ 連續第 {streak} 次 render 逾時。同一條命令在前景跑得過的話，"
+            "卡住的是這支 watcher 行程本身——重啟它（2026-09-17 蘇予昕）",
+            log_path,
+        )
+
+
 def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) -> bool:
     slug, cut_id = job["slug"], job["cut_id"]
     packaging_dir = find_packaging_dir(slug, episode_name=job.get("episode"))
@@ -757,17 +800,15 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
             "ok": False,
             "last_error": str(exc)[-500:],
         }
-        record_render_outcome(state, timed_out=isinstance(exc, subprocess.TimeoutExpired), now=now)
+        record_render_outcome(
+            state,
+            timed_out=isinstance(exc, subprocess.TimeoutExpired)
+            or looks_like_render_timeout(str(exc)),
+            now=now,
+        )
         save_state(state_path, state)
         _log(f"FAIL {slug}/{cut_id}: {exc}", log_path)
-        if isinstance(exc, subprocess.TimeoutExpired):
-            streak = _timeout_streak(state)
-            if streak >= 2:
-                _log(
-                    f"⚠ 連續第 {streak} 次 render 逾時。同一條命令在前景跑得過的話，"
-                    "卡住的是這支 watcher 行程本身——重啟它（2026-09-17 蘇予昕）",
-                    log_path,
-                )
+        _warn_on_timeout_streak(state, log_path)
         return False
     tail = (proc.stdout or proc.stderr or "").strip().splitlines()
     for line in tail[-6:]:
@@ -782,10 +823,16 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
         "ok": ok,
         "last_error": None if ok else (proc.stderr or "")[-500:],
     }
-    # 跑完了就不是卡住——不管成功失敗，逾時連號歸零。
-    record_render_outcome(state, timed_out=False, now=now)
+    # 600 秒那個逾時**不是 watcher 這一層丟的**：`render_request.py` 自己用
+    # `timeout=600` 跑 `render_still.py`，而且沒有 try/except 包住它，所以 child 是帶著
+    # traceback 以 exit code 1 結束、`subprocess.run` 正常回傳。只認 `TimeoutExpired`
+    # 的話，2026-09-17 蘇予昕 punch-L02 連五次逾時一次都不會被算到。
+    timed_out = not ok and looks_like_render_timeout(proc.stderr)
+    record_render_outcome(state, timed_out=timed_out, now=now)
     save_state(state_path, state)
     _log(f"{'DONE' if ok else 'FAIL'} {slug}/{cut_id}", log_path)
+    if timed_out:
+        _warn_on_timeout_streak(state, log_path)
     return ok
 
 
