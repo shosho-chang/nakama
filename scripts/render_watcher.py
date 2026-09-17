@@ -243,6 +243,7 @@ def pending_requests(vault: Path, state: dict) -> list[dict]:
         slug = episode_dir.name
         packages_path = episode_dir / "packages.json"
         package_jobs: list[dict] = []
+        cuts_with_recipe: set[str] = set()
         if packages_path.is_file():
             try:
                 packages = json.loads(packages_path.read_text(encoding="utf-8"))
@@ -253,6 +254,7 @@ def pending_requests(vault: Path, state: dict) -> list[dict]:
                     req = package.get("render_recipe")
                     if not req or not req.get("requested_at"):
                         continue
+                    cuts_with_recipe.add(cut["cut_id"])
                     rank = int(package["title_rank"])
                     key = f"{slug}/{cut['cut_id']}/r{rank}"
                     done = (state.get(key) or {}).get("requested_at")
@@ -268,11 +270,9 @@ def pending_requests(vault: Path, state: dict) -> list[dict]:
                             "key": key,
                         }
                     )
-        if package_jobs:
-            out.extend(package_jobs)
-            continue
+        out.extend(package_jobs)
 
-        # Transitional fallback: episodes written before package.render_recipe.
+        # Transitional fallback: cuts written before package.render_recipe.
         approval_path = episode_dir / "approval.json"
         if not approval_path.is_file():
             continue
@@ -283,6 +283,27 @@ def pending_requests(vault: Path, state: dict) -> list[dict]:
         for entry in data.get("approvals", []):
             req = entry.get("render_request")
             if not req or not req.get("requested_at"):
+                continue
+            if entry["cut_id"] in cuts_with_recipe:
+                # 這支 cut 已經走 `package.render_recipe`，不管這一輪有沒有待辦
+                # （做完了、做失敗了都算沒有待辦）。舊路徑不該再接手同一支：
+                #
+                # 1. 它用的是另一個 key（`<slug>/<cut>`，少了 `/r<n>`），所以每按一次
+                #    〈存配方〉，同一支 cut 會被 render **兩次**——package 路徑一次、
+                #    舊路徑一次。log 上的簽名是「兩行 RENDER 相隔 5 秒」（一個 watcher
+                #    interval）：2026-09-17 蘇予昕 punch-L02 的 00:37:33 與 00:47:38 就是
+                #    一對，各跑滿十分鐘才失敗。同一支 cut 四天前的 09-13 09:53:05 與
+                #    10:03:10 也是一對，一樣各十分鐘——這個 bug 不是只燒過一次。
+                # 2. 更糟的是舊路徑不帶 `--package-rank`，於是 `render_request.py`
+                #    走 `req = entry["render_request"]`，再由 `_write_selected_package`
+                #    把那份**舊的 approval 信封整份寫回 package 的 render_recipe**
+                #    ——蓋掉 package 路徑剛解算出來的 geometry 與 rendered_png。
+                #
+                # 判斷要 per-cut，不能 per-episode：同一集裡混著有 recipe 和沒 recipe
+                # 的 cut 是 `attach_packages.py` 現行行為就會產生的形狀（它整支
+                # `cut["packages"] = packages` 換掉，而 spec 缺 `render_spec` 時
+                # `_recipe_from_render_spec` 回 None）。20260805-linzhichen 的
+                # value-L02 現在就是三個 recipe 全 null、approval 還在。
                 continue
             key = f"{slug}/{entry['cut_id']}"
             done = (state.get(key) or {}).get("requested_at")
@@ -781,7 +802,13 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
         "last_error": None,
     }
     save_state(state_path, state)
-    _log(f"RENDER {slug}/{cut_id} 大字={job['req'].get('big_text')} → {packaging_dir}", log_path)
+    # key 要印出來。兩條派工路徑在 log 上本來長得一模一樣（都是 `slug/cut_id`），
+    # 分不出哪一行是 package 路徑、哪一行是舊路徑——2026-09-17 診斷這個 bug 時，
+    # 第一版的結論就因此把因果寫錯了。
+    _log(
+        f"RENDER {job['key']} 大字={job['req'].get('big_text')} → {packaging_dir}",
+        log_path,
+    )
     try:
         proc = subprocess.run(
             [
@@ -819,7 +846,7 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
             now=now,
         )
         save_state(state_path, state)
-        _log(f"FAIL {slug}/{cut_id}: {exc}", log_path)
+        _log(f"FAIL {job['key']}: {exc}", log_path)
         _warn_on_timeout_streak(state, log_path)
         return False
     tail = (proc.stdout or proc.stderr or "").strip().splitlines()
@@ -842,7 +869,7 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
     timed_out = not ok and looks_like_render_timeout(proc.stderr)
     record_render_outcome(state, timed_out=timed_out, now=now)
     save_state(state_path, state)
-    _log(f"{'DONE' if ok else 'FAIL'} {slug}/{cut_id}", log_path)
+    _log(f"{'DONE' if ok else 'FAIL'} {job['key']}", log_path)
     if timed_out:
         _warn_on_timeout_streak(state, log_path)
     return ok
