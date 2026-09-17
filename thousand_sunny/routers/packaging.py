@@ -38,10 +38,17 @@ from starlette.requests import Request
 
 from agents.usopp.publish_timeline import export_matches_plan_record
 from scripts.packaging_manifest import load_manifest
-from shared.background_job import atomic_job_write, job_expired, load_job, new_job
+from shared.background_job import (
+    atomic_job_write,
+    job_expired,
+    job_progress,
+    load_job,
+    new_job,
+)
 from shared.config import get_db_path, get_vault_path
 from shared.log import get_logger
 from shared.release_store import ensure_target, get_release, register_release, update_target
+from shared.render_timeout import looks_like_render_timeout
 from shared.schemas.packaging import (
     ApprovalFileV1,
     ApprovalV1,
@@ -82,9 +89,49 @@ _PUBLISH_PREP_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
 #
 # 只翻譯認得出來的訊號，其餘老實說「失敗」並把原文留在可展開的細節裡——
 # 硬替不認得的錯誤編一個人話說明，會比原始 traceback 更誤導。
-def _render_failure_sentence(raw_error: str | None) -> str:
+def _timeout_streak(state: dict) -> int:
+    """桌機端連續逾時幾次（watcher 寫在心跳上的）。
+
+    只算**還新鮮**的心跳。死掉的 watcher 的 row 沒人刪，而重啟換 scope 會換 heartbeat
+    key、舊 row 原地不動——不濾掉的話，一支卡死的 watcher 留下的連號會永遠掛在畫面上，
+    照著畫面上那句「重啟它」做一百次也清不掉。判準與 `_watcher_covering` 對齊。
+    """
+    watchers = state.get("_watchers")
+    if not isinstance(watchers, dict):
+        return 0
+    now = datetime.now(timezone.utc)
+    counts: list[int] = []
+    for row in watchers.values():
+        if not isinstance(row, dict):
+            continue
+        try:
+            seen = datetime.fromisoformat(str(row.get("seen_at")))
+        except (TypeError, ValueError):
+            continue
+        if seen.tzinfo is None:
+            seen = seen.replace(tzinfo=timezone.utc)
+        if (now - seen).total_seconds() > _WATCHER_STALE_SEC:
+            continue
+        try:
+            counts.append(int(row.get("consecutive_timeouts") or 0))
+        except (TypeError, ValueError):
+            # 手改壞的 state 不該讓整個 render-status 端點 500。
+            continue
+    return max(counts, default=0)
+
+
+def _render_failure_sentence(raw_error: str | None, *, timeout_streak: int = 0) -> str:
     text = raw_error or ""
-    if "TimeoutExpired" in text or "timed out after" in text:
+    if looks_like_render_timeout(text):
+        if timeout_streak >= 2:
+            # 一次逾時可能是冷啟動；**連續**逾時不是。2026-09-17 蘇予昕 punch-L02
+            # 連五次撐到 600 秒，而同一條命令在前景跑 11 秒就出圖——卡住的是那支
+            # 活了十四小時的 watcher 行程。當時這裡叫修修「再按一次就會過」，他按
+            # 了五次都沒過。
+            return (
+                f"封面 render 連續第 {timeout_streak} 次逾時——"
+                "卡住的是桌機端那支 render watcher，再按一次不會過，要把它重啟"
+            )
         return (
             "封面 render 逾時。第一次跑這個版式要先把算圖環境準備好，"
             "通常就是這個原因——再按一次「存配方」就會過"
@@ -1047,6 +1094,24 @@ def _description_state(
     return "missing", None
 
 
+def _description_progress(episode: str, cut_id: str) -> tuple[str | None, int | None]:
+    """這次 description 嘗試從什麼時候開始、上限多久。讀不到就 (None, None)。
+
+    2026-09-17：橫幅只寫「正在產生 Description 草稿」，而頁面每 3 秒 poll 一次卻
+    **只在完成時才重載**——所以那行字從頭到尾動都不動。跑得正常的兩分鐘，跟真的掛掉，
+    在畫面上長得一模一樣。修修因此以為又卡住了。把起跑時刻交出去，讓前端自己走秒。
+    """
+    job = load_job(_description_job_path(episode, cut_id))
+    if job is None:
+        return None, None
+    progress = job_progress(job)
+    if progress is None:
+        return None, None
+    _, limit = progress
+    started = job.get("started_at")
+    return (str(started) if started else None), limit
+
+
 def _episode_dir(episode: str) -> Path:
     configured = os.environ.get("PODCAST_EPISODES_ROOT", "").strip()
     if not configured:
@@ -1653,16 +1718,26 @@ async def packaging_render_status(
             raw_status = "done" if row.get("ok") is True else "failed"
         status = raw_status
         raw_error = str(row.get("last_error") or "")[:2000] or None
+        streak = _timeout_streak(state)
         message = {
             "running": "正在 render 新封面",
             "done": "新封面已完成",
-            "failed": _render_failure_sentence(raw_error),
+            "failed": _render_failure_sentence(raw_error, timeout_streak=streak),
         }[status]
         # 原文留著，但不再直接印在進度條上——2026-09-14 修修看到的是一整段
         # `subprocess.TimeoutExpired: Command '[...]'`，那是給工程師追查用的，
         # 不是給站在 gate 前面的人判斷用的。前端收進可展開的細節裡。
         error = None
         error_detail = raw_error
+        if status == "failed" and streak >= 2 and looks_like_render_timeout(raw_error):
+            # 重啟指令給工程師看，不印在進度條上——但它必須在畫面上拿得到，否則
+            # 「要重啟」這句話沒有下一步。
+            error_detail = (
+                f"桌機端 render watcher 連續 {streak} 次逾時。停掉目前那支 "
+                "scripts/render_watcher.py 行程再重起"
+                "（開機是由 scripts/start_thousand_sunny.ps1 起的）。\n\n"
+                f"{raw_error or ''}"
+            )
         attended = True
 
     thumbnail_url = None
@@ -1756,6 +1831,12 @@ def packaging_board(
             )
             if description_state == "ready":
                 return RedirectResponse(_publish_url(ctx["pkg"].episode, cut), status_code=303)
+    description_started_at = None
+    description_limit_sec = None
+    if description_state == "generating" and cut:
+        description_started_at, description_limit_sec = _description_progress(
+            ctx["pkg"].episode, cut
+        )
     ctx["asset_version"] = _SHOSHO_ASSET_VERSION
     # 剛改完字的那支：改字區保持展開（見 packaging_edit_title 的 redirect 註解）
     ctx["edited_cut"] = edited
@@ -1768,6 +1849,8 @@ def packaging_board(
     ctx["description_pending"] = bool(description_pending)
     ctx["description_state"] = description_state
     ctx["description_error"] = description_error
+    ctx["description_started_at"] = description_started_at
+    ctx["description_limit_sec"] = description_limit_sec
     return _templates.TemplateResponse(request, "packaging_board.html", ctx)
 
 

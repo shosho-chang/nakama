@@ -27,7 +27,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import sys
 import time
 from datetime import datetime, timezone
@@ -43,14 +42,20 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 from PIL import Image  # noqa: E402
 
+from shared.center_card import (  # noqa: E402
+    CARD_H,
+    CARD_W,
+    MIN_LONG_EDGE,
+    MIN_RETENTION,
+    TARGET,
+    crop_to_card,
+    retention,
+)
 from shared.config import get_vault_path  # noqa: E402
 
 CANDIDATE_MARKER = "/center-candidates/"
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 DEFAULT_DOWNLOAD_DIR = Path(os.environ.get("NAKAMA_DOWNLOAD_DIR") or r"E:\\")
-# 候選預覽是 600px 級的浮水印圖；授權原檔動輒 6000px。門檻取封面畫布寬，
-# 低於它就不可能是原檔。
-MIN_LONG_EDGE = 1280
 DOWNLOAD_WINDOW_SEC = 900
 
 
@@ -131,7 +136,13 @@ def newest_download(
 
 
 def verify_licensed_original(path: Path) -> tuple[int, int]:
-    """授權原檔的三道驗證：讀得開、橫式、長邊夠大。"""
+    """授權原檔的四道驗證：讀得開、橫式、長邊夠大、裁進卡片後還留得下重點。
+
+    最後一道**必須在這裡**擋。`install` 接著就把原檔裁成卡片比例了，之後任何人
+    再量都是 1.4901、留存率恆為 1.0——`composition_receipt._assert_center_fits_card`
+    量的正是那個裁完的檔案，所以它在這條路上已經是一句恆真的空話。原圖的比例只有
+    這一刻還看得到。
+    """
     if _is_candidate_preview(str(path)):
         raise CenterFetchError(f"{path} 還在候選池裡——那是浮水印預覽，不是授權檔")
     try:
@@ -145,6 +156,13 @@ def verify_licensed_original(path: Path) -> tuple[int, int]:
         raise CenterFetchError(
             f"{path.name} 長邊只有 {max(width, height)}px，低於 {MIN_LONG_EDGE}"
             "——這看起來還是預覽圖，不是授權原檔"
+        )
+    kept = retention(width, height)
+    if kept < MIN_RETENTION:
+        raise CenterFetchError(
+            f"{path.name}（{width}×{height}，{width / height:.2f}:1）裁進 "
+            f"{TARGET:.2f}:1 的卡片只留得下 {kept:.0%}，低於 {MIN_RETENTION:.0%}"
+            "——換一張比例接近的素材，不要靠裁切硬過。"
         )
     return width, height
 
@@ -197,9 +215,19 @@ def install(
             "不把來歷不明的素材放進成品線"
         )
 
-    target_name = f"center-{cut_id}-r{package_rank}{source_file.suffix.lower()}"
+    # 裁到卡片比例再縮，不要把授權原檔原封不動丟進合成——6000×4000 的 JPEG 會讓
+    # `render_still.py` 的 Chrome 撐到 600 秒逾時（2026-09-17 蘇予昕 punch-L02），
+    # 而且 `object-fit: cover` 本來就會從短邊硬裁掉挑好的那一塊。
+    # 一律寫成 PNG，跟 agent 路徑（`install_center_asset`）同一個檔名慣例。沿用來源
+    # 副檔名會留兩個洞：`.webp` 進了合成之後 `thumbnail_worker._to_data_url` 只認得
+    # png/jpg/jpeg，其餘一律 `application/octet-stream`，Chrome 直接解不開；而 `--from`
+    # 指到沒有副檔名的檔時，`Image.save` 會丟 `ValueError` 而不是這支腳本的停下來訊息。
+    # 寫 PNG 一次解決兩個，順帶避開 JPEG 重新編碼的畫質損失。
+    target_name = f"center-{cut_id}-r{package_rank}.png"
     episode_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source_file, episode_dir / target_name)
+    with Image.open(source_file) as original:
+        card, _box = crop_to_card(original.convert("RGB"))
+    card.save(episode_dir / target_name)
     asset = f"Attachments/packaging/{episode_slug}/{target_name}"
     requested_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -242,7 +270,7 @@ def install(
 
     return {
         "asset": asset,
-        "size": f"{width}×{height}",
+        "size": f"{width}×{height} → {CARD_W}×{CARD_H}",
         "replaced": previous,
         "requested_at": requested_at,
         "provenance": provenance,

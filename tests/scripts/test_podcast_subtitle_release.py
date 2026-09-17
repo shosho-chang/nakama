@@ -1552,3 +1552,33 @@ def test_provider_transcript_and_segments_must_agree(tmp_path: Path) -> None:
 
     with pytest.raises(release.SubtitleReleaseError, match="transcript and segments disagree"):
         _run_both_families(tmp_path, plan_path, inconsistent_provider)
+
+
+def test_clip_duration_is_read_from_the_clip_own_header(tmp_path: Path) -> None:
+    clip = tmp_path / "clip.wav"
+    clip.write_bytes(_pcm_wav(12_120))
+    assert release._clip_duration_ms(clip) == 12_120
+
+
+def test_aligner_overshoot_within_one_frame_is_clamped_to_the_clip_end() -> None:
+    """80ms 量化的對齊器碰上非整除的 clip 長度，末段一定進位出界。
+
+    20260722 李海碩 cue-1953：clip 12120ms、Qwen 回報 12160ms，被下游 2ms 容差
+    擋掉整條線。片段不可能結束在音檔結束之後，所以夾回 clip 尾端。
+    """
+    assert release._clamped_segment_end_ms(12_160, 12_120) == 12_120
+    assert release._clamped_segment_end_ms(12_120, 12_120) == 12_120
+    assert release._clamped_segment_end_ms(11_040, 12_120) == 11_040
+
+
+def test_gross_overshoot_is_left_alone_so_the_validator_still_fails_closed() -> None:
+    """超過一幀等級的溢出代表單位或位移算錯了，不能靜默壓到結尾。"""
+    assert release._clamped_segment_end_ms(12_400, 12_120) == 12_400
+    assert release._clamped_segment_end_ms(12_120_000, 12_120) == 12_120_000
+
+
+def test_clamped_segment_end_survives_the_evidence_boundary_check() -> None:
+    """夾過之後要真的過得了 `end_ms > clip_end - clip_start + 2` 那一關。"""
+    clip_start, clip_end = 3_048_340, 3_060_460
+    duration = clip_end - clip_start
+    assert release._clamped_segment_end_ms(12_160, duration) <= duration + 2
