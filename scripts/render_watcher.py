@@ -290,8 +290,10 @@ def pending_requests(vault: Path, state: dict) -> list[dict]:
                 #
                 # 1. 它用的是另一個 key（`<slug>/<cut>`，少了 `/r<n>`），所以每按一次
                 #    〈存配方〉，同一支 cut 會被 render **兩次**——package 路徑一次、
-                #    舊路徑一次，各燒十分鐘。2026-09-17 蘇予昕 punch-L02 的 log 上
-                #    00:29:21 與 00:29:27 兩條就是這麼來的。
+                #    舊路徑一次。log 上的簽名是「兩行 RENDER 相隔 5 秒」（一個 watcher
+                #    interval）：2026-09-17 蘇予昕 punch-L02 的 00:37:33 與 00:47:38 就是
+                #    一對，各跑滿十分鐘才失敗。同一支 cut 四天前的 09-13 09:53:05 與
+                #    10:03:10 也是一對，一樣各十分鐘——這個 bug 不是只燒過一次。
                 # 2. 更糟的是舊路徑不帶 `--package-rank`，於是 `render_request.py`
                 #    走 `req = entry["render_request"]`，再由 `_write_selected_package`
                 #    把那份**舊的 approval 信封整份寫回 package 的 render_recipe**
@@ -800,7 +802,13 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
         "last_error": None,
     }
     save_state(state_path, state)
-    _log(f"RENDER {slug}/{cut_id} 大字={job['req'].get('big_text')} → {packaging_dir}", log_path)
+    # key 要印出來。兩條派工路徑在 log 上本來長得一模一樣（都是 `slug/cut_id`），
+    # 分不出哪一行是 package 路徑、哪一行是舊路徑——2026-09-17 診斷這個 bug 時，
+    # 第一版的結論就因此把因果寫錯了。
+    _log(
+        f"RENDER {job['key']} 大字={job['req'].get('big_text')} → {packaging_dir}",
+        log_path,
+    )
     try:
         proc = subprocess.run(
             [
@@ -838,7 +846,7 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
             now=now,
         )
         save_state(state_path, state)
-        _log(f"FAIL {slug}/{cut_id}: {exc}", log_path)
+        _log(f"FAIL {job['key']}: {exc}", log_path)
         _warn_on_timeout_streak(state, log_path)
         return False
     tail = (proc.stdout or proc.stderr or "").strip().splitlines()
@@ -861,7 +869,7 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
     timed_out = not ok and looks_like_render_timeout(proc.stderr)
     record_render_outcome(state, timed_out=timed_out, now=now)
     save_state(state_path, state)
-    _log(f"{'DONE' if ok else 'FAIL'} {slug}/{cut_id}", log_path)
+    _log(f"{'DONE' if ok else 'FAIL'} {job['key']}", log_path)
     if timed_out:
         _warn_on_timeout_streak(state, log_path)
     return ok
