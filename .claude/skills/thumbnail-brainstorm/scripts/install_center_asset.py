@@ -21,9 +21,17 @@ from pathlib import Path
 
 from PIL import Image
 
-CARD_W, CARD_H = 1356, 910
-TARGET = CARD_W / CARD_H
-MIN_LONG_EDGE = 1280
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+
+from shared.center_card import (  # noqa: E402
+    CARD_H,
+    CARD_W,
+    MIN_LONG_EDGE,
+    MIN_RETENTION,
+    TARGET,
+    crop_to_card,
+    retention,
+)
 
 
 def install(
@@ -46,20 +54,19 @@ def install(
                 f"{src.name} 長邊只有 {max(width, height)}px，低於 {MIN_LONG_EDGE}"
                 "——這看起來還是浮水印預覽，不是授權原檔"
             )
-        ratio = width / height
-        if ratio > TARGET:  # 太寬 → 裁寬
-            new_w = round(height * TARGET)
-            x0 = (
-                0
-                if anchor == "left"
-                else (width - new_w if anchor == "right" else (width - new_w) // 2)
+        # 這一刻是最後一次看得到原圖比例。下一行就裁成卡片比例了，之後任何人再量
+        # 都是 1.4901、留存率恆為 1.0——`composition_receipt._assert_center_fits_card`
+        # 量的正是那個裁完的檔案，所以它在這條路上早就是一句恆真的空話。
+        # `anchor` 只能挪動裁切窗的位置，救不了「窗本身就裝不下重點」。
+        kept = retention(width, height)
+        if kept < MIN_RETENTION:
+            raise SystemExit(
+                f"{src.name}（{width}x{height}，{width / height:.2f}:1）裁進 "
+                f"{TARGET:.2f}:1 的卡片只留得下 {kept:.0%}，低於 {MIN_RETENTION:.0%}"
+                "——換一張比例接近的素材，不要靠裁切硬過。"
             )
-            box = (x0, 0, x0 + new_w, height)
-        else:  # 太高 → 裁高
-            new_h = round(width / TARGET)
-            y0 = 0 if anchor == "top" else (height - new_h) // 2
-            box = (0, y0, width, y0 + new_h)
-        card = image.crop(box).resize((CARD_W, CARD_H), Image.LANCZOS)
+        ratio = width / height
+        card, box = crop_to_card(image, anchor=anchor)
 
     name = f"center-{cut_id}-r{rank}.png"
     vault_dir = vault_root / "Attachments" / "packaging" / episode_slug
@@ -92,7 +99,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
     from shared.config import get_vault_path
 
     install(
