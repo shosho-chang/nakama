@@ -1930,6 +1930,66 @@ def test_description_generation_status_is_visible(client, monkeypatch, tmp_path)
     assert response.status_code == 200
     assert "正在產生 Description 草稿" in response.text
     assert "pollDescription" in response.text
+    # 等待要有刻度。頁面每 3 秒 poll 但只在完成時重載，所以橫幅那行字自己不會動——
+    # 沒有這兩個 data 屬性，前端的計秒器就沒有起算點，正常跑兩分鐘會長得跟掛掉一樣。
+    assert 'data-limit-sec="900"' in response.text
+    assert "data-started-at=" in response.text
+    # 釘元素，不要釘 "description-elapsed"——同名的 CSS 規則永遠在頁面裡，那樣斷言恆真。
+    assert 'id="description-elapsed"' in response.text
+
+
+def test_the_banner_says_no_number_at_all_when_the_receipt_cannot_be_read(
+    client, monkeypatch, tmp_path
+):
+    """收據的時間讀不出來時，橫幅照常出現，但**不准掰一個秒數**。
+
+    「還要多久」一旦不準，比不說更糟——修修會照著那個數字決定要不要再等。
+    """
+    import json
+
+    import thousand_sunny.routers.packaging as pkg_module
+    from shared.background_job import new_job
+
+    monkeypatch.setenv("NAKAMA_DATA_DIR", str(tmp_path / "data"))
+    client.post(
+        "/bridge/packaging/20260723-xieboran/approve",
+        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
+        follow_redirects=False,
+    )
+    monkeypatch.setattr(
+        pkg_module,
+        "get_release",
+        lambda episode, cut_id: {
+            "targets": [
+                {
+                    "id": 42,
+                    "platform": "youtube",
+                    "status": "draft",
+                    "description": "",
+                    "error": "DESCRIPTION_DRAFT_GENERATING",
+                }
+            ]
+        },
+    )
+    job_path = pkg_module._description_job_path("20260723 謝伯讓", "punch-L1")
+    job = new_job(
+        status="generating",
+        timeout_seconds=900,
+        episode="20260723 謝伯讓",
+        cut_id="punch-L1",
+        target_id=42,
+    )
+    # deadline 還在未來（所以不算過期、仍是 generating），但起跑時刻被手改壞了。
+    job["started_at"] = "not-a-timestamp"
+    job_path.parent.mkdir(parents=True, exist_ok=True)
+    job_path.write_text(json.dumps(job), encoding="utf-8")
+
+    response = client.get("/bridge/packaging/20260723-xieboran?cut=punch-L1&description_pending=1")
+
+    assert response.status_code == 200
+    assert "正在產生 Description 草稿" in response.text
+    assert 'id="description-elapsed"' not in response.text
+    assert "data-started-at=" not in response.text
 
 
 _PROVENANCE = {
