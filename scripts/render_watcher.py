@@ -119,12 +119,16 @@ WATCHER_HEARTBEAT_KEY = "_watchers"
 #: 十四小時——重啟後拿到同一個 pid 就會繼承舊行程的連號，一上線就被當成「快重啟我」。
 RUN_ID = uuid.uuid4().hex
 
-#: 超過這麼久沒回報就當那支 watcher 不在了。與 Bridge 的 `_WATCHER_STALE_SEC` 對齊。
-WATCHER_STALE_SEC = 120
+#: 心跳保留多久。**這不是「進度條該不該動」的那個 120 秒**——那是顯示問題，判錯的
+#: 成本是零；這裡授權的是**刪除**，判錯會弄丟一支還活著的 watcher 的連號。一支卡在
+#: 600 秒 render 裡的 watcher 是活的、只是不新鮮，兩者分不出來，所以這個 TTL 取得
+#: 遠比 render 時間長。它現在唯一的工作是不要讓 state 檔無限長大——讀取端的過期
+#: 過濾在 Bridge 那邊已經做了。
+WATCHER_ROW_TTL_SEC = 6 * 3600
 
 
-def _is_fresh(row: object, now: str) -> bool:
-    """這一筆心跳還新鮮嗎？看不懂的一律當不新鮮。"""
+def _within_ttl(row: object, now: str) -> bool:
+    """這一筆心跳還在保留期內嗎？看不懂的一律當過期。"""
     if not isinstance(row, dict):
         return False
     try:
@@ -136,7 +140,7 @@ def _is_fresh(row: object, now: str) -> bool:
         seen = seen.replace(tzinfo=timezone.utc)
     if current.tzinfo is None:
         current = current.replace(tzinfo=timezone.utc)
-    return 0 <= (current - seen).total_seconds() <= WATCHER_STALE_SEC
+    return 0 <= (current - seen).total_seconds() <= WATCHER_ROW_TTL_SEC
 
 
 def heartbeat_key(episode_slug: str | None, cut_id: str | None, package_rank: int | None) -> str:
@@ -159,7 +163,7 @@ def record_heartbeat(
     watchers = {
         existing_key: row
         for existing_key, row in (state.get(WATCHER_HEARTBEAT_KEY) or {}).items()
-        if existing_key == key or _is_fresh(row, now)
+        if existing_key == key or _within_ttl(row, now)
     }
     previous = watchers.get(key) or {}
     same_process = previous.get("run_id") == RUN_ID
@@ -187,6 +191,9 @@ def record_render_outcome(state: dict, *, timed_out: bool, now: str) -> dict:
     行程本身——重啟之後 13 秒就過。
 
     當時 gate 上顯示的是「第一次跑這個版式要先把算圖環境準備好⋯再按一次就會過」。
+
+    `last_timeout_at` 目前**只給人看 state 檔用，沒有任何程式讀它**——留著當鑑識
+    欄位，不要當成有語意的契約去依賴。
     修修按了五次都沒過。一次逾時確實可能是冷啟動，**連續逾時不是**——那句話要換掉，
     而畫面要換掉它就得先知道連續了幾次。
     """
@@ -199,6 +206,11 @@ def record_render_outcome(state: dict, *, timed_out: bool, now: str) -> dict:
         count = int(row.get("consecutive_timeouts") or 0)
         changed[key] = {
             **row,
+            # 心跳寫在迴圈開頭，接著 render 可以卡滿 600 秒——等這裡把結果寫回去時，
+            # 那筆 `seen_at` 已經是十分鐘前的，Bridge 的過期過濾會把**正在出事的這支
+            # watcher 自己**濾掉，連號讀出來是 0，畫面照舊說「再按一次就會過」。
+            # 剛寫完一輪結果，本來就是這支行程最近一次證明自己還活著的時刻。
+            "seen_at": now,
             "consecutive_timeouts": count + 1 if timed_out else 0,
             "last_timeout_at": now if timed_out else None,
         }

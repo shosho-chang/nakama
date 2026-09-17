@@ -819,7 +819,8 @@ def test_the_heartbeat_prunes_watchers_that_stopped_reporting(tmp_path):
     """
     from scripts import render_watcher as rw
 
-    stale = (datetime.now(timezone.utc) - timedelta(seconds=rw.WATCHER_STALE_SEC + 60)).isoformat()
+    long_gone = datetime.now(timezone.utc) - timedelta(seconds=rw.WATCHER_ROW_TTL_SEC + 60)
+    stale = long_gone.isoformat()
     now = datetime.now(timezone.utc).isoformat()
     state = {
         "_watchers": {
@@ -840,3 +841,72 @@ def test_the_heartbeat_prunes_watchers_that_stopped_reporting(tmp_path):
 
     assert list(state["_watchers"]) == ["*/*/r*"], "過期的 row 應該被掃掉"
     assert rw._timeout_streak(state) == 0
+
+
+def test_the_bridge_still_reads_the_streak_after_a_render_longer_than_the_stale_window():
+    """這是唯一一條把 watcher 端跟 Bridge 端接起來驗的測試，其他都只驗半邊。
+
+    心跳寫在每一圈開頭，接著 render 可以卡滿 600 秒才逾時。Bridge 只信 120 秒內的
+    心跳——所以「正在出事的那支 watcher」的心跳，在修修看到錯誤訊息的那一刻**必然**
+    是過期的。少了 `record_render_outcome` 那行 seen_at，watcher 這邊數到 5，Bridge
+    那邊每次都讀成 0，畫面照舊對他說「再按一次就會過」，按五次也還是那句。
+    """
+    from scripts import render_watcher as rw
+    from thousand_sunny.routers import packaging as bridge
+
+    started = datetime.now(timezone.utc) - timedelta(seconds=600)
+    finished = datetime.now(timezone.utc)
+    assert 600 > bridge._WATCHER_STALE_SEC, "前提：render 可以跑得比 Bridge 的新鮮度窗口久"
+
+    state: dict = {}
+    for _ in range(3):
+        # 一圈 = 開頭寫心跳，然後 render 卡滿十分鐘才逾時。
+        rw.record_heartbeat(
+            state,
+            episode_slug="ep",
+            cut_id="punch-L02",
+            package_rank=1,
+            now=started.isoformat(),
+        )
+        rw.record_render_outcome(state, timed_out=True, now=finished.isoformat())
+
+    assert rw._timeout_streak(state) == 3, "watcher 自己要數得對"
+    assert bridge._timeout_streak(state) == 3, "Bridge 也要讀得到同一個數字"
+    assert bridge._watcher_covering(state, "ep", "punch-L02", 1) is not None
+    assert "連續第 3 次" in bridge._render_failure_sentence(
+        "TimeoutExpired", timeout_streak=bridge._timeout_streak(state)
+    )
+
+
+def test_a_watcher_stuck_inside_a_long_render_does_not_get_pruned_by_another_watcher():
+    """卡在 600 秒 render 裡的 watcher 是**活的**，只是不新鮮——這兩件事分不出來。
+
+    prune 授權的是刪除，判錯會弄掉一支還在跑的 watcher 的連號，於是連號永遠回到 1、
+    永遠湊不滿兩次、那句「重啟它」永遠不會出現。所以保留期不能跟 Bridge 那個「進度條
+    該不該動」的 120 秒共用同一個數字——那邊判錯只是顯示問題，成本是零。
+    """
+    from scripts import render_watcher as rw
+
+    mid_render = (datetime.now(timezone.utc) - timedelta(seconds=600)).isoformat()
+    now = datetime.now(timezone.utc).isoformat()
+    state = {
+        "_watchers": {
+            "ep/punch-L02/r1": {
+                "episode_slug": "ep",
+                "cut_id": "punch-L02",
+                "package_rank": 1,
+                "seen_at": mid_render,
+                "pid": 4242,
+                "run_id": "still-rendering",
+                "consecutive_timeouts": 1,
+                "last_timeout_at": mid_render,
+            }
+        }
+    }
+
+    # 另一支 watcher 起來了，寫它自己的心跳——不可以順手把上面那支掃掉。
+    rw.record_heartbeat(state, episode_slug=None, cut_id=None, package_rank=None, now=now)
+
+    survivor = state["_watchers"].get("ep/punch-L02/r1")
+    assert survivor is not None, "還在跑的 watcher 不該被掃掉"
+    assert survivor["consecutive_timeouts"] == 1, "它累積的連號要原封不動留著"
