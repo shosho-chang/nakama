@@ -57,6 +57,13 @@
   <div class="pkg-release-pending" role="status" aria-live="polite">
     <strong>正在產生 Description 草稿</strong>
     <span>使用 subscription LLM；完成後會進入可手動修改的 Publish review，不會自動核准或上傳。</span>
+    {%- if description_started_at and description_limit_sec %}
+    {#- 等待要有刻度：這行字不動的話，正常跑兩分鐘跟真的掛掉長得一模一樣。 -#}
+    <span class="pkg-description-elapsed"
+          id="description-elapsed"
+          data-started-at="{{ description_started_at }}"
+          data-limit-sec="{{ description_limit_sec }}">已經跑了 －－ 秒</span>
+    {%- endif %}
   </div>
   {% elif description_pending and description_state == 'interrupted' %}
   <div class="pkg-description-interrupted" role="alert">
@@ -740,6 +747,8 @@
   }
   .pkg-release-pending { display: grid; gap: var(--sho-s-1); border-left: 3px solid var(--sho-accent); background: var(--sho-accent-soft); padding: var(--sho-s-3) var(--sho-s-4); }
   .pkg-release-pending span { color: var(--sho-text-2); }
+  /* 每秒重寫的數字用等寬字面，否則 1 跟 8 不等寬，整行會左右抖。 */
+  .pkg-description-elapsed { font-variant-numeric: tabular-nums; }
   .pkg-description-interrupted { display: grid; gap: var(--sho-s-2); border-left: 3px solid var(--sho-error); background: var(--sho-bg-2); padding: var(--sho-s-3) var(--sho-s-4); }
   .pkg-description-interrupted span, .pkg-approve-error { color: var(--sho-error); }
   .pkg-hint { margin: 0 0 var(--sho-s-4); }
@@ -1768,6 +1777,30 @@
     window.setTimeout(pollDescription, 3000);
   };
   window.setTimeout(pollDescription, 3000);
+
+  // 秒數要自己走。頁面每 3 秒 poll 一次，但**只在完成時才重載**——沒有這段的話那行字
+  // 從頭到尾不動，修修看到的就是一個沒有刻度的等待。
+  const elapsedEl = document.getElementById("description-elapsed");
+  if (elapsedEl) {
+    const startedAt = Date.parse(elapsedEl.dataset.startedAt);
+    const limitSec = Number(elapsedEl.dataset.limitSec);
+    if (Number.isFinite(startedAt) && Number.isFinite(limitSec) && limitSec > 0) {
+      const limitLabel =
+        limitSec % 60 === 0 ? `${limitSec / 60} 分鐘` : `${limitSec} 秒`;
+      const tick = () => {
+        const elapsed = Math.max(0, Math.round((Date.now() - startedAt) / 1000));
+        const shown =
+          elapsed < 60
+            ? `${elapsed} 秒`
+            : `${Math.floor(elapsed / 60)} 分 ${String(elapsed % 60).padStart(2, "0")} 秒`;
+        // limitLabel 後面不留空格：中文的「分鐘」和「會」之間插空格是排版錯誤。
+        elapsedEl.textContent =
+          `已經跑了 ${shown} · 超過 ${limitLabel}會自動停下來，讓你重試`;
+      };
+      tick();
+      window.setInterval(tick, 1000);
+    }
+  }
 </script>
 {% endif %}
 </body>

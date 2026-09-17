@@ -38,7 +38,13 @@ from starlette.requests import Request
 
 from agents.usopp.publish_timeline import export_matches_plan_record
 from scripts.packaging_manifest import load_manifest
-from shared.background_job import atomic_job_write, job_expired, load_job, new_job
+from shared.background_job import (
+    atomic_job_write,
+    job_expired,
+    job_progress,
+    load_job,
+    new_job,
+)
 from shared.config import get_db_path, get_vault_path
 from shared.log import get_logger
 from shared.release_store import ensure_target, get_release, register_release, update_target
@@ -1088,6 +1094,24 @@ def _description_state(
     return "missing", None
 
 
+def _description_progress(episode: str, cut_id: str) -> tuple[str | None, int | None]:
+    """這次 description 嘗試從什麼時候開始、上限多久。讀不到就 (None, None)。
+
+    2026-09-17：橫幅只寫「正在產生 Description 草稿」，而頁面每 3 秒 poll 一次卻
+    **只在完成時才重載**——所以那行字從頭到尾動都不動。跑得正常的兩分鐘，跟真的掛掉，
+    在畫面上長得一模一樣。修修因此以為又卡住了。把起跑時刻交出去，讓前端自己走秒。
+    """
+    job = load_job(_description_job_path(episode, cut_id))
+    if job is None:
+        return None, None
+    progress = job_progress(job)
+    if progress is None:
+        return None, None
+    _, limit = progress
+    started = job.get("started_at")
+    return (str(started) if started else None), limit
+
+
 def _episode_dir(episode: str) -> Path:
     configured = os.environ.get("PODCAST_EPISODES_ROOT", "").strip()
     if not configured:
@@ -1807,6 +1831,12 @@ def packaging_board(
             )
             if description_state == "ready":
                 return RedirectResponse(_publish_url(ctx["pkg"].episode, cut), status_code=303)
+    description_started_at = None
+    description_limit_sec = None
+    if description_state == "generating" and cut:
+        description_started_at, description_limit_sec = _description_progress(
+            ctx["pkg"].episode, cut
+        )
     ctx["asset_version"] = _SHOSHO_ASSET_VERSION
     # 剛改完字的那支：改字區保持展開（見 packaging_edit_title 的 redirect 註解）
     ctx["edited_cut"] = edited
@@ -1819,6 +1849,8 @@ def packaging_board(
     ctx["description_pending"] = bool(description_pending)
     ctx["description_state"] = description_state
     ctx["description_error"] = description_error
+    ctx["description_started_at"] = description_started_at
+    ctx["description_limit_sec"] = description_limit_sec
     return _templates.TemplateResponse(request, "packaging_board.html", ctx)
 
 

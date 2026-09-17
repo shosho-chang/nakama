@@ -51,3 +51,24 @@ def job_expired(payload: dict, *, now: datetime | None = None) -> bool:
     if deadline.tzinfo is None:
         deadline = deadline.replace(tzinfo=timezone.utc)
     return (now or datetime.now(timezone.utc)) >= deadline
+
+
+def job_progress(payload: dict, *, now: datetime | None = None) -> tuple[int, int] | None:
+    """(已經跑了幾秒, 這次嘗試的上限幾秒)。讀不出時間就回 None。
+
+    畫面寧可不說，也不要說一個算錯的秒數——「還要多久」這種話一旦不準，比不說更糟。
+    """
+    try:
+        started = datetime.fromisoformat(str(payload["started_at"]))
+        deadline = datetime.fromisoformat(str(payload["deadline_at"]))
+    except (KeyError, TypeError, ValueError):
+        return None
+    if started.tzinfo is None:
+        started = started.replace(tzinfo=timezone.utc)
+    if deadline.tzinfo is None:
+        deadline = deadline.replace(tzinfo=timezone.utc)
+    limit = round((deadline - started).total_seconds())
+    if limit <= 0:
+        return None
+    elapsed = round(((now or datetime.now(timezone.utc)) - started).total_seconds())
+    return max(elapsed, 0), limit
