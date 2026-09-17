@@ -2942,3 +2942,45 @@ def test_title_pool_is_absent_when_the_desktop_never_wrote_a_trace(client):
     body = client.get("/bridge/packaging/20260723-xieboran").text
 
     assert "沒進前 5 名的候選" not in body
+
+
+def test_a_repeated_timeout_stops_telling_him_to_press_again():
+    """一次逾時是冷啟動，連續逾時不是。
+
+    2026-09-17 蘇予昕 punch-L02：連續五次撐到 600 秒逾時，而同一條命令在前景跑 11 秒
+    就出圖——卡住的是那支活了十四小時的 watcher 行程，重啟之後 13 秒就過。當時 gate 上
+    寫的是「再按一次「存配方」就會過」，修修按了五次都沒過。那句話在連續逾時的情況下
+    是錯的建議，不只是沒幫上忙。
+    """
+    from thousand_sunny.routers.packaging import _render_failure_sentence
+
+    raw = "subprocess.TimeoutExpired: Command '[...]' timed out after 600 seconds"
+
+    first = _render_failure_sentence(raw, timeout_streak=1)
+    assert "再按一次" in first, "第一次逾時仍然可能只是冷啟動"
+
+    repeated = _render_failure_sentence(raw, timeout_streak=4)
+    assert "再按一次不會過" in repeated
+    assert "watcher" in repeated
+    assert "重啟" in repeated
+    for machine in ("Traceback", "subprocess", "TimeoutExpired", ".py"):
+        assert machine not in repeated
+
+
+def test_timeout_streak_is_read_from_the_watcher_heartbeat():
+    from thousand_sunny.routers.packaging import _timeout_streak
+
+    assert _timeout_streak({}) == 0
+    assert _timeout_streak({"_watchers": "not a dict"}) == 0
+    assert _timeout_streak({"_watchers": {"*/*/r*": {"pid": 1}}}) == 0
+    assert (
+        _timeout_streak(
+            {
+                "_watchers": {
+                    "a": {"pid": 1, "consecutive_timeouts": 2},
+                    "b": {"pid": 2, "consecutive_timeouts": 5},
+                }
+            }
+        )
+        == 5
+    )

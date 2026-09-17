@@ -672,3 +672,65 @@ def test_a_second_watcher_does_not_erase_the_first():
         )
 
     assert len(state["_watchers"]) == 2
+
+
+def test_a_timeout_streak_is_counted_on_the_heartbeat(monkeypatch, tmp_path):
+    """連續逾時是**這支行程**的健康指標，不是某一份配方的問題。
+
+    2026-09-17 蘇予昕 punch-L02：同一支 cut 連續五次撐到 600 秒逾時，而同一條命令在
+    前景跑 11 秒就出圖。卡的是那支活了十四小時的 watcher 行程——重啟之後 13 秒就過。
+    """
+    import subprocess as sp
+
+    from scripts import render_watcher as rw
+
+    state_path = tmp_path / "state.json"
+    state: dict = {}
+    rw.record_heartbeat(state, episode_slug=None, cut_id=None, package_rank=None, now="t0")
+
+    job = {
+        "slug": "ep",
+        "cut_id": "punch-L02",
+        "package_rank": 1,
+        "episode": "ep",
+        "key": "ep/punch-L02/r1",
+        "req": {"requested_at": "t0", "big_text": []},
+    }
+    monkeypatch.setattr(rw, "find_packaging_dir", lambda *a, **k: tmp_path)
+    monkeypatch.setattr(
+        rw.subprocess, "run", lambda *a, **k: (_ for _ in ()).throw(sp.TimeoutExpired("x", 600))
+    )
+
+    for expected in (1, 2, 3):
+        rw.render_one(job, state, state_path, None)
+        assert rw._timeout_streak(state) == expected
+
+    # 跑得完就不是卡住——不管成功失敗，連號歸零
+    monkeypatch.setattr(
+        rw.subprocess, "run", lambda *a, **k: SimpleNamespace(returncode=1, stdout="", stderr="x")
+    )
+    rw.render_one(job, state, state_path, None)
+    assert rw._timeout_streak(state) == 0
+
+
+def test_a_new_process_does_not_inherit_the_old_streak(monkeypatch, tmp_path):
+    """重啟就是為了清掉這個狀態——新行程的心跳不能沿用舊行程的連號。"""
+    from scripts import render_watcher as rw
+
+    state = {
+        "_watchers": {
+            "*/*/r*": {
+                "episode_slug": None,
+                "cut_id": None,
+                "package_rank": None,
+                "seen_at": "t0",
+                "pid": 999999,
+                "consecutive_timeouts": 5,
+                "last_timeout_at": "t0",
+            }
+        }
+    }
+
+    rw.record_heartbeat(state, episode_slug=None, cut_id=None, package_rank=None, now="t1")
+
+    assert rw._timeout_streak(state) == 0

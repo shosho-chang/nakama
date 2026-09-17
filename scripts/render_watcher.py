@@ -114,6 +114,10 @@ def save_state(path: Path, state: dict) -> None:
 WATCHER_HEARTBEAT_KEY = "_watchers"
 
 
+def heartbeat_key(episode_slug: str | None, cut_id: str | None, package_rank: int | None) -> str:
+    return f"{episode_slug or '*'}/{cut_id or '*'}/r{package_rank if package_rank else '*'}"
+
+
 def record_heartbeat(
     state: dict, *, episode_slug: str | None, cut_id: str | None, package_rank: int | None, now: str
 ) -> dict:
@@ -123,11 +127,66 @@ def record_heartbeat(
         "cut_id": cut_id,
         "package_rank": package_rank,
     }
-    key = f"{episode_slug or '*'}/{cut_id or '*'}/r{package_rank if package_rank else '*'}"
+    key = heartbeat_key(episode_slug, cut_id, package_rank)
     watchers = dict(state.get(WATCHER_HEARTBEAT_KEY) or {})
-    watchers[key] = {**scope, "seen_at": now, "pid": os.getpid()}
+    previous = watchers.get(key) or {}
+    watchers[key] = {
+        **scope,
+        "seen_at": now,
+        "pid": os.getpid(),
+        # 連續逾時是**這支行程**健康與否的指標，不是某一份配方的問題——所以記在
+        # 心跳上，不是記在工作上。見 `record_render_outcome`。
+        "consecutive_timeouts": int(previous.get("consecutive_timeouts") or 0)
+        if previous.get("pid") == os.getpid()
+        else 0,
+        "last_timeout_at": previous.get("last_timeout_at")
+        if previous.get("pid") == os.getpid()
+        else None,
+    }
     state[WATCHER_HEARTBEAT_KEY] = watchers
     return state
+
+
+def record_render_outcome(state: dict, *, timed_out: bool, now: str) -> dict:
+    """把這一輪 render 是否逾時累計到心跳上。
+
+    2026-09-17 蘇予昕 punch-L02：同一支 cut 連續五次撐到 600 秒逾時，而同一條命令
+    在前景跑 11 秒就出圖。卡的不是配方也不是素材，是那支活了十四個小時的 watcher
+    行程本身——重啟之後 13 秒就過。
+
+    當時 gate 上顯示的是「第一次跑這個版式要先把算圖環境準備好⋯再按一次就會過」。
+    修修按了五次都沒過。一次逾時確實可能是冷啟動，**連續逾時不是**——那句話要換掉，
+    而畫面要換掉它就得先知道連續了幾次。
+    """
+    watchers = dict(state.get(WATCHER_HEARTBEAT_KEY) or {})
+    changed = {}
+    for key, row in watchers.items():
+        if not isinstance(row, dict) or row.get("pid") != os.getpid():
+            changed[key] = row
+            continue
+        count = int(row.get("consecutive_timeouts") or 0)
+        changed[key] = {
+            **row,
+            "consecutive_timeouts": count + 1 if timed_out else 0,
+            "last_timeout_at": now if timed_out else None,
+        }
+    state[WATCHER_HEARTBEAT_KEY] = changed
+    return state
+
+
+def _timeout_streak(state: dict) -> int:
+    """這支行程目前連續逾時幾次。"""
+    watchers = state.get(WATCHER_HEARTBEAT_KEY)
+    if not isinstance(watchers, dict):
+        return 0
+    return max(
+        (
+            int(row.get("consecutive_timeouts") or 0)
+            for row in watchers.values()
+            if isinstance(row, dict) and row.get("pid") == os.getpid()
+        ),
+        default=0,
+    )
 
 
 def pending_requests(vault: Path, state: dict) -> list[dict]:
@@ -689,29 +748,42 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
             timeout=1800,
         )
     except Exception as exc:
+        now = datetime.now(timezone.utc).isoformat()
         state[job["key"]] = {
             "requested_at": job["req"]["requested_at"],
             "status": "failed",
             "started_at": started_at,
-            "rendered_at": datetime.now(timezone.utc).isoformat(),
+            "rendered_at": now,
             "ok": False,
             "last_error": str(exc)[-500:],
         }
+        record_render_outcome(state, timed_out=isinstance(exc, subprocess.TimeoutExpired), now=now)
         save_state(state_path, state)
         _log(f"FAIL {slug}/{cut_id}: {exc}", log_path)
+        if isinstance(exc, subprocess.TimeoutExpired):
+            streak = _timeout_streak(state)
+            if streak >= 2:
+                _log(
+                    f"⚠ 連續第 {streak} 次 render 逾時。同一條命令在前景跑得過的話，"
+                    "卡住的是這支 watcher 行程本身——重啟它（2026-09-17 蘇予昕）",
+                    log_path,
+                )
         return False
     tail = (proc.stdout or proc.stderr or "").strip().splitlines()
     for line in tail[-6:]:
         _log(f"  {line}", log_path)
     ok = proc.returncode == 0
+    now = datetime.now(timezone.utc).isoformat()
     state[job["key"]] = {
         "requested_at": job["req"]["requested_at"],
         "status": "done" if ok else "failed",
         "started_at": started_at,
-        "rendered_at": datetime.now(timezone.utc).isoformat(),
+        "rendered_at": now,
         "ok": ok,
         "last_error": None if ok else (proc.stderr or "")[-500:],
     }
+    # 跑完了就不是卡住——不管成功失敗，逾時連號歸零。
+    record_render_outcome(state, timed_out=False, now=now)
     save_state(state_path, state)
     _log(f"{'DONE' if ok else 'FAIL'} {slug}/{cut_id}", log_path)
     return ok

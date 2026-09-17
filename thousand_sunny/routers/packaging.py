@@ -82,9 +82,31 @@ _PUBLISH_PREP_PROCESSES: dict[tuple[str, str], subprocess.Popen] = {}
 #
 # 只翻譯認得出來的訊號，其餘老實說「失敗」並把原文留在可展開的細節裡——
 # 硬替不認得的錯誤編一個人話說明，會比原始 traceback 更誤導。
-def _render_failure_sentence(raw_error: str | None) -> str:
+def _timeout_streak(state: dict) -> int:
+    """桌機端連續逾時幾次（watcher 寫在心跳上的）。"""
+    watchers = state.get("_watchers")
+    if not isinstance(watchers, dict):
+        return 0
+    counts = [
+        int(row.get("consecutive_timeouts") or 0)
+        for row in watchers.values()
+        if isinstance(row, dict)
+    ]
+    return max(counts, default=0)
+
+
+def _render_failure_sentence(raw_error: str | None, *, timeout_streak: int = 0) -> str:
     text = raw_error or ""
     if "TimeoutExpired" in text or "timed out after" in text:
+        if timeout_streak >= 2:
+            # 一次逾時可能是冷啟動；**連續**逾時不是。2026-09-17 蘇予昕 punch-L02
+            # 連五次撐到 600 秒，而同一條命令在前景跑 11 秒就出圖——卡住的是那支
+            # 活了十四小時的 watcher 行程。當時這裡叫修修「再按一次就會過」，他按
+            # 了五次都沒過。
+            return (
+                f"封面 render 連續第 {timeout_streak} 次逾時——"
+                "卡住的是桌機端那支 render watcher，再按一次不會過，要把它重啟"
+            )
         return (
             "封面 render 逾時。第一次跑這個版式要先把算圖環境準備好，"
             "通常就是這個原因——再按一次「存配方」就會過"
@@ -1653,16 +1675,25 @@ async def packaging_render_status(
             raw_status = "done" if row.get("ok") is True else "failed"
         status = raw_status
         raw_error = str(row.get("last_error") or "")[:2000] or None
+        streak = _timeout_streak(state)
         message = {
             "running": "正在 render 新封面",
             "done": "新封面已完成",
-            "failed": _render_failure_sentence(raw_error),
+            "failed": _render_failure_sentence(raw_error, timeout_streak=streak),
         }[status]
         # 原文留著，但不再直接印在進度條上——2026-09-14 修修看到的是一整段
         # `subprocess.TimeoutExpired: Command '[...]'`，那是給工程師追查用的，
         # 不是給站在 gate 前面的人判斷用的。前端收進可展開的細節裡。
         error = None
         error_detail = raw_error
+        if status == "failed" and streak >= 2:
+            # 重啟指令給工程師看，不印在進度條上——但它必須在畫面上拿得到，否則
+            # 「要重啟」這句話沒有下一步。
+            error_detail = (
+                f"桌機端 render watcher 連續 {streak} 次逾時。停掉那支行程再重起：\n"
+                "  python scripts/render_watcher.py --interval 5\n\n"
+                f"{raw_error or ''}"
+            )
         attended = True
 
     thumbnail_url = None
