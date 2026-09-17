@@ -60,6 +60,7 @@ from scripts.packaging_manifest import (  # noqa: E402
     load_manifest,
 )
 from shared.config import get_vault_path  # noqa: E402
+from shared.render_timeout import looks_like_render_timeout  # noqa: E402
 from shared.schemas.packaging import parse_packages  # noqa: E402
 from thousand_sunny.routers.packaging import _load_composition_receipt  # noqa: E402
 
@@ -114,6 +115,38 @@ def save_state(path: Path, state: dict) -> None:
 WATCHER_HEARTBEAT_KEY = "_watchers"
 
 
+#: 這一支行程的身分。**不能用 pid**：Windows 會回收 pid，而事故裡那支 watcher 活了
+#: 十四小時——重啟後拿到同一個 pid 就會繼承舊行程的連號，一上線就被當成「快重啟我」。
+RUN_ID = uuid.uuid4().hex
+
+#: 心跳保留多久。**這不是「進度條該不該動」的那個 120 秒**——那是顯示問題，判錯的
+#: 成本是零；這裡授權的是**刪除**，判錯會弄丟一支還活著的 watcher 的連號。一支卡在
+#: 600 秒 render 裡的 watcher 是活的、只是不新鮮，兩者分不出來，所以這個 TTL 取得
+#: 遠比 render 時間長。它現在唯一的工作是不要讓 state 檔無限長大——讀取端的過期
+#: 過濾在 Bridge 那邊已經做了。
+WATCHER_ROW_TTL_SEC = 6 * 3600
+
+
+def _within_ttl(row: object, now: str) -> bool:
+    """這一筆心跳還在保留期內嗎？看不懂的一律當過期。"""
+    if not isinstance(row, dict):
+        return False
+    try:
+        seen = datetime.fromisoformat(str(row.get("seen_at")))
+        current = datetime.fromisoformat(now)
+    except (TypeError, ValueError):
+        return False
+    if seen.tzinfo is None:
+        seen = seen.replace(tzinfo=timezone.utc)
+    if current.tzinfo is None:
+        current = current.replace(tzinfo=timezone.utc)
+    return 0 <= (current - seen).total_seconds() <= WATCHER_ROW_TTL_SEC
+
+
+def heartbeat_key(episode_slug: str | None, cut_id: str | None, package_rank: int | None) -> str:
+    return f"{episode_slug or '*'}/{cut_id or '*'}/r{package_rank if package_rank else '*'}"
+
+
 def record_heartbeat(
     state: dict, *, episode_slug: str | None, cut_id: str | None, package_rank: int | None, now: str
 ) -> dict:
@@ -123,11 +156,81 @@ def record_heartbeat(
         "cut_id": cut_id,
         "package_rank": package_rank,
     }
-    key = f"{episode_slug or '*'}/{cut_id or '*'}/r{package_rank if package_rank else '*'}"
-    watchers = dict(state.get(WATCHER_HEARTBEAT_KEY) or {})
-    watchers[key] = {**scope, "seen_at": now, "pid": os.getpid()}
+    key = heartbeat_key(episode_slug, cut_id, package_rank)
+    # 死掉的 watcher 的 row 永遠沒人刪，而 Bridge 讀的是所有 row 的最大值——不清掉的
+    # 話，一支卡死的 watcher 留下的連號會永遠掛在畫面上，重啟一百次也清不掉（重啟
+    # 換 scope 還會換 key，舊 row 原地不動）。心跳這一圈順手把過期的掃掉。
+    watchers = {
+        existing_key: row
+        for existing_key, row in (state.get(WATCHER_HEARTBEAT_KEY) or {}).items()
+        if existing_key == key or _within_ttl(row, now)
+    }
+    previous = watchers.get(key) or {}
+    same_process = previous.get("run_id") == RUN_ID
+    watchers[key] = {
+        **scope,
+        "seen_at": now,
+        "pid": os.getpid(),
+        "run_id": RUN_ID,
+        # 連續逾時是**這支行程**健康與否的指標，不是某一份配方的問題——所以記在
+        # 心跳上，不是記在工作上。見 `record_render_outcome`。
+        "consecutive_timeouts": int(previous.get("consecutive_timeouts") or 0)
+        if same_process
+        else 0,
+        "last_timeout_at": previous.get("last_timeout_at") if same_process else None,
+    }
     state[WATCHER_HEARTBEAT_KEY] = watchers
     return state
+
+
+def record_render_outcome(state: dict, *, timed_out: bool, now: str) -> dict:
+    """把這一輪 render 是否逾時累計到心跳上。
+
+    2026-09-17 蘇予昕 punch-L02：同一支 cut 連續五次撐到 600 秒逾時，而同一條命令
+    在前景跑 11 秒就出圖。卡的不是配方也不是素材，是那支活了十四個小時的 watcher
+    行程本身——重啟之後 13 秒就過。
+
+    當時 gate 上顯示的是「第一次跑這個版式要先把算圖環境準備好⋯再按一次就會過」。
+
+    `last_timeout_at` 目前**只給人看 state 檔用，沒有任何程式讀它**——留著當鑑識
+    欄位，不要當成有語意的契約去依賴。
+    修修按了五次都沒過。一次逾時確實可能是冷啟動，**連續逾時不是**——那句話要換掉，
+    而畫面要換掉它就得先知道連續了幾次。
+    """
+    watchers = dict(state.get(WATCHER_HEARTBEAT_KEY) or {})
+    changed = {}
+    for key, row in watchers.items():
+        if not isinstance(row, dict) or row.get("run_id") != RUN_ID:
+            changed[key] = row
+            continue
+        count = int(row.get("consecutive_timeouts") or 0)
+        changed[key] = {
+            **row,
+            # 心跳寫在迴圈開頭，接著 render 可以卡滿 600 秒——等這裡把結果寫回去時，
+            # 那筆 `seen_at` 已經是十分鐘前的，Bridge 的過期過濾會把**正在出事的這支
+            # watcher 自己**濾掉，連號讀出來是 0，畫面照舊說「再按一次就會過」。
+            # 剛寫完一輪結果，本來就是這支行程最近一次證明自己還活著的時刻。
+            "seen_at": now,
+            "consecutive_timeouts": count + 1 if timed_out else 0,
+            "last_timeout_at": now if timed_out else None,
+        }
+    state[WATCHER_HEARTBEAT_KEY] = changed
+    return state
+
+
+def _timeout_streak(state: dict) -> int:
+    """這支行程目前連續逾時幾次。"""
+    watchers = state.get(WATCHER_HEARTBEAT_KEY)
+    if not isinstance(watchers, dict):
+        return 0
+    return max(
+        (
+            int(row.get("consecutive_timeouts") or 0)
+            for row in watchers.values()
+            if isinstance(row, dict) and row.get("run_id") == RUN_ID
+        ),
+        default=0,
+    )
 
 
 def pending_requests(vault: Path, state: dict) -> list[dict]:
@@ -639,6 +742,17 @@ def run_packaging_job(
         return False
 
 
+def _warn_on_timeout_streak(state: dict, log_path: Path | None) -> None:
+    """連續第二次起就喊一聲——一次可能是冷啟動，連續不是。"""
+    streak = _timeout_streak(state)
+    if streak >= 2:
+        _log(
+            f"⚠ 連續第 {streak} 次 render 逾時。同一條命令在前景跑得過的話，"
+            "卡住的是這支 watcher 行程本身——重啟它（2026-09-17 蘇予昕）",
+            log_path,
+        )
+
+
 def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) -> bool:
     slug, cut_id = job["slug"], job["cut_id"]
     packaging_dir = find_packaging_dir(slug, episode_name=job.get("episode"))
@@ -689,31 +803,48 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
             timeout=1800,
         )
     except Exception as exc:
+        now = datetime.now(timezone.utc).isoformat()
         state[job["key"]] = {
             "requested_at": job["req"]["requested_at"],
             "status": "failed",
             "started_at": started_at,
-            "rendered_at": datetime.now(timezone.utc).isoformat(),
+            "rendered_at": now,
             "ok": False,
             "last_error": str(exc)[-500:],
         }
+        record_render_outcome(
+            state,
+            timed_out=isinstance(exc, subprocess.TimeoutExpired)
+            or looks_like_render_timeout(str(exc)),
+            now=now,
+        )
         save_state(state_path, state)
         _log(f"FAIL {slug}/{cut_id}: {exc}", log_path)
+        _warn_on_timeout_streak(state, log_path)
         return False
     tail = (proc.stdout or proc.stderr or "").strip().splitlines()
     for line in tail[-6:]:
         _log(f"  {line}", log_path)
     ok = proc.returncode == 0
+    now = datetime.now(timezone.utc).isoformat()
     state[job["key"]] = {
         "requested_at": job["req"]["requested_at"],
         "status": "done" if ok else "failed",
         "started_at": started_at,
-        "rendered_at": datetime.now(timezone.utc).isoformat(),
+        "rendered_at": now,
         "ok": ok,
         "last_error": None if ok else (proc.stderr or "")[-500:],
     }
+    # 600 秒那個逾時**不是 watcher 這一層丟的**：`render_request.py` 自己用
+    # `timeout=600` 跑 `render_still.py`，而且沒有 try/except 包住它，所以 child 是帶著
+    # traceback 以 exit code 1 結束、`subprocess.run` 正常回傳。只認 `TimeoutExpired`
+    # 的話，2026-09-17 蘇予昕 punch-L02 連五次逾時一次都不會被算到。
+    timed_out = not ok and looks_like_render_timeout(proc.stderr)
+    record_render_outcome(state, timed_out=timed_out, now=now)
     save_state(state_path, state)
     _log(f"{'DONE' if ok else 'FAIL'} {slug}/{cut_id}", log_path)
+    if timed_out:
+        _warn_on_timeout_streak(state, log_path)
     return ok
 
 

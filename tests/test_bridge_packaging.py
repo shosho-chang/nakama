@@ -2942,3 +2942,126 @@ def test_title_pool_is_absent_when_the_desktop_never_wrote_a_trace(client):
     body = client.get("/bridge/packaging/20260723-xieboran").text
 
     assert "沒進前 5 名的候選" not in body
+
+
+def test_a_repeated_timeout_stops_telling_him_to_press_again():
+    """一次逾時是冷啟動，連續逾時不是。
+
+    2026-09-17 蘇予昕 punch-L02：連續五次撐到 600 秒逾時，而同一條命令在前景跑 11 秒
+    就出圖——卡住的是那支活了十四小時的 watcher 行程，重啟之後 13 秒就過。當時 gate 上
+    寫的是「再按一次「存配方」就會過」，修修按了五次都沒過。那句話在連續逾時的情況下
+    是錯的建議，不只是沒幫上忙。
+    """
+    from thousand_sunny.routers.packaging import _render_failure_sentence
+
+    raw = "subprocess.TimeoutExpired: Command '[...]' timed out after 600 seconds"
+
+    first = _render_failure_sentence(raw, timeout_streak=1)
+    assert "再按一次" in first, "第一次逾時仍然可能只是冷啟動"
+
+    repeated = _render_failure_sentence(raw, timeout_streak=4)
+    assert "再按一次不會過" in repeated
+    assert "watcher" in repeated
+    assert "重啟" in repeated
+    for machine in ("Traceback", "subprocess", "TimeoutExpired", ".py"):
+        assert machine not in repeated
+
+
+def _hb(seen_at, **extra):
+    row = {"episode_slug": None, "cut_id": None, "package_rank": None, "seen_at": seen_at}
+    row.update(extra)
+    return {"_watchers": {"*/*/r*": row}}
+
+
+def test_timeout_streak_is_read_from_the_watcher_heartbeat():
+    from datetime import datetime, timezone
+
+    from thousand_sunny.routers.packaging import _timeout_streak
+
+    now = datetime.now(timezone.utc).isoformat()
+    assert _timeout_streak({}) == 0
+    assert _timeout_streak({"_watchers": "not a dict"}) == 0
+    assert _timeout_streak(_hb(now)) == 0
+    assert _timeout_streak(_hb(now, consecutive_timeouts=5)) == 5
+
+
+def test_a_dead_watcher_cannot_poison_the_streak_forever():
+    """死掉的 watcher 的 row 沒人刪，重啟換 scope 還會換 key、舊 row 原地不動。
+
+    不濾新鮮度的話，一支卡死的 watcher 留下的連號會永遠掛在畫面上——照著畫面上那句
+    「重啟它」做一百次也清不掉。判準與 `_watcher_covering` 對齊。
+    """
+    from datetime import datetime, timedelta, timezone
+
+    from thousand_sunny.routers.packaging import _WATCHER_STALE_SEC, _timeout_streak
+
+    stale = (datetime.now(timezone.utc) - timedelta(seconds=_WATCHER_STALE_SEC + 60)).isoformat()
+
+    assert _timeout_streak(_hb(stale, consecutive_timeouts=5)) == 0
+
+
+def test_a_broken_state_file_does_not_500_the_status_endpoint():
+    from datetime import datetime, timezone
+
+    from thousand_sunny.routers.packaging import _timeout_streak
+
+    now = datetime.now(timezone.utc).isoformat()
+    assert _timeout_streak(_hb(now, consecutive_timeouts="五次")) == 0
+    assert _timeout_streak(_hb("not a timestamp", consecutive_timeouts=5)) == 0
+
+
+def test_a_non_timeout_failure_never_gets_the_restart_advice(
+    client, vault_with_cutouts, monkeypatch, tmp_path
+):
+    """素材找不到的時候不該叫人去重啟 watcher。
+
+    連號是 watcher 的健康指標，跟「這一次為什麼失敗」是兩件事。只用 streak 當條件的話，
+    watcher 曾經卡過、而這一次是 `FileNotFoundError`，畫面也會叫他去重啟——那正是這支
+    檔案自己寫過的「硬替不認得的錯誤編一個人話說明，會比原始 traceback 更誤導」。
+    """
+    import json as _json
+    from datetime import datetime, timezone
+
+    import thousand_sunny.routers.packaging as pkg_module
+
+    assert _compose(client, package_rank="1").status_code == 303
+    req = _saved_req(vault_with_cutouts)
+    requested_at = req["requested_at"]
+    state_path = tmp_path / "render-watcher-state.json"
+    monkeypatch.setattr(pkg_module, "_render_watcher_state_path", lambda: state_path)
+    endpoint = "/bridge/packaging/20260723-xieboran/render-status/punch-L1/1"
+    now = datetime.now(timezone.utc).isoformat()
+
+    def _write(last_error: str) -> dict:
+        state_path.write_text(
+            _json.dumps(
+                {
+                    "20260723-xieboran/punch-L1/r1": {
+                        "requested_at": requested_at,
+                        "status": "failed",
+                        "last_error": last_error,
+                    },
+                    "_watchers": {
+                        "*/*/r*": {
+                            "episode_slug": None,
+                            "cut_id": None,
+                            "package_rank": None,
+                            "seen_at": now,
+                            "consecutive_timeouts": 4,
+                        }
+                    },
+                }
+            ),
+            encoding="utf-8",
+        )
+        return client.get(endpoint, params={"requested_at": requested_at}).json()
+
+    material = _write("FileNotFoundError: cutout.png")
+    assert "素材" in material["message"]
+    assert "render_watcher.py" not in (material["error_detail"] or ""), (
+        "素材找不到卻叫人重啟 watcher——連號不該蓋過這一次失敗的真正原因"
+    )
+
+    timed_out = _write("subprocess.TimeoutExpired: Command '[...]' timed out after 600 seconds")
+    assert "再按一次不會過" in timed_out["message"]
+    assert "scripts/render_watcher.py" in timed_out["error_detail"]
