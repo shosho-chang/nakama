@@ -24,6 +24,8 @@ def _load(name: str):
 
 fetch = _load("fetch_licensed_center")
 
+from shared import center_card  # noqa: E402
+
 SLUG = "20260805-linzhichen"
 PREVIEW = f"Attachments/packaging/{SLUG}/center-candidates/punch-L04-PHGMVY9.jpg"
 
@@ -192,3 +194,38 @@ def test_newest_download_finds_the_file_the_browser_just_saved(tmp_path):
 def test_nothing_downloaded_says_so_instead_of_guessing(tmp_path):
     with pytest.raises(fetch.CenterFetchError, match="沒有"):
         fetch.newest_download(tmp_path)
+
+
+def test_install_crops_the_original_to_card_size(episode):
+    """授權原檔不能原封不動進合成。
+
+    2026-09-17 蘇予昕 punch-L02：gate 路徑把 Envato 的 6000×4000 / 20MB JPEG 直接
+    `shutil.copy2` 進 packaging，`render_still.py` 的 Chrome 每次都撐到 600 秒逾時，
+    修修在 gate 上等了四十分鐘才看到失敗。agent 路徑（`install_center_asset.py`）
+    一直都有裁切縮圖，只有 gate 路徑漏掉。
+    """
+    ep, tmp_path = episode
+    licensed = _image(tmp_path / "dl" / "huge.jpg", 6000, 4000)
+    assert licensed.stat().st_size > 0
+
+    result = fetch.install(SLUG, "punch-L04", 1, licensed)
+
+    installed = ep / "center-punch-L04-r1.jpg"
+    with Image.open(installed) as card:
+        assert card.size == (center_card.CARD_W, center_card.CARD_H)
+    assert result["size"] == f"6000×4000 → {center_card.CARD_W}×{center_card.CARD_H}"
+
+
+def test_install_keeps_the_part_that_was_chosen(episode):
+    """先裁到卡片比例再縮——不是整張硬壓，不然構圖會變形。"""
+    ep, tmp_path = episode
+    # 4:3（1.333）比卡片（1.490）窄，所以要裁上下
+    licensed = _image(tmp_path / "dl" / "four-three.jpg", 4000, 3000)
+
+    fetch.install(SLUG, "punch-L04", 1, licensed)
+
+    x0, y0, x1, y1 = center_card.crop_box(4000, 3000)
+    assert (x0, x1) == (0, 4000), "太窄的素材不該裁左右"
+    assert y0 > 0 and y1 < 3000, "太窄的素材要裁上下"
+    # 整數像素，所以比例只能逼近到一個像素以內
+    assert abs((x1 - x0) / (y1 - y0) - center_card.TARGET) < 1e-3

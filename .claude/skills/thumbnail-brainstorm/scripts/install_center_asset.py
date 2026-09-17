@@ -21,9 +21,15 @@ from pathlib import Path
 
 from PIL import Image
 
-CARD_W, CARD_H = 1356, 910
-TARGET = CARD_W / CARD_H
-MIN_LONG_EDGE = 1280
+sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
+
+from shared.center_card import (  # noqa: E402
+    CARD_H,
+    CARD_W,
+    MIN_LONG_EDGE,
+    crop_box,
+    crop_to_card,
+)
 
 
 def install(
@@ -47,19 +53,8 @@ def install(
                 "——這看起來還是浮水印預覽，不是授權原檔"
             )
         ratio = width / height
-        if ratio > TARGET:  # 太寬 → 裁寬
-            new_w = round(height * TARGET)
-            x0 = (
-                0
-                if anchor == "left"
-                else (width - new_w if anchor == "right" else (width - new_w) // 2)
-            )
-            box = (x0, 0, x0 + new_w, height)
-        else:  # 太高 → 裁高
-            new_h = round(width / TARGET)
-            y0 = 0 if anchor == "top" else (height - new_h) // 2
-            box = (0, y0, width, y0 + new_h)
-        card = image.crop(box).resize((CARD_W, CARD_H), Image.LANCZOS)
+        box = crop_box(width, height, anchor=anchor)
+        card = crop_to_card(image, anchor=anchor)
 
     name = f"center-{cut_id}-r{rank}.png"
     vault_dir = vault_root / "Attachments" / "packaging" / episode_slug
@@ -92,7 +87,6 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = ap.parse_args(argv)
 
-    sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
     from shared.config import get_vault_path
 
     install(

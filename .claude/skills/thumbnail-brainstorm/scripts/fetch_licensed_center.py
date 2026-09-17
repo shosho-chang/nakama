@@ -27,7 +27,6 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import shutil
 import sys
 import time
 from datetime import datetime, timezone
@@ -43,6 +42,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 from PIL import Image  # noqa: E402
 
+from shared.center_card import CARD_H, CARD_W, MIN_LONG_EDGE, crop_to_card  # noqa: E402
 from shared.config import get_vault_path  # noqa: E402
 
 CANDIDATE_MARKER = "/center-candidates/"
@@ -50,7 +50,6 @@ IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 DEFAULT_DOWNLOAD_DIR = Path(os.environ.get("NAKAMA_DOWNLOAD_DIR") or r"E:\\")
 # 候選預覽是 600px 級的浮水印圖；授權原檔動輒 6000px。門檻取封面畫布寬，
 # 低於它就不可能是原檔。
-MIN_LONG_EDGE = 1280
 DOWNLOAD_WINDOW_SEC = 900
 
 
@@ -197,9 +196,14 @@ def install(
             "不把來歷不明的素材放進成品線"
         )
 
+    # 裁到卡片比例再縮，不要把授權原檔原封不動丟進合成——6000×4000 的 JPEG 會讓
+    # `render_still.py` 的 Chrome 撐到 600 秒逾時（2026-09-17 蘇予昕 punch-L02），
+    # 而且 `object-fit: cover` 本來就會從短邊硬裁掉挑好的那一塊。
     target_name = f"center-{cut_id}-r{package_rank}{source_file.suffix.lower()}"
     episode_dir.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source_file, episode_dir / target_name)
+    with Image.open(source_file) as original:
+        card = crop_to_card(original.convert("RGB"))
+    card.save(episode_dir / target_name)
     asset = f"Attachments/packaging/{episode_slug}/{target_name}"
     requested_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
@@ -242,7 +246,7 @@ def install(
 
     return {
         "asset": asset,
-        "size": f"{width}×{height}",
+        "size": f"{width}×{height} → {CARD_W}×{CARD_H}",
         "replaced": previous,
         "requested_at": requested_at,
         "provenance": provenance,
