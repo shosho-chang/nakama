@@ -910,3 +910,75 @@ def test_a_watcher_stuck_inside_a_long_render_does_not_get_pruned_by_another_wat
     survivor = state["_watchers"].get("ep/punch-L02/r1")
     assert survivor is not None, "還在跑的 watcher 不該被掃掉"
     assert survivor["consecutive_timeouts"] == 1, "它累積的連號要原封不動留著"
+
+
+def _packages_with_recipe(requested_at: str, cut_id: str = "punch-L02") -> dict:
+    return {
+        "episode": "20260901 蘇予昕",
+        "cuts": [
+            {
+                "cut_id": cut_id,
+                "format": "long",
+                "packages": [
+                    {
+                        "title_rank": 1,
+                        "thumbnail_png": f"Attachments/packaging/ep/pkg-{cut_id}-1.png",
+                        "render_recipe": {
+                            "title_rank": 1,
+                            "big_text": [],
+                            "requested_at": requested_at,
+                            "rendered_png": None,
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+
+
+@pytest.fixture
+def modern_episode(tmp_path):
+    """既有 `package.render_recipe`、又留著舊 `approval.json` 的一集。"""
+    d = tmp_path / "Attachments" / "packaging" / "20260901-suyuxin"
+    d.mkdir(parents=True)
+    stamp = "2026-09-17T00:24:23Z"
+    (d / "packages.json").write_text(
+        json.dumps(_packages_with_recipe(stamp), ensure_ascii=False), encoding="utf-8"
+    )
+    (d / "approval.json").write_text(
+        json.dumps(_approval(stamp, cut_id="punch-L02"), ensure_ascii=False), encoding="utf-8"
+    )
+    return tmp_path, stamp
+
+
+def test_a_failed_package_job_does_not_fall_through_to_the_legacy_path(modern_episode):
+    """做失敗了 ≠ 沒有 render_recipe。
+
+    舊的 `approval.json` 路徑是給「還沒有 package.render_recipe」的舊資料用的，判斷
+    條件卻只看「這一輪有沒有待辦」。rank 1 失敗之後 packages 那邊沒有待辦了，於是每
+    一輪都掉進舊路徑，用另一個 key（少了 `/r<n>`）把同一支 cut 再 render 一次。
+
+    2026-09-17 蘇予昕 punch-L02：log 上兩條紀錄交錯、各算十分鐘、各自失敗，gate 上
+    看到的是永遠在失敗。
+    """
+    vault_root, stamp = modern_episode
+    state = {"20260901-suyuxin/punch-L02/r1": {"requested_at": stamp, "status": "failed"}}
+
+    jobs = pending_requests(vault_root, state)
+
+    assert jobs == [], "已經有 package.render_recipe 的一集不該再走舊路徑"
+
+
+def test_a_pending_package_job_still_wins_over_the_legacy_path(modern_episode):
+    vault_root, stamp = modern_episode
+
+    jobs = pending_requests(vault_root, {})
+
+    assert [job["key"] for job in jobs] == ["20260901-suyuxin/punch-L02/r1"]
+
+
+def test_an_episode_with_no_recipe_still_uses_the_legacy_path(vault):
+    """真正的舊資料（只有 approval.json）照舊撿得到——這條 fallback 還有用。"""
+    jobs = pending_requests(vault, {})
+
+    assert [job["key"] for job in jobs] == ["20260721-zhengguowei/full"]

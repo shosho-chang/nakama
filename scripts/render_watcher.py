@@ -243,6 +243,7 @@ def pending_requests(vault: Path, state: dict) -> list[dict]:
         slug = episode_dir.name
         packages_path = episode_dir / "packages.json"
         package_jobs: list[dict] = []
+        has_package_recipe = False
         if packages_path.is_file():
             try:
                 packages = json.loads(packages_path.read_text(encoding="utf-8"))
@@ -253,6 +254,7 @@ def pending_requests(vault: Path, state: dict) -> list[dict]:
                     req = package.get("render_recipe")
                     if not req or not req.get("requested_at"):
                         continue
+                    has_package_recipe = True
                     rank = int(package["title_rank"])
                     key = f"{slug}/{cut['cut_id']}/r{rank}"
                     done = (state.get(key) or {}).get("requested_at")
@@ -270,6 +272,16 @@ def pending_requests(vault: Path, state: dict) -> list[dict]:
                     )
         if package_jobs:
             out.extend(package_jobs)
+            continue
+        if has_package_recipe:
+            # 這一集已經走 `package.render_recipe`，只是這一輪沒有待辦——**做完了**
+            # 和**做失敗了**都算沒有待辦。舊路徑不該在這裡接手：它用的是另一個 key
+            # （`<slug>/<cut>` 少了 `/r<n>`），於是同一支 cut 會被再 render 一次，
+            # 而且兩個 key 各記各的狀態。
+            #
+            # 2026-09-17 蘇予昕 punch-L02 實際踩到：rank 1 失敗之後每一輪都變成
+            # 「packages 沒待辦 → 舊路徑撿走 → 再算十分鐘 → 再失敗」，log 上是
+            # 兩條交錯的紀錄，gate 上看到的是永遠在失敗。
             continue
 
         # Transitional fallback: episodes written before package.render_recipe.
