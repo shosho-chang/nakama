@@ -5,9 +5,11 @@ from __future__ import annotations
 
 import argparse
 import json
+import pathlib
 import sys
 from collections.abc import Callable, Mapping
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -15,6 +17,7 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
 from agents.brook.script_video.finished_cut_production import (  # noqa: E402
+    PLAN_RECORD_FILENAME,
     ApprovedCutRegistration,
     CanonicalSection,
     CueAnchor,
@@ -28,6 +31,7 @@ from agents.brook.script_video.finished_cut_production import (  # noqa: E402
     ResolveProjectLocator,
     StageName,
     TimelineIdentity,
+    build_plan_record_reader,
     build_production_application,
 )
 
@@ -75,6 +79,16 @@ def _parser() -> argparse.ArgumentParser:
     correction.add_argument("feedback")
     dispatch_recovery = commands.add_parser("retry-failed-dispatch")
     dispatch_recovery.add_argument("command_id")
+    inspect_cuts = commands.add_parser(
+        "inspect-cuts",
+        help="列出這一集每支 cut 的視覺事件（event_id／時間／類型／display）",
+    )
+    inspect_cuts.add_argument("--cut", help="只看這一支（如 punch-L02）")
+    inspect_cuts.add_argument(
+        "--all",
+        action="store_true",
+        help="連同歷史 plan record 一起列；預設每支 cut 只給最新的那一份",
+    )
     return parser
 
 
@@ -82,6 +96,7 @@ def main(
     argv: list[str] | None = None,
     *,
     application_factory: ApplicationFactory | None = None,
+    plan_record_reader_factory: Callable[[Path], object] | None = None,
 ) -> int:
     args = _parser().parse_args(argv)
     paths = ProductionPaths(args.runtime_root, args.episodes_root)
@@ -102,6 +117,76 @@ def main(
         if configuration.locator.episode_id != args.episode_id:
             raise ValueError("Resolve configuration belongs to another episode")
         factory_options["resolve_configuration"] = configuration
+    # 讀取先走。`build_plan_record_reader` 的文件明說「讀取不需要任何外部依賴」，
+    # 而 `factory()` 會去驗 HyperFrames runtime、Resolve 綁定與素材櫃——把列事件
+    # 排在它後面，等於要修修為了問一個 event_id 先備妥整套算圖環境。
+    if args.operation == "inspect-cuts":
+        # 改片子之前要先知道「那一句」是哪一個 event_id。`inspect-run` 只認**進行中**
+        # 的 command_id，片子做完就沒有進行中的 run，於是這個問題在 CLI 上無路可問——
+        # 2026-09-17 修修說「效忠我們的家庭那句畫面很怪」，我是靠翻 semantic-handoff
+        # 目錄裡一個臨時 JSON 才找到 event_id 的。底層 `inspect_current()` 早就會回答，
+        # 只是沒接出來。這個子指令不做任何判斷，只是把它印出來。
+        reader_factory = plan_record_reader_factory or build_plan_record_reader
+        inspection = reader_factory(
+            (args.episodes_root / args.episode_id).resolve()
+        ).inspect_current(args.episode_id)
+        episode_root = (args.episodes_root / args.episode_id).resolve()
+
+        def _recorded_at(cut: object) -> float:
+            """這份 plan record 是什麼時候寫下來的。
+
+            **不要拿 `inspect_current()` 的順序當時間**：它是 `sorted(glob)`，照
+            staging 目錄的雜湊名排，等於隨機。2026-09-17 我照著「最後一筆＝最新」
+            取，拿到的是前一晚那一份、display 還是被換掉的舊值。
+            """
+            preview = pathlib.Path(cut.preview.reference)
+            record = episode_root / preview.parent / PLAN_RECORD_FILENAME
+            return record.stat().st_mtime if record.is_file() else 0.0
+
+        cuts = [cut for cut in inspection.cuts if args.cut in (None, cut.cut_id)]
+        cuts.sort(key=_recorded_at, reverse=True)
+        if not args.all:
+            # 每支 cut 只留最後寫下來的那一份。要改的通常是它——但「現役」的真正
+            # 判準是引擎的 `verify_artifacts`（成品雜湊還對不對得上），不是時間，
+            # 所以這裡只說「最新寫入」，不假裝知道哪一份是現役。
+            seen: set[str] = set()
+            latest = []
+            for cut in cuts:
+                if cut.cut_id in seen:
+                    continue
+                seen.add(cut.cut_id)
+                latest.append(cut)
+            cuts = latest
+        _print(
+            {
+                "episode_id": inspection.episode_id,
+                "state": inspection.state,
+                "error_code": inspection.error_code,
+                "cuts": [
+                    {
+                        "cut_id": cut.cut_id,
+                        "plan_id": cut.plan_id,
+                        "timeline": cut.timeline,
+                        "recorded_at": datetime.fromtimestamp(
+                            _recorded_at(cut), tz=timezone.utc
+                        ).isoformat(),
+                        "events": [
+                            {
+                                "event_id": event.event_id,
+                                "t0": event.t0,
+                                "t1": event.t1,
+                                "semantic_kind": event.semantic_kind,
+                                "implementation_kind": event.implementation_kind,
+                                "display": event.display,
+                            }
+                            for event in cut.events
+                        ],
+                    }
+                    for cut in cuts
+                ],
+            }
+        )
+        return 0
     application = factory(paths, args.episode_id, **factory_options)
     if args.operation == "register-approved-cut":
         payload = json.loads(args.input.read_text(encoding="utf-8"))

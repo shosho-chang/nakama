@@ -35,6 +35,7 @@ from ._correction import (
     RunStageInspection,
 )
 from ._engine import FinishedCutProduction
+from ._plan_record import PLAN_RECORD_FILENAME
 from ._records import (
     ArtifactView,
     ComponentView,
@@ -50,6 +51,7 @@ from ._resolve_davinci import ResolveCutBinding, ResolveProjectBinding
 from ._resolve_fusion import ResolveDatabaseIdentity, ResolveProjectLocator
 
 __all__ = [
+    "PLAN_RECORD_FILENAME",
     "ApprovedCutRegistration",
     "ArtifactView",
     "CanonicalSection",
