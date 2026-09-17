@@ -21,7 +21,7 @@
 <section class="page-header page-header--split">
   <div>
     <div class="nk-caps">/bridge/publish · 上架前最後確認</div>
-    <h1 class="page-title">發布審核 <span class="zh">{{ releases | length }} 支已登錄</span></h1>
+    <h1 class="page-title">發布審核 <span class="zh">先挑集數，再看裡面有什麼可以發</span></h1>
   </div>
   <nav aria-label="發布檢視">
     <a class="sho-btn" href="/bridge/publish" aria-current="page">審核清單</a>
@@ -30,34 +30,49 @@
 </section>
 
 <main class="page-main page-main--stack">
-  {% if not releases %}
-  <p class="sho-mono">還沒有登錄的成品——先跑 <code>publish_prep.py</code>。</p>
-  {% endif %}
-  {% for r in releases %}
-  <article class="section">
+  <article class="section" aria-labelledby="sec-episodes">
     <header class="section-head">
       <div>
-        <div class="section-marker">{{ r.episode }} · {{ r.format | upper }} · {{ r.cut_id }}</div>
-        <h2 class="section-title">
-          <a href="/bridge/publish/{{ r.episode }}/{{ r.cut_id }}">{{ r.display_title }}</a>
-        </h2>
+        <div class="section-marker">§ 1 · Episodes</div>
+        <h2 class="section-title" id="sec-episodes">已登錄成品的集數 <span class="zh">state.db releases</span></h2>
       </div>
-      {% set st = r.target_status.get('youtube', '—') %}
-      {% if st == 'uploaded' or st == 'published' %}
-      <span class="sho-tag sho-tag--accent">{{ st | upper }}</span>
-      {% elif st == 'failed' %}
-      <span class="sho-tag">FAILED</span>
-      {% else %}
-      <span class="sho-tag">{{ st | upper }}</span>
-      {% endif %}
+      <span class="section-status idle">{{ rows | length }} EP</span>
     </header>
-    <div class="sho-mono" style="font-size: 12px;">
-      {{ (r.file_bytes / 1000000) | round | int }} MB ·
-      {{ (r.duration_sec / 60) | round(1) }} min ·
-      rendered {{ r.rendered_at[:16] }}
+    <div class="section-body">
+      {% if not rows %}
+      <p class="sho-mono">還沒有登錄的成品——先跑 <code>publish_prep.py</code>。</p>
+      {% else %}
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th scope="col">Episode</th>
+            <th scope="col">成品</th>
+            <th scope="col">可以發布</th>
+            <th scope="col">已上架</th>
+            <th scope="col">最近出片</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td><a class="sho-lk" href="/bridge/publish/{{ row.episode | urlencode }}">{{ row.episode }}</a></td>
+            <td class="col-mono">{{ row.total }}</td>
+            <td>
+              {% if row.ready %}
+              <span class="sho-tag sho-tag--accent">{{ row.ready }} 支待發</span>
+              {% else %}
+              <span class="col-muted">—</span>
+              {% endif %}
+            </td>
+            <td class="col-mono">{{ row.done }} / {{ row.total }}</td>
+            <td class="col-mono col-muted">{{ row.latest[:16] if row.latest else '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
     </div>
   </article>
-  {% endfor %}
 </main>
 </body>
 </html>
