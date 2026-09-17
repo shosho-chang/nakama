@@ -48,8 +48,6 @@ from shared.config import get_vault_path  # noqa: E402
 CANDIDATE_MARKER = "/center-candidates/"
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".webp"}
 DEFAULT_DOWNLOAD_DIR = Path(os.environ.get("NAKAMA_DOWNLOAD_DIR") or r"E:\\")
-# 候選預覽是 600px 級的浮水印圖；授權原檔動輒 6000px。門檻取封面畫布寬，
-# 低於它就不可能是原檔。
 DOWNLOAD_WINDOW_SEC = 900
 
 
@@ -199,10 +197,15 @@ def install(
     # 裁到卡片比例再縮，不要把授權原檔原封不動丟進合成——6000×4000 的 JPEG 會讓
     # `render_still.py` 的 Chrome 撐到 600 秒逾時（2026-09-17 蘇予昕 punch-L02），
     # 而且 `object-fit: cover` 本來就會從短邊硬裁掉挑好的那一塊。
-    target_name = f"center-{cut_id}-r{package_rank}{source_file.suffix.lower()}"
+    # 一律寫成 PNG，跟 agent 路徑（`install_center_asset`）同一個檔名慣例。沿用來源
+    # 副檔名會留兩個洞：`.webp` 進了合成之後 `thumbnail_worker._to_data_url` 只認得
+    # png/jpg/jpeg，其餘一律 `application/octet-stream`，Chrome 直接解不開；而 `--from`
+    # 指到沒有副檔名的檔時，`Image.save` 會丟 `ValueError` 而不是這支腳本的停下來訊息。
+    # 寫 PNG 一次解決兩個，順帶避開 JPEG 重新編碼的畫質損失。
+    target_name = f"center-{cut_id}-r{package_rank}.png"
     episode_dir.mkdir(parents=True, exist_ok=True)
     with Image.open(source_file) as original:
-        card = crop_to_card(original.convert("RGB"))
+        card, _box = crop_to_card(original.convert("RGB"))
     card.save(episode_dir / target_name)
     asset = f"Attachments/packaging/{episode_slug}/{target_name}"
     requested_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")

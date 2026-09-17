@@ -27,7 +27,6 @@ from shared.center_card import (  # noqa: E402
     CARD_H,
     CARD_W,
     MIN_LONG_EDGE,
-    crop_box,
     crop_to_card,
 )
 
@@ -53,8 +52,7 @@ def install(
                 "——這看起來還是浮水印預覽，不是授權原檔"
             )
         ratio = width / height
-        box = crop_box(width, height, anchor=anchor)
-        card = crop_to_card(image, anchor=anchor)
+        card, box = crop_to_card(image, anchor=anchor)
 
     name = f"center-{cut_id}-r{rank}.png"
     vault_dir = vault_root / "Attachments" / "packaging" / episode_slug

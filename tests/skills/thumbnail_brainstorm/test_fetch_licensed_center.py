@@ -129,7 +129,7 @@ def test_install_repoints_every_copy_the_renderer_reads(episode):
 
     result = fetch.install(SLUG, "punch-L04", 1, licensed)
 
-    asset = f"Attachments/packaging/{SLUG}/center-punch-L04-r1.jpg"
+    asset = f"Attachments/packaging/{SLUG}/center-punch-L04-r1.png"
     assert result["asset"] == asset
     packages = json.loads((ep / "packages.json").read_text(encoding="utf-8"))
     recipe = packages["cuts"][0]["packages"][0]["render_recipe"]
@@ -137,7 +137,7 @@ def test_install_repoints_every_copy_the_renderer_reads(episode):
     request = approval["approvals"][0]["render_request"]
     assert recipe["center_visual_asset"] == asset
     assert request["center_visual_asset"] == asset
-    assert (ep / "center-punch-L04-r1.jpg").is_file()
+    assert (ep / "center-punch-L04-r1.png").is_file()
 
 
 def test_install_bumps_requested_at_so_the_watcher_picks_it_up_again(episode):
@@ -210,22 +210,37 @@ def test_install_crops_the_original_to_card_size(episode):
 
     result = fetch.install(SLUG, "punch-L04", 1, licensed)
 
-    installed = ep / "center-punch-L04-r1.jpg"
+    installed = ep / "center-punch-L04-r1.png"
     with Image.open(installed) as card:
         assert card.size == (center_card.CARD_W, center_card.CARD_H)
     assert result["size"] == f"6000×4000 → {center_card.CARD_W}×{center_card.CARD_H}"
 
 
-def test_install_keeps_the_part_that_was_chosen(episode):
-    """先裁到卡片比例再縮——不是整張硬壓，不然構圖會變形。"""
-    ep, tmp_path = episode
-    # 4:3（1.333）比卡片（1.490）窄，所以要裁上下
-    licensed = _image(tmp_path / "dl" / "four-three.jpg", 4000, 3000)
+def test_install_crops_instead_of_squashing(episode, tmp_path):
+    """先裁到卡片比例**再**縮，不是整張硬壓。
 
-    fetch.install(SLUG, "punch-L04", 1, licensed)
+    這一條要擋的是「尺寸對、構圖錯」：整張硬壓出來也是 1356×910，只驗尺寸看不出
+    差別。做法是把該被裁掉的那一條塗成紅色——真的有裁，紅色就不會出現在成品裡；
+    整張硬壓的話，紅色會被壓進畫面上緣。
+    """
+    from PIL import Image as PILImage
 
-    x0, y0, x1, y1 = center_card.crop_box(4000, 3000)
-    assert (x0, x1) == (0, 4000), "太窄的素材不該裁左右"
-    assert y0 > 0 and y1 < 3000, "太窄的素材要裁上下"
-    # 整數像素，所以比例只能逼近到一個像素以內
-    assert abs((x1 - x0) / (y1 - y0) - center_card.TARGET) < 1e-3
+    # 4:3（1.333）比卡片（1.490）窄 → 要裁上下。上緣 400px 塗紅。
+    src = tmp_path / "dl" / "banded.jpg"
+    src.parent.mkdir(parents=True, exist_ok=True)
+    image = PILImage.new("RGB", (4000, 3000), (0, 0, 255))
+    # 置中裁上下時丟掉的是上緣 (3000 - round(4000/TARGET)) // 2 = 158 列，
+    # 所以紅色帶塗 150 列——真的有裁就一列都不會留下。
+    image.paste(PILImage.new("RGB", (4000, 150), (255, 0, 0)), (0, 0))
+    image.save(src)
+
+    fetch.install(SLUG, "punch-L04", 1, src)
+
+    ep, _ = episode
+    with PILImage.open(ep / "center-punch-L04-r1.png") as card:
+        assert card.size == (center_card.CARD_W, center_card.CARD_H)
+        top_strip = card.crop((0, 0, card.width, 8)).getcolors(maxcolors=1 << 20)
+    dominant = max(top_strip)[1]
+    assert dominant[0] < 40 and dominant[2] > 200, (
+        f"成品上緣是 {dominant}——紅色帶沒被裁掉，代表是整張壓扁而不是先裁再縮"
+    )

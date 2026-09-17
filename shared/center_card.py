@@ -22,7 +22,8 @@ from PIL import Image
 CARD_W, CARD_H = 1356, 910
 #: 卡片長寬比。
 TARGET = CARD_W / CARD_H
-#: 授權原檔的長邊下限。低於這個數就還是候選池的浮水印預覽。
+#: 授權原檔的長邊下限。低於這個數就還是候選池的浮水印預覽——候選預覽是 600px
+#: 級的浮水印圖，授權原檔動輒 6000px；門檻取封面畫布寬，低於它就不可能是原檔。
 MIN_LONG_EDGE = 1280
 
 Anchor = Literal["center", "left", "right", "top"]
@@ -48,7 +49,13 @@ def crop_box(width: int, height: int, *, anchor: Anchor = "center") -> tuple[int
     return (0, y0, width, y0 + new_h)
 
 
-def crop_to_card(image: Image.Image, *, anchor: Anchor = "center") -> Image.Image:
-    """回傳裁到卡片比例、縮到 `CARD_W×CARD_H` 的複本。原圖不動。"""
+def crop_to_card(
+    image: Image.Image, *, anchor: Anchor = "center"
+) -> tuple[Image.Image, tuple[int, int, int, int]]:
+    """回傳（裁到卡片比例並縮到 `CARD_W×CARD_H` 的複本, 實際用的裁切框）。原圖不動。
+
+    框一起回傳，是為了讓呼叫端印出來的框保證就是真的用的那個——分開算兩次，
+    日後在中間插一道變形，印出來的就會是謊話。
+    """
     box = crop_box(image.width, image.height, anchor=anchor)
-    return image.crop(box).resize((CARD_W, CARD_H), Image.LANCZOS)
+    return image.crop(box).resize((CARD_W, CARD_H), Image.LANCZOS), box
