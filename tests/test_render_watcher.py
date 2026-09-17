@@ -955,11 +955,11 @@ def test_a_failed_package_job_does_not_fall_through_to_the_legacy_path(modern_ep
     """做失敗了 ≠ 沒有 render_recipe。
 
     舊的 `approval.json` 路徑是給「還沒有 package.render_recipe」的舊資料用的，判斷
-    條件卻只看「這一輪有沒有待辦」。rank 1 失敗之後 packages 那邊沒有待辦了，於是每
-    一輪都掉進舊路徑，用另一個 key（少了 `/r<n>`）把同一支 cut 再 render 一次。
+    條件卻只看「這一輪有沒有待辦」——做完了和做失敗了都算沒有待辦。於是每按一次
+    〈存配方〉，同一支 cut 會被 render 兩次：package 路徑一次、舊路徑用另一個 key
+    （少了 `/r<n>`）再一次，各燒十分鐘。
 
-    2026-09-17 蘇予昕 punch-L02：log 上兩條紀錄交錯、各算十分鐘、各自失敗，gate 上
-    看到的是永遠在失敗。
+    2026-09-17 蘇予昕 punch-L02 的 log：00:29:21 與 00:29:27 兩條就是同一次存配方。
     """
     vault_root, stamp = modern_episode
     state = {"20260901-suyuxin/punch-L02/r1": {"requested_at": stamp, "status": "failed"}}
@@ -982,3 +982,40 @@ def test_an_episode_with_no_recipe_still_uses_the_legacy_path(vault):
     jobs = pending_requests(vault, {})
 
     assert [job["key"] for job in jobs] == ["20260721-zhengguowei/full"]
+
+
+def test_a_cut_without_a_recipe_still_uses_the_legacy_path_in_a_mixed_episode(tmp_path):
+    """同一集裡混著有 recipe 和沒 recipe 的 cut——判斷必須 per-cut，不能 per-episode。
+
+    這個形狀不是歷史遺跡，`attach_packages.py` 現行行為就會產生：它整支
+    `cut["packages"] = packages` 換掉，而 spec 缺 `render_spec` 時
+    `_recipe_from_render_spec` 回 None。真實 vault 裡 20260805-linzhichen 的
+    value-L02 現在就是三個 recipe 全 null、approval 還在。
+
+    per-episode 的旗標會把整集的 fallback 關掉，那支 cut 的工作就永遠、無聲地消失。
+    """
+    d = tmp_path / "Attachments" / "packaging" / "20260805-linzhichen"
+    d.mkdir(parents=True)
+    stamp = "2026-09-17T00:24:23Z"
+    packages = _packages_with_recipe(stamp, cut_id="value-L01")
+    # 同一集的第二支 cut：packages 在、但 render_recipe 是 null
+    packages["cuts"].append(
+        {
+            "cut_id": "value-L02",
+            "format": "long",
+            "packages": [{"title_rank": 1, "thumbnail_png": "x.png", "render_recipe": None}],
+        }
+    )
+    (d / "packages.json").write_text(json.dumps(packages, ensure_ascii=False), encoding="utf-8")
+    approval = _approval(stamp, cut_id="value-L01")
+    approval["approvals"].append(_approval(stamp, cut_id="value-L02")["approvals"][0])
+    (d / "approval.json").write_text(json.dumps(approval, ensure_ascii=False), encoding="utf-8")
+
+    # value-L01 的 package 工作已經處理過（成功或失敗都一樣）
+    state = {"20260805-linzhichen/value-L01/r1": {"requested_at": stamp, "status": "failed"}}
+
+    keys = [job["key"] for job in pending_requests(tmp_path, state)]
+
+    assert keys == ["20260805-linzhichen/value-L02"], (
+        "有 recipe 的 cut 不該重複派工，沒有 recipe 的 cut 不該被一起關掉"
+    )
