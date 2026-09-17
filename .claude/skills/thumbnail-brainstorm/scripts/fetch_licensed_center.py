@@ -42,7 +42,15 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 
 from PIL import Image  # noqa: E402
 
-from shared.center_card import CARD_H, CARD_W, MIN_LONG_EDGE, crop_to_card  # noqa: E402
+from shared.center_card import (  # noqa: E402
+    CARD_H,
+    CARD_W,
+    MIN_LONG_EDGE,
+    MIN_RETENTION,
+    TARGET,
+    crop_to_card,
+    retention,
+)
 from shared.config import get_vault_path  # noqa: E402
 
 CANDIDATE_MARKER = "/center-candidates/"
@@ -128,7 +136,13 @@ def newest_download(
 
 
 def verify_licensed_original(path: Path) -> tuple[int, int]:
-    """授權原檔的三道驗證：讀得開、橫式、長邊夠大。"""
+    """授權原檔的四道驗證：讀得開、橫式、長邊夠大、裁進卡片後還留得下重點。
+
+    最後一道**必須在這裡**擋。`install` 接著就把原檔裁成卡片比例了，之後任何人
+    再量都是 1.4901、留存率恆為 1.0——`composition_receipt._assert_center_fits_card`
+    量的正是那個裁完的檔案，所以它在這條路上已經是一句恆真的空話。原圖的比例只有
+    這一刻還看得到。
+    """
     if _is_candidate_preview(str(path)):
         raise CenterFetchError(f"{path} 還在候選池裡——那是浮水印預覽，不是授權檔")
     try:
@@ -142,6 +156,13 @@ def verify_licensed_original(path: Path) -> tuple[int, int]:
         raise CenterFetchError(
             f"{path.name} 長邊只有 {max(width, height)}px，低於 {MIN_LONG_EDGE}"
             "——這看起來還是預覽圖，不是授權原檔"
+        )
+    kept = retention(width, height)
+    if kept < MIN_RETENTION:
+        raise CenterFetchError(
+            f"{path.name}（{width}×{height}，{width / height:.2f}:1）裁進 "
+            f"{TARGET:.2f}:1 的卡片只留得下 {kept:.0%}，低於 {MIN_RETENTION:.0%}"
+            "——換一張比例接近的素材，不要靠裁切硬過。"
         )
     return width, height
 

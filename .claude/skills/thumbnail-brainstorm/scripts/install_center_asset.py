@@ -27,7 +27,10 @@ from shared.center_card import (  # noqa: E402
     CARD_H,
     CARD_W,
     MIN_LONG_EDGE,
+    MIN_RETENTION,
+    TARGET,
     crop_to_card,
+    retention,
 )
 
 
@@ -50,6 +53,17 @@ def install(
             raise SystemExit(
                 f"{src.name} 長邊只有 {max(width, height)}px，低於 {MIN_LONG_EDGE}"
                 "——這看起來還是浮水印預覽，不是授權原檔"
+            )
+        # 這一刻是最後一次看得到原圖比例。下一行就裁成卡片比例了，之後任何人再量
+        # 都是 1.4901、留存率恆為 1.0——`composition_receipt._assert_center_fits_card`
+        # 量的正是那個裁完的檔案，所以它在這條路上早就是一句恆真的空話。
+        # `anchor` 只能挪動裁切窗的位置，救不了「窗本身就裝不下重點」。
+        kept = retention(width, height)
+        if kept < MIN_RETENTION:
+            raise SystemExit(
+                f"{src.name}（{width}x{height}，{width / height:.2f}:1）裁進 "
+                f"{TARGET:.2f}:1 的卡片只留得下 {kept:.0%}，低於 {MIN_RETENTION:.0%}"
+                "——換一張比例接近的素材，不要靠裁切硬過。"
             )
         ratio = width / height
         card, box = crop_to_card(image, anchor=anchor)

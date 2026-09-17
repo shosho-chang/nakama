@@ -180,6 +180,48 @@ def test_a_portrait_original_is_refused(episode):
         fetch.install(SLUG, "punch-L04", 1, portrait)
 
 
+def test_a_panorama_that_would_lose_the_subject_is_refused(episode):
+    """橫式、長邊也夠大，但比例太扁——裁進卡片只留得下 37%，重點會被切在框外。"""
+    _, tmp_path = episode
+    panorama = _image(tmp_path / "dl" / "wide.jpg", 4000, 1000)
+
+    with pytest.raises(fetch.CenterFetchError, match="留得下"):
+        fetch.install(SLUG, "punch-L04", 1, panorama)
+
+
+def test_the_retention_guard_reads_the_original_not_the_cropped_result(episode):
+    """這關只有在**裁切之前**擋才有意義，位置比存在更重要。
+
+    `install` 接著就把原檔裁成卡片比例了，之後任何人再量都是 1.4901、留存率恆為
+    1.0。把這道檢查挪到安裝之後（或改量已安裝的檔案）不會讓任何測試變紅，但它會
+    安靜地變成一句恆真的空話——一如 `composition_receipt._assert_center_fits_card`
+    在這條路上的下場。所以這裡直接釘住：極端比例的原圖不可以留下任何安裝痕跡。
+    """
+    episode_dir, tmp_path = episode
+    before = (episode_dir / "packages.json").read_text(encoding="utf-8")
+    panorama = _image(tmp_path / "dl" / "wide.jpg", 4000, 1000)
+
+    assert center_card.retention(4000, 1000) < center_card.MIN_RETENTION
+    with pytest.raises(fetch.CenterFetchError):
+        fetch.install(SLUG, "punch-L04", 1, panorama)
+
+    assert (episode_dir / "packages.json").read_text(encoding="utf-8") == before, (
+        "被擋下來的素材不該已經寫進 recipe"
+    )
+    assert not [p for p in episode_dir.glob("center-*") if p.is_file()], (
+        "被擋下來的素材不該已經裁好落地"
+    )
+
+
+def test_a_normal_stock_photo_clears_the_retention_guard(episode):
+    """3:2 是圖庫最常見的比例——新的門檻不可以把日常素材一起擋掉。"""
+    _, tmp_path = episode
+    assert center_card.retention(6000, 4000) > center_card.MIN_RETENTION
+    ordinary = _image(tmp_path / "dl" / "ok.jpg", 6000, 4000)
+
+    fetch.install(SLUG, "punch-L04", 1, ordinary)  # 不該拋
+
+
 def test_newest_download_finds_the_file_the_browser_just_saved(tmp_path):
     """修修的瀏覽器落點是 E:\\ 根目錄，不是 ~/Downloads——這裡用 tmp 驗行為。"""
     _image(tmp_path / "old.jpg", 3000, 2000)

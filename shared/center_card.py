@@ -25,6 +25,9 @@ TARGET = CARD_W / CARD_H
 #: 授權原檔的長邊下限。低於這個數就還是候選池的浮水印預覽——候選預覽是 600px
 #: 級的浮水印圖，授權原檔動輒 6000px；門檻取封面畫布寬，低於它就不可能是原檔。
 MIN_LONG_EDGE = 1280
+#: 裁切最多能吃掉多少。`crop_to_card` 一定裁得出卡片比例，所以「裁完比例對不對」
+#: 恆真、驗了等於沒驗——會不會把重點裁掉，只在**還看得到原圖比例**的那一刻判得出來。
+MIN_RETENTION = 0.5
 
 Anchor = Literal["center", "left", "right", "top"]
 
@@ -59,3 +62,14 @@ def crop_to_card(
     """
     box = crop_box(image.width, image.height, anchor=anchor)
     return image.crop(box).resize((CARD_W, CARD_H), Image.LANCZOS), box
+
+
+def retention(width: int, height: int) -> float:
+    """這張原圖進卡片後，短邊還留得下幾成。
+
+    `object-fit: cover` 是從短邊硬裁：1080×1920 的直式進 1.49:1 的卡片只留得下
+    38%，棲架、飼料碗、任何「被圈養」的線索全被切在框外，讀者只看到一隻可愛的
+    鸚鵡。**只能拿原圖的尺寸餵它**——餵裁完的檔案永遠得到 1.0。
+    """
+    source_ratio = width / height
+    return min(source_ratio, TARGET) / max(source_ratio, TARGET)

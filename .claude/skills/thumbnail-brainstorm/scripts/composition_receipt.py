@@ -11,6 +11,8 @@ from typing import Literal
 
 from PIL import Image
 
+from shared.center_card import MIN_RETENTION
+
 MEASUREMENT_SCHEMA = "nakama.thumbnail_composition_measurement.v1"
 RECEIPT_SCHEMA = "nakama.long_thumbnail_composition.v3"
 LEGACY_RECEIPT_SCHEMA = "nakama.long_thumbnail_composition.v2"
@@ -18,7 +20,8 @@ LEGACY_RECEIPT_SCHEMA = "nakama.long_thumbnail_composition.v2"
 # 中央卡的素材供給順序（SKILL.md 紅線 5）。redrawn = 自己重繪的圖表。
 CENTER_SUPPLY = ("envato", "public_domain", "redrawn")
 # object-fit: cover —— 原圖與卡片長寬比不合時，短邊會被裁掉。留給裁切的上限。
-MIN_CENTER_RETENTION = 0.5
+# 與安裝路徑共用同一個門檻，不要在兩邊各寫一個數字。
+MIN_CENTER_RETENTION = MIN_RETENTION
 
 
 @dataclass(frozen=True)
@@ -174,6 +177,13 @@ def _assert_center_fits_card(center: Path, protected: dict) -> None:
     等於只有 38% 的原圖進得了畫面——棲架、飼料碗、任何「被圈養」的線索全被
     切在框外，讀者只看到一隻可愛的鸚鵡。SKILL.md 早就寫「卡片必須是橫向長方形」，
     但先前只驗了卡片的 bbox，沒有人驗餵進去的素材。
+
+    **注意這關量的是「已經裝好的中央卡檔案」**。兩條安裝路徑（gate 的
+    `fetch_licensed_center`、agent 的 `install_center_asset`）現在都會先裁成卡片
+    比例，所以走它們進來的素材到這裡量出來永遠是 1.0，這道留存率檢查對它們是恆真。
+    真正的把關點在兩支安裝腳本裡、裁切之前——那裡還看得到原圖：
+    `fetch_licensed_center.verify_licensed_original` 與 `install_center_asset.install`。
+    這裡留著是為了擋「沒走安裝腳本、手動塞進 recipe」的檔案。
     """
     with Image.open(center) as image:
         source_width, source_height = image.size
