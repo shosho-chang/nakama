@@ -248,7 +248,26 @@ def plan_subtitle(episode_dir: Path, cut_id: str) -> Path | None:
     是照著一份不存在的影片在寫文案。record 的 subtitle 才是成品那份。
 
     回 None 代表沒有 record 或檔案不在，由呼叫端回退。
+
+    **完整版（`full`）沒有 plan record，它的成品字幕是 Editorial Master 的
+    `master.srt`**——那份是封存時從同一條 timeline 抽出來的。原本這裡回 None 之後，
+    兩個呼叫端都會退到 `highlights/srt/full_tight_r*.srt`，而完整版從來沒有那種檔：
+    描述生成會 `FileNotFoundError`、CC 上傳會永久 failed 且 `--cc-only` 補不回來。
     """
+    from agents.brook.script_video.editorial_master import (
+        CANONICAL_ARTIFACTS,
+        VERSION_RELATIVE,
+        editorial_master_timeline,
+    )
+
+    if cut_id == "full":
+        # 封存之後又動了 timeline 就要重新封存（修修 2026-09-18 裁決）——這裡不
+        # 比對，他手上那條就是最高指導原則。沒重封存的話，燒進畫面的字幕來自
+        # 現況、CC 來自封存，兩者可能不一致。
+        if editorial_master_timeline(episode_dir) is None:
+            return None
+        path = Path(episode_dir) / VERSION_RELATIVE / CANONICAL_ARTIFACTS["subtitles"]
+        return path if path.is_file() else None
 
     cut = _plan_cut(episode_dir, cut_id)
     if cut is None or not cut.subtitle:
