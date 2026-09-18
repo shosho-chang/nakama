@@ -86,6 +86,32 @@ def _packages_data() -> dict:
     }
 
 
+def _seal_editorial_master(episode_root: Path) -> None:
+    """一份最小的 ADR-064 封存 receipt——完整版要靠它回答「render 哪一條 timeline」。
+
+    刻意不建 master.mp4：讀 timeline 只開這份 2 KB 的 JSON，不碰 8–10 GB 的成品。
+    """
+    version = episode_root / "editorial-master" / "v1"
+    version.mkdir(parents=True, exist_ok=True)
+    (version / "EDITORIAL-MASTER.json").write_text(
+        json.dumps(
+            {
+                "contract": "podcast-editorial-master-v1",
+                "episode_id": episode_root.name,
+                "project": {"name": episode_root.name},
+                "timeline": {
+                    "name": episode_root.name,
+                    "uid": "2fc28739-8e32-443d-a910-f8f087876650",
+                    "duration_sec": 3796.0,
+                },
+                "approval": {"human_approved": True, "approved_by": "shosho"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
 def _write_composition_receipt(
     vault: Path,
     *,
@@ -1723,7 +1749,7 @@ def test_human_can_approve_long_package_without_composition_receipt(
 
 
 def test_full_episode_does_not_require_long_highlight_composition_receipt(
-    router_client, vault, monkeypatch
+    router_client, vault, monkeypatch, tmp_path
 ):
     """N1 full episodes must not be routed through the N2 reaction receipt gate."""
     import thousand_sunny.routers.packaging as pkg_module
@@ -1733,6 +1759,11 @@ def test_full_episode_does_not_require_long_highlight_composition_receipt(
     payload = json.loads(packages_path.read_text(encoding="utf-8"))
     payload["cuts"][0]["cut_id"] = "full"
     packages_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+    # 完整版的核准要先問「封存了沒」（沒封存就沒有可 render 的 timeline），所以這裡
+    # 得給一份 Editorial Master receipt。原本沒給也會過，是因為沒設
+    # PODCAST_EPISODES_ROOT 時 `.env` 的 `G:/Footages` 會生效、測試讀到真實硬碟。
+    _seal_editorial_master(tmp_path / "20260723 謝伯讓")
+    monkeypatch.setenv("PODCAST_EPISODES_ROOT", str(tmp_path))
     monkeypatch.setattr(pkg_module, "_release_from_receipt", lambda episode, cut_id: None)
     monkeypatch.setattr(pkg_module, "_ensure_publish_prep", lambda episode, cut_id: None)
 

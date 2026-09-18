@@ -1248,6 +1248,30 @@ def _publish_prep_state(episode_dir: Path, cut_id: str) -> dict | None:
     return payload
 
 
+FULL_CUT_ID = "full"
+
+
+def _require_editorial_master(episode: str) -> None:
+    """完整版能不能發，取決於這一集封存了沒——這件事要在寫核准之前問。
+
+    訊息要講得出**下一步是什麼**。修修 2026-09-18 對舊訊息的評語：「文法正確，
+    對我沒用」——他要的是「我現在要幹嘛」，不是「為什麼不行」。封存不是他的工作，
+    所以這句話要指向那個會幫他跑的人。
+    """
+    from agents.brook.script_video.editorial_master import editorial_master_timeline
+
+    if editorial_master_timeline(_episode_dir(episode)) is not None:
+        return
+    raise HTTPException(
+        status_code=409,
+        detail=(
+            f"「{episode}」還沒有封存 Editorial Master，完整版無法發布。"
+            "在 Resolve 確認完整版定稿（含 intro／outro）之後，跟 Claude 說"
+            "「我完成 Editorial Master 了」，封存跑完這裡就會通。"
+        ),
+    )
+
+
 def _ensure_publish_prep(episode: str, cut_id: str) -> None:
     """Start or resume the full-resolution export for an approved package."""
     root_value = os.environ.get("PODCAST_EPISODES_ROOT", "").strip()
@@ -1929,6 +1953,12 @@ def packaging_approve(
         and not any(row.title_rank == primary_package for row in cut.packages)
     ):
         raise HTTPException(status_code=409, detail="primary package 不存在")
+    # 完整版的可行性要在**寫檔之前**問。原本順序是先寫 approval.json、再叫
+    # `_ensure_publish_prep`，於是沒封存的集數留下「board 顯示已核准、releases
+    # 裡什麼都沒有」的半套狀態，再按一次只會更新時間再吃一次錯（20260723 謝伯讓
+    # 2026-09-18 實際留下這種狀態）。同一支函式上面那幾道結構性檢查已經是這個做法。
+    if cut_id == FULL_CUT_ID and get_release(pkg.episode, cut_id) is None:
+        _require_editorial_master(pkg.episode)
     # Human approval is the final taste decision. Composition receipts and
     # protected-center checks remain visible diagnostics on the board, but they
     # must never veto an explicit Approve. Structural failures above still stop
