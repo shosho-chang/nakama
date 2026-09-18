@@ -40,7 +40,7 @@ def test_get_renders_matrix(client):
     assert resp.status_code == 200
     # 登記的 call site 出現在頁面
     assert "concept_merge" in resp.text
-    assert "claude-opus-4-7" in resp.text
+    assert "claude-opus-5" in resp.text
     assert "模型路由" in resp.text
 
 
@@ -48,13 +48,13 @@ def test_post_set_writes_override_and_redirects(client):
     c, r = client
     resp = c.post(
         "/bridge/models/set",
-        data={"agent": "robin", "task": "concept_merge", "model": "gemini-2.5-pro"},
+        data={"agent": "robin", "task": "concept_merge", "model": "grok-4-fast"},
         follow_redirects=False,
     )
     assert resp.status_code == 303
-    assert r.get_override("robin", "concept_merge") == "gemini-2.5-pro"
+    assert r.get_override("robin", "concept_merge") == "grok-4-fast"
     # 改後 get_model 即時反映
-    assert r.get_model("robin", "concept_merge") == "gemini-2.5-pro"
+    assert r.get_model("robin", "concept_merge") == "grok-4-fast"
 
 
 def test_post_set_rejects_unknown_model(client):
@@ -89,13 +89,19 @@ def test_transport_for_covers_all_branches(monkeypatch):
     monkeypatch.setenv("LLM_TRANSPORT", "openrouter")
     assert bm._transport_for({"provider": "google", "agent": "robin", "task": "x"}) == "openrouter"
     assert bm._transport_for({"provider": "openai", "agent": "robin", "task": "x"}) == "openrouter"
+    # ADR-026 Amendment 2026-08-19：anthropic + 預設 auth 現在是訂閱優先 → native
+    assert (
+        bm._transport_for({"provider": "anthropic", "agent": "nami", "task": "default"}) == "native"
+    )
+    # anthropic 要走 OpenRouter 需顯式 opt-out 訂閱（AUTH_*=api）
+    monkeypatch.setenv("AUTH_NAMI", "api")
     assert (
         bm._transport_for({"provider": "anthropic", "agent": "nami", "task": "default"})
         == "openrouter"
     )
     # xAI carve-out：OpenRouter 無 grok tier，恆 native
     assert bm._transport_for({"provider": "xai", "agent": "sanji", "task": "default"}) == "native"
-    # Anthropic 訂閱 → native（claude -p Max Plan）
+    # Anthropic 訂閱 hard-require → native（claude -p Max Plan）
     monkeypatch.setenv("AUTH_NAMI", "subscription_required")
     assert (
         bm._transport_for({"provider": "anthropic", "agent": "nami", "task": "default"}) == "native"
@@ -126,12 +132,17 @@ def test_get_shows_openrouter_transport_when_enabled(client, monkeypatch):
 
 
 def test_get_per_agent_transport_override(client, monkeypatch):
-    """LLM_TRANSPORT_<AGENT> 讓單一 agent 走 OpenRouter，面板逐列反映（全域仍 off）。"""
+    """LLM_TRANSPORT_<AGENT> 讓單一 agent 走 OpenRouter，面板逐列反映（全域仍 off）。
+
+    ADR-026 Amendment 2026-08-19 後 anthropic 預設走訂閱（native），要看到
+    openrouter 需同時顯式 AUTH_*=api opt-out。
+    """
     monkeypatch.delenv("LLM_TRANSPORT", raising=False)
     monkeypatch.setenv("LLM_TRANSPORT_NAMI", "openrouter")
+    monkeypatch.setenv("AUTH_NAMI", "api")
     c, _ = client
     resp = c.get("/bridge/models")
     assert resp.status_code == 200
-    # Nami（claude api）那列 → openrouter；其餘 agent 全域 off → native，兩者並存
+    # Nami（claude、顯式 api）那列 → openrouter；其餘 agent 全域 off → native，兩者並存
     assert "mdl-trans--openrouter" in resp.text
     assert "mdl-trans--native" in resp.text
