@@ -24,6 +24,8 @@ from shared.config import get_db_path  # noqa: E402
 from shared.highlight_shortlist import winners_path  # noqa: E402
 
 OK, PENDING, BAD = "✅", "⬜", "❌"
+#: 完整版。它是 Editorial Master 那條 timeline 本身，不是挑出來的精華段落。
+FULL_CUT_ID = "full"
 
 
 def _load(path: Path) -> dict | None:
@@ -105,6 +107,9 @@ def report(episode_dir: Path) -> int:
         print(f"{PENDING} 候選開採　還沒跑")
         print("\n下一步【平行 ×3】miner：story / punch / value（互相隔離）")
         print("        然後 [序列] run_highlight_cut.py --merge-miners")
+        # 完整版跟 miners 沒有先後關係——它的 timeline 封存當下就定了。這裡不提的話，
+        # 剛封存完跑這支的人會以為現在只能等 miners，白白把一條可以同時開的線擱著。
+        print("【平行】完整版：title-brainstorm → thumbnail-brainstorm → publish_prep --cut full")
         return 0
     print(f"{OK} 候選開採　" + "、".join(f"{k} {v} 支" for k, v in sorted(counts.items())))
 
@@ -139,7 +144,14 @@ def report(episode_dir: Path) -> int:
 
     # 格式從 winners 來，不從 packages.json 來——還沒進 packaging 的 cut 在那邊查不到，
     # 會變成「未知格式」而算錯它該有幾條標題。
-    all_winners = [(c, "long") for c in _winners(hl, "long")]
+    #
+    # 完整版排在最前面，而且**不從 winners 來**：它不是精華挑選的產物，所以不在
+    # `winners*.json` 也不在 `candidates.json`（`publish_prep` 的完整版分支同樣繞開
+    # 那兩個檔）。能走到這一行就代表 Editorial Master 過了，完整版就是既有的一支。
+    # 漏掉它的後果是這支工具會說「沒有待派的工作了」，而完整版根本還沒派——
+    # 2026-09-18 實查：releases 22 筆，cut_id=full 0 筆，八集沒有一集發過完整版。
+    all_winners = [(FULL_CUT_ID, "long")]
+    all_winners += [(c, "long") for c in _winners(hl, "long")]
     all_winners += [(c, "short") for c in _winners(hl, "short")]
     if all_winners:
         print("\n## 每一支")
