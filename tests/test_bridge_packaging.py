@@ -3035,6 +3035,98 @@ def test_title_pool_is_absent_when_the_desktop_never_wrote_a_trace(client):
     assert "沒進前 5 名的候選" not in body
 
 
+# ---------------------------------------------------------------------------
+# 一筆壞資料不該炸掉整頁（桌機端落檔的 title_trace / cutouts_manifest / brief）
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize("broken", [16, "16", {"R1-01": "沒選上但分數很高的那一條"}])
+def test_title_pool_survives_candidates_that_are_not_a_list(client, vault, broken):
+    """`panel_rounds[].candidates` 被寫成別的型別時，整頁不能跟著消失。
+
+    2026-09-18 20260723-xieboran：兩輪的 candidates 都被寫成「這輪評了 16 條」的數字，
+    `for` 丟 TypeError，而 `_title_pool` 在 `_board_context` 裡——那一集所有 cut 的標題、
+    封面、核准整頁 500，全部打不開。壞掉的是 panel 那一段，不是這一頁。
+    """
+    payload = _trace_payload()
+    for round_row in payload["title_trace"]["panel_rounds"]:
+        round_row["candidates"] = broken
+    _write_title_trace(vault, "title_trace-punch-L1.json", payload)
+
+    r = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert r.status_code == 200
+    assert "Approve" in r.text  # 裁決動線還在
+    assert "沒選上但分數很高的那一條" not in r.text  # panel 那一段整段跳過
+    assert "根本沒被評到的漏網之魚" in r.text  # tier2 照常
+
+
+def test_title_pool_survives_mistyped_fields_in_every_other_layer(client, vault):
+    """同一種誤填會落在 trace 的任何一層——panel_rounds / flags / angles 壞了也只是少列。"""
+    payload = _trace_payload()
+    payload["title_trace"]["panel_rounds"] = 2  # 「評了兩輪」
+    payload["title_trace"]["tier2"] = 5  # 「疊了五條」
+    payload["title_trace"]["tier3"] = [
+        {"text": "第三層的候選", "angles": "反直覺", "payoff": "看懂代價"}
+    ]
+    _write_title_trace(vault, "title_trace-punch-L1.json", payload)
+
+    r = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert r.status_code == 200
+    assert "第三層的候選" in r.text  # 好的那幾條照列
+    assert "看懂代價" in r.text
+    # 形狀不對的角度當成沒有——不是把字串拆成一個字一個 tag
+    assert '<span class="pkg-runner-angle">反</span>' not in r.text
+
+
+def test_title_pool_survives_panel_flags_that_are_not_a_list(client, vault):
+    """評審旗標被寫成數量時，那條候選仍要列出來（只是沒有註記）。"""
+    payload = _trace_payload()
+    payload["title_trace"]["panel_rounds"][0]["candidates"][1]["A"]["flags"] = 1
+    payload["title_trace"]["panel_rounds"][0]["candidates"][1]["B"]["flags"] = 0
+    _write_title_trace(vault, "title_trace-punch-L1.json", payload)
+
+    r = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert r.status_code == 200
+    assert "被評審標成標題黨的那一條" in r.text
+    assert "評審標記：" not in r.text
+
+
+def test_board_survives_a_cutouts_manifest_with_mistyped_fields(client, vault):
+    """cutout picker 也是 `_board_context` 的一部分——它讀壞一個檔不該讓整頁 500。"""
+    d = vault / "Attachments" / "cutouts" / "podcast" / "20260723-xieboran"
+    d.mkdir(parents=True)
+    (d / "host_v1_serious.png").write_bytes(bytes.fromhex("89504e470d0a1a0a"))
+    (d / "cutouts_manifest.json").write_text(
+        json.dumps({"records": 3, "validated": ["host_v1_serious.png"]}),
+        encoding="utf-8",
+    )
+
+    r = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert r.status_code == 200
+    # records/validated 都讀不了 → 退到「列頂層 PNG」那條 fallback
+    assert "host_v1_serious.png" in r.text
+
+
+def test_board_survives_a_brief_whose_beats_are_not_a_list(client, vault):
+    """速覽的一角壞掉只該少那一段，一句話摘要與裁決動線都要還在。"""
+    _write_brief(
+        vault,
+        "punch-L1",
+        {"one_liner": "談該不該把大腦外包給 AI", "beats": 7, "quotes": "三則"},
+    )
+
+    r = client.get("/bridge/packaging/20260723-xieboran")
+
+    assert r.status_code == 200
+    assert "談該不該把大腦外包給 AI" in r.text
+    assert '<ol class="pkg-brief-beats">' not in r.text
+    assert "Approve" in r.text
+
+
 def test_a_repeated_timeout_stops_telling_him_to_press_again():
     """一次逾時是冷啟動，連續逾時不是。
 
