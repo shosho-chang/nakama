@@ -53,6 +53,15 @@
     <span>完成後會自動進入 Publish review，這裡不會拿 review preview 代替正式檔。</span>
   </div>
   {% endif %}
+  {% if release_failed %}
+  {#- 匯出掛掉的時候要說掛了。原本只有「正在匯出」一種說法，失敗之後它會一直掛著
+      並每 5 秒 poll 一次——畫面上看起來跟還在跑一模一樣（修修 2026-09-18 實際踩到）。 -#}
+  <div class="pkg-release-pending pkg-release-failed" role="alert">
+    <strong>Resolve 匯出失敗，沒有在跑。</strong>
+    <span>{{ release_failed }}</span>
+    <span>核准已經存好了，修掉原因之後再按一次 Approve 就會重跑，不用重挑封面。</span>
+  </div>
+  {% endif %}
   {% if description_pending and description_state == 'generating' %}
   <div class="pkg-release-pending" role="status" aria-live="polite">
     <strong>正在產生 Description 草稿</strong>
@@ -747,6 +756,10 @@
   }
   .pkg-release-pending { display: grid; gap: var(--sho-s-1); border-left: 3px solid var(--sho-accent); background: var(--sho-accent-soft); padding: var(--sho-s-3) var(--sho-s-4); }
   .pkg-release-pending span { color: var(--sho-text-2); }
+  /* 失敗沿用 description 那條已經在用的語彙（error 左邊條＋中性底），不要用 accent
+     ——accent 在這一頁是「進行中」的意思，失敗借用它就分不出來了。 */
+  .pkg-release-failed { border-left-color: var(--sho-error); background: var(--sho-bg-2); }
+  .pkg-release-failed strong { color: var(--sho-error); }
   /* 每秒重寫的數字用等寬字面，否則 1 跟 8 不等寬，整行會左右抖。 */
   .pkg-description-elapsed { font-variant-numeric: tabular-nums; }
   .pkg-description-interrupted { display: grid; gap: var(--sho-s-2); border-left: 3px solid var(--sho-error); background: var(--sho-bg-2); padding: var(--sho-s-3) var(--sho-s-4); }

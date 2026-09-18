@@ -1838,6 +1838,15 @@ def packaging_board(
     if release_pending and cut:
         if pending_cut is not None:
             raise HTTPException(status_code=409, detail="Packaging 尚未完成")
+        # 匯出掛掉之後那面橫幅還在說「正在匯出」，而且每 5 秒 poll 一次、永遠不會停
+        # ——`release_pending` 是網址參數，不是狀態，而 `_release_from_receipt` 只認
+        # `rendered`，失敗的 receipt 對它跟「還沒好」長得一模一樣。修修 2026-09-18：
+        # 「Resolve 目前看起來沒有在動⋯⋯我覺得很礙眼，把它拿掉。」礙眼的不是橫幅，
+        # 是它在失敗之後還在說謊。這裡把失敗講出來，並讓前端停止輪詢。
+        failed = _publish_prep_state(_episode_dir(ctx["pkg"].episode), cut)
+        if failed and failed.get("status") == "failed":
+            ctx["release_failed"] = failed.get("error") or "匯出失敗（沒有更多訊息）"
+            release_pending = None
         release = _release_from_receipt(ctx["pkg"].episode, cut)
         if release is not None:
             approval = ctx["cuts"][0]["approval"]
@@ -1876,6 +1885,7 @@ def packaging_board(
     ctx["focused_cut"] = focused_cut
     ctx["pending_cut"] = pending_cut
     ctx["release_pending"] = bool(release_pending)
+    ctx.setdefault("release_failed", None)
     ctx["description_pending"] = bool(description_pending)
     ctx["description_state"] = description_state
     ctx["description_error"] = description_error
