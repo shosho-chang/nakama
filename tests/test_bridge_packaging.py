@@ -1583,6 +1583,54 @@ def test_pending_board_polls_without_full_page_reload(router_client, monkeypatch
     assert "fetch(window.location.href" in response.text
 
 
+def test_a_failed_export_says_so_instead_of_claiming_it_is_still_running(
+    router_client, monkeypatch
+):
+    """`release_pending` 是網址參數不是狀態，失敗之後橫幅會一直掛著、每 5 秒 poll 一次。
+
+    修修 2026-09-18 實際踩到：child 早就 exit 1 了，畫面還在說「正在由 Resolve
+    匯出全解析成品」。看起來跟還在跑一模一樣。
+    """
+    import thousand_sunny.routers.packaging as pkg_module
+
+    monkeypatch.setattr(pkg_module, "get_release", lambda episode, cut_id: None)
+    monkeypatch.setattr(
+        pkg_module,
+        "_failed_publish_prep",
+        lambda episode, cut_id: "background child exited (1)",
+    )
+
+    response = router_client.get(
+        "/bridge/packaging/20260723-xieboran?cut=punch-L1&release_pending=1"
+    )
+
+    assert response.status_code == 200
+    assert "Resolve 匯出失敗，沒有在跑。" in response.text
+    assert "background child exited (1)" in response.text
+    # 說完失敗就不要再輪詢——輪詢本身就是「還在跑」的訊號
+    assert "正在由 Resolve 匯出全解析成品" not in response.text
+    assert "fetch(window.location.href" not in response.text
+
+
+def test_the_failure_probe_cannot_take_the_whole_board_down(router_client, monkeypatch):
+    """`PODCAST_EPISODES_ROOT` 沒設時，board 仍然要開得起來。
+
+    第一版直接呼叫 `_episode_dir`，它沒設變數就丟 503——於是一面「輔助診斷」的
+    橫幅有了否決整頁的權力，連挑封面都進不去。跟 #1287 是同一類錯。
+    """
+    import thousand_sunny.routers.packaging as pkg_module
+
+    monkeypatch.delenv("PODCAST_EPISODES_ROOT", raising=False)
+    monkeypatch.setattr(pkg_module, "get_release", lambda episode, cut_id: None)
+
+    response = router_client.get(
+        "/bridge/packaging/20260723-xieboran?cut=punch-L1&release_pending=1"
+    )
+
+    assert response.status_code == 200
+    assert "Resolve 匯出失敗" not in response.text
+
+
 def test_pending_board_applies_packaging_after_render_finishes(router_client, vault, monkeypatch):
     import thousand_sunny.routers.packaging as pkg_module
 

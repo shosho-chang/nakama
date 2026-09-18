@@ -1229,6 +1229,25 @@ def _ensure_description_handoff(episode: str, cut_id: str, release: dict) -> str
     return "generating"
 
 
+def _failed_publish_prep(episode: str, cut_id: str) -> str | None:
+    """這一支的匯出掛了嗎？掛了就回一句可以印給人看的原因，否則回 None。
+
+    **這是診斷，不可以有能力把整頁弄掉。** `_episode_dir` 在
+    `PODCAST_EPISODES_ROOT` 沒設時會丟 503——那是「要不要啟動匯出」該有的態度，
+    不是「要不要顯示一面橫幅」該有的。第一版直接呼叫它，於是環境變數一沒設，
+    整個 packaging board 就 503，連挑封面都進不去（CI 抓到，那裡的 fixture 正好
+    把變數 delenv 掉；本機因為 `.env` 有值而沒看見）。跟 #1287 是同一類錯：
+    一個輔助資訊不該有否決整頁的權力。
+    """
+    try:
+        payload = _publish_prep_state(_episode_dir(episode), cut_id)
+    except (HTTPException, OSError):
+        return None
+    if not payload or payload.get("status") != "failed":
+        return None
+    return str(payload.get("error") or "匯出失敗（沒有更多訊息）")
+
+
 def _publish_prep_state(episode_dir: Path, cut_id: str) -> dict | None:
     receipt = episode_dir / "highlights" / "exports" / f".publish_prep_{cut_id}.json"
     payload = load_job(receipt)
@@ -1862,6 +1881,15 @@ def packaging_board(
     if release_pending and cut:
         if pending_cut is not None:
             raise HTTPException(status_code=409, detail="Packaging 尚未完成")
+        # 匯出掛掉之後那面橫幅還在說「正在匯出」，而且每 5 秒 poll 一次、永遠不會停
+        # ——`release_pending` 是網址參數，不是狀態，而 `_release_from_receipt` 只認
+        # `rendered`，失敗的 receipt 對它跟「還沒好」長得一模一樣。修修 2026-09-18：
+        # 「Resolve 目前看起來沒有在動⋯⋯我覺得很礙眼，把它拿掉。」礙眼的不是橫幅，
+        # 是它在失敗之後還在說謊。這裡把失敗講出來，並讓前端停止輪詢。
+        failed = _failed_publish_prep(ctx["pkg"].episode, cut)
+        if failed:
+            ctx["release_failed"] = failed
+            release_pending = None
         release = _release_from_receipt(ctx["pkg"].episode, cut)
         if release is not None:
             approval = ctx["cuts"][0]["approval"]
@@ -1900,6 +1928,7 @@ def packaging_board(
     ctx["focused_cut"] = focused_cut
     ctx["pending_cut"] = pending_cut
     ctx["release_pending"] = bool(release_pending)
+    ctx.setdefault("release_failed", None)
     ctx["description_pending"] = bool(description_pending)
     ctx["description_state"] = description_state
     ctx["description_error"] = description_error
