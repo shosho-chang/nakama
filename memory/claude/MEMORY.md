@@ -389,3 +389,5 @@
 - [「legacy route」是 stop-the-line](feedback_legacy_route_is_stop_the_line.md) — subagent／code 回報 legacy、deprecated、v1 fallback 時先停下來查是不是走錯線；活的流程要求死掉的前置條件，先懷疑路線不要先補條件（長片視覺線＝ADR-066 `--semantic-worker handoff`）
 - [哪個 Python 跑得動測試](reference_test_interpreters.md) — 只有 `py -3.14` 有完整依賴（3.10 只有 ruff/whisperx、3.12 沒 pytest）；全 repo `tests/` 要兩小時且會被 markdownify 擋死，所以 gate 是「模組目錄＋每個引用改動 API 的檔案」
 - [Stand-in 素材庫](reference_standin_footage_library.md) — Envato `YuriArcursPeopleimages` 的留鬍亞裔男是**所有** stock footage 的首要人選；先查本地庫 `E:\data\stock footage\asian man`（索引 INDEX.md）再去 Envato；十支是 DCI 4K 不是 16:9、對短片沒用；核臉要防「誤收別人」與「誤退本人」兩個方向
+- [封存 Editorial Master 是我的工作](feedback_editorial_master_sealing_is_mine.md) — 「我完成 Editorial Master 了」＝他剪定了（含 intro/outro），不是封存了；封存前我要先去 Obsidian 抓講稿、用 **Memo** 辨識 intro/outro、依稿校對字幕，才 seal；錯誤訊息不要丟指令給他
+- [他動過的就是定案，不要偵測分岔](feedback_his_edit_wins_no_drift_checks.md) — 封存後他再改 timeline 就直接 overwrite 重封存，不比 uid／長度／hash；「一道永遠得到同一個答案的閘，價值是負的」；已在 seal 驗過的下游只讀不重驗
