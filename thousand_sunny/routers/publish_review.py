@@ -295,22 +295,90 @@ def _spawn_upload_worker(episode: str, cut_id: str, *worker_args: str) -> Path:
     return log_path
 
 
+#: 已經離開「等你按發布」那一格的狀態。
+_IN_FLIGHT_STATUSES = ("approved", "uploading")
+_DONE_STATUSES = ("uploaded", "published")
+
+
+def _cut_row(rel: dict) -> dict:
+    """一支成品在發布頁上的樣子：顯示標題 ＋ 它現在卡在哪一格。
+
+    「Ready for Publish」不是一個 DB 欄位——它是 `publish_approve_upload` 那些
+    前置條件的反面。這裡照同一份條件判，讓清單上寫的跟按下去會發生的事是同一件。
+    """
+    full = get_release(rel["episode"], rel["cut_id"])
+    yt = next((x for x in (full or {}).get("targets") or [] if x["platform"] == "youtube"), None)
+    yt = yt or {}
+    row = dict(rel)
+    # 主顯示 = 發布標題（修修：cut 編號沒有意義）；未回填時退回工作代號
+    row["display_title"] = yt.get("title") or rel["work_title"] or rel["cut_id"]
+    row["target_state"] = yt.get("status") or "draft"
+    row["video_url"] = yt.get("url")
+
+    if row["target_state"] in _DONE_STATUSES:
+        row["state"] = "done"
+        row["state_label"] = "已上架"
+        row["missing"] = []
+        return row
+    if row["target_state"] == "failed":
+        row["state"] = "failed"
+        row["state_label"] = "失敗"
+        row["missing"] = [yt.get("error")] if yt.get("error") else []
+        return row
+    if row["target_state"] in _IN_FLIGHT_STATUSES:
+        row["state"] = "in_flight"
+        row["state_label"] = "上傳中"
+        row["missing"] = []
+        return row
+
+    missing: list[str] = []
+    if not rel.get("file_path") or not Path(rel["file_path"]).exists():
+        missing.append("成品檔")
+    if not yt.get("title"):
+        missing.append("標題")
+    if not yt.get("description"):
+        missing.append("描述")
+    thumb = yt.get("thumbnail_path")
+    if not thumb or not (get_vault_path() / thumb).exists():
+        missing.append("封面")
+    row["missing"] = missing
+    row["state"] = "blocked" if missing else "ready"
+    row["state_label"] = "還缺：" + "、".join(missing) if missing else "可以發布"
+    return row
+
+
 @page_router.get("", response_class=HTMLResponse, response_model=None)
 def publish_list(
     request: Request, nakama_auth: str | None = Cookie(None)
 ) -> HTMLResponse | RedirectResponse:
+    """專案（集數）清單——跟 Packaging 一樣先分集，再點進去看內容。
+
+    修修 2026-09-16：原本這一頁把所有集數的所有成品平鋪成一長串，一集出三支長片
+    加三支短片就是六列，兩集就看不完；而且他想的是「先挑這一集，再看這一集裡有
+    什麼可以發」。
+    """
     if not check_auth(nakama_auth):
         return _login_redirect(request)
-    releases = list_releases()
-    # 列表主顯示 = 發布標題（修修：cut 編號沒有意義）；未回填時退回工作代號
-    for r in releases:
-        full = get_release(r["episode"], r["cut_id"])
-        yt = next((x for x in full["targets"] if x["platform"] == "youtube"), None)
-        r["display_title"] = (yt or {}).get("title") or r["work_title"] or r["cut_id"]
+    episodes: dict[str, dict] = {}
+    for rel in list_releases():
+        row = _cut_row(rel)
+        bucket = episodes.setdefault(
+            rel["episode"],
+            {"episode": rel["episode"], "total": 0, "ready": 0, "done": 0, "latest": None},
+        )
+        bucket["total"] += 1
+        if row["state"] == "ready":
+            bucket["ready"] += 1
+        elif row["state"] == "done":
+            bucket["done"] += 1
+        rendered = rel.get("rendered_at") or ""
+        if rendered > (bucket["latest"] or ""):
+            bucket["latest"] = rendered
+    rows = sorted(episodes.values(), key=lambda e: e["episode"], reverse=True)
     return _templates.TemplateResponse(
         request,
         "publish_list.html",
-        {"releases": releases, "asset_version": _asset_version()},
+        {"rows": rows, "asset_version": _asset_version()},
     )
 
 
@@ -645,4 +713,35 @@ def publish_status(
             "targets": _platform_targets(rel),
             "checked_at": datetime.now(timezone.utc).isoformat(),
         }
+    )
+
+
+# ⚠️ 這條路由必須留在本檔**最後**。`/{episode}` 只吃一段，會跟同前綴下所有
+# 單段固定路徑相撞——`/vault-thumb` 就在上面（FastAPI 照註冊順序比對，先中先贏）。
+# `/calendar` 不受影響是因為 publish_calendar 的 router 在 app.py 先 include。
+# 新增 `/bridge/publish/<固定字串>` 的路由時，請加在這一條**之前**，
+# 並在 tests/test_publish_review_board.py 補一條「它仍然走自己的 handler」。
+@page_router.get("/{episode}", response_class=HTMLResponse, response_model=None)
+def publish_episode(
+    episode: str, request: Request, nakama_auth: str | None = Cookie(None)
+) -> HTMLResponse | RedirectResponse:
+    """一集之內有哪些成品可以發布。"""
+    if not check_auth(nakama_auth):
+        return _login_redirect(request)
+    releases = list_releases(episode)
+    if not releases:
+        raise HTTPException(status_code=404, detail=f"{episode} 沒有登錄的成品")
+    rows = [_cut_row(rel) for rel in releases]
+    # 可以發布的排最前面，接著還缺料的，已上架的沉底——這一頁的用途是「現在能發什麼」
+    order = {"ready": 0, "failed": 1, "blocked": 2, "in_flight": 3, "done": 4}
+    rows.sort(key=lambda r: (order.get(r["state"], 9), r["cut_id"]))
+    return _templates.TemplateResponse(
+        request,
+        "publish_episode.html",
+        {
+            "episode": episode,
+            "rows": rows,
+            "ready_count": sum(1 for r in rows if r["state"] == "ready"),
+            "asset_version": _asset_version(),
+        },
     )
