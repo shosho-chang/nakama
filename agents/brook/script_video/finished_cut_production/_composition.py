@@ -162,6 +162,9 @@ class ProductionStatusView:
     scope: Literal["full_stage", "event_retry"] | None = None
     event_id: str | None = None
     reason_code: str | None = None
+    #: 被留在 needs_review 的理由，一句人話。`reason_code` 回答「是哪一類事情不對」，
+    #: 這一欄回答「到底哪裡不對」——收件端退件時只有它說得出來。
+    review_reason: str | None = None
 
 
 class FinishedCutProductionApplication:
@@ -310,6 +313,9 @@ class FinishedCutProductionApplication:
                     if stored.view.status == "needs_review" and outcome is not None
                     else None
                 ),
+                review_reason=(
+                    stored.view.review_reason if stored.view.status == "needs_review" else None
+                ),
             )
         if self._authority.resolve(command_id) is not None:
             return ProductionStatusView(command_id=command_id, state="registered")
@@ -337,6 +343,7 @@ class FinishedCutProductionApplication:
         scope: Literal["full_stage", "event_retry"] | None,
         event_id: str | None,
         reason_code: str | None,
+        review_reason: str | None = None,
     ) -> ProductionStatusView:
         if status == "review_ready":
             return ProductionStatusView(
@@ -356,6 +363,7 @@ class FinishedCutProductionApplication:
             scope=scope,
             event_id=event_id,
             reason_code=reason_code,
+            review_reason=review_reason,
         )
 
 
