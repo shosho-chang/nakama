@@ -261,6 +261,24 @@ def _sync_conflicts(ep_dir: Path) -> list[str]:
     return sorted(p.name for p in ep_dir.glob("*sync-conflict*"))
 
 
+# 桌機端落到 vault 的輔助 JSON（title_trace、cutouts_manifest、brief）沒有 schema 把關，
+# 某個欄位被寫成別的型別是會發生的事。board 讀這類檔一律走這兩個轉換器：形狀不對就當
+# 那一段不存在，跟 `_title_trace`「找不到或 cut_id 對不上就回 None（寧可不顯示）」同一
+# 條路——**不**引進嚴格驗證，那會讓既有七集的 trace 全部失效。
+#
+# 2026-09-18 20260723-xieboran：`title_trace.panel_rounds[].candidates` 兩輪都被寫成
+# 「這輪評了幾條」的數字，`for` 丟 TypeError，而它在 `_board_context` 裡——那一集所有
+# cut 的標題、封面、核准整頁 500，全部打不開。少列幾條落選標題是小事，整頁消失不是。
+def _as_list(value: object) -> list:
+    """要拿來 `for` 的欄位；不是 list 就當成空的。"""
+    return value if isinstance(value, list) else []
+
+
+def _as_dict(value: object) -> dict:
+    """要拿來查 key 的欄位；不是 dict 就當成空的。理由同 `_as_list`。"""
+    return value if isinstance(value, dict) else {}
+
+
 def _load_brief(ep_dir: Path, cut_id: str) -> dict | None:
     """讀該支的內容速覽（`briefs/<cut_id>.json`），沒有就回 None。
 
@@ -280,6 +298,12 @@ def _load_brief(ep_dir: Path, cut_id: str) -> dict | None:
         return {"error": f"brief 壞檔：{exc}"}
     if not isinstance(data, dict):
         return {"error": "brief 格式錯誤：頂層必須是物件"}
+    # `beats` / `quotes` 是 template 直接 `for` 走的兩段，形狀不對就當那一段沒有：
+    # 速覽的一角壞掉不該把整頁換成 500。整檔標成錯誤也不對——那會連好的那句一句話
+    # 摘要一起藏掉。
+    for key in ("beats", "quotes"):
+        if key in data and not isinstance(data[key], list):
+            data.pop(key)
     return data
 
 
@@ -290,6 +314,10 @@ def _load_cutout_choices(episode_slug: str) -> dict[str, list[dict]]:
     當 picker 過濾器。只收 records 中且頂層 PNG 實際存在的項目，避免把迭代路徑
     或 stale manifest row 呈現成可選素材。舊 manifest 沒 records 才退回 validated，
     再舊則列頂層 PNG，三條路徑都 fail-visible 標示 validated 狀態。
+
+    manifest 的欄位形狀不對（`records` 不是 list、`validated` 不是物件）就當那一段
+    沒有、退到下一條 fallback；cutout picker 在 `_board_context` 裡，它讀壞一個檔不
+    該把整個審核頁換成 500。
     """
     d = get_vault_path() / "Attachments" / "cutouts" / "podcast" / episode_slug
     out: dict[str, list[dict]] = {"host": [], "guest": []}
@@ -300,9 +328,9 @@ def _load_cutout_choices(episode_slug: str) -> dict[str, list[dict]]:
     validated_names: set[str] = set()
     if manifest.is_file():
         try:
-            payload = json.loads(manifest.read_text(encoding="utf-8"))
-            validated_names = set((payload.get("validated") or {}).keys())
-            for record in payload.get("records") or []:
+            payload = _as_dict(json.loads(manifest.read_text(encoding="utf-8")))
+            validated_names = set(_as_dict(payload.get("validated")).keys())
+            for record in _as_list(payload.get("records")):
                 if not isinstance(record, dict) or not isinstance(record.get("file"), str):
                     continue
                 rows.append(record)
@@ -946,7 +974,7 @@ def _panel_note(row: dict) -> str:
     for key, value in row.items():
         if key in {"id", "title", "gate", "scores"} or not isinstance(value, dict):
             continue
-        for flag in value.get("flags") or []:
+        for flag in _as_list(value.get("flags")):
             if isinstance(flag, str) and flag not in flags:
                 flags.append(flag)
     return "評審標記：" + "、".join(flags) if flags else ""
@@ -959,10 +987,12 @@ def _title_pool(ep_dir: Path, cut_id: str, taken: set[str]) -> list[dict]:
         return []
     rows: dict[str, dict] = {}
 
-    for round_row in trace.get("panel_rounds") or []:
+    # 每一層都可能被寫成別的型別（見 `_as_list` 上面那段的 2026-09-18）。壞掉的那一
+    # 段跳過就好，其餘照常——panel 那輪讀不了，tier2/tier3 的漏網之魚還是要列出來。
+    for round_row in _as_list(trace.get("panel_rounds")):
         if not isinstance(round_row, dict):
             continue
-        for candidate in round_row.get("candidates") or []:
+        for candidate in _as_list(round_row.get("candidates")):
             if not isinstance(candidate, dict):
                 continue
             text = str(candidate.get("title") or "").strip()
@@ -983,13 +1013,13 @@ def _title_pool(ep_dir: Path, cut_id: str, taken: set[str]) -> list[dict]:
             }
 
     for tier in ("tier2", "tier3"):
-        for candidate in trace.get(tier) or []:
+        for candidate in _as_list(trace.get(tier)):
             if not isinstance(candidate, dict):
                 continue
             text = str(candidate.get("text") or "").strip()
             if not text or text in taken:
                 continue
-            angles = [a for a in (candidate.get("angles") or []) if isinstance(a, str)]
+            angles = [a for a in _as_list(candidate.get("angles")) if isinstance(a, str)]
             payoff = str(candidate.get("payoff") or "").strip()
             # 沒被 panel 評到的也要列（那正是「漏網之魚」）；評過的就只補角度與 payoff。
             row = rows.setdefault(
