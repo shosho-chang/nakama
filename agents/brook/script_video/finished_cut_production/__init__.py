@@ -35,6 +35,11 @@ from ._correction import (
     RunStageInspection,
 )
 from ._engine import FinishedCutProduction
+
+# 刻意的具名 re-export，但**不放進 `__all__`**：`__all__` 是這個模組宣告的公開
+# 介面，有一條測試釘死它的完整清單，防的是私有的 authority constructor 漏出去。
+# 一個檔名常數不該擴張那份清單；CLI 具名 import 就夠了。
+from ._plan_record import PLAN_RECORD_FILENAME as PLAN_RECORD_FILENAME
 from ._records import (
     ArtifactView,
     ComponentView,
