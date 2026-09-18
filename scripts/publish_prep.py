@@ -136,7 +136,7 @@ def full_cut(episode_dir: Path) -> dict:
     if timeline is None:
         raise SystemExit(
             f"{episode_dir.name} 還沒有封存 Editorial Master，完整版沒有可 render 的 timeline。\n"
-            f"  先跑：python scripts/podcast_editorial_master.py seal \"{episode_dir}\" ..."
+            f'  先跑：python scripts/podcast_editorial_master.py seal "{episode_dir}" ...'
         )
     return {
         "id": FULL_CUT_ID,
