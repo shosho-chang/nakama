@@ -389,5 +389,3 @@
 - [「legacy route」是 stop-the-line](feedback_legacy_route_is_stop_the_line.md) — subagent／code 回報 legacy、deprecated、v1 fallback 時先停下來查是不是走錯線；活的流程要求死掉的前置條件，先懷疑路線不要先補條件（長片視覺線＝ADR-066 `--semantic-worker handoff`）
 - [哪個 Python 跑得動測試](reference_test_interpreters.md) — 只有 `py -3.14` 有完整依賴（3.10 只有 ruff/whisperx、3.12 沒 pytest）；全 repo `tests/` 要兩小時且會被 markdownify 擋死，所以 gate 是「模組目錄＋每個引用改動 API 的檔案」
 - [Stand-in 素材庫](reference_standin_footage_library.md) — Envato `YuriArcursPeopleimages` 的留鬍亞裔男是**所有** stock footage 的首要人選；先查本地庫 `E:\data\stock footage\asian man`（索引 INDEX.md）再去 Envato；十支是 DCI 4K 不是 16:9、對短片沒用；核臉要防「誤收別人」與「誤退本人」兩個方向
-- [DP 一定要去下載素材](feedback_dp_must_acquire_never_make_do.md) — 「絕對不要硬挑，一定要去下載」；根因是 packet 寫死 only-catalog + 該 cut 從沒跑過自己的採購（蘇予昕長3 一晚配錯兩支）
-- [DP 一定要去下載素材](feedback_dp_must_acquire_never_make_do.md) — 「絕對不要硬挑，一定要去下載」；根因是 packet 寫死 only-catalog ＋ 該 cut 從沒跑過自己的採購（蘇予昕長3 一晚配錯兩支）
