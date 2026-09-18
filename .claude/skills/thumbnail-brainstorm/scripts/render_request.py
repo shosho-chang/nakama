@@ -48,6 +48,12 @@ TARGET_HEAD_PX = 468.0  # N1 house style：頭高 65% 畫布
 HOST_HEAD_X, GUEST_HEAD_X = 192.0, 1075.0  # 15% / 84%（設計系統驗收帶）
 BALANCE_TOL = 600
 _DIFF_RE = re.compile(r"左遮 (\d+)px² 右遮 (\d+)px²")
+# cutout 檔名慣例（`shared.cutout_library.cutout_filename`）：{role}_v{i}_{emotion}.png。
+# 舊格式 {role}_v{n}.png 沒有 emotion，抓不到 emotion 就不會被選成基準。
+_CUTOUT_NAME_RE = re.compile(
+    r"^(?P<role>host|guest)_v(?P<index>\d+)(?:_(?P<emotion>[a-z]+))?\.png$"
+)
+_BASELINE_EMOTION = "serious"
 
 ACCENT_RGB = (243, 116, 37)  # #F37425
 HL_GAP = 14  # 橘框四邊要留的視覺等距（px）
@@ -225,6 +231,44 @@ def _landmarks(manifest: dict, name: str) -> dict:
     return entry["landmarks_px"]
 
 
+def _resolve_baseline(manifest: dict, role: str, override: str | None) -> str:
+    """這一角色的 scale 基準 cutout ＝ **這一集的 serious 定稿**。
+
+    基準是語意（「兩人的 serious 那一顆」），不是固定檔名。舊版把 default 寫死成
+    `host_v1_serious.png` / `guest_v1_serious.png`，等於假設 serious 永遠是 v1；
+    而 `render_watcher.py` 從來不傳這兩個參數，所以只要某一集的 serious 不是 v1，
+    gate 上每一次「存配方」都會 render 失敗。
+
+    2026-09-18 謝伯讓集實際踩到：validated 只有 `host_v2_serious` 與
+    `guest_v9_serious`，full 的三個 package 連續三次 failed，錯誤訊息還是在講
+    `host_v1_serious.png` 不在清單裡——看起來像素材沒做，其實是基準猜錯。
+
+    修修在 gate 上拖過人物（`geometry_manual`）時走的是另一條路、不會查這張表，
+    所以當時的症狀是「只改大字就掛、拖一下人物就好」，更難看出根因。
+    """
+    if override:
+        return override
+    validated = manifest.get("validated") or {}
+    candidates = sorted(
+        (int(match.group("index")), name)
+        for name, entry in validated.items()
+        if (match := _CUTOUT_NAME_RE.match(name)) is not None
+        and match.group("role") == role
+        and match.group("emotion") == _BASELINE_EMOTION
+        and (entry or {}).get("landmarks_px")
+    )
+    if not candidates:
+        listed = "、".join(sorted(validated)) or "（空）"
+        raise SystemExit(
+            f"{role} 找不到可當基準的 {_BASELINE_EMOTION} cutout——"
+            "scale 鎖定要用這一集的 serious 定稿。\n"
+            f"  validated 清單：{listed}\n"
+            f"  補一顆 serious（guest_cutout.py finalize --role {role} "
+            f"--emotion {_BASELINE_EMOTION}），或用 --{role}-baseline 明指一顆。"
+        )
+    return candidates[0][1]
+
+
 def _solve(lm: dict, height_pct: float, eye_target: float, head_x: float, role: str) -> dict:
     ch = float(lm["cutout_h"])
     displayed = CANVAS_H * height_pct / 100
@@ -392,8 +436,14 @@ def main() -> int:
     ap.add_argument("--packaging-dir", type=Path, required=True)
     ap.add_argument("--cut-id", required=True)
     ap.add_argument("--package-rank", type=int, choices=(1, 2, 3))
-    ap.add_argument("--host-baseline", default="host_v1_serious.png")
-    ap.add_argument("--guest-baseline", default="guest_v1_serious.png")
+    ap.add_argument(
+        "--host-baseline",
+        help="scale 基準 cutout；預設取本集 validated 裡 host 的 serious 那一顆",
+    )
+    ap.add_argument(
+        "--guest-baseline",
+        help="scale 基準 cutout；預設取本集 validated 裡 guest 的 serious 那一顆",
+    )
     ap.add_argument("--credit", default="", help="來賓 credit（頭銜＋姓名）；空 = 沿用上一張 spec")
     ap.add_argument(
         "--eye-target",
@@ -475,8 +525,11 @@ def main() -> int:
     else:
         # scale 鎖定：基準 cutout 解一次（同角色同裁切框 = 同 scale）。Manual
         # recipes deliberately skip landmarks so records-only full-body cutouts remain usable.
-        hb = _landmarks(manifest, args.host_baseline)
-        gb = _landmarks(manifest, args.guest_baseline)
+        host_baseline = _resolve_baseline(manifest, "host", args.host_baseline)
+        guest_baseline = _resolve_baseline(manifest, "guest", args.guest_baseline)
+        print(f"[baseline] scale 鎖定用 host={host_baseline} guest={guest_baseline}")
+        hb = _landmarks(manifest, host_baseline)
+        gb = _landmarks(manifest, guest_baseline)
         host_h = (
             TARGET_HEAD_PX / (hb["chin"] - hb["head_top"]) * float(hb["cutout_h"]) / CANVAS_H * 100
         )
