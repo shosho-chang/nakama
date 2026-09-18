@@ -854,6 +854,43 @@ def verify_editorial_master(
     )
 
 
+def editorial_master_timeline(episode_root: str | Path) -> dict[str, object] | None:
+    """封存記下的那條 timeline——**只讀 receipt，不重算任何 hash**。
+
+    發布線要的只有一件事：完整版是哪一條 timeline。`verify_editorial_master`
+    答得出來，但它會對 `CANONICAL_ARTIFACTS` 逐檔跑 sha256，包含 8–10 GB 的
+    `master.mp4`（實測 17–22 秒）。packaging board 在 render 期間每 5 秒重整一次，
+    用那條路等於每次重讀十 GB——修修 2026-09-18：「這個路線不要有太多無謂的檢查。」
+
+    所以這裡只開 2 KB 的 `EDITORIAL-MASTER.json`，確認它是這一集、契約沒錯、
+    而且真的有人核准過，然後把 timeline 區塊原樣交出去。封存時那個區塊是從
+    snapshot 原封複製進 receipt 的（見 `seal_editorial_master`），內容一致。
+
+    沒封存就回 None——那是常態（ADR-064 之前的集數本來就沒有），不是錯誤。
+
+    注意 `fps` 是 `Decimal.normalize()` 的字串，實檔長得像 `"3E+1"`。要用就
+    `float()`，不要字串比對。
+    """
+    root = Path(episode_root).resolve()
+    try:
+        receipt = json.loads((root / VERSION_RELATIVE / RECEIPT_NAME).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(receipt, dict) or receipt.get("contract") != CONTRACT:
+        return None
+    if receipt.get("episode_id") != root.name:
+        return None
+    approval = receipt.get("approval")
+    if not isinstance(approval, dict) or approval.get("human_approved") is not True:
+        return None
+    timeline = receipt.get("timeline")
+    if not isinstance(timeline, dict):
+        return None
+    if not isinstance(timeline.get("name"), str) or not timeline["name"]:
+        return None
+    return timeline
+
+
 def editorial_master_status(episode_root: str | Path) -> dict[str, object]:
     root = Path(episode_root).resolve()
     if not (root / VERSION_RELATIVE).exists():
@@ -874,6 +911,7 @@ __all__ = [
     "EditorialMasterTimelineDriftError",
     "TimelineInspection",
     "editorial_master_status",
+    "editorial_master_timeline",
     "inspect_timeline",
     "seal_editorial_master",
     "verify_editorial_master",

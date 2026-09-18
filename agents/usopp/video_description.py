@@ -186,7 +186,12 @@ def resolve_chapters(episode_dir: Path, cut_id: str) -> list[tuple[float, str]]:
     recorded = plan_chapters(episode_dir, cut_id)
     if recorded is not None:
         return recorded
-    if load_timeline_map(episode_dir) is not None:
+    timeline_map = load_timeline_map(episode_dir)
+    # 對應表只對**它自己列到的那些 cut** 有發言權。原本這裡問的是「這一集有沒有
+    # 對應表」，於是完整版（從來不在對應表裡，它走 Editorial Master）在任何已經
+    # 建過對應表的集數都直接拿到空章節——而下面 `chapters_from_authored` 正是
+    # 為完整版加的。20260901 蘇予昕就會這樣：一支 102 分鐘的影片安靜地零章節上架。
+    if timeline_map is not None and cut_id in (timeline_map.get("cuts") or {}):
         return []
     registered = chapters_from_registration(episode_dir.name, cut_id)
     if registered:

@@ -42,6 +42,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from run_highlight_cut import FORMAT_LABEL  # noqa: E402
 
+from agents.brook.script_video.editorial_master import (  # noqa: E402
+    editorial_master_timeline,
+)
 from agents.usopp.publish_timeline import (  # noqa: E402
     PublishTimelineError,
     load_timeline_map,
@@ -56,6 +59,15 @@ EXPORTS_DIR = "highlights/exports"
 # 樣式盡量貼近 Resolve 直式模板（修修 UAT 後可調）。
 SHORT_SUB_STYLE = "FontName=Microsoft JhengHei,FontSize=28,Outline=2,MarginV=84"
 RENDER_TIMEOUT_SEC = 3600  # 長片全解析 render 上限（12 分鐘片 + 排隊餘裕）
+# 完整版是 60–100 分鐘，固定 3600 秒比素材本身還短——等於要求 render 穩定跑在
+# 1.7× realtime 以上才不逾時。改成照素材長度給倍率，並保留原本的下限。
+RENDER_TIMEOUT_RATIO = 3.0
+FULL_CUT_ID = "full"
+
+
+def render_timeout_sec(duration_sec: float) -> int:
+    """這一支的 render 等待上限：素材長度 × 倍率，但不低於既有的下限。"""
+    return max(RENDER_TIMEOUT_SEC, int(duration_sec * RENDER_TIMEOUT_RATIO))
 
 
 def _load_plan(episode_dir: Path) -> tuple[list[dict], list[dict]]:
@@ -108,6 +120,33 @@ def timeline_label(cut: dict) -> str:
     return f"{FORMAT_LABEL[cut['format']]}{cut['rank']} - {cut['title']}（緊·導播）"
 
 
+def full_cut(episode_dir: Path) -> dict:
+    """完整版那一支 cut——**來源是 Editorial Master，不是 winners**。
+
+    完整版不是精華挑選的產物，所以它不在 `winners*.json` 也不在 `candidates.json`
+    裡，也不該被塞進去（那會讓「當選」這個詞失去意義）。它是哪一條 timeline，
+    由 ADR-064 的封存回答：`editorial-master/v1/EDITORIAL-MASTER.json` 的
+    `timeline.name`。20260901 蘇予昕的實檔是「20260901 蘇予昕 - 三機 - final」
+    ——**不等於集數資料夾名**，所以這個資訊真的只有封存記得，猜不出來。
+
+    `work_title` 用集數名：上架用的標題來自 packaging，`publish_description`
+    之後會覆蓋它，這裡只要一個誠實的佔位。
+    """
+    timeline = editorial_master_timeline(episode_dir)
+    if timeline is None:
+        raise SystemExit(
+            f"{episode_dir.name} 還沒有封存 Editorial Master，完整版沒有可 render 的 timeline。\n"
+            f"  先跑：python scripts/podcast_editorial_master.py seal \"{episode_dir}\" ..."
+        )
+    return {
+        "id": FULL_CUT_ID,
+        "format": "long",
+        "title": episode_dir.name,
+        "rank": 1,
+        "editorial_master_timeline": timeline,
+    }
+
+
 def _latest_tight_srt(episode_dir: Path, cut_id: str) -> Path | None:
     # 版本挑選規則只留一份（shared.tight_srt）——審核頁 preview / CC / 短片燒字幕
     # 必須指到同一個檔，否則修修看到的字幕不是實際上架的那份
@@ -139,6 +178,15 @@ def _pick_timeline(project, episode_dir: Path, cut: dict):
     缺項就是硬錯誤——回頭用猜的正是會安靜出錯片的那條路（見
     agents/usopp/publish_timeline.py 的實測表）。
     """
+    master = cut.get("editorial_master_timeline")
+    if master is not None:
+        # 完整版：timeline 名字由封存說了算，不查對應表也不猜顯示名。
+        # 封存之後修修又動過 timeline 是常態（他 2026-09-18 裁決：動過就直接
+        # overwrite 重新封存），所以這裡**不比對 uid、不比對長度**——他手上那條
+        # 就是最高指導原則。
+        label = str(master["name"])
+        return _find_timeline(project, label), label, None
+
     timeline_map = load_timeline_map(episode_dir)
     if timeline_map is None:
         label = timeline_label(cut)
@@ -200,12 +248,18 @@ def _render_master(
     if not jid:
         raise SystemExit("AddRenderJob 失敗")
     project.StartRendering([jid], isInteractiveMode=False)
-    for _ in range(RENDER_TIMEOUT_SEC // 2):
+    # 逾時上限照素材長度給。讀不到長度不該讓 render 掛掉——退回原本的固定下限，
+    # 那是這裡本來就有的行為。
+    try:
+        timeout = render_timeout_sec(_timeline_duration_sec(timeline))
+    except (SystemExit, AttributeError, KeyError, TypeError, ValueError):
+        timeout = RENDER_TIMEOUT_SEC
+    for _ in range(timeout // 2):
         if not project.IsRenderingInProgress():
             break
         time.sleep(2)
     else:
-        raise SystemExit(f"render 逾時（>{RENDER_TIMEOUT_SEC}s）")
+        raise SystemExit(f"render 逾時（>{timeout}s）")
 
     status = project.GetRenderJobStatus(jid) or {}
     project.DeleteRenderJob(jid)  # 狀態一定要在刪 job 前讀
@@ -390,8 +444,13 @@ def main(argv: list[str] | None = None) -> int:
     episode_dir = Path(args.episode)
     if not episode_dir.exists():
         raise SystemExit(f"episode 不存在: {episode_dir}")
-    cands, winners = _load_plan(episode_dir)
-    cuts = cuts_to_prep(cands, winners, args.cut)
+    if args.cut == FULL_CUT_ID:
+        # 完整版走 Editorial Master，完全繞過 winners/candidates。不指定 --cut 時
+        # 不含完整版：「全出」的意思是把當選的精華出完，不是順便出一支 90 分鐘的。
+        cuts = [full_cut(episode_dir)]
+    else:
+        cands, winners = _load_plan(episode_dir)
+        cuts = cuts_to_prep(cands, winners, args.cut)
 
     from build_resolve_project import connect_resolve  # Resolve 依賴延後 import
 
