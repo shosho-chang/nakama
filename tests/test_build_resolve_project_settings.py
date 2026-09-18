@@ -52,9 +52,7 @@ def test_non_integer_frame_rate_stays_matched():
     module.apply_project_settings(project, {"fps": 29.97, "width": 1920, "height": 1080})
 
     assert project.settings["timelineFrameRate"] == "29.97"
-    assert (
-        project.settings["timelinePlaybackFrameRate"] == project.settings["timelineFrameRate"]
-    )
+    assert project.settings["timelinePlaybackFrameRate"] == project.settings["timelineFrameRate"]
 
 
 def test_resolution_is_skipped_when_the_probe_came_back_empty():
