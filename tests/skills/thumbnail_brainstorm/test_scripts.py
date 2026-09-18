@@ -1159,3 +1159,76 @@ def test_a_changed_centre_still_has_to_say_where_it_came_from(monkeypatch, tmp_p
 
     with pytest.raises(ValueError, match="center_provenance"):
         attach_packages.attach(working, "punch-L1", "20260723-xieboran", specs)
+
+
+# ---------------------------------------------------------------------------
+# render_request._resolve_baseline — scale 基準是「這一集的 serious」，不是固定檔名
+# ---------------------------------------------------------------------------
+
+
+def _manifest(*names: str, without_landmarks: tuple[str, ...] = ()) -> dict:
+    return {
+        "validated": {
+            name: {} if name in without_landmarks else {"landmarks_px": {"eye": 300}}
+            for name in names
+        }
+    }
+
+
+def test_baseline_follows_the_episode_not_the_v1_filename():
+    """謝伯讓集的形狀：serious 是 v2／v9，寫死 v1 的舊版在這裡整條 render 掛掉。"""
+    manifest = _manifest(
+        "host_v2_serious.png",
+        "host_v3_excited.png",
+        "guest_v9_serious.png",
+        "guest_v9_surprised.png",
+    )
+
+    assert render_request._resolve_baseline(manifest, "host", None) == "host_v2_serious.png"
+    assert render_request._resolve_baseline(manifest, "guest", None) == "guest_v9_serious.png"
+
+
+def test_explicit_baseline_still_wins():
+    """--host-baseline 是覆寫，不是建議；給了就照用，不再去猜。"""
+    manifest = _manifest("host_v2_serious.png", "host_v7_serious.png")
+
+    picked = render_request._resolve_baseline(manifest, "host", "host_v7_serious.png")
+
+    assert picked == "host_v7_serious.png"
+
+
+def test_lowest_index_wins_so_the_pick_is_deterministic():
+    """同一集可能有兩顆 serious；選誰必須穩定，否則同一份配方會出兩種 scale。"""
+    manifest = _manifest("host_v9_serious.png", "host_v2_serious.png", "host_v5_serious.png")
+
+    assert render_request._resolve_baseline(manifest, "host", None) == "host_v2_serious.png"
+
+
+def test_a_cutout_without_landmarks_cannot_be_the_baseline():
+    """基準的用途就是讀 landmarks 解 scale——沒量過的那顆當基準只會晚一步才炸。"""
+    manifest = _manifest(
+        "host_v2_serious.png",
+        "host_v4_serious.png",
+        without_landmarks=("host_v2_serious.png",),
+    )
+
+    assert render_request._resolve_baseline(manifest, "host", None) == "host_v4_serious.png"
+
+
+def test_no_serious_cutout_says_what_is_actually_there():
+    """報「找不到基準」時要把 validated 清單印出來，不然看起來像素材整批不見。"""
+    manifest = _manifest("host_v3_excited.png", "guest_v9_surprised.png")
+
+    with pytest.raises(SystemExit) as excinfo:
+        render_request._resolve_baseline(manifest, "host", None)
+
+    message = str(excinfo.value)
+    assert "host_v3_excited.png" in message
+    assert "--host-baseline" in message
+
+
+def test_legacy_nameless_emotion_cutouts_are_not_mistaken_for_serious():
+    """舊格式 {role}_v{n}.png 沒有 emotion，不能被當成 serious 拿去當基準。"""
+    manifest = _manifest("host_v1.png", "host_v6_serious.png")
+
+    assert render_request._resolve_baseline(manifest, "host", None) == "host_v6_serious.png"
