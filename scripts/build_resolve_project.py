@@ -358,6 +358,31 @@ def connect_resolve():
     return resolve
 
 
+def apply_project_settings(project, info: dict) -> None:
+    """把主影片探到的規格寫進 project 設定。
+
+    **播放幀率一定要跟著 timeline 幀率走。** 不設的話它停在 Resolve 的預設 24，
+    而 timeline 是 30——沒有自己覆寫 `useCustomSettings` 的 timeline 就繼承 24，
+    等於用 24 播 30 的素材：畫面一格一格頓、聲音斷續，而且沒有任何錯誤訊息。
+    2026-09-18 謝伯讓集為此耗掉一個上午，量出來的 project 正是
+    timelineFrameRate 30 / timelinePlaybackFrameRate 24。
+
+    設在 project 層就夠了——這個 project 底下的 timeline 一次解決，不需要逐條
+    去翻 `useCustomSettings`。
+    """
+    fps_str = f"{info['fps']:.3f}".rstrip("0").rstrip(".")
+    project.SetSetting("timelineFrameRate", fps_str)
+    project.SetSetting("timelinePlaybackFrameRate", fps_str)
+    if info["width"] and info["height"]:
+        project.SetSetting("timelineResolutionWidth", str(info["width"]))
+        project.SetSetting("timelineResolutionHeight", str(info["height"]))
+    # 素材比例跟 timeline 不合時，用「填滿並裁切」而不是預設的「縮到能放進去」。
+    # Envato 的 stock 常是 DCI 4K（4096×2160，1.896:1），放進 16:9 timeline 用
+    # scaleToFit 就會上下留黑邊——修修 2026-09-08：「第一個的 resolution 不對，
+    # 上下都有沒蓋滿畫面的部分」。DCI→16:9 只要左右各裁約 3%，不會傷到構圖。
+    project.SetSetting("timelineInputResMismatchBehavior", "centerCrop")
+
+
 def build_project(
     episode_dir: Path,
     *,
@@ -425,16 +450,7 @@ def build_project(
             pm.SaveProject()
             return {**plan, "status": "already-exists"}
 
-    fps_str = f"{info['fps']:.3f}".rstrip("0").rstrip(".")
-    project.SetSetting("timelineFrameRate", fps_str)
-    if info["width"] and info["height"]:
-        project.SetSetting("timelineResolutionWidth", str(info["width"]))
-        project.SetSetting("timelineResolutionHeight", str(info["height"]))
-    # 素材比例跟 timeline 不合時，用「填滿並裁切」而不是預設的「縮到能放進去」。
-    # Envato 的 stock 常是 DCI 4K（4096×2160，1.896:1），放進 16:9 timeline 用
-    # scaleToFit 就會上下留黑邊——修修 2026-09-08：「第一個的 resolution 不對，
-    # 上下都有沒蓋滿畫面的部分」。DCI→16:9 只要左右各裁約 3%，不會傷到構圖。
-    project.SetSetting("timelineInputResMismatchBehavior", "centerCrop")
+    apply_project_settings(project, info)
 
     mp = project.GetMediaPool()
     root = mp.GetRootFolder()
