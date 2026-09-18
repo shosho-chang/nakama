@@ -64,6 +64,12 @@ MODEL_REGISTRY: tuple[ModelSite, ...] = (
     ModelSite("nami", "default", "claude-sonnet-4-6", "Nami 對話 / 秘書任務"),
     ModelSite("zoro", "default", "claude-sonnet-4-6", "Scout 趨勢 / 關鍵字"),
     ModelSite("brook", "default", "claude-sonnet-4-6", "Composer 撰稿輔助"),
+    ModelSite(
+        "brook",
+        "transition_cold_read",
+        "claude-sonnet-4-6",
+        "轉場卡冷讀回收測試（盲讀 + 回收判定）",
+    ),
     ModelSite("sanji", "default", "claude-sonnet-4-6", "社群監控"),
 )
 
