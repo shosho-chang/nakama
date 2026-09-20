@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "episode_id": "20260415-anji",
+  "lineage_id": "anji-program-v2-bc652157",
+  "normalized_audio_hash": "bc652157b0551769a2e79d565ee10338626db89fc7accd82ec23e2873022ef8a",
+  "purpose": "Regression corpus distilled from four boundary failures observed in the 2026-08-12 V1/V2 audit.",
+  "source": {
+    "transcript": "G:/footages/20260415 安吉/program_v2/transcript.srt",
+    "words": "G:/footages/20260415 安吉/program_v2/subs/words.json",
+    "v1_projection": "G:/footages/20260415 安吉/highlights/srt/SL3_tight_r015.srt"
+  },
+  "cases": [
+    {
+      "case_id": "anji-academic-background",
+      "lineage_id": "anji-program-v2-bc652157",
+      "start_ms": 27133,
+      "end_ms": 27813,
+      "canonical_text": "學業經歷",
+      "lexemes": ["學", "業", "經", "歷"],
+      "semantic_units": [[0, 4]],
+      "forbidden_breaks": [1, 2, 3],
+      "observed_v1_break": "學業／經歷",
+      "reason": "完整名詞片語，不得為了字數平衡拆開。"
+    },
+    {
+      "case_id": "anji-before-girls-high-school",
+      "lineage_id": "anji-program-v2-bc652157",
+      "start_ms": 1736061,
+      "end_ms": 1736641,
+      "canonical_text": "在女中之前",
+      "lexemes": ["在", "女", "中", "之", "前"],
+      "semantic_units": [[0, 5]],
+      "forbidden_breaks": [1, 2, 3, 4],
+      "observed_v1_break": "在女中／之前",
+      "reason": "介詞結構與時間方位詞構成同一語意單位。"
+    },
+    {
+      "case_id": "anji-real-shape-of-life",
+      "lineage_id": "anji-program-v2-bc652157",
+      "start_ms": 2177941,
+      "end_ms": 2180263,
+      "canonical_text": "人生真實樣貌的一個展現",
+      "lexemes": ["人", "生", "真", "實", "樣", "貌", "的", "一", "個", "展", "現"],
+      "semantic_units": [[0, 6], [6, 11]],
+      "forbidden_breaks": [1, 2, 3, 4, 5, 7, 8, 9, 10],
+      "observed_v1_break": "真實樣貌的一個／展現",
+      "reason": "中心名詞「展現」不能被留到下一 cue；若版寬不足應整體重分組。"
+    }
+  ]
+}
