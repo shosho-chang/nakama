@@ -46,6 +46,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol, cast
 
+from . import _force
 from ._codec import RecordCodec, RecordCodecError
 from ._correction import RunEventDiff
 from ._digest import measure_file
@@ -91,6 +92,19 @@ class PlanRecordError(ValueError):
     def __init__(self, message: str, *, reason: str = "invalid") -> None:
         super().__init__(message)
         self.reason = reason
+
+
+def _reject(message: str, *, gate: str) -> None:
+    """擋下這道門——除非 `--force` 開著，那就記一筆警告並讓路。
+
+    讀取端的門（schema、checksum、寫到一半的 staging 檔）刻意不走這裡：
+    `_materialization.prepare` 已經在上一層把「紀錄讀不動」整包讓路成「還沒有紀錄」
+    並重鋪，那是唯一一個讓路之後還有路可走的位置。
+    """
+
+    if _force.let_pass(gate, message):
+        return
+    raise PlanRecordError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -200,9 +214,15 @@ class PlanRecordStore:
             raise PlanRecordError("staging a plan record requires Resolve and probe seams")
         transaction = self._transactions.inspect_transaction(transaction_id)
         if transaction.get("transaction_id") != transaction_id:
-            raise PlanRecordError("transaction identity does not match the requested transaction")
+            _reject(
+                "transaction identity does not match the requested transaction",
+                gate="materialization_journal_conflict",
+            )
         if transaction.get("status") != "preview_ready":
-            raise PlanRecordError("a plan record requires a preview_ready transaction")
+            _reject(
+                "a plan record requires a preview_ready transaction",
+                gate="materialization_journal_conflict",
+            )
         probe = self._preview_probe(Path(preview_path))
         duration = probe.get("duration_sec")
         if (
@@ -213,7 +233,10 @@ class PlanRecordStore:
         ):
             raise PlanRecordError("preview probe requires a positive finite duration_sec")
         if any(component.t1 > float(duration) for component in plan.components):
-            raise PlanRecordError("projected component timing exceeds the preview duration")
+            _reject(
+                "projected component timing exceeds the preview duration",
+                gate="materialization_plan_invalid",
+            )
         return PlanRecord(
             plan_id=plan.plan_id,
             command_id=plan.command_id,
@@ -248,12 +271,14 @@ class PlanRecordStore:
                 path.relative_to(self.episode_root)
                 size, digest = measure_file(path)
             except (ValueError, OSError) as error:
+                # 量不到就是量不到：檔案不在、或者它根本不在這一集裡。
                 raise PlanRecordError(
                     f"recorded artifact changed after the plan record: {artifact.path}"
                 ) from error
             if size != artifact.bytes or digest != artifact.sha256:
-                raise PlanRecordError(
-                    f"recorded artifact changed after the plan record: {artifact.path}"
+                _reject(
+                    f"recorded artifact changed after the plan record: {artifact.path}",
+                    gate="final_asset_identity_mismatch",
                 )
 
     # -- read ------------------------------------------------------------
@@ -326,7 +351,10 @@ class PlanRecordStore:
                 f"recorded artifact is not readable: {relative.as_posix()}"
             ) from error
         if not size:
-            raise PlanRecordError(f"recorded artifact is empty: {relative.as_posix()}")
+            _reject(
+                f"recorded artifact is empty: {relative.as_posix()}",
+                gate="final_asset_unavailable",
+            )
         return ReleaseArtifact(
             path=relative.as_posix(),
             bytes=size,

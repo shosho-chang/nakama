@@ -18,6 +18,7 @@ from agents.brook.script_video.editorial_master import (
     verify_editorial_master,
 )
 
+from . import _force
 from ._materialization import CanonicalTimelineInspection
 from ._resolve import TimelineIdentity, TimelineSnapshot
 from ._resolve_davinci import (
@@ -37,6 +38,23 @@ class CanonicalAuthorityError(ValueError):
     def __init__(self, message: str, *, reason_code: str) -> None:
         super().__init__(message)
         self.reason_code = reason_code
+
+
+def _reject(
+    message: str,
+    *,
+    reason_code: str,
+    cause: BaseException | None = None,
+) -> None:
+    """擋下這道門——除非 `--force` 開著，那就記一筆警告並讓路。
+
+    仍然直接 `raise` 的地方，是沒有那個物件就走不下去的事：收據不是個 dict、
+    快取讀不出 payload、Resolve 裡根本沒有那條 timeline。
+    """
+
+    if _force.let_pass(reason_code, message):
+        return
+    raise CanonicalAuthorityError(message, reason_code=reason_code) from cause
 
 
 @dataclass(frozen=True, slots=True)
@@ -155,7 +173,7 @@ class VerifiedEditorialMasterContractCache:
                 reason_code="editorial_master_mismatch",
             )
         if document.get("payload_sha256") != _sha256_json(payload):
-            raise CanonicalAuthorityError(
+            _reject(
                 "verified Editorial Master cache digest is invalid",
                 reason_code="editorial_master_mismatch",
             )
@@ -209,7 +227,7 @@ class ResolveCanonicalTimelineAuthority:
         _require_identity(cut_id, "cut ID")
         _require_sha256(editorial_master_content_hash, "Editorial Master content hash")
         if self._binding.episode_id != episode_id:
-            raise CanonicalAuthorityError(
+            _reject(
                 "Resolve binding belongs to another episode",
                 reason_code="resolve_binding_mismatch",
             )
@@ -219,7 +237,7 @@ class ResolveCanonicalTimelineAuthority:
             uid=self._binding.project_uid,
         )
         if self._facade.project_identity() != expected_project:
-            raise CanonicalAuthorityError(
+            _reject(
                 "live Resolve project differs from its exact binding",
                 reason_code="resolve_binding_mismatch",
             )
@@ -230,7 +248,7 @@ class ResolveCanonicalTimelineAuthority:
                 reason_code="resolve_binding_mismatch",
             )
         if len(cut_matches) != 1:
-            raise CanonicalAuthorityError(
+            _reject(
                 "cut has ambiguous canonical Resolve bindings",
                 reason_code="resolve_binding_mismatch",
             )
@@ -244,7 +262,7 @@ class ResolveCanonicalTimelineAuthority:
                 reason_code="resolve_binding_mismatch",
             )
         if len(uid_matches) != 1 or len(exact_matches) != 1:
-            raise CanonicalAuthorityError(
+            _reject(
                 "canonical Timeline UID is not one exact live identity",
                 reason_code="resolve_binding_mismatch",
             )
@@ -254,7 +272,7 @@ class ResolveCanonicalTimelineAuthority:
             editorial_master_content_hash=editorial_master_content_hash,
         )
         if contract.resolve_project_name != self._binding.project_name:
-            raise CanonicalAuthorityError(
+            _reject(
                 "verified Editorial Master belongs to another Resolve project",
                 reason_code="editorial_master_mismatch",
             )
@@ -302,7 +320,12 @@ def _contract_from_selection(
         media_path.relative_to(episode_root)
         media_bytes = _positive_int(media.get("bytes"), "Master media bytes")
         if not media_path.is_file() or media_path.stat().st_size != media_bytes:
-            raise ValueError("Master media size differs")
+            # `CanonicalAuthorityError` 是 `ValueError`，所以沒有 `--force` 時它
+            # 照樣被下面那個 handler 接住、包成同一句話同一個 reason_code。
+            _reject(
+                "Master media size differs",
+                reason_code="editorial_master_mismatch",
+            )
         contract = VerifiedEditorialMasterContract(
             episode_id=_string(receipt.get("episode_id"), "episode ID"),
             editorial_master_content_hash=_sha256(
@@ -390,7 +413,10 @@ def _contract_from_payload(
         media_path.relative_to(episode_root)
         media_bytes = _positive_int(payload.get("master_media_bytes"), "Master media bytes")
         if not media_path.is_file() or media_path.stat().st_size != media_bytes:
-            raise ValueError("Master media size differs")
+            _reject(
+                "Master media size differs",
+                reason_code="editorial_master_mismatch",
+            )
         return VerifiedEditorialMasterContract(
             episode_id=_string(payload.get("episode_id"), "episode ID"),
             editorial_master_content_hash=_sha256(
@@ -431,7 +457,7 @@ def _assert_requested_contract(
         contract.episode_id != episode_id
         or contract.editorial_master_content_hash != editorial_master_content_hash
     ):
-        raise CanonicalAuthorityError(
+        _reject(
             "verified Editorial Master cache belongs to another authority",
             reason_code="editorial_master_mismatch",
         )
@@ -449,7 +475,7 @@ def _mapping(value: Mapping[str, object], key: str) -> Mapping[str, object]:
 
 def _require_identity(value: object, label: str) -> None:
     if not isinstance(value, str) or not value.strip():
-        raise CanonicalAuthorityError(
+        _reject(
             f"{label} is invalid",
             reason_code="editorial_master_mismatch",
         )
@@ -457,7 +483,7 @@ def _require_identity(value: object, label: str) -> None:
 
 def _require_sha256(value: object, label: str) -> None:
     if not isinstance(value, str) or _SHA256_RE.fullmatch(value) is None:
-        raise CanonicalAuthorityError(
+        _reject(
             f"{label} is invalid",
             reason_code="editorial_master_mismatch",
         )

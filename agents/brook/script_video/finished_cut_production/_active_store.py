@@ -10,6 +10,7 @@ from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any, Mapping
 
+from . import _force
 from ._assets import (
     AssetContractError,
     AssetKind,
@@ -46,6 +47,18 @@ _LEGACY_RECORD_KEYS = {"release_ids"}
 
 class ActiveAssetStoreError(AssetContractError):
     """The Active Asset Store cannot prove an exact content or index identity."""
+
+
+def _reject(message: str, *, gate: str) -> None:
+    """擋下這道門——除非 `--force` 開著，那就記一筆警告並讓路。
+
+    仍然直接 `raise` 的地方，是沒有那個東西就走不下去的事：檔案不在、索引讀不動、
+    寫不進去。
+    """
+
+    if _force.let_pass(gate, message):
+        return
+    raise ActiveAssetStoreError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -162,10 +175,16 @@ class ActiveAssetStore:
             ):
                 return self._resolve_record(prior)
             if prior != record:
-                raise ActiveAssetStoreError("content digest already has conflicting asset metadata")
+                _reject(
+                    "content digest already has conflicting asset metadata",
+                    gate="asset_metadata_conflict",
+                )
             return self._resolve_record(prior)
         if record.recipe_identity is not None and record.recipe_identity in self._by_recipe:
-            raise ActiveAssetStoreError("recipe identity already resolves to different content")
+            _reject(
+                "recipe identity already resolves to different content",
+                gate="asset_metadata_conflict",
+            )
 
         target = self._object_path(record)
         _publish_object(source, target, expected_digest=digest)
@@ -276,7 +295,10 @@ class ActiveAssetStore:
         signature = (stat.st_size, stat.st_mtime_ns)
         if self._verified_signatures.get(record.digest) != signature:
             if _file_digest(resolved) != record.digest:
-                raise ActiveAssetStoreError("active asset object content is corrupt")
+                _reject(
+                    "active asset object content is corrupt",
+                    gate="asset_digest_mismatch",
+                )
             self._verified_signatures[record.digest] = signature
         return ResolvedAsset(record=record, path=resolved)
 
@@ -284,7 +306,10 @@ class ActiveAssetStore:
 def _publish_object(source: Path, target: Path, *, expected_digest: str) -> None:
     if target.exists():
         if not target.is_file() or _file_digest(target) != expected_digest:
-            raise ActiveAssetStoreError("content-addressed target is corrupt")
+            _reject(
+                "content-addressed target is corrupt",
+                gate="asset_digest_mismatch",
+            )
         return
     staging = target.with_name(f".{target.name}.staging")
     try:

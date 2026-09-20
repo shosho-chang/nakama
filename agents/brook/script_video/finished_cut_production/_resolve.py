@@ -9,6 +9,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Literal, Protocol
 
+from . import _force
 from ._records import MaterializationPlan
 
 #: 一筆交易只有一個狀態。ADR-069 之前還有 committed／compensated／rolled_back／
@@ -21,6 +22,18 @@ ResolveTransactionStatus = Literal["preview_ready"]
 
 class ResolveTransactionError(ValueError):
     """A typed transaction cannot safely advance against its exact cut."""
+
+
+def _reject(message: str, *, gate: str) -> None:
+    """擋下這道門——除非 `--force` 開著，那就記一筆警告並讓路。
+
+    仍然直接 `raise` 的地方，是沒有那個東西就走不下去的事：Resolve preflight 失敗、
+    rollback 失敗、交易寫不進去、複製出來的工作副本其實就是 canonical 本尊。
+    """
+
+    if _force.let_pass(gate, message):
+        return
+    raise ResolveTransactionError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -186,8 +199,9 @@ class ResolveTransactionManager:
         if existing is not None:
             if existing.status in {"preview_ready", "committed"}:
                 return existing
-            raise ResolveTransactionError(
-                f"transaction cannot prepare from status: {existing.status}"
+            _reject(
+                f"transaction cannot prepare from status: {existing.status}",
+                gate="materialization_journal_conflict",
             )
         try:
             self._adapter.preflight_plan(plan)
@@ -195,8 +209,9 @@ class ResolveTransactionManager:
             raise ResolveTransactionError(f"Resolve preflight failed: {exc}") from exc
         baseline = self._adapter.snapshot(canonical)
         if expected_baseline is not None and baseline != expected_baseline:
-            raise ResolveTransactionError(
-                "canonical Timeline changed after materialization preflight"
+            _reject(
+                "canonical Timeline changed after materialization preflight",
+                gate="protected_track_drift",
             )
         workspace = self._adapter.duplicate(
             canonical,
@@ -214,8 +229,9 @@ class ResolveTransactionManager:
             self._adapter.apply_plan(workspace.work, plan)
             after = self._adapter.snapshot(workspace.work)
             if after.protected_fingerprint != baseline.protected_fingerprint:
-                raise ResolveTransactionError(
-                    "typed plan changed protected Editorial Master or audio baseline"
+                _reject(
+                    "typed plan changed protected Editorial Master or audio baseline",
+                    gate="protected_track_drift",
                 )
             preview = self._adapter.render_preview(workspace.work, requested_preview)
             _validate_preview(preview)
@@ -309,8 +325,14 @@ class ResolveTransactionManager:
         expected_cut_id: str,
     ) -> ResolveTransaction:
         transaction = self._store.load(transaction_id)
-        if transaction is None or transaction.cut_id != expected_cut_id:
+        if transaction is None:
+            # 交易根本不在，就沒有東西可以回傳。
             raise ResolveTransactionError("transaction identity does not match the requested cut")
+        if transaction.cut_id != expected_cut_id:
+            _reject(
+                "transaction identity does not match the requested cut",
+                gate="resolve_binding_mismatch",
+            )
         return transaction
 
 
@@ -352,8 +374,11 @@ def _transaction_id(
 
 def _validate_preview(preview: PreviewRender) -> None:
     if preview.video_codec.lower() not in {"h264", "avc1"}:
-        raise ResolveTransactionError("preview video codec is not H.264")
+        _reject("preview video codec is not H.264", gate="preview_probe_failed")
     if preview.audio_codec is not None and preview.audio_codec.lower() != "aac":
-        raise ResolveTransactionError("preview audio codec is not AAC or absent")
+        _reject("preview audio codec is not AAC or absent", gate="preview_probe_failed")
     if not math.isfinite(preview.duration_sec) or preview.duration_sec <= 0:
-        raise ResolveTransactionError("preview duration is not positive and finite")
+        _reject(
+            "preview duration is not positive and finite",
+            gate="preview_probe_failed",
+        )

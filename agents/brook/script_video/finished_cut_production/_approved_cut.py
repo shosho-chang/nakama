@@ -12,6 +12,7 @@ from pathlib import Path
 from typing import Literal, Protocol, cast
 
 from ..editorial_master import EditorialMasterContractError, verify_editorial_master
+from . import _force
 from ._commands import ApprovedCutCommand
 from ._context import (
     CUE_END_EPSILON_SEC,
@@ -26,6 +27,18 @@ _STORE_SCHEMA = "nakama.finished-cut-approved-cuts.v1"
 
 class ApprovedCutRegistrationError(ValueError):
     """A proposed approval cannot become Finished Cut authority."""
+
+
+def _reject(message: str, *, gate: str) -> None:
+    """擋下這道門——除非 `--force` 開著，那就記一筆警告並讓路。
+
+    仍然直接 `raise` 的地方，是沒有那個東西就走不下去的事：identity 拼不出
+    command id、母帶驗不出來、authority 檔讀不動或寫不進去。
+    """
+
+    if _force.let_pass(gate, message):
+        return
+    raise ApprovedCutRegistrationError(message)
 
 
 @dataclass(frozen=True, slots=True)
@@ -128,7 +141,10 @@ class ApprovedCutAuthority:
             or not registration.approved_by.strip()
             or not registration.approved_at.strip()
         ):
-            raise ApprovedCutRegistrationError("explicit human approval is required")
+            _reject(
+                "explicit human approval is required",
+                gate="approved_cut_not_human_approved",
+            )
         master = self._master_verifier.verify(
             episode_id=registration.episode_id,
             editorial_master_id=registration.editorial_master_id,
@@ -143,7 +159,10 @@ class ApprovedCutAuthority:
         _validate_source_ranges(registration.source_ranges, master.duration_sec)
         duration_sec = sum(source.t1 - source.t0 for source in registration.source_ranges)
         if registration.format == "long" and duration_sec < 480.0:
-            raise ApprovedCutRegistrationError("Long ApprovedCut must be at least eight minutes")
+            _reject(
+                "Long ApprovedCut must be at least eight minutes",
+                gate="long_duration_below_minimum",
+            )
         # 「長片必須有章節」這條拿掉了。長片本來就都有章節，所以它幾乎不會 fire；
         # 而萬一真的沒有，`_policy` 的 `canonical_sections_missing` 會接住——那一份
         # 才是真的前置條件（它下一行就 index `sections[0]`），而且它是**診斷**，
@@ -176,7 +195,10 @@ class ApprovedCutAuthority:
         prior = payload["approved_cuts"].get(command_id)
         if prior is not None:
             if prior != row:
-                raise ApprovedCutRegistrationError("ApprovedCut identity has conflicting facts")
+                _reject(
+                    "ApprovedCut identity has conflicting facts",
+                    gate="approved_cut_identity_conflict",
+                )
             return command_id
         payload["approved_cuts"][command_id] = row
         self._atomic_write(payload)
@@ -456,7 +478,10 @@ def _validate_source_ranges(
             or source.t1 > master_duration_sec
             or source.t0 < previous_end
         ):
-            raise ApprovedCutRegistrationError("ApprovedCut source range is invalid")
+            _reject(
+                "ApprovedCut source range is invalid",
+                gate="approved_cut_source_range_invalid",
+            )
         previous_end = source.t1
 
 
@@ -483,7 +508,10 @@ def _validate_editorial_feedback(feedback: tuple[str, ...]) -> None:
             or "\\\\" in item
             or any(marker in lowered for marker in forbidden)
         ):
-            raise ApprovedCutRegistrationError("editorial feedback must be sanitized text only")
+            _reject(
+                "editorial feedback must be sanitized text only",
+                gate="approved_cut_feedback_unsanitized",
+            )
 
 
 #: 滿版轉場卡的字要能單獨看懂——那是寫作端的標準，不是登錄門口的正則。
@@ -517,7 +545,10 @@ def _validate_sections(
             or section.t0 <= prior_t0
             or (section.transition_title is not None and not section.transition_title.strip())
         ):
-            raise ApprovedCutRegistrationError("canonical sections are invalid")
+            _reject(
+                "canonical sections are invalid",
+                gate="canonical_sections_invalid",
+            )
         prior_t0 = section.t0
         seen.add(section.section_id)
 
@@ -543,4 +574,7 @@ def _validate_cues(
             or cue.t1 > duration_sec + CUE_END_EPSILON_SEC
             or (section_ids and cue.section_id not in section_ids)
         ):
-            raise ApprovedCutRegistrationError("ApprovedCut tight subtitle cues are invalid")
+            _reject(
+                "ApprovedCut tight subtitle cues are invalid",
+                gate="approved_cut_cues_invalid",
+            )

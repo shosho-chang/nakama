@@ -8,6 +8,7 @@ import json
 import sys
 from collections.abc import Callable, Mapping
 from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Literal, cast
 
@@ -28,7 +29,10 @@ from agents.brook.script_video.finished_cut_production import (  # noqa: E402
     ResolveProjectLocator,
     StageName,
     TimelineIdentity,
+    activate_force_override,
     build_production_application,
+    deactivate_force_override,
+    overridden_gates,
 )
 
 ApplicationFactory = Callable[..., FinishedCutProductionApplication]
@@ -54,6 +58,17 @@ def _parser() -> argparse.ArgumentParser:
         "--handoff-root",
         type=Path,
         help="--semantic-worker handoff 的交接目錄；預設 <runtime-root>/semantic-handoff",
+    )
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help=(
+            "把這條線上所有會中止流程的門一律讓路：不 raise、不中止，"
+            "每一道讓路的門印一行 `⚠ OVERRIDDEN: <reason_code> <訊息>` 到 stderr，"
+            "並寫進輸出 JSON 的 overridden_gates 與 "
+            "<runtime-root>/force-overrides.jsonl。只有這支 CLI 吃這個旗標——"
+            "watcher 那些無人看管的路徑不繼承。"
+        ),
     )
     commands = parser.add_subparsers(dest="operation", required=True)
     register = commands.add_parser("register-approved-cut")
@@ -84,6 +99,24 @@ def main(
     application_factory: ApplicationFactory | None = None,
 ) -> int:
     args = _parser().parse_args(argv)
+    if not args.force:
+        return _dispatch(args, application_factory)
+    # 覆寫只在**這支 CLI** 的這一次執行裡有效，而且一定還原。無人看管的路徑
+    # （render_watcher / finished_review_watcher）從來不經過這裡，所以它們的行為
+    # 一個字都沒變。
+    _override, token = activate_force_override()
+    try:
+        return _dispatch(args, application_factory)
+    finally:
+        gates = overridden_gates()
+        deactivate_force_override(token)
+        _write_override_receipt(args, gates)
+
+
+def _dispatch(
+    args: argparse.Namespace,
+    application_factory: ApplicationFactory | None,
+) -> int:
     paths = ProductionPaths(args.runtime_root, args.episodes_root)
     factory = application_factory or build_production_application
     factory_options: dict[str, object] = {}
@@ -378,7 +411,35 @@ def _print(value: object) -> None:
     reconfigure = getattr(sys.stdout, "reconfigure", None)
     if callable(reconfigure):
         reconfigure(encoding="utf-8")
+    gates = overridden_gates()
+    if gates and isinstance(value, dict):
+        # 門讓路，帳不說謊：這一次執行跳過了哪幾道，就印在它自己的輸出裡。
+        value = {**value, "overridden_gates": [asdict(gate) for gate in gates]}
     print(json.dumps(value, ensure_ascii=False, sort_keys=True))
+
+
+def _write_override_receipt(args: argparse.Namespace, gates: tuple[object, ...]) -> None:
+    """把這一次 `--force` 跳過的門追加到 runtime root 的 append-only 收據。
+
+    寫不進去不會反過來變成第二道門——`--force` 的整個意思就是不要再多一道。
+    印到 stderr 的那幾行仍然在，輸出 JSON 裡的 `overridden_gates` 也仍然在。
+    """
+
+    if not gates:
+        return
+    record = {
+        "recorded_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "episode_id": args.episode_id,
+        "operation": args.operation,
+        "overridden_gates": [asdict(gate) for gate in gates],
+    }
+    try:
+        root = Path(args.runtime_root)
+        root.mkdir(parents=True, exist_ok=True)
+        with (root / "force-overrides.jsonl").open("a", encoding="utf-8") as handle:
+            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+    except OSError as error:
+        print(f"⚠ OVERRIDE RECEIPT NOT WRITTEN: {error}", file=sys.stderr)
 
 
 if __name__ == "__main__":

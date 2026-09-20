@@ -210,6 +210,12 @@ def test_public_module_does_not_expose_private_authority_constructors() -> None:
         "FinishedCutInspection",
         "FinishedCutProduction",
         "FinishedCutProductionApplication",
+        # 第四個公開面：`--force` 覆寫。CLI 要打開它、還原它、把跳過的門收成
+        # 收據，那三件事都不能靠伸手進 `_force`。
+        "OverriddenGate",
+        "activate_force_override",
+        "deactivate_force_override",
+        "overridden_gates",
         "ProductionPaths",
         "ProductionResolveConfiguration",
         "build_resolve_configuration",

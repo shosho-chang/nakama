@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Protocol
 from uuid import uuid4
 
+from . import _force
 from ._assets import (
     AssetContractError,
     AssetResolver,
@@ -108,6 +109,18 @@ _FINAL_ASSET_KIND_BY_IMPLEMENTATION = ASSET_KIND_BY_IMPLEMENTATION
 _NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS = NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
 
 
+def _reject_command(message: str, *, gate: str) -> None:
+    """擋下這道門——除非 `--force` 開著，那就記一筆警告並讓路。
+
+    仍然直接 `raise CommandRejectedError` 的地方，是沒有那個物件就走不下去的事：
+    command 查不到、run 查不到、基準 plan record 不在、語意 worker 沒回提案。
+    """
+
+    if _force.let_pass(gate, message):
+        return
+    raise CommandRejectedError(message)
+
+
 @dataclass(slots=True)
 class _NeutralPassThroughBuilder:
     """Conservative default: resolve neutral media, never synthesize semantic bytes."""
@@ -188,8 +201,9 @@ class FinishedCutProduction:
             if existing.base_plan_id is not None:
                 base_record = self._plan_records.resolve(existing.base_plan_id)
                 if base_record is None:
-                    raise CommandRejectedError(
-                        f"targeted revision base is not exact current: {existing.base_plan_id}"
+                    _reject_command(
+                        f"targeted revision base is not exact current: {existing.base_plan_id}",
+                        gate="targeted_revision_base_not_current",
                     )
             run = _RunState(
                 command=existing.command,
@@ -232,7 +246,10 @@ class FinishedCutProduction:
         if isinstance(command, ApprovedCutCommand) and not _is_authoritative_approved_cut(
             command, command_id
         ):
-            raise CommandRejectedError(f"opaque authoritative command ID required: {command_id}")
+            _reject_command(
+                f"opaque authoritative command ID required: {command_id}",
+                gate="authority_chain_mismatch",
+            )
         base_record = None
         events: tuple[EventRecord, ...] = ()
         feedback = None
@@ -360,9 +377,10 @@ class FinishedCutProduction:
         try:
             self._plan_records.verify_artifacts(record)
         except PlanRecordError as error:
-            raise CommandRejectedError(
-                f"plan record no longer describes what is on disk: {error}"
-            ) from error
+            _reject_command(
+                f"plan record no longer describes what is on disk: {error}",
+                gate="plan_record_artifact_drift",
+            )
         # 這道門本來用的是**現役**名單：只要紀錄裡有任何一個退役投影，整份就不能修訂。
         # 那是自己造的死路——`visual_effect` 已經在 timeline 上，而它在 `VOCABULARY`
         # 裡有 track、版位與 renderer recipe，原封不動再鋪一次完全正常；擋住的是那張
@@ -389,7 +407,10 @@ class FinishedCutProduction:
             raise CommandRejectedError(f"event is not in the plan record: {event_id}")
         normalized_feedback = feedback.strip()
         if not normalized_feedback:
-            raise CommandRejectedError("targeted revision feedback is required")
+            _reject_command(
+                "targeted revision feedback is required",
+                gate="targeted_revision_feedback_missing",
+            )
         command_id = f"targeted-revision:{uuid4().hex}"
         self._store.save_targeted_revision(
             TargetedRevisionCommand(
@@ -417,13 +438,18 @@ class FinishedCutProduction:
                 raise CommandRejectedError(f"authoritative production run not found: {command_id}")
             view = stored.view
             request = view.outstanding_request
+            if request is None:
+                # 沒有 outstanding request 就沒有「再送一次」的對象。
+                raise CommandRejectedError("current run is not eligible for dispatch recovery")
             if (
                 view.status not in {"pending", "needs_review"}
-                or request is None
                 or view.materialization_plan is not None
                 or view.derived_asset_request is not None
             ):
-                raise CommandRejectedError("current run is not eligible for dispatch recovery")
+                _reject_command(
+                    "current run is not eligible for dispatch recovery",
+                    gate="dispatch_recovery_not_eligible",
+                )
             history = view.accepted_stage_history or view.accepted_stages
             correction_recovery = (
                 view.correction is not None
@@ -432,7 +458,10 @@ class FinishedCutProduction:
                 and request.event_id == view.correction.event_id
             )
             if not correction_recovery and any(stage.stage == request.stage for stage in history):
-                raise CommandRejectedError("failed stage already has AcceptedStage authority")
+                _reject_command(
+                    "failed stage already has AcceptedStage authority",
+                    gate="dispatch_recovery_stage_already_accepted",
+                )
             try:
                 outcome = self._semantic_adapter.outcome_for_request(request)
             except SemanticDispatchStoreError as error:
@@ -469,14 +498,18 @@ class FinishedCutProduction:
                 and outcome.proposal is None
             )
             if not dispatch_is_recoverable or not (failed_dispatch or recoverable_correction):
-                raise CommandRejectedError(
-                    "current request has no terminal dispatch failure or rejected correction"
+                _reject_command(
+                    "current request has no terminal dispatch failure or rejected correction",
+                    gate="dispatch_recovery_not_terminal",
                 )
             base_record = None
             if stored.base_plan_id is not None:
                 base_record = self._plan_records.resolve(stored.base_plan_id)
                 if base_record is None:
-                    raise CommandRejectedError("dispatch recovery base is not exact current")
+                    _reject_command(
+                        "dispatch recovery base is not exact current",
+                        gate="targeted_revision_base_not_current",
+                    )
             run = _RunState(
                 command=stored.command,
                 view=view,
@@ -498,7 +531,10 @@ class FinishedCutProduction:
                 },
             )
             if not _request_base_is_current(run, request, aggregate):
-                raise CommandRejectedError("failed semantic request is not exact current")
+                _reject_command(
+                    "failed semantic request is not exact current",
+                    gate="stage_request_base_not_current",
+                )
             request_id = f"request-{uuid4().hex}"
             retry = _retry_with_live_catalog(request, request_id, run.worker_catalog)
             self._store.save_run(
@@ -569,12 +605,16 @@ class FinishedCutProduction:
                 if record.plan_id == plan.plan_id
             ]
             if recorded:
-                raise CommandRejectedError(
+                _reject_command(
                     "this MaterializationPlan already has a plan record "
-                    f"{recorded[0].plan_id}; use request_revision to change a recorded cut"
+                    f"{recorded[0].plan_id}; use request_revision to change a recorded cut",
+                    gate="plan_record_already_exists",
                 )
         if view.correction is not None:
-            raise CommandRejectedError("another pre-release correction is still current")
+            _reject_command(
+                "another pre-release correction is still current",
+                gate="pre_release_correction_in_flight",
+            )
         try:
             selection = _select_correction(
                 view.accepted_stages,
@@ -591,14 +631,20 @@ class FinishedCutProduction:
             else "unclaimed"
         )
         if dispatch_state != "unclaimed":
-            raise CommandRejectedError("downstream semantic request was already claimed")
+            _reject_command(
+                "downstream semantic request was already claimed",
+                gate="semantic_request_already_claimed",
+            )
         if (
             view.derived_asset_request is not None
             and view.status != "pending"
             and stage != "dp"
             and not _derived_build_failed(view)
         ):
-            raise CommandRejectedError("downstream derived-asset work is already current")
+            _reject_command(
+                "downstream derived-asset work is already current",
+                gate="derived_asset_work_in_flight",
+            )
         target = next(event for event in selection.base.events if event.event_id == event_id)
         upstream = selection.current_prefix[-1] if selection.current_prefix else None
         request_id = f"request-{uuid4().hex}"
@@ -735,7 +781,10 @@ class FinishedCutProduction:
             or context.editorial_master_id != editorial_master_id
             or context.tight_cut_id != tight_cut_id
         ):
-            raise CommandRejectedError("exact Editorial Cut Context is unavailable")
+            _reject_command(
+                "exact Editorial Cut Context is unavailable",
+                gate="editorial_context_mismatch",
+            )
         return context
 
     def _validate_stored_context(
@@ -751,6 +800,14 @@ class FinishedCutProduction:
         elif base_record is not None:
             editorial_master_id = base_record.editorial_master_id
             tight_cut_id = base_record.tight_cut_id
+        elif _force.let_pass(
+            "targeted_revision_base_not_current",
+            "targeted revision has no exact current context",
+        ):
+            # 讓路之後拿**已經存下來的那份 context** 自己的身分當比對對象——等於
+            # 只驗它內部一致，而不是驗它對得上不存在的基準紀錄。
+            editorial_master_id = context.editorial_master_id
+            tight_cut_id = context.tight_cut_id
         else:
             raise CommandRejectedError("targeted revision has no exact current context")
         if (
@@ -760,7 +817,10 @@ class FinishedCutProduction:
             or context.editorial_master_id != editorial_master_id
             or context.tight_cut_id != tight_cut_id
         ):
-            raise CommandRejectedError("persisted Editorial Cut Context identity is invalid")
+            _reject_command(
+                "persisted Editorial Cut Context identity is invalid",
+                gate="editorial_context_mismatch",
+            )
         return context
 
 
@@ -1145,7 +1205,10 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
         return _advance_derived_build(run, aggregate)
     if (
         request is None
-        and run.view.materialization_plan is None
+        # 平常「已經有 plan」就代表這一輪走完了，再 advance 是 no-op。`--force`
+        # 下重鑄一份：新的 plan 有自己的 staging 工作區與 Resolve 交易（兩者的身分
+        # 都由 plan 決定），所以重跑是**重鋪**，不會覆蓋上一份。
+        and (run.view.materialization_plan is None or _force.is_active())
         and run.view.accepted_stages
         and run.view.accepted_stages[-1].stage == "visual_review"
     ):
@@ -1154,7 +1217,10 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
         return run.view
     # 送出去之前換上現在的素材目錄——請求是登錄那一刻鑄的，那時候櫃子必然是空的。
     request = _with_live_catalog(request, run.worker_catalog)
-    if not _request_base_is_current(run, request, aggregate):
+    if not _request_base_is_current(run, request, aggregate) and not _force.let_pass(
+        "stage_request_base_not_current",
+        "outstanding stage request is not exact current",
+    ):
         return _leave_in_review(run, request)
     outcome = aggregate.dispatch(request)
     if outcome.state == "pending":
@@ -1770,12 +1836,22 @@ def _advance_visual_checkpoint(
     aggregate: _AggregateContext,
 ) -> _ProductionRun:
     if not _current_chain_is_exact(run) or len(run.view.accepted_stages) != 3:
-        run.view = replace(run.view, status="needs_review", materialization_plan=None)
-        return run.view
+        # `--force` 只在三個 stage 都真的在場時讓路：少一個，下面 `current_by_stage`
+        # 就會 KeyError，讓路只會把清楚的 needs_review 換成更難懂的爆法。
+        stages = {stage.stage for stage in run.view.accepted_stages}
+        if stages != {"director", "dp", "visual_review"} or not _force.let_pass(
+            "accepted_stage_chain_not_exact",
+            "accepted stage chain is not the exact current director/dp/visual_review release",
+        ):
+            run.view = replace(run.view, status="needs_review", materialization_plan=None)
+            return run.view
     visual = run.view.accepted_stages[-1]
     if visual.stage != "visual_review":
         return run.view
-    if any(event.visual_status != "approved" for event in visual.events):
+    if any(event.visual_status != "approved" for event in visual.events) and not _force.let_pass(
+        "visual_review_not_approved",
+        "visual_review left at least one event unapproved",
+    ):
         if run.view.status == "needs_review":
             return run.view
         run.view = replace(run.view, status="needs_review")
@@ -1794,7 +1870,11 @@ def _advance_visual_checkpoint(
         )
         # `accepted_with_warnings` 照樣往下走：那些是品味與政策，不是壞成品。
         # 分級理由見 `_policy` 的模組 docstring（修修 2026-09-10 裁決）。
-        if policy_decision.status == "needs_review":
+        if policy_decision.status == "needs_review" and not _force.let_pass(
+            "policy_blocking_diagnostic",
+            "format policy returned blocking diagnostics: "
+            + ", ".join(sorted({diagnostic.code for diagnostic in policy_decision.diagnostics})),
+        ):
             run.view = replace(
                 run.view,
                 status="needs_review",

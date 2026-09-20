@@ -7,7 +7,11 @@ Three surfaces are public, and nothing else:
   build that aggregate for one episode, plus the typed values it must supply;
 * ``build_plan_record_reader`` — read-only access to this episode's plan records
   for a review or publish surface that must not compose semantic workers,
-  renderers or Resolve.
+  renderers or Resolve;
+* the ``--force`` override — ``activate_force_override`` /
+  ``deactivate_force_override`` / ``overridden_gates``, which the CLI uses to let
+  every gate through and to collect the receipt of which ones it let through.
+  Only an inbound adapter a human is driving turns this on.
 
 Reaching past these into ``_``-prefixed modules is a boundary violation: the
 projection an adapter re-derives itself is the one that silently drifts.
@@ -35,6 +39,10 @@ from ._correction import (
     RunStageInspection,
 )
 from ._engine import FinishedCutProduction
+from ._force import OverriddenGate
+from ._force import activate as activate_force_override
+from ._force import deactivate as deactivate_force_override
+from ._force import entries as overridden_gates
 from ._records import (
     ArtifactView,
     ComponentView,
@@ -62,6 +70,10 @@ __all__ = [
     "EventView",
     "FinishedCutInspection",
     "FinishedCutProduction",
+    "OverriddenGate",
+    "activate_force_override",
+    "deactivate_force_override",
+    "overridden_gates",
     "FinishedCutProductionApplication",
     "ProductionPaths",
     "ProductionResolveConfiguration",
