@@ -45,7 +45,7 @@ import sys
 import unicodedata
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Callable, TextIO
 
 # ---------------------------------------------------------------------------
 # Data structures
@@ -690,6 +690,25 @@ def _default_repo_root() -> Path:
     return Path(__file__).resolve().parent.parent
 
 
+def _emit(text: str, stream: TextIO | None = None) -> None:
+    """Write *text* + newline to *stream* as UTF-8, whatever the console code page.
+
+    A plain Windows console is cp1252, which cannot encode the CJK this report
+    carries (``[待修]``, ``§4``, CJK vault paths) — a bare ``print`` there dies with
+    UnicodeEncodeError. Encoding at the write site keeps the guarantee local to
+    this call instead of mutating a global ``sys.stdout``, so importers and
+    embedders keep whatever stdout they configured.
+    """
+    stream = stream if stream is not None else sys.stdout
+    buffer = getattr(stream, "buffer", None)
+    if buffer is None:
+        # Not a code-page-backed stream (pytest capture, StringIO): plain text write.
+        print(text, file=stream)
+        return
+    buffer.write((text + "\n").encode("utf-8"))
+    buffer.flush()
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(description="Audit vault layout against docs/VAULT-LAYOUT.md")
     parser.add_argument("--vault-root", type=Path, default=None)
@@ -714,17 +733,17 @@ def main(argv: list[str] | None = None) -> int:
     layout_doc = args.layout_doc or (repo_root / "docs" / "VAULT-LAYOUT.md")
 
     if not vault_root.exists():
-        print(f"vault-root not found: {vault_root}", file=sys.stderr)
+        _emit(f"vault-root not found: {vault_root}", sys.stderr)
         return 1
     if not layout_doc.exists():
-        print(f"layout doc not found: {layout_doc}", file=sys.stderr)
+        _emit(f"layout doc not found: {layout_doc}", sys.stderr)
         return 1
 
     report = run_audit(vault_root, repo_root, layout_doc)
 
     if args.json:
         payload = {"findings": [asdict(f) for f in report.findings]}
-        print(json.dumps(payload, ensure_ascii=False, indent=2))
+        _emit(json.dumps(payload, ensure_ascii=False, indent=2))
     else:
         md = report.to_markdown()
         if args.append_to:
@@ -732,7 +751,7 @@ def main(argv: list[str] | None = None) -> int:
             with args.append_to.open("a", encoding="utf-8") as fh:
                 fh.write("\n" + md)
         else:
-            print(md)
+            _emit(md)
 
     if args.exit_on_error and report.has_errors:
         return 2

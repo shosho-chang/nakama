@@ -2,6 +2,10 @@
 
 from __future__ import annotations
 
+import io
+import os
+import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -9,6 +13,7 @@ import pytest
 from scripts.vault_layout_audit import (
     AuditFinding,
     AuditReport,
+    _emit,
     _human_only_section_ranges,
     _parse_drift_entries,
     _path_covered_by_matrix,
@@ -20,6 +25,8 @@ from scripts.vault_layout_audit import (
     audit_marker_violations,
     run_audit,
 )
+
+REPO_ROOT = Path(__file__).resolve().parents[2]
 
 # ---------------------------------------------------------------------------
 # Fixture: a minimal VAULT-LAYOUT.md that exercises §2 / §3 / §4 / §7 parsers
@@ -109,7 +116,7 @@ def layout_doc(tmp_path: Path) -> Path:
 def vault_root(tmp_path: Path) -> Path:
     v = tmp_path / "vault"
     v.mkdir()
-    (v / "CLAUDE.md").write_text("# vault claude")
+    (v / "CLAUDE.md").write_text("# vault claude", encoding="utf-8")
     (v / "Journals").mkdir()
     (v / "KB").mkdir()
     (v / "Projects").mkdir()
@@ -277,7 +284,7 @@ def test_code_path_diff_flags_notable_absences(tmp_path: Path, layout_doc: Path)
     repo = tmp_path / "repo"
     (repo / "agents").mkdir(parents=True)
     bad_py = repo / "agents" / "x.py"
-    bad_py.write_text('PATH = "Files/old-image.png"\n')
+    bad_py.write_text('PATH = "Files/old-image.png"\n', encoding="utf-8")
     findings = audit_code_path_diff(repo, layout_doc)
     errors = [f for f in findings if f.severity == "error"]
     assert any("Files/old-image.png" in f.path for f in errors)
@@ -287,7 +294,7 @@ def test_code_path_diff_flags_undeclared_warns(tmp_path: Path, layout_doc: Path)
     repo = tmp_path / "repo"
     (repo / "shared").mkdir(parents=True)
     (repo / "shared" / "y.py").write_text(
-        'WEIRD = "KB/Wiki/Comparisons/foo.md"\nOK = "KB/Wiki/Sources/foo.md"\n'
+        'WEIRD = "KB/Wiki/Comparisons/foo.md"\nOK = "KB/Wiki/Sources/foo.md"\n', encoding="utf-8"
     )
     findings = audit_code_path_diff(repo, layout_doc)
     warn_paths = {f.path for f in findings if f.severity == "warn"}
@@ -299,7 +306,7 @@ def test_code_path_diff_flags_undeclared_warns(tmp_path: Path, layout_doc: Path)
 def test_code_path_diff_skips_tests_dir(tmp_path: Path, layout_doc: Path):
     repo = tmp_path / "repo"
     (repo / "agents" / "tests").mkdir(parents=True)
-    (repo / "agents" / "tests" / "t.py").write_text('SYN = "Files/test.png"\n')
+    (repo / "agents" / "tests" / "t.py").write_text('SYN = "Files/test.png"\n', encoding="utf-8")
     findings = audit_code_path_diff(repo, layout_doc)
     assert not findings  # tests/ excluded
 
@@ -338,7 +345,8 @@ def test_marker_violations_balanced(vault_root: Path, layout_doc: Path):
     (vault_root / "Projects").mkdir(exist_ok=True)
     p = vault_root / "Projects" / "good.md"
     p.write_text(
-        "## Keywords\n%%agent-zoro-keywords-start%%\ncontent\n%%agent-zoro-keywords-end%%\n"
+        "## Keywords\n%%agent-zoro-keywords-start%%\ncontent\n%%agent-zoro-keywords-end%%\n",
+        encoding="utf-8",
     )
     findings = audit_marker_violations(vault_root, layout_doc)
     assert findings == []
@@ -347,7 +355,7 @@ def test_marker_violations_balanced(vault_root: Path, layout_doc: Path):
 def test_marker_violations_imbalanced(vault_root: Path, layout_doc: Path):
     (vault_root / "Projects").mkdir(exist_ok=True)
     p = vault_root / "Projects" / "bad.md"
-    p.write_text("%%agent-zoro-keywords-start%%\ncontent without end\n")
+    p.write_text("%%agent-zoro-keywords-start%%\ncontent without end\n", encoding="utf-8")
     findings = audit_marker_violations(vault_root, layout_doc)
     assert len(findings) == 1
     assert findings[0].severity == "error"
@@ -357,7 +365,10 @@ def test_marker_violations_imbalanced(vault_root: Path, layout_doc: Path):
 def test_marker_violations_unregistered_section(vault_root: Path, layout_doc: Path):
     (vault_root / "Projects").mkdir(exist_ok=True)
     p = vault_root / "Projects" / "exotic.md"
-    p.write_text("%%agent-foobar-experimental-start%%\nx\n%%agent-foobar-experimental-end%%\n")
+    p.write_text(
+        "%%agent-foobar-experimental-start%%\nx\n%%agent-foobar-experimental-end%%\n",
+        encoding="utf-8",
+    )
     findings = audit_marker_violations(vault_root, layout_doc)
     warns = [f for f in findings if f.severity == "warn"]
     assert any("not registered in §4 Pattern A" in f.detail for f in warns)
@@ -377,7 +388,8 @@ def test_marker_violations_inside_human_only(vault_root: Path, layout_doc: Path)
                 "## Other",
                 "",
             ]
-        )
+        ),
+        encoding="utf-8",
     )
     findings = audit_marker_violations(vault_root, layout_doc)
     errors = [f for f in findings if f.severity == "error"]
@@ -428,7 +440,8 @@ def test_drift_status_regression_signal(vault_root: Path, tmp_path: Path):
 ok
 
 ## 8. End
-"""
+""",
+        encoding="utf-8",
     )
     (vault_root / "Files").mkdir()  # regression — Files/ came back
     repo = tmp_path / "repo"
@@ -453,3 +466,64 @@ def test_run_audit_smoke(vault_root: Path, layout_doc: Path, tmp_path: Path):
     assert isinstance(report, AuditReport)
     md = report.to_markdown()
     assert "Vault Audit" in md
+
+
+# ---------------------------------------------------------------------------
+# Output encoding — the report is full of CJK; the console may be cp1252
+# ---------------------------------------------------------------------------
+
+
+class _Cp1252Stream:
+    """Stand-in for a Windows console: text layer rejects anything non-cp1252."""
+
+    def __init__(self) -> None:
+        self.buffer = io.BytesIO()
+
+    def write(self, text: str) -> int:  # pragma: no cover - must never be reached
+        text.encode("cp1252")  # raises UnicodeEncodeError on CJK, like the real console
+        raise AssertionError("_emit must write bytes via .buffer, not the text layer")
+
+    def flush(self) -> None:
+        pass
+
+
+def test_emit_encodes_utf8_at_the_write_site():
+    """CJK must reach the byte buffer as UTF-8, bypassing the console code page."""
+    stream = _Cp1252Stream()
+    _emit("待修 — §4 已修", stream)
+    assert stream.buffer.getvalue().decode("utf-8") == "待修 — §4 已修\n"
+
+
+def test_emit_falls_back_to_text_write_without_buffer():
+    """pytest capture / StringIO have no .buffer — _emit must still work there."""
+    sink = io.StringIO()
+    _emit("待修 §4", sink)
+    assert sink.getvalue() == "待修 §4\n"
+
+
+@pytest.mark.parametrize("mode", [[], ["--json"]])
+def test_cli_survives_cp1252_console(vault_root: Path, layout_doc: Path, tmp_path: Path, mode):
+    """End-to-end: the CLI must not die with UnicodeEncodeError on a cp1252 console."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {**os.environ, "PYTHONIOENCODING": "cp1252", "PYTHONPATH": str(REPO_ROOT)}
+    proc = subprocess.run(
+        [
+            sys.executable,
+            str(REPO_ROOT / "scripts" / "vault_layout_audit.py"),
+            "--vault-root",
+            str(vault_root),
+            "--repo-root",
+            str(repo),
+            "--layout-doc",
+            str(layout_doc),
+            *mode,
+        ],
+        capture_output=True,
+        env=env,
+    )
+    assert proc.returncode == 0, proc.stderr.decode("utf-8", "replace")
+    # stdout is raw bytes; it must be valid UTF-8 with the CJK intact.
+    out = proc.stdout.decode("utf-8")
+    assert out.strip()
+    assert any(ord(ch) > 127 for ch in out)
