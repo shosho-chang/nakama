@@ -38,6 +38,7 @@
 | `channels:read` | 讀頻道列表 |
 | `groups:history` | 讀私密頻道（可選） |
 | `reactions:read` | brainstorm 停止條件看 `🛑` reaction（之後才用） |
+| `files:read` | 讀使用者附的檔案，例如 Gmail「傳到 Slack」的信件（`gateway/slack_files.py`）。缺這個 scope，agent 只會看到「附件讀取失敗」 |
 
 ### 4. Event Subscriptions
 
