@@ -185,6 +185,39 @@ def test_extract_in_background_returns_thread():
     assert not t.is_alive()
 
 
+@pytest.mark.real_extractor
+def test_extract_in_background_thread_carries_agent_and_subscription_policy(monkeypatch):
+    """背景 thread 不繼承 ContextVar —— 抽取必須自己設 agent，且不靠 .env 就走訂閱。
+
+    回歸：VPS 上 Nami 抽取在 thread 內讀到 agent=None → DEFAULT_AUTH="api" →
+    API credit 用完時全數 400。走真的 shared.llm.ask + router，只攔最底層 ask_claude。
+    """
+    from shared.llm_context import clear_current_agent, get_current_agent
+
+    monkeypatch.delenv("NAKAMA_REQUIRE_MAX_PLAN", raising=False)
+    monkeypatch.delenv("AUTH_NAMI", raising=False)
+    monkeypatch.delenv("AUTH_NAMI_MEMORY_EXTRACTION", raising=False)
+    clear_current_agent()  # caller context 沒 agent 也要對
+
+    calls: list[tuple[str | None, str | None]] = []
+
+    def _fake_ask_claude(prompt, **kwargs):
+        calls.append((get_current_agent(), kwargs.get("auth_policy")))
+        return "[]"
+
+    with patch("shared.llm.ask_claude", side_effect=_fake_ask_claude):
+        t = memory_extractor.extract_in_background(
+            "nami", "U1", [{"role": "user", "content": "hi"}]
+        )
+        t.join(timeout=5.0)
+
+    assert not t.is_alive()
+    # semantic + episodic 兩個 call 都要吃到 agent 與訂閱 policy
+    assert calls == [("nami", "subscription_required")] * 2
+    # thread 內設的 context 不會漏回 caller
+    assert get_current_agent() is None
+
+
 def test_extract_injects_existing_memories_with_content():
     """抽取時 prompt 應包含既有 (subject, content)，讓 Haiku 合併不遺漏。"""
     agent_memory.add("nami", "U1", "preference", "工作時段", "早上深度工作")
