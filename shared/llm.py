@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any
 
 from shared.anthropic_client import ask_claude, ask_claude_multi, call_claude_with_tools
 from shared.llm_context import get_current_agent
-from shared.llm_router import get_auth_policy, get_model, get_provider
+from shared.llm_router import api_model_id, get_auth_policy, get_model, get_provider
 from shared.llm_transport import openrouter_enabled
 
 if TYPE_CHECKING:
@@ -56,6 +56,7 @@ def ask(
     agent = get_current_agent()
     if model is None:
         model = get_model(agent=agent, task=task)
+    model = api_model_id(model)
 
     provider = get_provider(model)
 
@@ -136,6 +137,7 @@ def ask_multi(
     agent = get_current_agent()
     if model is None:
         model = get_model(agent=agent, task=task)
+    model = api_model_id(model)
 
     provider = get_provider(model)
 
@@ -214,6 +216,7 @@ def ask_with_tools(
     agent = get_current_agent()
     if model is None:
         model = get_model(agent=agent, task=task)
+    model = api_model_id(model)
 
     provider = get_provider(model)
 

@@ -170,3 +170,70 @@ def test_mention_passes_email_to_agent():
 
     _, body, _ = handler.handle.call_args.args
     assert "[附件信件] 主旨：Podcast《來PD的客廳坐坐》訪綱" in body
+
+
+# ── 信件的 PDF 附檔（訪綱）─────────────────────────────────────────────
+
+
+def _email_with(attachments: list[dict]) -> dict:
+    return {**EMAIL_FILE_FULL, "attachments": attachments}
+
+
+PDF_ATT = {
+    "filename": "S1EP03.pdf",
+    "mimetype": "application/pdf",
+    "size": 127801,
+    "url": "https://files-origin.slack.com/files-email-priv/x/s1ep03.pdf",
+}
+
+
+def _pdf_client(file: dict) -> MagicMock:
+    client = _client(file)
+    client.token = "xoxb-test"
+    return client
+
+
+def test_pdf_attachment_text_is_included():
+    client = _pdf_client(
+        _email_with([PDF_ATT, {"filename": "photo.jpg", "mimetype": "image/jpeg"}])
+    )
+    with (
+        patch("gateway.slack_files._download", return_value=b"%PDF") as dl,
+        patch("gateway.slack_files.pdf_to_text", return_value="時間：2026 年 10 月 16 日（五）"),
+    ):
+        out = attachment_context({"files": [EMAIL_FILE_IN_EVENT]}, client)
+
+    dl.assert_called_once_with(PDF_ATT["url"], "xoxb-test")
+    assert "[信件附檔 PDF：S1EP03.pdf]\n時間：2026 年 10 月 16 日（五）" in out
+    # 非 PDF 附檔只列檔名，PDF 不再出現在「未讀取」清單
+    assert "信件附檔（未讀取內容）：photo.jpg" in out
+
+
+def test_pdf_download_failure_is_stated_not_silent():
+    client = _pdf_client(_email_with([PDF_ATT]))
+    with patch("gateway.slack_files._download", side_effect=RuntimeError("403")):
+        out = attachment_context({"files": [EMAIL_FILE_IN_EVENT]}, client)
+    assert "[信件附檔 PDF：S1EP03.pdf] 下載失敗，讀不到內容。" in out
+
+
+def test_oversized_pdf_is_skipped_without_download():
+    big = {**PDF_ATT, "size": 50 * 1024 * 1024}
+    client = _pdf_client(_email_with([big]))
+    with patch("gateway.slack_files._download") as dl:
+        out = attachment_context({"files": [EMAIL_FILE_IN_EVENT]}, client)
+    dl.assert_not_called()
+    assert "檔案太大" in out
+
+
+def test_long_pdf_text_truncated():
+    from gateway.slack_files import MAX_PDF_CHARS
+
+    client = _pdf_client(_email_with([PDF_ATT]))
+    with (
+        patch("gateway.slack_files._download", return_value=b"%PDF"),
+        patch("gateway.slack_files.pdf_to_text", return_value="訪" * (MAX_PDF_CHARS + 100)),
+    ):
+        out = attachment_context({"files": [EMAIL_FILE_IN_EVENT]}, client)
+    assert "訪" * MAX_PDF_CHARS in out
+    assert "訪" * (MAX_PDF_CHARS + 1) not in out
+    assert "PDF 過長" in out
