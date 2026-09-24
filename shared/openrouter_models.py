@@ -13,6 +13,8 @@ Slug 來源：2026-06-25 對 ``https://openrouter.ai/api/v1/models`` 的 preflig
 
 from __future__ import annotations
 
+from shared.llm_router import api_model_id
+
 # bare ID（Nakama 內部 registry / env 用）→ OpenRouter slug（provider/model）。
 # 多對一是正常的：dated pin 與 canonical 收斂到同一個 OpenRouter slug
 # （例：claude-haiku-4-5 與 claude-haiku-4-5-20251001 都是 anthropic/claude-haiku-4.5）。
@@ -52,7 +54,8 @@ def to_openrouter_slug(bare_id: str) -> str:
     （見 Slice 2 + ADR）。這支同時扮演 ``shared.xai_client._require_grok_model``
     那種 fail-fast guard 的角色（錯的 model 在送網路前就擋下）。
     """
-    slug = _SLUG_MAP.get(bare_id)
+    # Agent SDK 簡稱（"sonnet"）先換成完整 ID，跟直接打 API 的路徑同一個替身
+    slug = _SLUG_MAP.get(api_model_id(bare_id))
     if slug is not None:
         return slug
     if bare_id.startswith("grok-"):
