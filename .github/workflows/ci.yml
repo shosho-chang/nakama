@@ -28,7 +28,7 @@ jobs:
           python-version: "3.11"
           cache: 'pip'
 
-      - name: Install ffmpeg (required by shared/audio_clip + transcriber + video line ffprobe/emit)
+      - name: Install ffmpeg (required by transcriber + video line ffprobe/emit)
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
 
       # video/ Node steps removed by ADR-050 D3 — the TS DSL parser retired;
