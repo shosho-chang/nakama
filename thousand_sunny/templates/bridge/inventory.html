@@ -81,7 +81,7 @@
           <tr><td class="row-label">Nami<span class="sub">航海士 · 秘書</span></td>
             <td>Project/Task/Calendar/Gmail 秘書</td><td>跨 stage 協調</td>
             <td>Slack DM · <code>gateway/handlers/nami.py</code></td>
-            <td><span class="cm ship">✓</span>project-bootstrap · transcribe</td></tr>
+            <td><span class="cm ship">✓</span>project-bootstrap</td></tr>
           <tr><td class="row-label">Brook<span class="sub">音樂家 · 撰稿</span></td>
             <td>內容 repurpose / 撰稿 / 影片腳本</td><td>4 輸出</td>
             <td><code>python -m agents.brook.synthesize</code></td>
@@ -209,7 +209,7 @@
         <div class="inv-agent-head">
           <h3 class="inv-agent-name">Nami <span class="role">秘書 · 航海士</span></h3>
           <p class="inv-tagline">Slack DM 驅動的對話型秘書：LLM tool-use 迴圈，30+ 工具涵蓋 Project/Task、Calendar、Gmail、Vault、學術檢索與跨 agent 協作。</p>
-          <span class="inv-skillflag has">2 skills</span>
+          <span class="inv-skillflag has">1 skill</span>
         </div>
         <div class="inv-cli">真引擎在 gateway/handlers/nami.py（nakama-gateway service）· 本體 agents/nami/__main__.py 為 stub · Morning Brief cron 07:00 已禁用</div>
         <div class="inv-body">
@@ -238,7 +238,6 @@
             <p class="inv-block-label">已 skill 化</p>
             <div class="inv-chips">
               <span class="inv-chip skill">project-bootstrap<span class="wrap">→ run_project_bootstrap.py</span></span>
-              <span class="inv-chip skill">transcribe<span class="wrap">→ run_transcribe.py</span></span>
             </div>
           </div>
         </div>
@@ -457,7 +456,6 @@
           <tr><td class="row-label">textbook-ingest</td><td>Robin</td><td>教科書章節批次攝入</td><td><span class="skill-type thin">薄包 Python</span></td></tr>
           <tr><td class="row-label">keyword-research</td><td>Zoro</td><td><code>run_keyword_research.py</code></td><td><span class="skill-type thin">薄包 script</span></td></tr>
           <tr><td class="row-label">project-bootstrap</td><td>Nami</td><td><code>run_project_bootstrap.py</code></td><td><span class="skill-type thin">薄包 script</span></td></tr>
-          <tr><td class="row-label">transcribe</td><td>Nami</td><td><code>run_transcribe.py</code>（Auphonic+FunASR+Opus+Gemini）</td><td><span class="skill-type thin">薄包 script</span></td></tr>
           <tr><td class="row-label">article-compose</td><td>Brook</td><td>互動式撰稿流程</td><td><span class="skill-type">純對話 wrapper</span></td></tr>
           <tr><td class="row-label">brook-replan-beat</td><td>Brook</td><td>單 beat re-plan（escape hatch）</td><td><span class="skill-type">純對話 wrapper</span></td></tr>
         </tbody>
@@ -481,9 +479,8 @@
           <tr><td class="row-label">Foundry · video</td><td><code>align_srt.py</code> · <code>analyze_srt_cuts.py</code> · <code>compare_srt.py</code> · <code>analyze_qwen_srt.py</code></td></tr>
           <tr><td class="row-label">Zoro · keyword</td><td><code>run_keyword_research.py</code></td></tr>
           <tr><td class="row-label">Nami · setup</td><td><code>run_project_bootstrap.py</code> · <code>google_calendar_auth.py</code> · <code>google_gmail_auth.py</code></td></tr>
-          <tr><td class="row-label">transcribe · ASR</td><td><code>run_transcribe.py</code> · <code>run_qwen3_asr.py</code> · <code>srt_refine.py</code> · <code>debug_auphonic*.py</code></td></tr>
+          <tr><td class="row-label">transcribe · ASR</td><td><code>run_qwen3_asr.py</code> · <code>srt_refine.py</code> · <code>debug_auphonic*.py</code></td></tr>
           <tr><td class="row-label">Franky · ops/backup</td><td><code>backup_nakama_state.py</code> · <code>restore_from_r2.py</code> · <code>mirror_backup_to_secondary.py</code> · <code>verify_backup_integrity.py</code> · <code>vps_baseline_monitor.py</code> · <code>cleanup_logs.py</code> · <code>maintain_user_memories.py</code></td></tr>
-          <tr><td class="row-label">ADR · 多模型審查</td><td><code>adr_multi_model_review.py</code> · <code>dispatch_gemini_*.py</code> · <code>panel_gemini_adr021.py</code> · <code>audit_adr_035_gemini.py</code></td></tr>
           <tr><td class="row-label">deploy · release</td><td><code>release.py</code> · <code>deploy_vps.sh</code> · <code>start_thousand_sunny.ps1</code> · <code>start_*_server.bat</code></td></tr>
         </tbody>
       </table>

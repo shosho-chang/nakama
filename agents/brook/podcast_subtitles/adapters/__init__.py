@@ -4,8 +4,6 @@ Optional GPU/provider dependencies are imported only inside Adapter methods, so
 this package remains importable in orchestration, test, and CPU-only runtimes.
 """
 
-from .arbitration import GeminiAudioArbiterAdapter
-from .audio_audit import GeminiAudioAuditAdapter
 from .correction import LLMCorrectorAdapter
 from .faster_whisper_recognition import FasterWhisperRecognizerAdapter
 from .fixtures import (
@@ -67,8 +65,6 @@ __all__ = [
     "NormalizedAudioHandoffManifestV1",
     "VerifiedNormalizedAudioHandoffAdapter",
     "wav_duration_ms",
-    "GeminiAudioArbiterAdapter",
-    "GeminiAudioAuditAdapter",
     "LLMCorrectorAdapter",
     "SemanticAnalyzerAdapter",
     "ExtractedPassage",

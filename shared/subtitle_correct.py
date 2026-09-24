@@ -3,13 +3,12 @@
 兩種模式（依參考材料自動選擇）：
 - **scripted**：有完整逐字稿（照稿錄影）→ difflib 對稿，文字以稿為準、
   時間軸保留原 SRT，零 LLM 零成本。cue 切分不變。
-- **llm**：參考有限（訪綱、準備報告）→ Opus 分段（chunked）校正 +
-  可選 Gemini 多模態仲裁。與 /transcribe pipeline 共用 prompt 與
-  仲裁機器（shared/transcriber.py、shared/multimodal_arbiter.py）。
+- **llm**：參考有限（訪綱、準備報告）→ Opus 分段（chunked）校正。
+  prompt 與機械件（pinyin、SRT 解析/替換、Pass 2 過濾）共用 shared/transcriber.py。
 
-相較 transcriber._correct_with_llm 的差異：
-- 輸入是 SRT 字串而非 pipeline 內部狀態 → 外部工具產的字幕也能校
-- 參考資料每檔上限 20000 字元（transcriber 舊路徑是 3000，訪綱/報告會被砍）
+設計重點：
+- 輸入是 SRT 字串 → 外部工具產的字幕也能校
+- 參考資料每檔上限 20000 字元（訪綱/報告不會被砍）
 - 長逐字稿分 chunk 送（每 chunk 獨立 max_tokens），不再有單次 16384 截斷風險
 """
 
@@ -24,7 +23,6 @@ from pathlib import Path
 
 from shared.transcriber import (
     _add_pinyin,
-    _apply_arbitration_verdicts,
     _build_correction_system,
     _extract_srt_texts,
     _parse_llm_response,
@@ -104,7 +102,7 @@ def _over_deletion_guard(
     corrections: dict[int, str], uncertainties: list[dict], entries: list[tuple[int, str]]
 ) -> int:
     """防過度刪減：修正後長度 < 原文一半（原文 ≥ 8 有效字元）→ 撤下修正、
-    轉入 uncertain（有音檔仲裁時交裁決、否則進 QC 給人工）。
+    轉入 uncertain（進 QC 給人工／QC 自主裁決）。
 
     實例：raw「就是那個常常看到你去上鳳鑫節」被 Opus 縮成「鳳馨姊」——
     同音字修對了但整句 filler 被刪，違反「不改變原意」。回傳攔截行數。
@@ -126,13 +124,13 @@ def _over_deletion_guard(
             )
             over_deleted += 1
     if over_deleted:
-        logger.info(f"過度刪減防護: {over_deleted} 行修正轉入仲裁/QC")
+        logger.info(f"過度刪減防護: {over_deleted} 行修正轉入 QC")
     return over_deleted
 
 
 def _finalize_srt(srt_content: str, corrections: dict[int, str]) -> str:
     """套用修正 + Pass 2（PR #23 教訓）：prompt 明令無標點，但 LLM 仍會
-    加回標點或吐簡體字；與 /transcribe 同款機械過濾，最終輸出前再掃一次。"""
+    加回標點或吐簡體字；用 transcriber._process_srt_line 機械過濾，最終輸出前再掃一次。"""
     corrected_srt = _replace_srt_texts(srt_content, corrections)
     return "\n".join(_process_srt_line(line) for line in corrected_srt.splitlines())
 
@@ -264,7 +262,6 @@ def apply_corrections(srt_content: str, payload: dict) -> tuple[str, list[dict],
         "over_deletion_guard": over_deleted,
         "dropped": dropped,
         "qc": len(uncertainties),
-        "arbitrated": False,
     }
     return corrected_srt, uncertainties, stats
 
@@ -279,13 +276,10 @@ def correct_srt_llm(
     model: str = "claude-opus-4-7",
     host_name: str = "",
     show_name: str = "",
-    audio_path: Path | None = None,
-    use_arbitration: bool = True,
     chunk_size: int = DEFAULT_CHUNK_SIZE,
     ref_char_cap: int = DEFAULT_REF_CHAR_CAP,
-    run_id: int | None = None,
 ) -> tuple[str, list[dict], dict]:
-    """Opus 分段校正既有 SRT（+ 可選 Gemini 仲裁）。
+    """Opus 分段校正既有 SRT；uncertain 項目直接進 QC。
 
     Returns:
         (corrected_srt, qc_items, stats)
@@ -325,25 +319,6 @@ def correct_srt_llm(
 
     over_deleted = _over_deletion_guard(corrections, uncertainties, entries)
 
-    qc_items: list[dict] = uncertainties
-    arbitrated = False
-    if use_arbitration and uncertainties and audio_path is not None:
-        try:
-            from shared.multimodal_arbiter import arbitrate_uncertain
-
-            pre_arb_srt = _replace_srt_texts(srt_content, corrections)
-            verdicts = arbitrate_uncertain(audio_path, pre_arb_srt, uncertainties, run_id=run_id)
-            corrections, qc_items = _apply_arbitration_verdicts(
-                corrections, uncertainties, verdicts
-            )
-            arbitrated = True
-            logger.info(f"多模態仲裁完成: {len(verdicts)} verdicts, {len(qc_items)} 進 QC")
-        except Exception as e:
-            logger.warning(f"多模態仲裁失敗，退回單輪結果: {type(e).__name__}: {e}")
-            qc_items = uncertainties
-    elif use_arbitration and uncertainties and audio_path is None:
-        logger.info("無音檔，跳過多模態仲裁")
-
     corrected_srt = _finalize_srt(srt_content, corrections)
 
     stats = {
@@ -353,10 +328,9 @@ def correct_srt_llm(
         "corrections": len(corrections),
         "uncertain": len(uncertainties),
         "over_deletion_guard": over_deleted,
-        "qc": len(qc_items),
-        "arbitrated": arbitrated,
+        "qc": len(uncertainties),
     }
-    return corrected_srt, qc_items, stats
+    return corrected_srt, uncertainties, stats
 
 
 # ── 對稿（scripted）模式 ──
@@ -498,7 +472,6 @@ def build_correction_report(stats: dict, qc_items: list[dict]) -> str:
         ("qc", "進 QC 行數"),
         ("flagged", "低對齊率行數"),
         ("coverage", "整體對齊率"),
-        ("arbitrated", "多模態仲裁"),
     ]:
         if key in stats:
             lines.append(f"- {label}：{stats[key]}")
@@ -508,21 +481,11 @@ def build_correction_report(stats: dict, qc_items: list[dict]) -> str:
         lines.append("## 需人工確認\n")
         for item in qc_items:
             line_no = item.get("line", "?")
-            if "verdict" in item:  # LLM + 仲裁
-                lines.append(
-                    f"### [{item.get('risk', 'medium').upper()} | {item['verdict']}"
-                    f" | conf {item.get('confidence', 0.0):.2f}] Line {line_no}"
-                )
-                lines.append(f"- **ASR 原文**：{item.get('original', '')}")
-                lines.append(f"- **Opus 建議**：{item.get('suggestion', '')}")
-                lines.append(f"- **Opus 理由**：{item.get('reason', '')}")
-                lines.append(f"- **仲裁採用**：{item.get('final_text', '')}")
-                lines.append(f"- **Gemini 理由**：{item.get('gemini_reasoning', '')}")
-            elif "coverage" in item:  # scripted 低對齊
+            if "coverage" in item:  # scripted 低對齊
                 lines.append(f"### [coverage {item['coverage']}] Line {line_no}")
                 lines.append(f"- **ASR 原文**：{item.get('original', '')}")
                 lines.append(f"- **原因**：{item.get('reason', '')}")
-            else:  # LLM 無仲裁
+            else:  # LLM uncertain（cowork / API 路徑）
                 lines.append(f"### [{item.get('risk', 'medium').upper()}] Line {line_no}")
                 lines.append(f"- **原文**：{item.get('original', '')}")
                 lines.append(f"- **建議**：{item.get('suggestion', '')}")
