@@ -9,13 +9,10 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from shared.transcriber import (
-    _BUF_TRAILING_ASCII_RE,
-    _MAX_SUBTITLE_HARD,
     _add_pinyin,
     _build_initial_prompt,
     _extract_hotwords,
     _extract_srt_texts,
-    _force_break,
     _parse_llm_response,
     _process_srt_line,
     _remove_punctuation,
@@ -152,97 +149,6 @@ def test_replace_srt_texts_no_changes():
     result = _replace_srt_texts(_SAMPLE_SRT, {})
     assert "這是第一句" in result
     assert "NMM是一種重要的分子" in result
-
-
-# ── jieba 詞邊界強制斷行 ──
-
-
-def test_force_break_chinese_word_boundary():
-    """jieba 走詞邊界切，不切常見雙字詞（PR #271 觀察 38 處詞被切到 cue 邊界）。
-
-    句子刻意 28 字（>20 上限）構成。每一刀都不該切「然後 / 怎麼 / 我們 / 因為」。
-    """
-    text = "然後我的直覺是對的因為光是第一個禮拜我們就看到太多生活方式"
-    chunks = _force_break(text, 20)
-    assert len(chunks) >= 2
-    for chunk in chunks:
-        assert len(chunk) <= 20
-    # 重組後字元應一致（順序保留）
-    assert "".join(chunks).replace(" ", "") == text.replace(" ", "")
-    # 不該切常見雙字詞
-    for bigram in ["然後", "因為", "我們", "怎麼"]:
-        if bigram in text:
-            # 如果原文有，切完拼回來也要保留
-            cut_separated = any(
-                chunks[i].endswith(bigram[0]) and chunks[i + 1].startswith(bigram[1])
-                for i in range(len(chunks) - 1)
-            )
-            assert not cut_separated, f"「{bigram}」被切到 chunk 邊界"
-
-
-def test_force_break_short_text():
-    """≤max_chars 的文字應原樣回傳（不必拆）。"""
-    chunks = _force_break("簡短句子", 20)
-    assert chunks == ["簡短句子"]
-
-
-def test_force_break_long_english_token():
-    """超長英文 token（>max_chars）應獨立成 chunk 不被破壞。"""
-    text = "看 https://example.com/very-long-url-path-that-exceeds-limit 連結"
-    chunks = _force_break(text, 20)
-    # URL token 不該被切成兩半
-    full = "".join(chunks)
-    assert "https://example.com/very-long-url-path-that-exceeds-limit" in full
-
-
-def test_force_break_ascii_compound_overflows_to_hard():
-    """soft/hard 雙閾值：ASCII 英文 compound name（如「Traveling Village」17 字）
-    超過 soft 14 但 ≤ hard 22 時應整體保留同一 chunk 不被切。
-    """
-    chunks = _force_break("Traveling Village然後它是由丹麥的一對夫婦", 14, 22)
-    # 「Traveling Village」必須整段在某個 chunk 內，不能跨 chunk 邊界切開
-    assert any("Traveling Village" in c for c in chunks)
-    # 該 chunk 確實 overflow 過 soft 14
-    assert any(len(c) > 14 and "Traveling Village" in c for c in chunks)
-
-
-def test_force_break_chinese_english_no_space_kept_together():
-    """iter3 fix：buf 結尾「個Hell」（中英連寫無空格）+ 下個 token「Yes」應走
-    trailing-ASCII regex search（不是 split(' ')[-1]）→ 兩個 ASCII token 連住保留。
-    對應觀察 case：「我覺得就是個Hell Yes然後這是」(max=14)。
-    """
-    chunks = _force_break("我覺得就是個Hell Yes然後這是", 14, 22)
-    # 「Hell Yes」必須在同一 chunk 內，不能被切到 chunk 邊界
-    cut_separated = any(
-        "Hell" in chunks[i]
-        and chunks[i].rstrip().endswith("Hell")
-        and chunks[i + 1].lstrip().startswith("Yes")
-        for i in range(len(chunks) - 1)
-    )
-    assert not cut_separated, "「Hell Yes」被切到 chunk 邊界"
-
-
-def test_buf_trailing_ascii_regex_detects_cases():
-    """`_BUF_TRAILING_ASCII_RE` 須抓 buf 結尾連續 ASCII 英文，含中英連寫無空格。"""
-    cases = [
-        ("以後對我們來說就是個Hell", True),  # 中英連寫無空格
-        ("Hello World ", True),  # 純英文 + trailing space
-        ("Traveling Village", True),  # 純英文 compound
-        ("以後對我們來說就是個", False),  # 純中文
-        ("純中文無英文", False),
-    ]
-    for text, expected in cases:
-        got = bool(_BUF_TRAILING_ASCII_RE.search(text))
-        assert got is expected, f"trailing-ascii({text!r}) = {got}, expected {expected}"
-
-
-def test_max_subtitle_hard_accommodates_known_compound_names():
-    """`_MAX_SUBTITLE_HARD` 必須 > soft 上限，且能容下既知英文 compound name
-    （「Traveling Village」17 字）。改值前先確認新 hard 沒擠掉這些 case。"""
-    from shared.transcriber import _MAX_SUBTITLE_CHARS
-
-    assert _MAX_SUBTITLE_HARD > _MAX_SUBTITLE_CHARS
-    assert _MAX_SUBTITLE_HARD >= len("Traveling Village")
 
 
 # ── _build_initial_prompt ──

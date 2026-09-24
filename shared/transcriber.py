@@ -27,13 +27,6 @@ _ZH_MID_PUNCTUATION = re.compile(r"[，、；：" "''（）【】…—～·,;:]
 # 句尾標點（中英）→ 直接移除
 _ZH_END_PUNCTUATION = re.compile(r"[。！？!?]|(?<=\S)\.(?=\s|$)")
 
-# 字幕每行最大字數
-# soft：常態目標 / hard：容許 overflow（保 ASCII 英文 compound name 不被切，
-# 例 Traveling Village = 17 字）
-# 慣例常數：cue_builder / script_align 各自複製一份並註明對齊此值
-_MAX_SUBTITLE_CHARS = 14
-_MAX_SUBTITLE_HARD = 22
-
 # OpenCC lazy singleton（避免重複載入字典）
 _cc_s2t = None
 
@@ -296,61 +289,6 @@ def _parse_llm_response(raw: str, total_entries: int) -> tuple[dict[int, str], l
         logger.warning("LLM 校正回傳無法解析，使用原始文字")
 
     return corrected, []
-
-
-_ASCII_TOKEN_RE = re.compile(r"^[A-Za-z][A-Za-z0-9'\-]*$")
-_BUF_TRAILING_ASCII_RE = re.compile(r"[A-Za-z][A-Za-z0-9'\- ]*$")
-
-
-def _force_break(text: str, max_chars: int, hard_max: int | None = None) -> list[str]:
-    """強制斷行，避免切斷中文詞語與英文單字。
-
-    走 jieba 中文分詞 + 英文 token，每個 chunk greedy 累加到 ≤max_chars 字停。
-    若單一 token 已超過 max_chars（罕見：超長英文 / URL），該 token 獨立成 chunk。
-
-    soft / hard 雙閾值：
-    - soft = max_chars：常態目標
-    - hard = hard_max（預設 max_chars + 8）：當下個 token 是 ASCII 英文 / 接續英文單字的 chunk
-      時容許 overflow 到 hard，避免「Traveling Village」這類 compound 被切
-
-    原呼叫端（legacy transcribe() 的句子拆分）已退役；run_short_tighten 的細切
-    註解仍以本函式為「jieba 詞邊界斷行」的參考實作。
-    """
-    import jieba
-
-    ensure_tw_jieba()
-    if hard_max is None:
-        hard_max = max_chars + 8
-    tokens = list(jieba.cut(text, cut_all=False))
-    chunks: list[str] = []
-    buf = ""
-    for tok in tokens:
-        if not tok.strip():
-            buf += tok
-            continue
-        # soft fits → take
-        if len(buf) + len(tok) <= max_chars:
-            buf += tok
-            continue
-        # soft 不夠但 hard 容許，且 token 是 ASCII 英文 + buf 結尾連續 ASCII 英文
-        # （保 compound name "Traveling Village" / "Hell Yes" 不被切，
-        #   即使前面緊鄰中文無空格）→ overflow
-        is_ascii_english = bool(_ASCII_TOKEN_RE.match(tok))
-        buf_ends_english = bool(_BUF_TRAILING_ASCII_RE.search(buf))
-        if is_ascii_english and buf_ends_english and len(buf) + len(tok) <= hard_max:
-            buf += tok
-            continue
-        # 真要 break
-        if buf.strip():
-            chunks.append(buf.strip())
-        if len(tok) > hard_max:
-            chunks.append(tok)
-            buf = ""
-        else:
-            buf = tok
-    if buf.strip():
-        chunks.append(buf.strip())
-    return chunks
 
 
 def _process_srt_line(line: str) -> str:
