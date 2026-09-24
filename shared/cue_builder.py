@@ -26,7 +26,7 @@ _NUM_CLASSIFIER = re.compile(
 # 計量單位詞（不可孤懸成 cue 開頭）
 _UNIT_WORDS = {"小時", "分鐘", "秒鐘", "公斤", "公里", "公分", "百分比", "個月", "歲", "塊錢"}
 
-MAX_CHARS = 14  # 軟上限（同 transcriber._MAX_SUBTITLE_CHARS）
+MAX_CHARS = 14  # 軟上限（同 script_align）
 HARD_MAX_CHARS = 22  # 硬上限（同 script_align）
 PAUSE_FORCE_BREAK = 0.6  # 字間停頓 ≥ 此秒數 → 強制斷（自然句界）
 MIN_CUE_CHARS = 4  # 停頓斷句的最短 cue（避免碎成單字）

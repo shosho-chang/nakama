@@ -18,7 +18,7 @@ from pathlib import Path
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
-MAX = 20  # 對齊 _MAX_SUBTITLE_CHARS
+MAX = 20  # 舊 /transcribe 管線的硬拆字數（該管線已退役）
 
 # 常見雙字 / 三字詞，被切到 cue 邊界要 flag
 COMMON_BIGRAMS = {
@@ -214,7 +214,7 @@ def main():
     # 3. 剛好 20 字硬拆（force_break）
     print()
     print("=" * 60)
-    print("[3] 硬拆 20 字（_MAX_SUBTITLE_CHARS force_break）")
+    print("[3] 硬拆 20 字（舊 /transcribe force_break）")
     print("=" * 60)
     forced = [(seq, text) for seq, _, text, _ in blocks if len(text) == MAX]
     print(f"找到 {len(forced)} 處 cue 文字長度剛好 = {MAX}（高機率是 force_break 觸發）")

@@ -74,39 +74,3 @@ def test_notifier_send_email_does_not_raise_when_smtp_port_env_empty(monkeypatch
 
     # Pre-fix int("") raised BEFORE the incomplete-config early-return guard.
     notifier.send_email("subject", "body")
-
-
-def test_multimodal_arbiter_uses_default_max_workers_when_env_empty(monkeypatch, tmp_path):
-    monkeypatch.setenv("GEMINI_MAX_WORKERS", "")
-    audio = tmp_path / "fake.wav"
-    audio.write_bytes(b"")
-
-    from shared import multimodal_arbiter as ma
-
-    monkeypatch.setattr(ma, "_parse_srt_index", lambda s: {1: (0.0, 1.0, "x")})
-
-    captured: dict = {}
-
-    class _Executor:
-        def __init__(self, *a, **kw):
-            captured["max_workers"] = kw.get("max_workers")
-
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *a):
-            return False
-
-        def map(self, fn, items):
-            return iter([])
-
-    monkeypatch.setattr(ma, "ThreadPoolExecutor", _Executor)
-
-    result = ma.arbitrate_uncertain(
-        audio,
-        "fake_srt_content",
-        [{"line": 1, "original": "x", "suggestion": "y", "reason": "", "risk": "low"}],
-    )
-
-    assert captured["max_workers"] == 3
-    assert result == []

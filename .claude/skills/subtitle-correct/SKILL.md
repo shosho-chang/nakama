@@ -72,8 +72,7 @@ script 會做：越界過濾、過度刪減防護（縮短逾半 → 進 QC）�
 
 ## 付費 API 路徑（明確 opt-in，不要主動用）
 
-`--api`（Anthropic Opus 直呼，花 API 錢）、`--arbitrate`（Gemini 聽音檔仲裁，
-再花 API 錢）。只在修修**明確要求**（例如無人值守批次、或指名要 Gemini 仲裁）
+`--api`（Anthropic Opus 直呼，花 API 錢）。只在修修**明確要求**（例如無人值守批次）
 時使用，用前提醒一句成本。
 
 ## 字幕 house style（修修 2026-07-25 + 2026-08-05 裁決）
