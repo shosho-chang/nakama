@@ -83,6 +83,7 @@
 | U3 | VPS `/home/nakama/.env` 的實際路由：`AUTH_*`、`MODEL_*`、`LLM_TRANSPORT_*` 目前設了哪些。#1173 的 commit message 說 2026-08-17 已把 Franky / memory-reflection / Robin 移到 OpenRouter + OpenAI，但 `.env` 不在 repo 裡 | cutover 前後行為要對得上，不能默默換模型 |
 | U4 | VPS 上一次性小呼叫（Haiku、`tools=[]`、`max_turns=1`）的 p50 / p95 延遲與記憶體 | 每則 Slack 訊息的意圖分類、Nami 每輪 2 次記憶抽取都受影響 |
 | U5 | OpenRouter 帳號的 `data_collection: deny` 設定還沒勾（`docs/runbooks/openrouter-canary.md:10-11`） | 資料政策 |
+| U6 | `openrouter_approved` 模式下（`ANTHROPIC_BASE_URL` 指向 OpenRouter），別名 `opus` / `sonnet` / `haiku` 解析出的 model id，OpenRouter 認不認得？ | Q2 改用別名後，D5 切換能不能直接用 |
 
 ---
 
@@ -196,8 +197,8 @@ exhausted_awaiting_decision / openrouter_approved ──(訂閱探針成功)─�
 
 | Slice | 內容 | 依賴 | 驗收 |
 |---|---|---|---|
-| **S0 取證**（不改行為） | ① 3 個既有 SDK 呼叫點 + `claude -p` 失敗時保存原始內容；② 修修在 VPS 跑一行指令貼出 `.env` 的 key 名稱（U3）；③ 訂閱模式下量 `total_cost_usd` 的語意、`opus` 解析成哪個 model（U2、F3）；④ VPS 上小呼叫的 p50 / p95 延遲與記憶體（U4）；⑤ 修修確認 OpenRouter `data_collection`（U5） | — | U2–U5 有書面答案，寫回本 ADR；U1 的原始內容開始累積 |
-| **S1 L1 核心** | `shared/agent_sdk.py` 補齊 D2 七項職責；facade 依 model 字串分派；D9 context helper；D3 憑證合併。**只建模組，不切任何 production 路徑** | S0 | 單元測試：分派、憑證注入、timeout、semaphore、用量紀錄、context 傳遞 |
+| **S0 取證**（不改行為） | ① 3 個既有 SDK 呼叫點 + `claude -p` 失敗時保存原始內容；② 修修在 VPS 跑一行指令貼出 `.env` 的 key 名稱（U3）；③ 訂閱模式下量 `total_cost_usd` 的語意、`opus` 解析成哪個 model（U2、F3）；④ VPS 上小呼叫的 p50 / p95 延遲與記憶體（U4）；⑤ 修修確認 OpenRouter `data_collection`（U5）；⑥ 用 OpenRouter env 跑一次 `opus` / `sonnet` / `haiku` 別名（U6） | — | U2–U6 有書面答案，寫回本 ADR；U1 的原始內容開始累積 |
+| **S1 L1 核心** | `shared/agent_sdk.py` 補齊 D2 七項職責；facade 依 model 字串分派；D9 context helper；D3 憑證合併；Q2 registry 與寫死的 Claude id 改用別名。**只建模組，不切任何 production 路徑** | S0 | 單元測試：分派、憑證注入、timeout、semaphore、用量紀錄、context 傳遞；`git grep` 在 code 裡找不到寫死的 `claude-*` id |
 | **S2 額度用完處理** | D5 狀態機 + 分類器 + Franky DM + `/bridge/llm-lane` + OpenRouter 模式 + 自動切回探針 | S1 | 注入假錯誤能走完整條狀態機；Bridge 頁在合併前經 dev server + 瀏覽器實際操作過 |
 | **S1a–d 分批切換** | 依執行環境分批：**a** gateway（意圖分類、Sanji / Zoro handler、orchestrator、記憶抽取）→ **b** VPS cron（Robin、Franky、Zoro、memory-reflection）→ **c** Bridge（translator、digest、SEO、keyword、Usopp）→ **d** 桌機腳本（Brook repurpose、planner、`subtitle_correct`） | S2 | 每批上線後 72 小時：`lane_actual` 全部是 `subscription`、沒有 `api`；journal 無新增 LLM 錯誤 |
 | **S5 Codex → L1** | D7，**RenderWatcher 優先**（D-f） | S2 | 在桌機跑一次真實 packaging job 並通過既有驗證；log 記到的 model 是最新 Opus |
@@ -237,8 +238,10 @@ S5 和 S4 可以跟 S1a–d 並行。S3 不依賴 S2，任何時候都能做。
 | D. 額度用完自動改走 OpenRouter | 不中斷 | ✗ 修修明確要求先問（D-c） |
 | E. 用 SDK `fallback_model` 處理額度問題 | 內建 | ✗ 只換 model、不換 lane，而且是靜默切換 |
 
-## 待修修決定
+## 修修裁決（2026-09-24 第二輪）
 
-1. **Q1 切換範圍**：額度用完、修修核准切 OpenRouter 時，是**全部 Claude 呼叫一起切**（本 ADR 暫定，只需要一個決定），還是逐個 agent 核准？
-2. **Q2 registry 預設 model**：現在 registry 釘的是舊 id（`claude-sonnet-4-6`、`claude-opus-4-7`、`claude-sonnet-4-5-20250929`、`claude-haiku-4-5`）。要不要全部改成別名 `opus` / `sonnet` / `haiku`，自動跟著最新版？（2026-08-19 另有一個沒合併的「全面 Opus 5」裁決，eb0cb5bb。）
-3. **Q3 高量或低延遲的呼叫點**（翻譯、意圖分類、記憶抽取）：先全部走 L1，等 S0 數據出來再決定要不要指定 OpenRouter model？（本 ADR 暫定：先走 L1。）
+三題都照建議（修修：「三個都照建議做」）：
+
+1. **Q1 切換範圍 → 全部一起切**。額度用完、修修在 Bridge 核准後，所有 L1 呼叫一起進入 `openrouter_approved`；切回訂閱也是全部一起。D5 的狀態機因此只有一列全域狀態。
+2. **Q2 預設 model → 改用別名**。`MODEL_REGISTRY`、`DEFAULT_MODELS`，以及呼叫點寫死的 Claude id，一律改成 `opus` / `sonnet` / `haiku`，自動跟最新版。對應方式：`claude-opus-4-7` → `opus`；`claude-sonnet-4-6`、`claude-sonnet-4-5-20250929` → `sonnet`；`claude-haiku-4-5`、`claude-haiku-4-5-20251001` → `haiku`。這會改變實際使用的 model 版本，屬於已接受的行為改變；每次呼叫實際跑的 model 由 D2 第 6 項記錄。取代 2026-08-19 沒合併的「全面 Opus 5」（eb0cb5bb）。在 S1 核心一併完成。
+3. **Q3 高量或低延遲的呼叫點 → 先全部走 L1**（翻譯、意圖分類、記憶抽取）。S0 量出延遲和額度用量後，修修再決定要不要把個別呼叫點改指定 OpenRouter model（D6）。
