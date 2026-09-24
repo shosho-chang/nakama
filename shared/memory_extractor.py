@@ -27,8 +27,8 @@ logger = get_logger("nakama.memory_extractor")
 _EXTRACTOR_MODEL = "claude-haiku-4-5"
 _EPISODIC_MODEL = "claude-haiku-4-5"
 _MAX_MESSAGES = 30  # 對話超長時，只看最近 N 則
-# ADR-026 auth routing 的 task 名：operator 可用 ``AUTH_<AGENT>_MEMORY_EXTRACTION``
-# 單獨把抽取切到訂閱，不必動整個 agent 的 ``AUTH_<AGENT>``。
+# ADR-026 auth routing 的 task 名 —— ``DEFAULT_AUTH["memory_extraction"]`` 在 code 裡
+# 鎖訂閱（shared/llm_router.py），不需要 .env 設定。
 _EXTRACTION_TASK = "memory_extraction"
 
 __all__ = [

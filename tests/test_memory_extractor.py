@@ -187,7 +187,7 @@ def test_extract_in_background_returns_thread():
 
 @pytest.mark.real_extractor
 def test_extract_in_background_thread_carries_agent_and_subscription_policy(monkeypatch):
-    """背景 thread 不繼承 ContextVar —— 抽取必須自己設 agent，auth 才吃得到 AUTH_* env。
+    """背景 thread 不繼承 ContextVar —— 抽取必須自己設 agent，且不靠 .env 就走訂閱。
 
     回歸：VPS 上 Nami 抽取在 thread 內讀到 agent=None → DEFAULT_AUTH="api" →
     API credit 用完時全數 400。走真的 shared.llm.ask + router，只攔最底層 ask_claude。
@@ -196,7 +196,7 @@ def test_extract_in_background_thread_carries_agent_and_subscription_policy(monk
 
     monkeypatch.delenv("NAKAMA_REQUIRE_MAX_PLAN", raising=False)
     monkeypatch.delenv("AUTH_NAMI", raising=False)
-    monkeypatch.setenv("AUTH_NAMI_MEMORY_EXTRACTION", "subscription_preferred")
+    monkeypatch.delenv("AUTH_NAMI_MEMORY_EXTRACTION", raising=False)
     clear_current_agent()  # caller context 沒 agent 也要對
 
     calls: list[tuple[str | None, str | None]] = []
@@ -213,7 +213,7 @@ def test_extract_in_background_thread_carries_agent_and_subscription_policy(monk
 
     assert not t.is_alive()
     # semantic + episodic 兩個 call 都要吃到 agent 與訂閱 policy
-    assert calls == [("nami", "subscription_preferred")] * 2
+    assert calls == [("nami", "subscription_required")] * 2
     # thread 內設的 context 不會漏回 caller
     assert get_current_agent() is None
 
