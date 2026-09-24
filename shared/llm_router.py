@@ -193,6 +193,10 @@ DEFAULT_AUTH: dict[str, str] = {
     "default": "api",
     # tool_use forced api: CLI subprocess can't carry raw tool-use JSON.
     "tool_use": "api",
+    # 背景記憶抽取只准走訂閱（修修 2026-09-24：往後只有「訂閱 / OpenRouter」兩條路，
+    # 不再走 API key）。寫在 code 不靠 .env opt-in；訂閱不可用時 raise，抽取端
+    # 記 warning 跳過，不會 silent 燒 API credit。全面收斂見 issue #1299。
+    "memory_extraction": "subscription_required",
 }
 
 # Prefix → provider。擴 provider 時在這裡加一行，`get_provider` 與
