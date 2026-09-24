@@ -1309,13 +1309,15 @@ class NamiHandler(BaseHandler):
                         # per-call 粒度的成本記錄是 S4；先讓 session 級數字進 log 可查
                         logger.info(
                             "nami sdk result: session=%s subtype=%s turns=%s cost_usd=%s "
-                            "terminal=%s is_error=%s",
+                            "terminal=%s is_error=%s models=%s",
                             message.session_id,
                             message.subtype,
                             message.num_turns,
                             message.total_cost_usd,
                             message.terminal_reason,
                             message.is_error,
+                            # model 設的是簡稱 "sonnet"——實際跑哪個版本只有這裡看得到
+                            sorted((message.model_usage or {}).keys()),
                         )
         except Exception as e:
             logger.exception("Agent SDK stream failed")

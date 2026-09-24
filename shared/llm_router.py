@@ -61,7 +61,9 @@ MODEL_REGISTRY: tuple[ModelSite, ...] = (
     ModelSite("robin", "kb_search", "claude-haiku-4-5-20251001", "KB 檢索 relevance reason"),
     ModelSite("robin", "project_angle_scan", "claude-haiku-4-5-20251001", "專案 KB-hit 角度掃描"),
     ModelSite("robin", "project_mechanism", "claude-opus-4-7", "專案機制草稿生成"),
-    ModelSite("nami", "default", "claude-sonnet-4-6", "Nami 對話 / 秘書任務"),
+    # Nami 走 Agent SDK：用簡稱 "sonnet" 讓 CLI 自動挑它知道的最新 Sonnet，
+    # 升級 claude-agent-sdk 就跟著換代（修修 2026-09-24 裁決）。見 SDK_MODEL_ALIASES。
+    ModelSite("nami", "default", "sonnet", "Nami 對話 / 秘書任務"),
     ModelSite("zoro", "default", "claude-sonnet-4-6", "Scout 趨勢 / 關鍵字"),
     ModelSite("brook", "default", "claude-sonnet-4-6", "Composer 撰稿輔助"),
     ModelSite("sanji", "default", "claude-sonnet-4-6", "社群監控"),
@@ -73,6 +75,7 @@ _REGISTRY_BY_KEY: dict[tuple[str, str], ModelSite] = {(s.agent, s.task): s for s
 # N531 — Bridge /bridge/models 下拉的候選 model 清單。新增可選 model 在此加一行；
 # provider 由前綴自動推（見 _PROVIDER_PREFIXES）。只列已 wire 的 provider（見 shared/llm.py）。
 KNOWN_MODELS: tuple[str, ...] = (
+    "sonnet",  # Agent SDK 簡稱（見 SDK_MODEL_ALIASES）
     "claude-opus-4-8",
     "claude-opus-4-7",
     "claude-sonnet-4-6",
@@ -300,12 +303,28 @@ def _validate_auth_policy(value: str, source: str) -> str:
     return value
 
 
+# Agent SDK（Claude Code CLI）接受的 model 簡稱：CLI 會解析成它那個版本知道的
+# 最新一代，升級 claude-agent-sdk 就自動換代。只有 Agent SDK 路徑認得簡稱；
+# 直接打 Anthropic API 的路徑必須給完整 ID，所以每個簡稱配一個 API 用的替身
+# （刻意是保守的舊 ID：API 路徑的 caller 可能還傳 temperature，新一代會 400）。
+SDK_MODEL_ALIASES: dict[str, str] = {
+    "sonnet": "claude-sonnet-4-6",
+}
+
+
+def api_model_id(model: str) -> str:
+    """直接打 API 前把 SDK 簡稱換成完整 model ID；非簡稱原樣回傳。"""
+    return SDK_MODEL_ALIASES.get(model, model)
+
+
 def get_provider(model: str) -> str:
     """由 model ID 推出 provider（"anthropic" / "xai" / "google" / "openai"）。
 
     Raises:
         ValueError: 無法辨識的 model ID prefix。
     """
+    if model in SDK_MODEL_ALIASES:
+        return "anthropic"
     for prefix, provider in _PROVIDER_PREFIXES:
         if model.startswith(prefix):
             return provider

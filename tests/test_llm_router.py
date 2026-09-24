@@ -176,3 +176,30 @@ def test_get_provider_o_series_requires_hyphen() -> None:
         get_provider("o100-xyz")
     with pytest.raises(ValueError, match="Unknown model provider"):
         get_provider("o1something")
+
+
+# ── SDK 簡稱（Nami 用 "sonnet" 自動跟最新一代）──────────────────────────
+
+
+def test_nami_default_is_sdk_sonnet_alias(monkeypatch: pytest.MonkeyPatch) -> None:
+    import shared.llm_router as router
+
+    monkeypatch.setattr(router, "get_override", lambda agent, task: None)
+    assert get_model(agent="nami") == "sonnet"
+
+
+def test_sdk_alias_is_anthropic_and_known_to_bridge() -> None:
+    from shared.llm_router import KNOWN_MODELS, SDK_MODEL_ALIASES
+
+    for alias in SDK_MODEL_ALIASES:
+        assert get_provider(alias) == "anthropic"
+    assert "sonnet" in KNOWN_MODELS
+
+
+def test_api_model_id_swaps_alias_for_full_id() -> None:
+    """API 路徑不認得簡稱——送出前必須換成完整 ID，否則 Anthropic 回 404。"""
+    from shared.llm_router import api_model_id
+
+    assert api_model_id("sonnet").startswith("claude-sonnet-")
+    assert api_model_id("claude-opus-4-8") == "claude-opus-4-8"
+    assert api_model_id("gemini-2.5-pro") == "gemini-2.5-pro"
