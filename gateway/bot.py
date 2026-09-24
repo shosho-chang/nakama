@@ -22,7 +22,8 @@ from gateway.conversation_state import get_store
 from gateway.formatters import format_agent_response
 from gateway.handlers import get_handler
 from gateway.handlers.base import HandlerResponse
-from gateway.router import route_mention, route_slash_command
+from gateway.router import RouteResult, route_mention, route_slash_command
+from gateway.slack_files import with_attachments
 from shared.config import load_config
 from shared.log import get_logger
 
@@ -125,7 +126,7 @@ def _make_mention_handler(agent_name: str) -> Callable:
     """每個 bot 各自的 @mention handler。agent_name 由 closure 綁死 — 訊息到這條
     connection 就等於該 agent 被 mention，不再靠 keyword routing。"""
 
-    def _handle(event, say):
+    def _handle(event, say, client):
         text = event.get("text", "")
         user_id = event.get("user", "")
         channel = event.get("channel", "")
@@ -142,7 +143,9 @@ def _make_mention_handler(agent_name: str) -> Callable:
         # agent 已由 bot 身份決定，但仍用 router 做 intent 分類（例如 Nami 靠
         # intent="create_project" 進 bootstrap flow）；忽略 route.agent
         route = route_mention(text)
-        result = handler.handle(route.intent, route.text, user_id)
+        # 附件信件（Gmail → Slack）在 routing 之後才接上，不讓信件內文影響分類
+        body = with_attachments(route.text, event, client)
+        result = handler.handle(route.intent, body, user_id)
         fallback, blocks = format_agent_response(agent_name, result.text, route.intent)
 
         if msg_thread_ts:
@@ -200,15 +203,23 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
                 return
             # DM 第一則訊息：無 active conversation → 當成新請求，路由到**本 bot 對應的 agent**
             text = event.get("text", "").strip()
-            if not text:
+            if not text and not event.get("files"):
                 return
             logger.info(f"[{agent_name}] DM new conversation: user={user_id} text='{text[:50]}'")
 
             handler = get_handler(agent_name)
             if handler is None:
                 return
-            route = route_mention(text)  # intent 分類用；agent 鎖本 bot
-            result = handler.handle(route.intent, route.text, user_id)
+            # intent 分類用；agent 鎖本 bot。只轉附件、沒打字時不送 router（空字串會打 Haiku）
+            route = (
+                route_mention(text)
+                if text
+                else RouteResult(agent=agent_name, intent="general", text="", confidence="exact")
+            )
+            body = with_attachments(route.text, event, client)
+            if not body:
+                return
+            result = handler.handle(route.intent, body, user_id)
             fallback, blocks = format_agent_response(agent_name, result.text, route.intent)
             say(text=fallback, blocks=blocks)
             _register_continuation(
@@ -236,6 +247,7 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
             f"[{agent_name}] Thread continuation: thread={thread_ts} flow={conv.flow_name} "
             f"user={user_id} text='{text[:50]}...'"
         )
+        text = with_attachments(text, event, client)
 
         try:
             result = handler.continue_flow(conv.flow_name, conv.state, text, user_id)
