@@ -1,6 +1,7 @@
 # ADR-049：OpenRouter 作為 api-tier LLM 的統一 transport
 
 - **狀態**：Accepted（2026-06-25）
+- **被修改**：[ADR-070](ADR-070-llm-two-lanes-subscription-and-openrouter.md)（2026-09-24）——OpenRouter 從「api-tier transport kill-switch」改為兩條 lane 之一，由 model 字串（`vendor/model`）決定；`LLM_TRANSPORT*` env 與 xAI carve-out 退場；BYOK 與 `allow_fallbacks=False` 保留
 - **相關**：ADR-026（LLM router auth dimension / Max Plan 訂閱路徑）、`memory/claude/project_multi_model_architecture.md`（Q1 Hybrid：production 直 SDK / bench LiteLLM）
 - **範圍**：補充 ADR-026 的 *transport* 維度；**不**取代其 auth 維度
 - **PR**：#936–#940 + 本 PR（Slice 1–6）

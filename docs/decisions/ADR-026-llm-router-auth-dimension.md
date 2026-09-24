@@ -1,6 +1,7 @@
 # ADR-026: LLM Router 加 Auth 維度（api / subscription_preferred / subscription_required）
 
 **Status:** Accepted (v3 post-implementation, one deviation documented in §Implementation deviation)
+**Superseded after cutover by:** [ADR-070](ADR-070-llm-two-lanes-subscription-and-openrouter.md)（2026-09-24 修修裁決：LLM 只剩 Claude 訂閱（Agent SDK）與 OpenRouter 兩條路，政策寫在 code；本 ADR 的三元 auth policy、`AUTH_*` env、`claude -p` 路徑在 ADR-070 S6 清理後退場）
 **Date:** 2026-05-16 (drafted) / 2026-05-17 (accepted)
 **Implementation:** #580 (Slice 1 — pure-additive infra) + #581 (Slice 2 — per-call dispatch + translator de-hardcoding)
 **Deciders:** shosho-chang, Claude Opus 4.7, Codex GPT-5, Gemini 2.5 Pro
