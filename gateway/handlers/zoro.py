@@ -47,7 +47,9 @@ class ZoroHandler(BaseHandler):
             system = system + "\n\n" + "\n\n".join(mem_parts)
 
         try:
-            reply = ask(prompt=text, system=system, max_tokens=ZORO_MAX_TOKENS)
+            reply = ask(
+                prompt=text, system=system, max_tokens=ZORO_MAX_TOKENS, call_class="interactive"
+            )
         except Exception as e:
             logger.error(f"zoro ask failed: {e}", exc_info=True)
             reply = f"（抱歉，巡邏暫時中斷：{e}。稍後再試。）"

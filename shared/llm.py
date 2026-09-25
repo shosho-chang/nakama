@@ -44,12 +44,15 @@ if TYPE_CHECKING:
 
 # ── ADR-070 D1 / D4：L1 切換開關（寫在 code，不放 .env）──────────────────
 
-L1_CUTOVER_GROUPS: frozenset[str] = frozenset()
+L1_CUTOVER_GROUPS: frozenset[str] = frozenset({"gateway"})
 """哪些 runtime group 的 Claude 呼叫改走 L1（Claude 訂閱，Agent SDK）。
 
 S1 出貨時是空集合：沒有任何 production 路徑改變。S1a–d 各自把自己的 group
 （``gateway`` / ``cron`` / ``bridge`` / ``desktop``）加進來；回滾就是 revert 那個 PR
 （ADR-070 §回滾）。group 在 process 入口由 ``shared.llm_context.set_runtime_group`` 設定。
+
+S1a（2026-09-25）加入 ``gateway``：意圖分類、Sanji / Zoro handler、orchestrator、
+記憶抽取五個呼叫點改走訂閱。
 """
 
 L1_FACADE_TIMEOUT_S = 600.0
@@ -65,7 +68,7 @@ def _route_to_l1(model: str) -> bool:
     return get_runtime_group() in L1_CUTOVER_GROUPS and is_claude_model(model)
 
 
-def _ask_l1(prompt: str, *, system: str, model: str, max_tokens: int) -> str:
+def _ask_l1(prompt: str, *, system: str, model: str, max_tokens: int, call_class: str) -> str:
     # lazy import：沒切換時 facade 不載入 Agent SDK
     from shared.agent_sdk import run_text  # noqa: PLC0415
 
@@ -75,7 +78,7 @@ def _ask_l1(prompt: str, *, system: str, model: str, max_tokens: int) -> str:
         model=model,
         max_output_tokens=max_tokens,
         timeout_s=L1_FACADE_TIMEOUT_S,
-        call_class=L1_FACADE_CALL_CLASS,
+        call_class=call_class,
     )
 
 
@@ -88,6 +91,7 @@ def ask(
     max_tokens: int = 4096,
     temperature: float | None = None,
     thinking_budget: int | None = None,
+    call_class: str = L1_FACADE_CALL_CLASS,
 ) -> str:
     """送一次 LLM 請求，自動依 (agent, model) 路由到對的 provider。
 
@@ -105,12 +109,15 @@ def ask(
     L1（ADR-070）：runtime group 在 :data:`L1_CUTOVER_GROUPS` 且 model 是 Claude 時走
     ``agent_sdk.run_text``。model 原樣（含別名）交給 SDK；``max_tokens`` 經
     ``CLAUDE_CODE_MAX_OUTPUT_TOKENS``；``temperature`` 丟掉（SDK 不支援，D2）。
+    ``call_class``（D5）只在走 L1 時生效，沒宣告的呼叫點預設 ``batch``；非 L1 路徑忽略它。
     """
     agent = get_current_agent()
     if model is None:
         model = get_model(agent=agent, task=task)
     if _route_to_l1(model):
-        return _ask_l1(prompt, system=system, model=model, max_tokens=max_tokens)
+        return _ask_l1(
+            prompt, system=system, model=model, max_tokens=max_tokens, call_class=call_class
+        )
     model = api_model_id(model)
 
     provider = get_provider(model)
@@ -199,7 +206,11 @@ def ask_multi(
         from shared.agent_sdk import flatten_messages  # noqa: PLC0415
 
         return _ask_l1(
-            flatten_messages(messages), system=system, model=model, max_tokens=max_tokens
+            flatten_messages(messages),
+            system=system,
+            model=model,
+            max_tokens=max_tokens,
+            call_class=L1_FACADE_CALL_CLASS,
         )
     model = api_model_id(model)
 

@@ -28,7 +28,9 @@ S0 取證（ADR-070 D2 第 7 項、U1）：``log_sdk_message`` / ``log_sdk_excep
 S1（ADR-070 D2 八項職責、D3）：本模組成為 **L1（Claude 訂閱）唯一的實作**。
 公開入口是 :func:`run_text`（一次性文字 / 結構化輸出呼叫）；``shared.llm`` facade
 只有在 ``L1_CUTOVER_GROUPS`` 含目前的 runtime group 時才會分派過來 —— S1 出貨時
-那個集合是空的，所以**沒有任何 production 路徑會走到這裡**。
+那個集合是空的，所以當時沒有任何 production 路徑會走到這裡；S1a（2026-09-25）
+把 ``gateway`` 加進來後，gateway process 的五個呼叫點（意圖分類、Sanji / Zoro
+handler、orchestrator、記憶抽取）開始走這裡。
 
 - D2-1 憑證：:func:`l1_child_env`。唯一來源 ``CLAUDE_CODE_OAUTH_TOKEN``（D3：
   ``NAMI_SDK_OAUTH_TOKEN`` 只當 deprecated 備援），並把會壓過它的變數全部清成空字串。
@@ -56,9 +58,8 @@ S2a（issue #1321/#1322，D5 後端）：:func:`run_text` 呼叫前先看 lane �
 花費記不進 VPS 的上限累計；沒被擋就照常走訂閱；呼叫本身丟出
 :class:`SubscriptionExhausted` 時原樣往上丟、不寫任何狀態（VPS 自己的呼叫會
 偵測到同一次額度用完），只記 warning。authority 判斷**不用 runtime group**，
-見 ``shared/llm_lane.py`` 模組 docstring。``L1_CUTOVER_GROUPS`` 仍是空集合，
-本模組依然沒有任何 production 呼叫點，所以這個分派邏輯目前是死碼路徑
-（zero 行為改變）。
+見 ``shared/llm_lane.py`` 模組 docstring。S1a 起 gateway process 的五個呼叫點會
+真的走到這個分派邏輯。
 """
 
 from __future__ import annotations

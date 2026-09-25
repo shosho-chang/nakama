@@ -204,9 +204,10 @@ def _haiku_classify(text: str) -> RouteResult:
         )
         raw = ask(
             prompt,
-            model="claude-haiku-4-5-20251001",
+            model="haiku",
             max_tokens=100,
             temperature=0.0,
+            call_class="interactive",
         )
         stripped = raw.strip()
         if not stripped:

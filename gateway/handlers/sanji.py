@@ -44,7 +44,9 @@ class SanjiHandler(BaseHandler):
             system = system + "\n\n" + "\n\n".join(mem_parts)
 
         try:
-            reply = ask(prompt=text, system=system, max_tokens=SANJI_MAX_TOKENS)
+            reply = ask(
+                prompt=text, system=system, max_tokens=SANJI_MAX_TOKENS, call_class="interactive"
+            )
         except Exception as e:
             logger.error(f"sanji ask failed: {e}", exc_info=True)
             reply = f"（抱歉，廚房臨時出狀況：{e}。稍後再試一次。）"

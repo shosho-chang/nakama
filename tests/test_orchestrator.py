@@ -163,6 +163,50 @@ def test_format_brainstorm_blocks_structure() -> None:
 # ── set_current_agent 副作用驗證 ────────────────────────────────────
 
 
+def test_run_brainstorm_declares_interactive_call_class() -> None:
+    """ADR-070 D5：修修此刻在等 brainstorm 回覆，三個 ask 呼叫都要是 interactive。"""
+    payloads = {"sanji": "S", "robin": "R", "nami": "N"}
+    captured_call_classes: list[str | None] = []
+
+    def fake_ask(prompt: str, **kwargs):
+        from shared.llm_context import get_current_agent
+
+        captured_call_classes.append(kwargs.get("call_class"))
+        agent = get_current_agent() or "unknown"
+        return payloads.get(agent, f"[{agent} view]")
+
+    with patch.object(orchestrator, "ask", side_effect=fake_ask):
+        run_brainstorm("飲食 習慣 研究")
+
+    assert captured_call_classes == ["interactive"] * 3
+
+
+def test_run_brainstorm_routes_to_l1_under_gateway_group() -> None:
+    """ADR-070 S1a：gateway process 下，participants + synthesizer 都改走訂閱（L1）；
+    ``shared.llm_context.submit``（D9）要讓每個 worker thread 拿到正確的 agent。
+    """
+    from shared.llm_context import set_runtime_group
+
+    set_runtime_group("gateway")
+    calls: dict[str, tuple[str, str]] = {}
+
+    def fake_run_text(prompt, **kwargs):
+        from shared.llm_context import get_current_agent
+
+        agent = get_current_agent() or "unknown"
+        calls[agent] = (kwargs["model"], kwargs["call_class"])
+        return f"[{agent} 觀點]"
+
+    with patch("shared.agent_sdk.run_text", side_effect=fake_run_text):
+        result = run_brainstorm("飲食 習慣 研究")
+
+    assert set(calls) == {"sanji", "robin", "nami"}
+    assert calls["sanji"] == ("claude-sonnet-4-6", "interactive")
+    assert calls["robin"] == ("claude-sonnet-4-6", "interactive")
+    assert calls["nami"] == ("sonnet", "interactive")
+    assert result.participants == ["sanji", "robin"]
+
+
 def test_run_brainstorm_sets_thread_local_agent_per_call() -> None:
     """每個參與者呼叫 ask 時，thread-local agent 必須是對應 agent（供 router / cost）。
 

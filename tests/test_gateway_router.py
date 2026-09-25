@@ -150,6 +150,27 @@ def test_nl_route_haiku_fallback_error():
     assert result.confidence == "haiku"
 
 
+def test_nl_route_haiku_fallback_routes_to_l1_under_gateway_group():
+    """ADR-070 S1a：gateway process（唯一會跑到這段的地方）下，Haiku fallback 改走
+    訂閱（L1），別名 model + interactive call_class 要正確（D5：意圖分類是 interactive）。
+    """
+    from shared.llm_context import set_runtime_group
+
+    set_runtime_group("gateway")
+    mock_response = '{"agent": "franky", "intent": "system_status"}'
+    calls: list[tuple[str, str]] = []
+
+    def _fake_run_text(prompt, **kwargs):
+        calls.append((kwargs["model"], kwargs["call_class"]))
+        return mock_response
+
+    with patch("shared.agent_sdk.run_text", side_effect=_fake_run_text):
+        result = route_natural_language("伺服器還好嗎")
+    assert result.agent == "franky"
+    assert result.confidence == "haiku"
+    assert calls == [("haiku", "interactive")]
+
+
 # ── Mention routing ──
 
 
