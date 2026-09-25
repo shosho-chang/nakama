@@ -432,6 +432,28 @@ def test_r2_backup_nakama_threshold_is_env_tunable(_r2_nakama_env, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _stub_sdk_freshness(monkeypatch):
+    """ADR-070 S7b 的兩個每週檢查會真的 `git fetch` / 打 OpenRouter。run_once 相關
+    測試不一定都經過 `_mock_ok_env`，這裡預設全部 stub 掉，確保不碰網路與
+    subprocess；要測這兩個檢查本身的，見 tests/agents/franky/test_sdk_freshness.py。
+    """
+    monkeypatch.setattr(
+        sdk_freshness,
+        "check_sdk_deploy_lag",
+        lambda *a, **k: HealthProbeV1(
+            target="sdk_deploy_lag", status="ok", checked_at=_now(), latency_ms=0
+        ),
+    )
+    monkeypatch.setattr(
+        sdk_freshness,
+        "check_model_freshness",
+        lambda *a, **k: HealthProbeV1(
+            target="model_freshness", status="ok", checked_at=_now(), latency_ms=0
+        ),
+    )
+
+
 @pytest.fixture
 def _mock_ok_env(monkeypatch):
     """Make probes pass — wp/r2 env missing (skip) + nakama 200 + vps healthy."""

@@ -139,6 +139,8 @@ def _main_pinned_sdk_version(repo_root: Path | None = None) -> str | None:
             cwd=repo_root,
             capture_output=True,
             text=True,
+            encoding="utf-8",  # Windows 預設編碼解不開 requirements.txt 的中文註解
+            errors="replace",
             timeout=30,
             check=False,
         )
@@ -159,6 +161,8 @@ def _main_pinned_sdk_version(repo_root: Path | None = None) -> str | None:
             cwd=repo_root,
             capture_output=True,
             text=True,
+            encoding="utf-8",  # Windows 預設編碼解不開 requirements.txt 的中文註解
+            errors="replace",
             timeout=10,
             check=False,
         )
