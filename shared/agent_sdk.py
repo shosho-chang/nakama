@@ -45,6 +45,15 @@ S1（ADR-070 D2 八項職責、D3）：本模組成為 **L1（Claude 訂閱）�
   ``shared.retry`` 不重試；SDK 回報的欄位原樣放在 ``details``。
 - D2-8 async：目前 thread 已有 event loop 在跑時，改在專用 worker thread 執行
   （帶 context），絕不在 loop 裡 ``asyncio.run``。
+
+S2a（issue #1321，D5 後端）：:func:`run_text` 呼叫前先看 ``shared.llm_lane`` 的
+lane 狀態（``_dispatch_and_run``）——已經被擋的 family 直接 fail-fast 或改走
+OpenRouter；剛好這次呼叫才踩到額度上限的，抓到 :class:`SubscriptionExhausted`
+後記一筆狀態轉換，``interactive`` 在當日上限內就地自動改道重試一次。桌機
+（``shared.llm_context.get_runtime_group() == "desktop"``）不參與這條機制，行為
+與 S1 完全相同——lane 狀態的唯一真相在 VPS，見 ``shared/llm_lane.py`` 模組
+docstring。``L1_CUTOVER_GROUPS`` 仍是空集合，本模組依然沒有任何 production
+呼叫點，所以這個分派邏輯目前是死碼路徑（zero 行為改變）。
 """
 
 from __future__ import annotations
@@ -94,6 +103,7 @@ __all__ = [
     "log_sdk_exception",
     "log_sdk_message",
     "run_text",
+    "run_text_probe_subscription",
     "sdk_message_kind",
     "subscription_env",
 ]
@@ -928,6 +938,136 @@ def _call_in_worker_thread(fn: Any, *args: Any, **kwargs: Any) -> Any:
     return box["value"]
 
 
+# ── ADR-070 S2a（D5）：lane 狀態分派 ─────────────────────────────────────
+
+
+def _run_via_openrouter(
+    prompt: str,
+    *,
+    system: str,
+    model: str,
+    output_schema: dict[str, Any] | None,
+    max_output_tokens: int | None,
+    call_class: str,
+) -> Any:
+    """已經在 ``openrouter_auto`` / ``openrouter_approved`` 狀態：一次性文字呼叫改走
+    L2（``shared.openrouter_client``），並把實際花費累加回 ``llm_lane`` 的上限。
+
+    ``allow_fallbacks=False``（BYOK 安全，D6）；``OPENROUTER_API_KEY`` 沒設一律
+    fail closed（``ask_openrouter`` 內部 ``os.environ["OPENROUTER_API_KEY"]``
+    直接 ``KeyError``，這裡只是換成 caller 看得懂的訊息）。structured output
+    這條路徑還沒支援（D6：「L2 目前支援文字和多輪對話」），有 schema 就 fail loud，
+    不要默默丟掉 schema 硬送文字。
+    """
+    if output_schema is not None:
+        raise AgentSdkError(
+            f"L1 額度用完，{call_class} 已改走 OpenRouter，但這條路徑還不支援"
+            f" structured output（model={model}）"
+        )
+    from shared import llm_lane  # noqa: PLC0415
+    from shared.openrouter_client import ask_openrouter  # noqa: PLC0415
+
+    cost_box: list[float | None] = []
+    try:
+        text = ask_openrouter(
+            prompt,
+            system=system,
+            model=model,
+            max_tokens=max_output_tokens or 4096,
+            allow_fallbacks=False,
+            on_cost=cost_box.append,
+        )
+    except KeyError as exc:
+        raise AgentSdkError(
+            f"L1 額度用完，{call_class} 需要改走 OpenRouter，但 OPENROUTER_API_KEY 未設置"
+            f"（fail closed，不會默默改用其他憑證，model={model}）"
+        ) from exc
+    llm_lane.record_openrouter_spend(call_class, cost_usd=cost_box[0] if cost_box else 0.0)
+    return text
+
+
+def _dispatch_and_run(
+    prompt: str,
+    *,
+    system: str,
+    model: str,
+    output_schema: dict[str, Any] | None,
+    max_output_tokens: int | None,
+    timeout_s: float,
+    call_class: str,
+) -> Any:
+    """D5 狀態機的分派入口：桌機不參與（唯一真相在 VPS，見 ``shared.llm_lane`` 模組
+    docstring），照舊直接走訂閱；VPS-side（gateway/cron/bridge）先看 lane 狀態，
+    已經被擋的 family 直接 fail-fast 或改走 OpenRouter，不浪費一次注定失敗的 SDK
+    呼叫；剛好在這次呼叫才踩到額度上限的，抓到 :class:`SubscriptionExhausted`
+    後記一筆狀態轉換，``interactive`` 當日上限內就地自動改道重試一次。
+    """
+    from shared.llm_context import get_runtime_group  # noqa: PLC0415
+
+    if get_runtime_group() == "desktop":
+        return _run_text_blocking(
+            prompt,
+            system=system,
+            model=model,
+            output_schema=output_schema,
+            max_output_tokens=max_output_tokens,
+            timeout_s=timeout_s,
+            call_class=call_class,
+        )
+
+    from shared import llm_lane  # noqa: PLC0415
+
+    family = llm_lane.model_family(model)
+    lane_state = llm_lane.get_state()
+    cls = lane_state.for_class(call_class)
+
+    if cls.blocks(family):
+        if cls.status == "exhausted":
+            raise SubscriptionExhausted(
+                f"L1 訂閱額度用完，{call_class} 目前擋下（model={model}、"
+                f"rate_limit_type={cls.rate_limit_type}）",
+                details={
+                    "rate_limit_type": cls.rate_limit_type,
+                    "resets_at": cls.resets_at,
+                    "lane_status": cls.status,
+                },
+            )
+        return _run_via_openrouter(
+            prompt,
+            system=system,
+            model=model,
+            output_schema=output_schema,
+            max_output_tokens=max_output_tokens,
+            call_class=call_class,
+        )
+
+    try:
+        return _run_text_blocking(
+            prompt,
+            system=system,
+            model=model,
+            output_schema=output_schema,
+            max_output_tokens=max_output_tokens,
+            timeout_s=timeout_s,
+            call_class=call_class,
+        )
+    except SubscriptionExhausted as exc:
+        new_state = llm_lane.record_exhausted(
+            call_class, model=model, rate_limit_type=exc.rate_limit_type, resets_at=exc.resets_at
+        )
+        new_cls = new_state.for_class(call_class)
+        if new_cls.status in ("openrouter_auto", "openrouter_approved"):
+            return _run_via_openrouter(
+                prompt,
+                system=system,
+                model=model,
+                output_schema=output_schema,
+                max_output_tokens=max_output_tokens,
+                call_class=call_class,
+            )
+        raise
+
+
 def run_text(
     prompt: str,
     *,
@@ -976,6 +1116,30 @@ def run_text(
         "model": model,
         "output_schema": output_schema,
         "max_output_tokens": max_output_tokens,
+        "timeout_s": float(timeout_s),
+        "call_class": call_class,
+    }
+    if _event_loop_running():
+        return _call_in_worker_thread(_dispatch_and_run, prompt, **kwargs)
+    return _dispatch_and_run(prompt, **kwargs)
+
+
+def run_text_probe_subscription(
+    prompt: str, *, model: str, timeout_s: float = 30.0, call_class: str = "batch"
+) -> str:
+    """繞過 D5 lane 分派、直接試訂閱 —— Franky 的 llm_lane 復原探針專用。
+
+    復原探針要測的正是「訂閱本身好了沒」；透過 :func:`run_text` 測不到，因為
+    目前還沒解除的 lane 狀態會在 pre-check 就把呼叫擋下（fail-fast 或改走
+    OpenRouter），永遠碰不到真的訂閱 SDK。呼叫者要自己接住失敗（代表還沒恢復），
+    成功才代表訂閱真的可以用了 —— 呼叫端負責接著呼叫
+    ``shared.llm_lane.switch_to_subscription``。
+    """
+    kwargs: dict[str, Any] = {
+        "system": "",
+        "model": model,
+        "output_schema": None,
+        "max_output_tokens": None,
         "timeout_s": float(timeout_s),
         "call_class": call_class,
     }

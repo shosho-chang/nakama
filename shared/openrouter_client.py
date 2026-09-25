@@ -21,6 +21,7 @@ from __future__ import annotations
 
 import os
 import time
+from typing import Callable
 
 from openai import (
     APIConnectionError,
@@ -145,8 +146,15 @@ def ask_openrouter(
     auth_requested: str | None = None,
     auth_actual: str | None = None,
     fallback_reason: str | None = None,
+    on_cost: Callable[[float | None], None] | None = None,
 ) -> str:
     """送一次 OpenRouter 請求，回傳純文字。
+
+    ``on_cost``（ADR-070 D5）：呼叫端想在 usage 記錄完成後拿到這次的實際
+    cost（例如 ``shared.llm_lane`` 要把 OpenRouter 模式下的花費累加進 lane
+    的每日 / 每次核准上限）時傳入；沒回報實際 cost（只有 fallback 估算）
+    時收到 ``None``，不把估算值混進上限累計。失敗不影響主流程（見
+    :func:`_record_openrouter_usage`）。
 
     ``model`` 是 Nakama bare ID（如 ``claude-sonnet-4-6``），內部翻成 OpenRouter
     slug；``model=None`` 時依當前 agent 走 router 解析。``models``（fallback 鏈）
@@ -170,6 +178,7 @@ def ask_openrouter(
         auth_requested=auth_requested,
         auth_actual=auth_actual,
         fallback_reason=fallback_reason,
+        on_cost=on_cost,
     )
     return response.choices[0].message.content or ""
 
@@ -257,6 +266,7 @@ def _record_openrouter_usage(
     auth_requested: str | None = None,
     auth_actual: str | None = None,
     fallback_reason: str | None = None,
+    on_cost: Callable[[float | None], None] | None = None,
 ) -> None:
     """把 OpenAI-shape usage（含 OpenRouter 實際 cost）抽成共通欄位後記錄。
 
@@ -267,6 +277,8 @@ def _record_openrouter_usage(
     Slice 1 先解析實際 cost 並 debug-log；落庫（``state.api_calls`` 新 ``cost_usd``
     欄位 + migration）是 Slice 3。Cost tracking 不影響主流程：response 形狀異常
     （測試 stub 沒帶 usage 等）或下游 record_call 出錯全吞，只記 debug log。
+
+    ``lane_actual="openrouter"``（ADR-070 D2 第 6 項）：這條路徑本身就是 L2。
     """
     try:
         usage = getattr(response, "usage", None)
@@ -309,7 +321,13 @@ def _record_openrouter_usage(
             # 只落庫 OpenRouter 回報的『實際』cost；取不到時留 None，讓 cost panel
             # 用 calc_cost 估算（與原生呼叫一致），不把估算值混進「實際 cost」欄位。
             cost_usd=cost_usd if source == "openrouter" else None,
+            lane_actual="openrouter",
         )
+        if on_cost is not None:
+            try:
+                on_cost(cost_usd if source == "openrouter" else None)
+            except Exception:
+                logger.warning("on_cost callback failed", exc_info=True)
     except Exception as e:
         logger.debug("cost tracking 失敗（忽略）：%s", e)
 
