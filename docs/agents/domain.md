@@ -18,7 +18,7 @@ If a skill needs a term that isn't in `CONTEXT-MAP.md` or any existing per-conte
 
 ## ADR location: `docs/decisions/` (not `docs/adr/`)
 
-**Important deviation from the mattpocock skills' default.** ADRs in this repo live at `docs/decisions/ADR-NNN-<topic>.md`, frozen by `CONTEXT-MAP.md` line 49.
+**Important deviation from the mattpocock skills' default.** ADRs in this repo live at `docs/decisions/ADR-NNN-<topic>.md`, frozen by `CONTEXT-MAP.md`'s `## ADR location` section.
 
 When a skill instruction says "look in `docs/adr/`," substitute `docs/decisions/`. Examples of what's there:
 

@@ -83,4 +83,6 @@ rembg>=2.0               # birefnet-general 模型（首用時自下載 ~970MB �
 onnxruntime>=1.17        # rembg 推論後端（CPU）
 
 # Claude Agent SDK — Nami migration S1: in-process MCP tool server (#1112)
-claude-agent-sdk>=0.2.128,<0.3
+# ADR-070 D10：精確釘版 = VPS 實際跑的版本（S0 U7），CI 測的就是 production 版本；
+# 之後只由 S7 的每週自動升級 PR 改這一行（別名解析跟著內附 CLI 走，F3）。
+claude-agent-sdk==0.2.128

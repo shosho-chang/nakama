@@ -45,6 +45,18 @@ except ImportError:
     pass
 
 
+def is_non_retryable(exc: BaseException) -> bool:
+    """例外自己宣告「重試也沒用」（``nakama_non_retryable = True``）。
+
+    ADR-070 D2 第 7 項：``shared.agent_sdk.SubscriptionExhausted`` /
+    ``SubscriptionAuthError`` 是早已知道的結果（額度用完、token 失效），重試只會
+    多起幾次 CLI 子進程。用屬性而不是 import 類別，避免 ``shared.retry`` 為了
+    判斷而載入整個 Agent SDK；即使 caller 傳了很寬的 ``retryable``（例如
+    ``(Exception,)``），這類例外也一律直接往上拋。
+    """
+    return bool(getattr(exc, "nakama_non_retryable", False))
+
+
 def with_retry(
     func: Callable[..., T],
     *args: Any,
@@ -60,7 +72,9 @@ def with_retry(
         *args:         傳給 func 的位置參數
         max_attempts:  最多嘗試次數（預設 3）
         backoff_base:  退避底數，第 n 次等待 backoff_base^(n-1) 秒（預設 2.0）
-        retryable:     可重試的例外類型，None 使用預設清單
+        retryable:     可重試的例外類型，None 使用預設清單。帶
+                       ``nakama_non_retryable = True`` 的例外永遠不重試
+                       （見 :func:`is_non_retryable`）
         **kwargs:      傳給 func 的關鍵字參數
 
     Returns:
@@ -76,6 +90,8 @@ def with_retry(
         try:
             return func(*args, **kwargs)
         except retryable_exc as e:
+            if is_non_retryable(e):
+                raise
             last_exc = e
             if attempt == max_attempts:
                 logger.error(f"已達最大重試次數 ({max_attempts})，放棄：{e}")

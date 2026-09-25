@@ -15,11 +15,31 @@ Agent SDK 遷移 S2 前置）：純執行緒場景語義不變（每條 thread �
 繼承 context —— tool handler 搬進 event loop 後 cost tracking 歸屬不再斷裂
 （此前 ``shared.multimodal_arbiter`` 已為這個限制付過 workaround 成本）。
 讀取端一律走本模組的 ``get_*`` accessor，不再暴露底層 storage。
+
+ADR-070 D9（2026-09-25）：
+
+- :func:`spawn_thread` / :func:`submit` — 開 thread 或丟 executor 時，**每次**都重新
+  ``contextvars.copy_context()``，讓 agent 標記跟著走。``threading.Thread`` 本身不繼承
+  ContextVar（PR #1298 事故：記憶抽取 thread 掉回 ``agent=None``）；而同一個 Context
+  物件被兩條 thread 同時 ``run`` 會丟 ``RuntimeError: cannot enter context``，所以不能
+  共用一份。
+- **runtime group**（:func:`set_runtime_group` / :func:`get_runtime_group`）— 這個 process
+  屬於哪一類執行環境（``gateway`` / ``cron`` / ``bridge`` / ``desktop``）。在 process 入口
+  設一次，是 process 層級的全域值（不是 ContextVar：FastAPI lifespan 裡設的值不會流進
+  request 的 context）。ADR-070 S1a–d 依這個值分批把 Claude 呼叫切到 L1；S1 只設值、
+  不改任何行為。
 """
 
 from __future__ import annotations
 
+import contextvars
+import threading
+from collections.abc import Callable
+from concurrent.futures import Executor, Future
 from contextvars import ContextVar
+from typing import Any, TypeVar
+
+_T = TypeVar("_T")
 
 _agent: ContextVar[str | None] = ContextVar("llm_agent", default=None)
 _run_id: ContextVar[int | None] = ContextVar("llm_run_id", default=None)
@@ -86,3 +106,69 @@ def set_scope_json(scope_json: str | None) -> None:
     ``set_scope_json(new)`` → finally ``set_scope_json(prior)``。
     """
     _scope_json.set(scope_json)
+
+
+# ── ADR-070 D9：帶 context 開 thread / 丟 executor ────────────────────────
+
+
+def spawn_thread(
+    target: Callable[..., Any],
+    *args: Any,
+    name: str | None = None,
+    daemon: bool = True,
+    **kwargs: Any,
+) -> threading.Thread:
+    """開一條 thread 跑 ``target(*args, **kwargs)``，並帶著呼叫端當下的 context。
+
+    每次呼叫都重新 ``copy_context()``：agent / run_id / usage buffer / scope 都跟著走，
+    thread 裡改的 ContextVar 不會回流到呼叫端。回傳**已啟動**的 thread。
+
+    ``name`` / ``daemon`` 是給 ``threading.Thread`` 的，不會傳給 ``target``；
+    預設 ``daemon=True``（背景工作，跟既有記憶抽取 thread 一致）。
+    """
+    ctx = contextvars.copy_context()
+    thread = threading.Thread(
+        target=ctx.run, args=(target, *args), kwargs=kwargs, name=name, daemon=daemon
+    )
+    thread.start()
+    return thread
+
+
+def submit(executor: Executor, fn: Callable[..., _T], *args: Any, **kwargs: Any) -> Future[_T]:
+    """``executor.submit`` 的帶 context 版：每一次 submit 各自 ``copy_context()``。
+
+    不能把一份 context 給多個 submit 共用 —— 兩個 worker 同時 ``ctx.run`` 同一個
+    Context 會丟 ``RuntimeError: cannot enter context``。
+    """
+    ctx = contextvars.copy_context()
+    return executor.submit(ctx.run, fn, *args, **kwargs)
+
+
+# ── ADR-070：runtime group（process 屬於哪一類執行環境）──────────────────
+
+RUNTIME_GROUPS: frozenset[str] = frozenset({"gateway", "cron", "bridge", "desktop"})
+DEFAULT_RUNTIME_GROUP = "desktop"
+
+_runtime_group: str = DEFAULT_RUNTIME_GROUP
+
+
+def set_runtime_group(name: str) -> None:
+    """在 process 入口宣告這個 process 的執行環境類別。
+
+    - ``gateway``：``python -m gateway``（Slack gateway）
+    - ``cron``：VPS cron 叫起來的 ``agents.*`` 與 ``shared.memory_reflection``
+    - ``bridge``：Thousand Sunny（FastAPI）
+    - ``desktop``：其他腳本（預設值）
+
+    S1 只記錄，不影響行為；S1a–d 由 ``shared.llm.L1_CUTOVER_GROUPS`` 決定哪些 group
+    的 Claude 呼叫改走 L1。
+    """
+    global _runtime_group
+    if name not in RUNTIME_GROUPS:
+        raise ValueError(f"未知的 runtime group '{name}'；必須是 {sorted(RUNTIME_GROUPS)} 之一")
+    _runtime_group = name
+
+
+def get_runtime_group() -> str:
+    """這個 process 的執行環境類別；沒設過時是 ``desktop``。"""
+    return _runtime_group

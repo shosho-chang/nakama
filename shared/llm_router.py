@@ -346,6 +346,42 @@ def _safe_provider(model: str) -> str:
         return "unknown"
 
 
+# ── ADR-070 D1：model 字串決定 lane ──────────────────────────────────────
+
+# Agent SDK 內附 CLI 認得的 Claude 別名（F3：由 CLI 在本機解析成它那一版的最新 model）。
+CLAUDE_MODEL_ALIASES: frozenset[str] = frozenset({"opus", "sonnet", "haiku", "fable"})
+
+LANE_SUBSCRIPTION = "subscription"  # L1：Claude 訂閱（shared.agent_sdk）
+LANE_OPENROUTER = "openrouter"  # L2：OpenRouter API（shared.openrouter_client）
+
+
+def is_claude_model(model: str | None) -> bool:
+    """Claude 別名（``opus`` / ``sonnet`` / ``haiku`` / ``fable``）或 ``claude-*`` id。"""
+    if not model:
+        return False
+    return model in CLAUDE_MODEL_ALIASES or model.startswith("claude-")
+
+
+def is_openrouter_slug(model: str | None) -> bool:
+    """OpenRouter slug：``vendor/model``（含 ``/``）。"""
+    return bool(model) and "/" in model
+
+
+def lane_for_model(model: str | None) -> str | None:
+    """D1：Claude 別名 / ``claude-*`` → L1 ``subscription``；``vendor/model`` → L2
+    ``openrouter``；其他（``gemini-*``、``grok-*``、裸 ``gpt-*`` 等舊 id）→ ``None``。
+
+    ``None`` 代表這個 model 字串不屬於兩條 lane 任何一條，只能走舊的 ADR-026 路徑
+    （S6 清掉舊 id 後就不會再出現）。這個函式只回答「應該走哪條」，實際會不會切過去
+    由 ``shared.llm.L1_CUTOVER_GROUPS`` 決定。
+    """
+    if is_openrouter_slug(model):
+        return LANE_OPENROUTER
+    if is_claude_model(model):
+        return LANE_SUBSCRIPTION
+    return None
+
+
 def list_model_sites() -> list[dict]:
     """N531 — 列舉所有登記的 (agent, task) call site + 目前解析到的 model，給 Bridge 面板。
 

@@ -13,6 +13,12 @@ router 決定 model ID → provider，facade 再 dispatch 到對應的 ``shared/
 目前 coverage：Anthropic（text + tools）+ xAI（text）+ Google（text + audio）。
 其他 provider 與其他能力組合會 raise ``NotImplementedError``，讓 caller 明確
 看到缺什麼（避免 silent fallback 那種不透明錯誤）。
+
+ADR-070 D1（S1 起）：``ask`` / ``ask_multi`` 先看 **L1 切換開關**。這個 process 的
+runtime group（``shared.llm_context.get_runtime_group``）在 :data:`L1_CUTOVER_GROUPS`
+裡、而且 model 是 Claude 別名或 ``claude-*`` 時，改走
+:func:`shared.agent_sdk.run_text`（Claude 訂閱）；否則照舊走 ADR-026 路徑，一個位元
+都不變。S1 出貨時 :data:`L1_CUTOVER_GROUPS` 是空集合 → 零行為改變。
 """
 
 from __future__ import annotations
@@ -21,13 +27,56 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from shared.anthropic_client import ask_claude, ask_claude_multi, call_claude_with_tools
-from shared.llm_context import get_current_agent
-from shared.llm_router import api_model_id, get_auth_policy, get_model, get_provider
+from shared.llm_context import get_current_agent, get_runtime_group
+from shared.llm_router import (
+    api_model_id,
+    get_auth_policy,
+    get_model,
+    get_provider,
+    is_claude_model,
+)
 from shared.llm_transport import openrouter_enabled
 
 if TYPE_CHECKING:
     import anthropic
     from pydantic import BaseModel
+
+
+# ── ADR-070 D1 / D4：L1 切換開關（寫在 code，不放 .env）──────────────────
+
+L1_CUTOVER_GROUPS: frozenset[str] = frozenset()
+"""哪些 runtime group 的 Claude 呼叫改走 L1（Claude 訂閱，Agent SDK）。
+
+S1 出貨時是空集合：沒有任何 production 路徑改變。S1a–d 各自把自己的 group
+（``gateway`` / ``cron`` / ``bridge`` / ``desktop``）加進來；回滾就是 revert 那個 PR
+（ADR-070 §回滾）。group 在 process 入口由 ``shared.llm_context.set_runtime_group`` 設定。
+"""
+
+L1_FACADE_TIMEOUT_S = 600.0
+"""facade 走 L1 時的 timeout（reliability §7 必填）。沿用 ``claude -p`` 路徑的預設 600s
+（``shared/claude_cli_client.py``）；需要不同上限的呼叫點直接用 ``agent_sdk.run_text``。"""
+
+L1_FACADE_CALL_CLASS = "batch"
+"""facade 呼叫預設的 call class：ADR-070 D5「沒宣告的一律當作 batch」。"""
+
+
+def _route_to_l1(model: str) -> bool:
+    """這次呼叫要不要走 L1：runtime group 已切換，且 model 是 Claude 別名 / ``claude-*``。"""
+    return get_runtime_group() in L1_CUTOVER_GROUPS and is_claude_model(model)
+
+
+def _ask_l1(prompt: str, *, system: str, model: str, max_tokens: int) -> str:
+    # lazy import：沒切換時 facade 不載入 Agent SDK
+    from shared.agent_sdk import run_text  # noqa: PLC0415
+
+    return run_text(
+        prompt,
+        system=system,
+        model=model,
+        max_output_tokens=max_tokens,
+        timeout_s=L1_FACADE_TIMEOUT_S,
+        call_class=L1_FACADE_CALL_CLASS,
+    )
 
 
 def ask(
@@ -52,10 +101,16 @@ def ask(
 
     ``thinking_budget`` 僅對 Gemini 生效（其他 provider 忽略）。傳 ``None`` 時讓
     Gemini wrapper 套自家預設 512；傳 ``0`` 明確關閉 thinking；正整數為上限。
+
+    L1（ADR-070）：runtime group 在 :data:`L1_CUTOVER_GROUPS` 且 model 是 Claude 時走
+    ``agent_sdk.run_text``。model 原樣（含別名）交給 SDK；``max_tokens`` 經
+    ``CLAUDE_CODE_MAX_OUTPUT_TOKENS``；``temperature`` 丟掉（SDK 不支援，D2）。
     """
     agent = get_current_agent()
     if model is None:
         model = get_model(agent=agent, task=task)
+    if _route_to_l1(model):
+        return _ask_l1(prompt, system=system, model=model, max_tokens=max_tokens)
     model = api_model_id(model)
 
     provider = get_provider(model)
@@ -133,10 +188,19 @@ def ask_multi(
     併進 system_instruction。caller 用共通格式即可，不需自己分支。
 
     ``thinking_budget`` 僅對 Gemini 生效（其他 provider 忽略）。
+
+    L1（ADR-070）：同 :func:`ask` 的切換條件；``messages`` 用
+    ``agent_sdk.flatten_messages`` 攤平成單一 prompt（沿用 ``claude -p`` 路徑的做法）。
     """
     agent = get_current_agent()
     if model is None:
         model = get_model(agent=agent, task=task)
+    if _route_to_l1(model):
+        from shared.agent_sdk import flatten_messages  # noqa: PLC0415
+
+        return _ask_l1(
+            flatten_messages(messages), system=system, model=model, max_tokens=max_tokens
+        )
     model = api_model_id(model)
 
     provider = get_provider(model)

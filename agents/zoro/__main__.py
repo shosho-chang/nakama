@@ -78,4 +78,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 if __name__ == "__main__":
+    from shared.llm_context import set_runtime_group
+
+    set_runtime_group("cron")  # ADR-070：VPS cron 入口（S1b 依這個值切 L1）
     sys.exit(main())
