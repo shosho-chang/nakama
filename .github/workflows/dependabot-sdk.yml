@@ -1,0 +1,90 @@
+name: Dependabot SDK bump
+
+# ADR-070 D10 / S7：Dependabot 開的 claude-agent-sdk 升級 PR
+#   1. 在 PR 留言寫出新版 SDK 內附 CLI 會把 opus / sonnet / haiku 解析成哪個 model
+#      （scripts/llm_lane_probe.py aliases，離線讀 binary，不呼叫 LLM）
+#   2. 打開 auto-merge（squash）：必要的 CI（lint-and-test、lint-pr-title）綠了就合併
+#      （修修 2026-09-25 同意 SDK 升級 PR CI 綠自動合併）
+#
+# 只處理 Dependabot 開、而且只升 claude-agent-sdk 的 PR。依 GitHub 官方
+# 「Automating Dependabot with GitHub Actions」的做法：pull_request 事件 +
+# 明確的 permissions，用 GITHUB_TOKEN 打開 auto-merge。
+
+on:
+  pull_request:
+    branches: [main]
+    types: [opened, reopened, synchronize]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  sdk-bump:
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    env:
+      PR_URL: ${{ github.event.pull_request.html_url }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Only claude-agent-sdk
+        id: gate
+        run: |
+          if [ "${{ steps.meta.outputs.dependency-names }}" = "claude-agent-sdk" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "not a claude-agent-sdk-only bump: ${{ steps.meta.outputs.dependency-names }}"
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.gate.outputs.ok == 'true'
+        uses: actions/checkout@v4
+
+      - if: steps.gate.outputs.ok == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      # 裝整個專案 = 裝 PR 裡釘好的新版 SDK（probe 會 import shared.agent_sdk）
+      - if: steps.gate.outputs.ok == 'true'
+        name: Install project
+        run: pip install -e .
+
+      - if: steps.gate.outputs.ok == 'true'
+        name: Resolve aliases of the new bundled CLI
+        run: |
+          python scripts/llm_lane_probe.py aliases > aliases.json
+          python - <<'PY'
+          import json
+          d = json.load(open("aliases.json", encoding="utf-8"))
+          fam = d.get("latest_per_family") or {}
+          sdk = (d.get("sdk") or {}).get("sdk_version")
+          cli = ((d.get("cli_version") or {}).get("stdout") or "").strip()
+          lines = [
+              "## ADR-070 D10：新版 SDK 的別名解析",
+              "",
+              f"- SDK `{sdk}`；內附 CLI `{cli}`",
+              "",
+              "| 別名 | 解析成 |",
+              "|---|---|",
+          ]
+          for alias in ("opus", "sonnet", "haiku", "fable"):
+              if alias in fam:
+                  lines.append(f"| `{alias}` | `{fam[alias]}` |")
+          lines += [
+              "",
+              "CI 綠了會自動合併。合併後 VPS 要部署才會生效（Franky 會提醒）。",
+          ]
+          open("comment.md", "w", encoding="utf-8").write("\n".join(lines) + "\n")
+          PY
+          gh pr comment "$PR_URL" --edit-last --body-file comment.md || gh pr comment "$PR_URL" --body-file comment.md
+
+      - if: steps.gate.outputs.ok == 'true'
+        name: Enable auto-merge
+        run: gh pr merge --auto --squash "$PR_URL"
