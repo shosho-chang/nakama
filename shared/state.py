@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import json
 import sqlite3
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -564,6 +565,22 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 
         CREATE INDEX IF NOT EXISTS idx_release_targets_status
             ON release_targets (status, publish_at);
+
+        -- ADR-070 D2 第 5 項：L1（Claude 訂閱 / Agent SDK）機器層級併發租約。
+        -- Canonical DDL: migrations/020_llm_l1_leases.sql。
+        -- 每一列 = 一個正在跑的 CLI 子進程名額。gateway、Bridge、cron 是各自獨立的
+        -- process，只有放在 state.db 才能整台機器共用一個上限。expires_at（epoch 秒）
+        -- 是 TTL：process 掛掉沒 release 的名額，過期後由下一次 acquire 清掉。
+        CREATE TABLE IF NOT EXISTS llm_l1_leases (
+            lease_id    TEXT PRIMARY KEY,
+            pid         INTEGER NOT NULL,
+            agent       TEXT,
+            call_class  TEXT,
+            acquired_at TEXT NOT NULL,
+            expires_at  REAL NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_llm_l1_leases_expires
+            ON llm_l1_leases(expires_at);
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。
@@ -586,6 +603,15 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         # NULL = 沒有實際 cost（原生呼叫 / OpenRouter 沒回 cost / 歷史 row）→ cost panel
         # 對這些 row 用 calc_cost 估算，有實際值的直接採用。Nullable 刻意區分「未知」與「$0」。
         "ALTER TABLE api_calls ADD COLUMN cost_usd REAL",
+        # ADR-070 D2 第 6 項（migration 020）：L1 / L2 用量紀錄。全部 nullable —
+        # 舊 row 與舊路徑的 caller 維持 NULL。lane_actual ∈ {subscription, openrouter}；
+        # model_actual 是 AssistantMessage.model（別名實際解析成的 id）；rate_limit_*
+        # 是該次呼叫最後一個 RateLimitEvent.rate_limit_info（resets_at 為 epoch 秒）。
+        "ALTER TABLE api_calls ADD COLUMN lane_actual TEXT",
+        "ALTER TABLE api_calls ADD COLUMN model_actual TEXT",
+        "ALTER TABLE api_calls ADD COLUMN rate_limit_status TEXT",
+        "ALTER TABLE api_calls ADD COLUMN rate_limit_type TEXT",
+        "ALTER TABLE api_calls ADD COLUMN rate_limit_resets_at INTEGER",
         "ALTER TABLE r2_backup_checks ADD COLUMN prefix TEXT NOT NULL DEFAULT ''",
         "ALTER TABLE release_targets ADD COLUMN thumbnail_status TEXT",
         "ALTER TABLE release_targets ADD COLUMN caption_id TEXT",
@@ -767,11 +793,19 @@ def record_api_call(
     fallback_reason: Optional[str] = None,
     scope_json: Optional[str] = None,
     cost_usd: Optional[float] = None,
+    lane_actual: Optional[str] = None,
+    model_actual: Optional[str] = None,
+    rate_limit_status: Optional[str] = None,
+    rate_limit_type: Optional[str] = None,
+    rate_limit_resets_at: Optional[int] = None,
 ) -> None:
     """記錄一次 LLM API 呼叫的 token 用量 + 延遲。
 
     ``cost_usd`` 為 provider 回報的『實際』花費（目前只有 OpenRouter transport 帶值）；
     ``None`` 表示沒有實際 cost，cost panel 對這類 row 改用 ``pricing.calc_cost`` 估算。
+
+    ADR-070 D2 第 6 項的欄位（``lane_actual`` / ``model_actual`` / ``rate_limit_*``）
+    只有 L1 / L2 路徑會帶值，其餘 caller 維持 NULL。
 
     ``input_tokens`` / ``output_tokens`` 對應 provider response.usage 的
     input_tokens / output_tokens（Anthropic：thinking tokens 已含在 output）。
@@ -786,8 +820,9 @@ def record_api_call(
               (agent, run_id, model, input_tokens, output_tokens,
                cache_read_tokens, cache_write_tokens, latency_ms,
                auth_requested, auth_actual, fallback_reason, scope_json,
-               cost_usd, called_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+               cost_usd, lane_actual, model_actual, rate_limit_status,
+               rate_limit_type, rate_limit_resets_at, called_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
         (
             agent,
             run_id,
@@ -802,6 +837,11 @@ def record_api_call(
             fallback_reason,
             scope_json,
             cost_usd,
+            lane_actual,
+            model_actual,
+            rate_limit_status,
+            rate_limit_type,
+            rate_limit_resets_at,
             now,
         ),
     )
@@ -815,6 +855,91 @@ def record_api_call(
             (input_tokens, output_tokens, run_id),
         )
     conn.commit()
+
+
+# ── ADR-070 D2 第 5 項：L1 機器層級併發租約 ─────────────────────────────
+
+
+def _lease_conn() -> sqlite3.Connection:
+    """租約專用的短命連線（autocommit 模式，交易由呼叫端明確 BEGIN IMMEDIATE）。
+
+    不用共用的 ``_conn``：它跨 thread 共用、走 Python sqlite3 的隱式交易，
+    在上面 ``BEGIN IMMEDIATE`` / ``COMMIT`` 會把別的 thread 寫到一半的東西一起提交。
+    """
+    _get_conn()  # 確保 schema 已建立（llm_l1_leases 由 _init_tables 建）
+    conn = sqlite3.connect(str(get_db_path()), timeout=30, isolation_level=None)
+    conn.execute("PRAGMA busy_timeout=30000")
+    return conn
+
+
+def try_acquire_l1_lease(
+    lease_id: str,
+    *,
+    limit: int,
+    ttl_s: float,
+    pid: int,
+    agent: Optional[str] = None,
+    call_class: Optional[str] = None,
+    now: Optional[float] = None,
+) -> bool:
+    """嘗試拿一個 L1 名額；拿到回 ``True``，機器已滿回 ``False``（不等待）。
+
+    整段在 ``BEGIN IMMEDIATE`` 交易裡：先清掉過期租約（掛掉的 process 留下的），
+    再數目前有效的租約數，未滿才插入。IMMEDIATE 一開始就拿寫鎖，所以跨 process
+    同時 acquire 也不會超過 ``limit``。``now`` 只給測試注入時間用（epoch 秒）。
+    """
+    now_ts = time.time() if now is None else now
+    conn = _lease_conn()
+    try:
+        conn.execute("BEGIN IMMEDIATE")
+        try:
+            conn.execute("DELETE FROM llm_l1_leases WHERE expires_at <= ?", (now_ts,))
+            (active,) = conn.execute("SELECT COUNT(*) FROM llm_l1_leases").fetchone()
+            if active >= limit:
+                conn.execute("COMMIT")
+                return False
+            conn.execute(
+                """INSERT INTO llm_l1_leases
+                      (lease_id, pid, agent, call_class, acquired_at, expires_at)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    lease_id,
+                    pid,
+                    agent,
+                    call_class,
+                    datetime.fromtimestamp(now_ts, tz=timezone.utc).isoformat(),
+                    now_ts + ttl_s,
+                ),
+            )
+            conn.execute("COMMIT")
+            return True
+        except BaseException:
+            conn.execute("ROLLBACK")
+            raise
+    finally:
+        conn.close()
+
+
+def release_l1_lease(lease_id: str) -> None:
+    """歸還名額。已經過期被別人清掉的租約，刪不到也不算錯。"""
+    conn = _lease_conn()
+    try:
+        conn.execute("DELETE FROM llm_l1_leases WHERE lease_id = ?", (lease_id,))
+    finally:
+        conn.close()
+
+
+def count_active_l1_leases(*, now: Optional[float] = None) -> int:
+    """目前沒過期的 L1 租約數（觀察 / 測試用，不清資料）。"""
+    now_ts = time.time() if now is None else now
+    conn = _lease_conn()
+    try:
+        (active,) = conn.execute(
+            "SELECT COUNT(*) FROM llm_l1_leases WHERE expires_at > ?", (now_ts,)
+        ).fetchone()
+        return int(active)
+    finally:
+        conn.close()
 
 
 def record_score_shadow(

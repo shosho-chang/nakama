@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+import time
 
 import pytest
 
@@ -142,3 +143,126 @@ def test_scope_json_save_restore_pattern():
     set_scope_json(prior)
     assert get_scope_json() == '{"surface": "outer"}'
     set_scope_json(None)
+
+
+# ── 4) ADR-070 D9：spawn_thread / submit ──────────────────────────────
+
+
+def test_plain_thread_loses_agent_but_spawn_thread_keeps_it():
+    """PR #1298 事故的對照：threading.Thread 不繼承 ContextVar，spawn_thread 會。"""
+    from shared.llm_context import spawn_thread
+
+    set_current_agent("nami", run_id=3)
+    seen: dict[str, object] = {}
+
+    plain = threading.Thread(target=lambda: seen.setdefault("plain", get_current_agent()))
+    plain.start()
+    plain.join()
+
+    def _probe(tag, *, suffix):
+        seen[tag] = (get_current_agent(), get_current_run_id(), suffix)
+
+    t = spawn_thread(_probe, "spawned", suffix="!", name="probe-thread")
+    t.join()
+    assert seen["plain"] is None
+    assert seen["spawned"] == ("nami", 3, "!")
+    assert t.name == "probe-thread" and t.daemon is True
+
+
+def test_spawn_thread_changes_do_not_leak_back():
+    from shared.llm_context import spawn_thread
+
+    set_current_agent("nami")
+    t = spawn_thread(set_current_agent, "franky")
+    t.join()
+    assert get_current_agent() == "nami"
+
+
+def test_submit_copies_context_per_call_so_concurrent_workers_do_not_collide():
+    """每次 submit 各自 copy_context；共用一份 context 會 RuntimeError: cannot enter context。"""
+    import contextvars
+    from concurrent.futures import ThreadPoolExecutor
+
+    from shared.llm_context import submit
+
+    set_current_agent("robin")
+    gate = threading.Barrier(2, timeout=10)
+
+    def _work(i):
+        gate.wait()  # 兩個 worker 同時在 context 裡
+        return i, get_current_agent()
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        futures = [submit(pool, _work, i) for i in range(2)]
+        assert sorted(f.result(timeout=10) for f in futures) == [(0, "robin"), (1, "robin")]
+
+    # 對照：同一份 context 給兩個 worker 同時 run → RuntimeError
+    shared_ctx = contextvars.copy_context()
+    gate2 = threading.Barrier(2, timeout=10)
+
+    def _hold():
+        gate2.wait()
+        time.sleep(0.2)
+
+    def _enter_same():
+        gate2.wait()
+        time.sleep(0.05)
+        return shared_ctx.run(get_current_agent)
+
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        first = pool.submit(shared_ctx.run, _hold)
+        second = pool.submit(_enter_same)
+        with pytest.raises(RuntimeError, match="cannot enter context"):
+            second.result(timeout=10)
+        first.result(timeout=10)
+
+
+# ── 5) ADR-070：runtime group ─────────────────────────────────────────
+
+
+def test_runtime_group_defaults_to_desktop_and_validates():
+    from shared.llm_context import RUNTIME_GROUPS, get_runtime_group, set_runtime_group
+
+    assert RUNTIME_GROUPS == {"gateway", "cron", "bridge", "desktop"}
+    assert get_runtime_group() == "desktop"
+    set_runtime_group("cron")
+    assert get_runtime_group() == "cron"
+    with pytest.raises(ValueError):
+        set_runtime_group("vps")
+    assert get_runtime_group() == "cron"
+
+
+def test_runtime_group_is_process_wide_not_per_context():
+    """FastAPI lifespan 裡設的值要被所有 request（別的 context / thread）看到。"""
+    from shared.llm_context import get_runtime_group, set_runtime_group
+
+    async def _set_in_task():
+        set_runtime_group("bridge")
+
+    asyncio.run(_set_in_task())
+    seen = {}
+    t = threading.Thread(target=lambda: seen.setdefault("g", get_runtime_group()))
+    t.start()
+    t.join()
+    assert get_runtime_group() == "bridge"
+    assert seen["g"] == "bridge"
+
+
+@pytest.mark.parametrize(
+    ("path", "group"),
+    [
+        ("gateway/__main__.py", "gateway"),
+        ("agents/robin/__main__.py", "cron"),
+        ("agents/zoro/__main__.py", "cron"),
+        ("agents/franky/__main__.py", "cron"),
+        ("agents/usopp/__main__.py", "cron"),
+        ("shared/memory_reflection.py", "cron"),
+        ("thousand_sunny/app.py", "bridge"),
+    ],
+)
+def test_process_entry_points_declare_runtime_group(path, group):
+    """入口宣告鎖住：S1a–d 依這些值分批切 L1，少設一個就會默默留在 desktop。"""
+    from pathlib import Path
+
+    src = (Path(__file__).resolve().parents[2] / path).read_text(encoding="utf-8")
+    assert f'set_runtime_group("{group}")' in src

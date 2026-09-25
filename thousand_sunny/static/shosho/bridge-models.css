@@ -143,6 +143,11 @@ body.sho .mdl-trans--openrouter {
   color: var(--sho-info);
 }
 body.sho .mdl-trans--native { border-color: var(--sho-line); color: var(--sho-muted); }
+/* ADR-070 L1（Claude 訂閱）：用 --sho-success 跟 L2 的藍區隔，同樣不動橘色 accent。 */
+body.sho .mdl-trans--subscription {
+  border-color: color-mix(in oklch, var(--sho-success) 50%, var(--sho-line));
+  color: var(--sho-success);
+}
 
 body.sho .mdl-edit {
   display: flex;

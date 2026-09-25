@@ -27,6 +27,7 @@ force_utf8_console()
 # `load_config` walks up to the repo-level `.env`, so this also works from a
 # worktree, which a bare `Path(__file__).parent.parent / ".env"` would not.
 from shared.config import load_config  # noqa: E402
+from shared.llm_context import set_runtime_group  # noqa: E402
 
 load_config()
 
@@ -124,6 +125,9 @@ async def _lifespan(app_: FastAPI):
     so uvicorn / systemd surface the crash to the operator (W4) — silent
     fallback would mask the misconfig.
     """
+    # ADR-070：這個 process 是 Bridge（VPS 與桌機的 Thousand Sunny 都是）；S1c 依這個
+    # 值把 Bridge 的 Claude 呼叫切到 L1。process 層級的值，所以在 lifespan 設就涵蓋所有 request。
+    set_runtime_group("bridge")
     run_preflight()
     if not os.getenv("DISABLE_ROBIN"):
         config = load_promotion_wiring_config()

@@ -36,6 +36,11 @@ def record_call(
     auth_actual: str | None = None,
     fallback_reason: str | None = None,
     cost_usd: float | None = None,
+    lane_actual: str | None = None,
+    model_actual: str | None = None,
+    rate_limit_status: str | None = None,
+    rate_limit_type: str | None = None,
+    rate_limit_resets_at: int | None = None,
 ) -> None:
     """記錄一次 LLM call 的 usage。
 
@@ -63,6 +68,12 @@ def record_call(
             ``TOOL_USE_NOT_SUPPORTED_VIA_CLI``）。沒降級時 ``None``。
         cost_usd: provider 回報的『實際』USD 花費（目前只有 OpenRouter transport
             帶值）。``None`` 表示無實際 cost，cost panel 改用 ``pricing.calc_cost`` 估算。
+        lane_actual: ADR-070 的 lane（``subscription`` / ``openrouter``）；舊路徑 ``None``。
+        model_actual: 實際跑的 model id（L1 讀 ``AssistantMessage.model``；別名在這裡
+            才看得到解析結果）。
+        rate_limit_status / rate_limit_type / rate_limit_resets_at: 該次呼叫最後一個
+            ``RateLimitEvent.rate_limit_info`` 的 ``status`` / ``rate_limit_type`` /
+            ``resets_at``（epoch 秒），給 ADR-070 D5 用。
 
     Side effects:
         - 若 context ``usage_buffer`` 已啟用（opt-in tracking），append
@@ -107,6 +118,11 @@ def record_call(
             fallback_reason=fallback_reason,
             scope_json=scope_json,
             cost_usd=cost_usd,
+            lane_actual=lane_actual,
+            model_actual=model_actual,
+            rate_limit_status=rate_limit_status,
+            rate_limit_type=rate_limit_type,
+            rate_limit_resets_at=rate_limit_resets_at,
         )
     except Exception as e:
         logger.debug("cost tracking 失敗（忽略）：%s", e)

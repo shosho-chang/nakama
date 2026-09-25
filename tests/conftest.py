@@ -108,6 +108,19 @@ def _isolated_incidents_pending(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("NAKAMA_INCIDENTS_PENDING_DIR", str(tmp_path / "_incidents-pending"))
 
 
+@pytest.fixture(autouse=True)
+def _isolated_runtime_group(monkeypatch):
+    """ADR-070：runtime group 是 process 全域值（``shared.llm_context``）。
+
+    Thousand Sunny 的 lifespan 會把它設成 ``bridge``；TestClient 一驅動 lifespan，
+    後面所有測試都會看到 ``bridge``。每個測試開始時重設成預設值、結束時還原，
+    facade 的 L1 分派測試才不會因為執行順序而變。
+    """
+    from shared import llm_context
+
+    monkeypatch.setattr(llm_context, "_runtime_group", llm_context.DEFAULT_RUNTIME_GROUP)
+
+
 _LLM_FACADE_FUNCS = ("ask", "ask_multi", "ask_with_tools", "ask_with_audio")
 
 # caller-binding sweep 只掃 repo 自己的 top-level packages（全部
