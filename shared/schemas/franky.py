@@ -28,6 +28,8 @@ from pydantic import (
 # 探測目標白名單。Phase 2 加新 target 時升 V2，避免靜默接受未知 target。
 # Phase 5D 新增 gsc / slack / gmail：3 個 OAuth 或 service-account 認證的外部 API 健康，
 # 用 cheapest read-only call（list / auth_test / getProfile）驗證 token 還活著。
+# ADR-070 D10 / S7b 新增 sdk_deploy_lag / model_freshness：每週一次（非 5-min 3-fail
+# 門檻），沿用本表只借 last_check_at 做「本週跑過了嗎」的 gate（agents/franky/sdk_freshness.py）。
 ProbeTarget = Literal[
     "vps_resources",
     "wp_shosho",
@@ -38,6 +40,8 @@ ProbeTarget = Literal[
     "gsc",
     "slack",
     "gmail",
+    "sdk_deploy_lag",
+    "model_freshness",
 ]
 
 # 連續失敗門檻：跨過後升 Critical。ADR-007 §8 三連 fail 才升告警。
