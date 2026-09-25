@@ -1,7 +1,7 @@
 # ADR-070：LLM 只剩兩條路 — Claude 訂閱（Agent SDK）與 OpenRouter
 
-- **Status**：Accepted（方向：修修 2026-09-24 裁決）。v2 已依 panel review 修訂（[審查紀錄](../research/2026-09-24-adr070-panel-review.md)）。實作依 §遷移 Slices 進行；**S0 的待驗證項沒有答案前，不得切換任何 production 路徑**
-- **Date**：2026-09-24（v1 初稿；同日 v2 依 panel review 修訂）
+- **Status**：Accepted（方向：修修 2026-09-24 裁決）。v2 已依 panel review 修訂（[審查紀錄](../research/2026-09-24-adr070-panel-review.md)）；v3 寫入修修第三輪裁決（Q4–Q8）。實作依 §遷移 Slices 進行；**S0 的待驗證項沒有答案前，不得切換任何 production 路徑**
+- **Date**：2026-09-24（v1 初稿、v2 依 panel review 修訂）／2026-09-25（v3 第三輪裁決）
 - **Owner**：修修
 - **Supersedes after cutover**：[ADR-026](ADR-026-llm-router-auth-dimension.md) 整個 auth 維度：`api` / `subscription_preferred` / `subscription_required` 三元 policy、`AUTH_*` env、`NAKAMA_REQUIRE_MAX_PLAN`、`claude -p` CLI 訂閱路徑
 - **Amends**：[ADR-049](ADR-049-openrouter-transport.md)。OpenRouter 從「api-tier transport kill-switch」改為兩條 lane 之一；`LLM_TRANSPORT*` env 與 xAI carve-out 退場
@@ -27,7 +27,7 @@
 | D-e | 「我想要整個程式庫裡面就統一呼叫兩個地方：1. Claude 的訂閱 2. OpenRouter 的 API。所以我要在程式裡面可以自由選擇，看是要用 OpenRouter 裡面的哪一個模型」 |
 | D-f | 「RenderWatcher 也改過來，改成預設是 Claude 訂閱的 Opus 最新版」 |
 | D-g | 「沒用到的就直接刪掉」 |
-| Q1–Q3 | 見文末「修修裁決（第二輪）」 |
+| Q1–Q8 | 見文末「修修裁決」第二輪、第三輪 |
 
 仍然有效的前序裁決：2026-08-17 全面停用 Gemini，非 Claude 模型預設用 OpenAI 並經 OpenRouter 呼叫（`memory/claude/feedback_no_gemini_default_openai.md`）。
 
@@ -147,40 +147,51 @@
 
 **狀態機**：
 
+**呼叫分兩類**（修修 Q7 選 (b)，第三輪裁決）。每個呼叫點在程式裡宣告 `call_class`，沒宣告的一律當作 `batch`：
+
+| 類別 | 定義 | 範例 | 額度用完時 |
+|---|---|---|---|
+| `interactive` | 修修此刻正在等回應 | Nami 對話迴圈、gateway 意圖分類、Sanji / Zoro handler、orchestrator、修修在 Bridge 上等結果的請求（digest ask、replan） | **自動**轉 OpenRouter，**每日上限 US$5**（台北時間 00:00 歸零），轉了之後 DM 通知修修 |
+| `batch` | 沒有人在等 | cron、翻譯、ingest、記憶抽取、RenderWatcher、桌機腳本 | **等額度重置**；修修可以在 Bridge 手動核准先跑，**每次核准預設上限 US$20**（按的時候可以改） |
+
+**狀態機**（每一類各自一份，存在同一列全域狀態裡）：
+
 ```
-subscription ──(偵測到額度用完)──▶ exhausted_awaiting_decision
-exhausted_awaiting_decision ──(修修核准，附上限)──▶ openrouter_approved
-exhausted_awaiting_decision ──(resets_at 到了 / 探針成功)──▶ subscription
-openrouter_approved ──(USD 上限用完)──▶ exhausted_awaiting_decision
-openrouter_approved ──(resets_at 到了且探針成功 / 修修按「切回訂閱」)──▶ subscription
+subscription ──(偵測到額度用完)──▶ exhausted
+exhausted ──[interactive] 當日上限還有剩，自動──▶ openrouter_auto
+exhausted ──[batch] 修修在 Bridge 核准，附上限──▶ openrouter_approved
+openrouter_auto / openrouter_approved ──(上限用完)──▶ exhausted（再 DM）
+exhausted / openrouter_* ──(resets_at 到了且探針成功 / 修修按「切回訂閱」)──▶ subscription
 ```
 
-- **偵測以 SDK 的結構化訊號為主**（F15）：`RateLimitEvent.status == "rejected"`，或 `AssistantMessage.error` 是 `rate_limit` / `billing_error`，就轉入 `exhausted_awaiting_decision`，並記下 `rate_limit_type` 和 `resets_at`。
+- **偵測以 SDK 的結構化訊號為主**（F15）：`RateLimitEvent.status == "rejected"`，或 `AssistantMessage.error` 是 `rate_limit` / `billing_error`，就轉入 `exhausted`，並記下 `rate_limit_type` 和 `resets_at`。
 - **只擋用完的那一類 model**：如果用完的是 `seven_day_opus`，只擋 Opus 呼叫，Sonnet / Haiku 照常執行；如果是 `five_hour` / `seven_day` 這種全域額度，就全部擋下。
 - **`allowed_warning` 是軟訊號**：收到時，批次類呼叫（cron、翻譯、ingest）延後執行，互動類呼叫（Nami、gateway）照常進行。這樣可以把額度留給修修的即時對話和修修自己的 Claude Code 使用（R9）。
 - **啟發式規則只能觸發軟警告**：「10 分鐘內未分類的 SDK 失敗」只會發「疑似額度用完」的 DM，並**立刻**跑一次探針，但**不會** fail-fast。401 / OAuth 失效另外歸為 `auth_error`，發「token 失效」alert，不進這個狀態機。
-- **被擋下的呼叫**會立刻丟出 `SubscriptionExhausted`，不花 API 的錢，也不會默默改道。通知走 `shared.alerts.alert("error", "llm_lane", …, dedupe_key="llm-lane-exhausted")`（F12），由 Franky DM 修修，訊息附上決策連結。互動類呼叫（Nami）會回覆「訂閱額度用完，已通知修修」。
-- **決策介面**：S2 先評估能不能沿用 Bridge 既有的 approval queue（ADR-006）；套不上才另開最小的 `/bridge/llm-lane` 頁面。頁面上要顯示這些資訊：從何時開始、用完的是哪一類額度、`resets_at`、目前正在跑和排隊中的 L1 工作。按鈕有兩個：「切到 OpenRouter（上限 US$___）」和「等重置」。Slack 沒有按鈕可用（F11）。
-- **`openrouter_approved` 模式下的路由**：
+- **被擋下的 `batch` 呼叫**會立刻丟出 `SubscriptionExhausted`，不花錢，也不會默默改道。`interactive` 呼叫在當日上限內自動改走 OpenRouter；上限用完後同樣丟出 `SubscriptionExhausted`，Nami 會回覆「訂閱額度和今日 OpenRouter 上限都用完了，已通知修修」。
+- **通知**：走 `shared.alerts.alert("error", "llm_lane", …, dedupe_key=…)`（F12），由 Franky DM 修修。會發通知的時機：額度用完（附 `rate_limit_type`、`resets_at` 和 batch 的核准連結）、interactive 自動轉 OpenRouter、任一類上限用完、切回訂閱。
+- **決策介面**：只有 `batch` 需要人決定。S2 先評估能不能沿用 Bridge 既有的 approval queue（ADR-006），套不上才另開最小的 `/bridge/llm-lane` 頁面。頁面要顯示：從何時開始、用完的是哪一類額度、`resets_at`、今天 interactive 已經花了多少、目前正在跑和排隊中的 batch 工作。按鈕有兩個：「batch 切到 OpenRouter（上限 US$20，可改）」和「等重置」。Slack 沒有按鈕（F11）。
+- **上限怎麼算**：OpenRouter 模式下，每次呼叫的實際 cost 都累加進 VPS `state.db`（interactive 按日累計，batch 按每次核准累計）；超過上限就轉回 `exhausted`。兩個金額（US$5 / 日、US$20 / 次）寫在 code 常數裡（D4），不放 env。
+- **OpenRouter 模式下的路由**（`openrouter_auto` 和 `openrouter_approved` 相同）：
   - 一次性文字呼叫（絕大多數）改走 **L2 client**，slug 為 `anthropic/<id>`。這樣可以保留實際 cost、`allow_fallbacks=False`，以及 Anthropic 1P provider 優先（F14）。
   - agentic 呼叫（有工具、skill、session 的）才用 SDK，並把子進程 env 換成 `ANTHROPIC_BASE_URL=https://openrouter.ai/api`、`ANTHROPIC_AUTH_TOKEN=$OPENROUTER_API_KEY`、`ANTHROPIC_API_KEY=""`（F6）。這條路拿不到 OpenRouter 的實際 cost，所以用量改用 OpenRouter 的 generation 查詢補記；可不可行在 S2 驗證。
   - `OPENROUTER_API_KEY` 是空的時候一律 fail closed，不能讓 OAuth token 被送到 OpenRouter。
 - **切回訂閱**：優先依 `resets_at` 排程；沒有 `resets_at` 時，每 30 分鐘探一次**失敗的那一類 model**。探針由 Franky 的 health cron（VPS `*/5`，`cron.conf:35`）負責，新增一個 probe target，全系統只有這一個 owner。切回後有 60 分鐘觀察期：這段時間內如果又失敗，就不再自動切回，只發 DM 通知。
 - **OpenRouter 路徑每天 canary 一次**：每天用 OpenRouter env 打一次最小的 Haiku 呼叫，確認這條平常不走的備援路徑沒有壞掉（`lane_actual=openrouter`）。
-- **不使用** SDK 的 `fallback_model`（它會默默換 model，違反 D-c；也不會因 rate limit 觸發，F20）。
+- **不使用** SDK 的 `fallback_model`（它會默默換 model、不會通知，也不會因 rate limit 觸發，F20）。
 
 ### D6　L2：程式裡可以自由指定 OpenRouter 上任何 model
 
 - registry、Bridge override 或呼叫點直接寫的 `vendor/model` slug，一律原樣送 OpenRouter。檢查方式改成比對 OpenRouter `/models`（加快取），不再用手動維護的白名單（F13）。`_SLUG_MAP` 只在遷移期間留給舊的裸 id 用，S6 刪除。
 - 非 Claude 模型預設選 OpenAI（2026-08-17 裁決）。
-- 保留 ADR-049 的 BYOK 與 `allow_fallbacks=False`。**Anthropic BYOK key 的去留要由修修決定**（F18，見文末 Q4）。
+- 保留 ADR-049 的 BYOK 與 `allow_fallbacks=False`。**Anthropic BYOK key 由修修從 OpenRouter 後台移除**（F18，Q4），這樣 Claude 呼叫走 OpenRouter 時，扣的是 OpenRouter 的額度。
 - L2 目前支援文字和多輪對話；tool-use 和圖片等真的有呼叫點需要時再做。
 
 ### D7　Codex CLI 呼叫全部改走 L1
 
 | 呼叫點 | 改法 |
 |---|---|
-| `scripts/render_watcher.py` packaging job | 改用 SDK agentic 呼叫，**model 依 D-f 用最新的 Opus**，實際 id 見文末 Q5。<br>• 環境：`cwd=job_dir`；`add_dirs` 包含 working episode、vault packaging、vault cutout，以及 repo root（skill 要執行 repo 裡的 script）；`setting_sources=[]`，避免桌機 `~/.claude/settings.json` 和 repo `.claude/settings.json` 的 allow 規則蓋掉限制（F16）；`permission_mode` 明確指定。<br>• 寫入限制：用 **`PreToolUse` hook** 擋掉 Write / Edit 對這些路徑以外的寫入。允許寫入的清單是：`job_dir`、working episode 的 packaging、vault packaging、vault cutouts；repo root 只能讀。<br>• 已知限制：透過 Bash 執行的 script 自己寫檔擋不住，最後防線是既有的成功驗證（`_validate_initial_packaging_outputs`，`render_watcher.py:570`），加上 prompt 規則。<br>• wall-clock 上限 4 小時（沿用 `timeout=14400`），用 `anyio.fail_after` 實作。<br>• 記錄 `AssistantMessage.model`。<br>• `tests/test_render_watcher.py:437-468` 改鎖新的 model。 |
+| `scripts/render_watcher.py` packaging job | 改用 SDK agentic 呼叫，**`model="opus"`**（D-f）。能不能真的拿到最新版，靠 D10 的 SDK 自動升級。呼叫類別是 `batch`。<br>• 環境：`cwd=job_dir`；`add_dirs` 包含 working episode、vault packaging、vault cutout，以及 repo root（skill 要執行 repo 裡的 script）；`setting_sources=[]`，避免桌機 `~/.claude/settings.json` 和 repo `.claude/settings.json` 的 allow 規則蓋掉限制（F16）；`permission_mode` 明確指定。<br>• 寫入限制：用 **`PreToolUse` hook** 擋掉 Write / Edit 對這些路徑以外的寫入。允許寫入的清單是：`job_dir`、working episode 的 packaging、vault packaging、vault cutouts；repo root 只能讀。<br>• 已知限制：透過 Bash 執行的 script 自己寫檔擋不住，最後防線是既有的成功驗證（`_validate_initial_packaging_outputs`，`render_watcher.py:570`），加上 prompt 規則。<br>• wall-clock 上限 4 小時（沿用 `timeout=14400`），用 `anyio.fail_after` 實作。<br>• 記錄 `AssistantMessage.model`。<br>• `tests/test_render_watcher.py:437-468` 改鎖新的 model。 |
 | `.../finished_cut_production/_codex_semantic.py` | 改用 SDK 呼叫：開放 Read 工具讓它讀 `packet.json`（`:720`），或把 packet 直接放進 prompt。搭配 `output_format`，schema 從 2020-12（`:830`）轉成 draft-07（U10），`max_turns` 至少 3。 |
 | `scripts/podcast_highlight_visual_orchestrator.py` | 改用 SDK agentic 呼叫。沿用現有的 resume 契約：session id 要一致（`:197-203`），改用 SDK 的 `resume` / `session_id`，並固定 `cwd`（resume 必須在同一個 cwd）。 |
 | `scripts/dispatch_codex_playbook_audit.py` | 一次性腳本，在 D8 退役。 |
@@ -204,7 +215,20 @@ openrouter_approved ──(resets_at 到了且探針成功 / 修修按「切回�
   - **分支與設定**：`agents/robin/kb_search.py` 的 `engine="haiku"` 分支；`podcast_subtitles/adapters/correction.py`、`semantic.py` 的付費 runner（production 固定 `allow_paid_api=False`）；registry 裡沒人用的 `project_angle_scan`、`project_mechanism`、`thumbnail_*`；`scripts/Invoke-IngestTextbook.ps1`（它呼叫的 `run_s8_batch.py` 已經不存在）。
 - **本機 LLM**：`shared/local_llm.py`、`config.yaml` 的 `local_llm` 區塊、`scripts/ab_ingest_bench.py`。Robin ingest 生成時早就一律走雲端（`agents/robin/ingest.py:510-519`），只剩估算等待時間時還在探測（`:79-85`），改成固定用雲端的估算區間。
 - **一次性腳本**：`scripts/dispatch_codex_playbook_audit.py`、`scripts/spikes/agent_sdk_probe.py`、`scripts/spikes/merger_sdk_probe.py`。
-- **待修修決定（Q6）**：`scripts/extract_thumbnail_features.py`、`scripts/cluster_thumbnail_patterns.py`、`scripts/compose_playbook_v1.py`。這組**不是一次性腳本**：`prompts/thumbnail/playbook_v1.md:1100-1105` 和 `splice_playbook_v1.py:16-17` 都要求更新 corpus 時重跑這條流程。
+- **縮圖 playbook 建置流程（Q6，修修裁決刪除）**：`scripts/extract_thumbnail_features.py`、`scripts/cluster_thumbnail_patterns.py`、`scripts/compose_playbook_v1.py`，以及同一條流程的 `scripts/splice_playbook_v1.py`、`scripts/fix_playbook_v1_to_v1_1.py`。
+  - 刪除理由：五支都在 2026-05-27 跑過一次後就沒再動。原始素材 `E:\Thumbnail-example` 和中間產物 `thumbnail_reference_extraction_v1.json` 都已經不存在，又是直接呼叫 Anthropic API，現在根本跑不起來。
+  - **保留**它們的產出 `prompts/thumbnail/playbook_v1.md`、`playbook_data_v1.json`，title-brainstorm / thumbnail-brainstorm 一直在用。
+  - 要一起改的地方：`playbook_v1.md` §8「When adding a new corpus row」改成「v2 時在 Claude Code 對話中看圖重建（走訂閱）」；清掉 `pyproject.toml` 和 `thousand_sunny/templates/bridge/inventory.html` 裡提到這些腳本的地方。
+
+### D10　SDK 自動升級：「最新版模型」不靠人維護
+
+別名解析成哪一版，取決於 SDK 內附的 CLI（F3）。修修的要求是「不要又變成一張沒人維護、永遠指向舊版的對照表」（Q5），所以不在 code 裡放 model 對照表，改成讓 SDK 自己保持在最新版：
+
+1. **每週自動升級**：GitHub Actions 排程檢查 PyPI 上的 `claude-agent-sdk`，有新版就自動開 PR，把 `requirements.txt` / `pyproject.toml` 的**精確版本號**（`==`）升上去。
+2. **CI 把關、綠燈自動合併**：修修同意這類 PR 在 CI 全綠時自動合併（Q5）。main 有 strict 保護，PR 落後時由 workflow 先同步分支再合併。CI 紅燈就不合併，並 DM 修修。
+3. **合併後通知**：Franky DM 修修：「SDK 升到 X，`opus` / `sonnet` / `haiku` 現在解析成 …，請部署」。解析結果由 CI 裡的一個小步驟讀內附 CLI 的別名表取得，不必實際呼叫 LLM。
+4. **每週落後偵測**：Franky 拿 `api_calls` 記到的實際 model（D2 第 6 項），比對 OpenRouter 公開的 `/models` 清單中最新的 Anthropic model。發現落後（例如新 Opus 已經上架，我們還在跑舊的）就 DM 修修。
+5. **修修要做的事**：只有部署。
 
 ### D9　每次 LLM 呼叫都要帶 agent context
 
@@ -240,20 +264,22 @@ D4 拿掉了 `.env` 開關，等於放棄了「改一行 env 再重啟就能秒�
 | **S5 Codex → L1** | D7，**RenderWatcher 優先**（D-f） | S2 | 在桌機跑一次真的 packaging job，通過既有驗證；log 裡記到的 model 符合 Q5 |
 | **S4 tool-use 呼叫點** | Nami 預設走 SDK；merger 同樣改；`replan_agent` 改用 in-process MCP tools。**舊 loop 和 flag 等到 S6 才刪** | S1a | Nami golden path，含 ask_user 的暫停與恢復；merger 的 capture 契約測試 |
 | **S3 L2 自由選模型** | D6；Bridge model 面板接受任意 slug | S1 | 用一個不在舊白名單上的 slug 實際呼叫成功，並記到實際 cost |
+| **S7 SDK 自動升級** | D10：每週升級 workflow、CI 讀別名表步驟、自動合併、Franky 升級通知與落後偵測 | S1（精確釘版） | 手動觸發一次 workflow，確認會開 PR、CI 綠了自動合併、收到 DM |
 | **S6 清理** | D8 全部（**等 #1300 合併**）；刪掉 S4 留下的舊 loop 和 flag；修修從 VPS `.env` 移除退場的 key；ADR-026 / ADR-049 標記狀態；`CONTEXT-MAP.md` 更新 LLM Router / Auth policy / Fallback reason 詞條，並新增 lane 詞條；`docs/runbooks/openrouter-canary.md` 改寫或標記 deprecated | 以上全部 | 連續 7 天：`api_calls` 除了 `lane_actual` 兩種值以外沒有其他計費路徑，而且沒有 `agent="unknown"` |
 
-S5、S4 可以和 S1a–d 並行。S3 不依賴 S2，隨時可以做。
+S5、S4 可以和 S1a–d 並行。S3 不依賴 S2，隨時可以做。S7 在 S1 之後隨時可以做，但要**排在 S5 之前**：RenderWatcher 要用到最新版 Opus，得先有 S7 把 SDK 升上來。
 
 ## 修修要親手做的事
 
 | # | 事項 | 時機 |
 |---|---|---|
 | 1 | 在 VPS 和桌機各跑一行指令，貼出 env 的 key 名稱（不含值） | S0 |
-| 2 | OpenRouter 後台：勾 `data_collection: deny`；決定 Anthropic BYOK key 的去留（Q4）；設定 Anthropic 1P provider 優先 | S0 |
+| 2 | OpenRouter 後台：勾 `data_collection: deny`；**在 Integrations（BYOK）頁刪掉 Anthropic key**（Q4）；設定 Anthropic 1P provider 優先；存入足夠支付上限的 OpenRouter 額度（interactive 每日 US$5、batch 每次 US$20） | S0 |
 | 3 | 確認 Claude 訂閱有沒有開 usage credits / overage，決定要不要關掉 | S0 |
 | 4 | 在每台機器各跑一次 `claude setup-token`，把 token 寫進各自的 `.env` | S1 前 |
 | 5 | 每次部署：`ssh nakama-vps "cd /home/nakama && ./scripts/deploy_vps.sh"` | 每個 slice |
-| 6 | 額度用完時，在 Bridge 決策（切 OpenRouter 並設上限，或等重置）。**這會是常態操作，不是一次性步驟** | S2 之後 |
+| 6 | 額度用完時：interactive 會自動處理，你只會收到通知；batch 要不要先跑，由你在 Bridge 決定（切 OpenRouter 並設上限，或等重置）。**這會是常態操作，不是一次性步驟** | S2 之後 |
+| 6b | 收到 Franky「SDK 已升級」的通知後部署 | S7 之後，每週 |
 | 7 | Token 到期前收到 Franky 提醒後：在該機器重跑 `claude setup-token` → 更新 `.env` → 重啟 `nakama-gateway`、`thousand-sunny`（桌機則重啟 Thousand Sunny 排程）。cron 會在下一輪自動讀到新值 | 每年 |
 | 8 | 移除 VPS `.env` 裡退場的 key | S6 |
 | 9 | D7 完成後，Codex CLI 就不再被 nakama 程式呼叫。ChatGPT / Codex 訂閱要不要留著給自己開發用，由修修決定（跟本 ADR 無關） | S5 之後 |
@@ -261,8 +287,8 @@ S5、S4 可以和 S1a–d 並行。S3 不依賴 S2，隨時可以做。
 ## 成功指標
 
 1. S6 之後連續 7 天：`api_calls` 裡由 `ANTHROPIC_API_KEY` 計費的筆數為 0，`agent="unknown"` 的筆數為 0。
-2. 發生額度用完事件後 5 分鐘內，修修收到 DM；在修修決策之前，沒有任何 Claude 呼叫走 OpenRouter。
-3. **每週停在 `exhausted_awaiting_decision` 的時數**。如果連續兩週超過修修訂的門檻，就回頭重新檢討 D-c 的決策模式（見 Q7）。
+2. 發生額度用完事件後 5 分鐘內，修修收到 DM；`batch` 呼叫在修修核准之前，沒有任何一筆走 OpenRouter；`interactive` 每日 OpenRouter 花費不超過 US$5。
+3. **每週 `batch` 停在 `exhausted` 的時數**，以及每週 interactive 自動轉 OpenRouter 的次數與金額，作為修修調整上限或決策模式的依據。
 4. `journalctl -u nakama-gateway` 不再出現 `Memory extraction LLM call failed` / `Episodic extraction LLM call failed`。
 5. gateway 意圖分類的 p95 延遲不超過 S0 量測後修修訂下的門檻。
 
@@ -274,7 +300,7 @@ S5、S4 可以和 S1a–d 並行。S3 不依賴 S2，隨時可以做。
 | R2 | 每次呼叫都要起一個子進程，每則 Slack 訊息的意圖分類、每輪對話兩次的記憶抽取都會變慢 | S0 先量；意圖分類本來就先走關鍵字路由（`gateway/router.py:115-139`），失敗才用 LLM；記憶抽取本來就在背景跑。S0 同時評估 `ClaudeSDKClient` 常駐 session 的做法 |
 | R3 | VPS 記憶體吃緊 | 機器層級的 lease 上限；S0 量出實際 RSS |
 | R4 | 2026-07-29 的研究引用過 Anthropic 對第三方產品使用 claude.ai 登入的限制；ADR-026 也記錄過 OAuth 直連 SDK 時遇到 anti-automation 429 | 本系統是帳號本人自用的內部工具，不是對外產品。429 列入 D5 的觀察項 |
-| R5 | SDK 版本漂移（F1）；別名解析結果會跟著內附 CLI 一起變（F3） | S1 把 SDK 釘到 patch 版本。**升 SDK 和換 model 分成兩個 PR**：先升 SDK、保持 model 不變，確認沒問題再放開 model（Q5） |
+| R5 | SDK 版本漂移（F1）；別名解析結果會跟著內附 CLI 一起變（F3）；自動升級可能帶進 CI 沒抓到的行為改變 | SDK 釘精確版本，只由 D10 的自動 PR 升級（有 CI 把關，0.2.140 那次就是被 CI 擋下）；每次升級都 DM 修修新的別名解析結果；出問題就 revert 那個升級 PR（§回滾） |
 | R6 | 失去 `temperature` 控制（F2） | 列為已知的行為改變，由各 slice 的驗收檢查輸出品質 |
 | R7 | 訂閱模式下看不到成本（U2） | 用 token 數追蹤用量；只有 OpenRouter 的呼叫記金額 |
 | R8 | 桌機長任務（4 小時）中途 token 過期 | 用一年期的 setup-token，不把 `~/.claude/.credentials.json` 裡的短效存取 token 塞進 env（2026-05-16 事故，`memory/claude/feedback_oauth_env_pinning_long_batch.md`） |
@@ -289,26 +315,24 @@ S5、S4 可以和 S1a–d 並行。S3 不依賴 S2，隨時可以做。
 | A. 沿用 ADR-026，只把預設改成走訂閱（c7a72880） | 改動最小 | ✗ 仍然有六種入口；`claude -p` 做不了 tool-use；還是要靠 `.env` 補洞（違反 D-d）；8/18 的裁決一個月都沒落地 |
 | **B. 兩條 lane：Agent SDK + OpenRouter** | 本 ADR | ✓ 符合 D-a 到 D-g |
 | C. 只用 OpenRouter | 最單純 | ✗ 修修長期付 Max 訂閱，額度閒置，還要另外按 token 付費 |
-| D. 額度用完就自動改走 OpenRouter | 服務不中斷 | ✗ 修修明確要求先問（D-c） |
+| D. 額度用完就全部自動改走 OpenRouter | 服務不中斷 | ✗ 修修要求先問（D-c）；批次可能以 API 價格大量花錢 |
 | E. 用 SDK 的 `fallback_model` | 內建功能 | ✗ 只換 model、不換 lane，而且是默默切換；也不會因 rate limit 觸發（F20） |
-| F. 分類別、有上限的常備授權（panel reviewer A 提出） | 互動類在額度用完時，於每日上限內自動轉 OpenRouter 並通知；批次類等重置 | 跟 D-c 的字面意思衝突，**交給修修決定**（Q7） |
+| **F. 分類別、有上限的常備授權**（panel reviewer A 提出） | 互動類在額度用完時，於每日上限內自動轉 OpenRouter 並通知；批次類等重置或由修修核准 | ✓ **修修 Q7 選定**（第三輪），併入 D5 |
 
 ## 修修裁決（2026-09-24 第二輪）
 
 三題都照建議（修修：「三個都照建議做」）：
 
 1. **Q1 切換範圍 → 全部一起切**。實作方式：VPS 上一列全域狀態，桌機讀取同一份（D5）。
-2. **Q2 預設 model → 改用別名**。對應方式：`claude-opus-4-8`、`claude-opus-4-7` → `opus`；`claude-sonnet-4-6`、`claude-sonnet-4-5-20250929` → `sonnet`；`claude-haiku-4-5`、`claude-haiku-4-5-20251001` → `haiku`。這會改變實際使用的 model 版本，屬於已接受的行為改變。取代 2026-08-19 沒合併的「全面 Opus 5」（eb0cb5bb）。**panel review 發現別名不會自動跟上最新版（F3），實作方式待 Q5 決定。**
+2. **Q2 預設 model → 改用別名**。對應方式：`claude-opus-4-8`、`claude-opus-4-7` → `opus`；`claude-sonnet-4-6`、`claude-sonnet-4-5-20250929` → `sonnet`；`claude-haiku-4-5`、`claude-haiku-4-5-20251001` → `haiku`。這會改變實際使用的 model 版本，屬於已接受的行為改變。取代 2026-08-19 沒合併的「全面 Opus 5」（eb0cb5bb）。panel review 發現別名不會自動跟上最新版（F3），第三輪 Q5 改由 D10 的 SDK 自動升級解決。
 3. **Q3 高量或低延遲的呼叫點 → 先全部走 L1**。S0 量完後，修修再決定要不要把個別呼叫點改指定 OpenRouter model。
 
-## Panel review 後待修修決定
+## 修修裁決（2026-09-25 第三輪，panel review 之後）
 
-依據：[審查紀錄](../research/2026-09-24-adr070-panel-review.md)。
+依據：[審查紀錄](../research/2026-09-24-adr070-panel-review.md)。修修回覆：「Q4 ok」「Q5 可以，Q6 刪掉，金額都 OK」「Q7 b」。
 
-- **Q4 Anthropic BYOK key**：OpenRouter 上目前登記了 Anthropic BYOK key（F18）。沒移除的話，切到 OpenRouter 時會先扣 8/17 已經沒錢的 Anthropic API 帳號，而不是你說的「OpenRouter 裡面的額度」。建議從 OpenRouter 後台移除這把 key。
-- **Q5 「最新版 Opus」怎麼實現**：目前內附 CLI 把 `opus` 解析成 **Opus 5**，而且不認得 Opus 5.5（F3）。建議在 code 裡放一張別名對照表（`opus → claude-opus-5-5`；`sonnet`、`haiku` 同樣處理），有新 model 時改一行、發一個 PR，同時定期升級 SDK。可行性要在 S0 確認：舊版 CLI 能不能接受直接指定它不認得的 model id。
-- **Q6 縮圖分析腳本**（`extract_thumbnail_features`、`cluster_thumbnail_patterns`、`compose_playbook_v1`）：playbook 文件規定更新 corpus 時要重跑這三支。建議保留，等真的要跑 playbook v2 時再遷移到 L1。
-- **Q7 每次問，還是常備授權**：
-  - **(a) 維持 D-c，每次都問**，但每次核准都附 USD 上限。優點：花錢的每一筆都經過你；缺點：額度用完如果常發生，你會常收到 DM，決定之前服務是停的。
-  - **(b) 分類別常備授權（選項 F）**：Nami、gateway 這類互動呼叫在額度用完時，於每日上限（例如 US$5）內自動轉 OpenRouter，事後 DM 通知；批次類一律等重置。優點：你不用每次都介入，對話不中斷；缺點：跟 D-c「問我」的字面意思不同，而且在上限內會自動花錢。
-- **Q8 每次核准的預設 USD 上限**：選 Q7 (a) 時，Bridge 按鈕上的預設金額（建議 US$20，每次按的時候可以改）。
+- **Q4 → 從 OpenRouter 後台移除 Anthropic BYOK key**（F18）。這樣 Claude 呼叫走 OpenRouter 時，扣的是 OpenRouter 的額度，不是已經沒錢的 Anthropic API 帳號。由修修操作。
+- **Q5 → 不在 code 裡放 model 對照表，改成 SDK 自動升級**（D10）。修修指出：對照表每次新 model 出來都要有人改，最後一定沒人維護、永遠指到舊版。修修同意 SDK 升級 PR 在 CI 全綠時自動合併。
+- **Q6 → 刪掉縮圖 playbook 建置流程**（D8）。產出的 playbook 保留。
+- **Q7 → (b) 分類別常備授權**（D5）：`interactive` 在額度用完時自動轉 OpenRouter，每日上限 US$5，事後通知；`batch` 等重置，或由修修在 Bridge 核准。
+- **Q8 → batch 每次核准的預設上限 US$20**，按的時候可以改。
