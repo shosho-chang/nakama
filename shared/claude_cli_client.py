@@ -55,6 +55,8 @@ from shared.quiet_subprocess import quiet_kwargs
 from shared.retry import with_retry
 
 logger = get_logger("nakama.claude_cli_client")
+# ADR-070 S0 取證：失敗原文寫進 L1 共用的 lane logger（與 shared.agent_sdk 同一個）
+_lane_logger = get_logger("nakama.llm_lane")
 
 __all__ = ["ask_via_cli", "ask_multi_via_cli", "ClaudeCliError"]
 
@@ -200,6 +202,7 @@ def _invoke(
                 pass
 
     if proc.returncode != 0:
+        _log_cli_failure(model, proc)  # ADR-070 S0 取證：只記 log
         raise ClaudeCliError(
             f"claude -p exited {proc.returncode}.\n"
             f"stderr: {proc.stderr[:2000]}\n"
@@ -214,6 +217,7 @@ def _invoke(
         ) from e
 
     if payload.get("is_error"):
+        _log_cli_failure(model, proc, payload)  # ADR-070 S0 取證：只記 log
         raise ClaudeCliError(
             f"claude -p reported is_error=true: "
             f"subtype={payload.get('subtype')} "
@@ -221,6 +225,66 @@ def _invoke(
         )
 
     return payload
+
+
+_CLI_LOG_TEXT_LIMIT = 2000
+_CLI_ERROR_FIELDS = (
+    "subtype",
+    "is_error",
+    "api_error_status",
+    "errors",
+    "terminal_reason",
+    "stop_reason",
+    "session_id",
+    "num_turns",
+    "duration_ms",
+    "total_cost_usd",
+    "usage",
+    "modelUsage",
+)
+
+
+def _clip(text: object) -> object:
+    if isinstance(text, str) and len(text) > _CLI_LOG_TEXT_LIMIT:
+        return text[:_CLI_LOG_TEXT_LIMIT] + f"…[truncated {len(text) - _CLI_LOG_TEXT_LIMIT} chars]"
+    return text
+
+
+def _log_cli_failure(model: str, proc: object, payload: dict | None = None) -> None:
+    """``claude -p`` 失敗時，把 CLI 回報的原文記進 ``nakama.llm_lane``（ADR-070 U1）。
+
+    CLI 回報 error result（``is_error: true``）後通常會以非 0 結束（SDK 0.2.134
+    ``_internal/query.py:379-384`` 的註解），所以非 0 結束時也試著解析 stdout 的
+    JSON。只記 log、**絕不 raise**；呼叫端照舊丟 ``ClaudeCliError``。
+    """
+    try:
+        returncode = getattr(proc, "returncode", None)
+        stdout = getattr(proc, "stdout", "") or ""
+        if payload is None:
+            try:
+                parsed = json.loads(stdout)
+            except (TypeError, ValueError):
+                parsed = None
+            payload = parsed if isinstance(parsed, dict) else None
+        fields: dict = {"site": "claude_cli", "model": model, "returncode": returncode}
+        if payload is not None:
+            event = "cli_result_error"
+            fields.update({k: payload.get(k) for k in _CLI_ERROR_FIELDS})
+            if isinstance(fields["errors"], list):
+                fields["errors"] = [_clip(e) for e in fields["errors"][:20]]
+            fields["result"] = _clip(payload.get("result"))
+        else:
+            event = "cli_exit_error"
+            fields["stdout"] = _clip(stdout)
+        fields["stderr"] = _clip(getattr(proc, "stderr", "") or "")
+        _lane_logger.warning(
+            "%s %s",
+            event,
+            json.dumps(fields, ensure_ascii=False, default=str, separators=(",", ":")),
+            extra={"llm_lane_event": event, "llm_lane_site": "claude_cli"},
+        )
+    except Exception:  # noqa: BLE001 — 取證 log 絕不能影響主流程
+        logger.debug("CLI failure lane log failed (ignored)", exc_info=True)
 
 
 def _record_cli_usage(

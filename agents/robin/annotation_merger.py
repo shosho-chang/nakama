@@ -185,7 +185,11 @@ def _sdk_merge_once(prompt: str, model: str) -> tuple[dict | None, object | None
         MERGER_SERVER_NAME,
         build_merger_server,
     )
-    from shared.agent_sdk import subscription_env  # noqa: PLC0415
+    from shared.agent_sdk import (  # noqa: PLC0415
+        log_sdk_exception,
+        log_sdk_message,
+        subscription_env,
+    )
 
     box: dict = {}
     options = ClaudeAgentOptions(
@@ -204,10 +208,15 @@ def _sdk_merge_once(prompt: str, model: str) -> tuple[dict | None, object | None
 
     async def _run() -> None:
         async for message in query(prompt=prompt, options=options):
+            log_sdk_message("robin.merger", message)  # ADR-070 S0 取證：只記 log
             if isinstance(message, ResultMessage) and not result_holder:
                 result_holder.append(message)
 
-    asyncio.run(_run())
+    try:
+        asyncio.run(_run())
+    except Exception as e:
+        log_sdk_exception("robin.merger", e)  # ADR-070 S0 取證：只記 log，照舊往上拋
+        raise
     return box.get("mapping"), (result_holder[0] if result_holder else None)
 
 

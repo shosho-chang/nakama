@@ -18,7 +18,7 @@ from dataclasses import dataclass
 
 from claude_agent_sdk import ClaudeAgentOptions, ResultMessage, query
 
-from shared.agent_sdk import subscription_env
+from shared.agent_sdk import log_sdk_exception, log_sdk_message, subscription_env
 from shared.llm_router import get_model
 from shared.log import get_logger
 
@@ -78,6 +78,7 @@ async def _haiku_check(feed: dict, theme: str) -> Decision:
     # SDK 對 error 的形狀是「先 yield ResultMessage 再 raise」——drain 到自然結束，
     # 不 break（子進程清理，PR #1121 review B1 的教訓）。
     async for message in query(prompt=prompt, options=options):
+        log_sdk_message("sanji.judge", message)  # ADR-070 S0 取證：只記 log
         if isinstance(message, ResultMessage) and not result_text:
             result_text = str(getattr(message, "result", "") or "")
 
@@ -109,5 +110,6 @@ def judge_feed(feed: dict, theme: str) -> Decision:
     try:
         return asyncio.run(_haiku_check(feed, theme))
     except Exception as exc:  # noqa: BLE001 — 判定故障必須降級而不是炸掉 loop
+        log_sdk_exception("sanji.judge", exc)  # ADR-070 S0 取證：只記 log
         logger.warning(f"[judge] haiku check failed, falling back to provisional: {exc}")
         return Decision("provisional", f"haiku:error:{type(exc).__name__}")
