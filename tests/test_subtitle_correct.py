@@ -91,7 +91,7 @@ def test_llm_chunked_merge(monkeypatch):
     calls: list[dict] = []
     monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
 
-    corrected, qc, stats = correct_srt_llm(srt, chunk_size=2, use_arbitration=False)
+    corrected, qc, stats = correct_srt_llm(srt, chunk_size=2)
     assert len(calls) == 2
     assert "第一句話改" in corrected
     assert "第三句話改" in corrected
@@ -111,7 +111,7 @@ def test_llm_filters_out_of_chunk_seq(monkeypatch):
     calls: list[dict] = []
     monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
 
-    corrected, qc, stats = correct_srt_llm(srt, chunk_size=10, use_arbitration=False)
+    corrected, qc, stats = correct_srt_llm(srt, chunk_size=10)
     assert "改一" in corrected
     assert "亂改" not in corrected
     assert qc == []
@@ -119,7 +119,7 @@ def test_llm_filters_out_of_chunk_seq(monkeypatch):
 
 
 def test_llm_over_deletion_guard(monkeypatch):
-    # 修正把 13 字縮成 3 字 → 撤下修正、轉 uncertain（無音檔 → 直接進 QC）
+    # 修正把 13 字縮成 3 字 → 撤下修正、轉 uncertain（直接進 QC）
     srt = _srt(["就是那個常常看到你去上鳳鑫節", "第二句話正常改"])
     responses = [
         json.dumps({"corrections": {"1": "鳳馨姊", "2": "第二句話正常修"}, "uncertain": []}),
@@ -127,7 +127,7 @@ def test_llm_over_deletion_guard(monkeypatch):
     calls: list[dict] = []
     monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
 
-    corrected, qc, stats = correct_srt_llm(srt, use_arbitration=False)
+    corrected, qc, stats = correct_srt_llm(srt)
     assert "就是那個常常看到你去上鳳鑫節" in corrected  # 原文保留
     assert "第二句話正常修" in corrected  # 正常修正照套
     assert stats["over_deletion_guard"] == 1
@@ -144,29 +144,10 @@ def test_llm_pass2_strips_reintroduced_punctuation(monkeypatch):
     calls: list[dict] = []
     monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
 
-    corrected, _, _ = correct_srt_llm(srt, use_arbitration=False)
+    corrected, _, _ = correct_srt_llm(srt)
     assert "，" not in corrected and "。" not in corrected
     assert "简" not in corrected  # 簡體轉回繁體
     assert "大腦簡史" in corrected
-
-
-def test_llm_arbitrated_false_when_arbitration_fails(monkeypatch, tmp_path):
-    srt = _srt(["第一句話"])
-    unc = {"line": 1, "original": "第一句話", "suggestion": "x", "reason": "r", "risk": "low"}
-    responses = [json.dumps({"corrections": {}, "uncertain": [unc]})]
-    calls: list[dict] = []
-    monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
-
-    def boom(*a, **kw):
-        raise RuntimeError("gemini down")
-
-    monkeypatch.setattr("shared.multimodal_arbiter.arbitrate_uncertain", boom)
-    fake_audio = tmp_path / "a.wav"
-    fake_audio.write_bytes(b"RIFF")
-
-    _, qc, stats = correct_srt_llm(srt, audio_path=fake_audio, use_arbitration=True)
-    assert stats["arbitrated"] is False
-    assert len(qc) == 1  # 退回未仲裁 uncertainties
 
 
 def test_scripted_preserves_book_title_and_term_marks():
@@ -187,7 +168,7 @@ def test_llm_refs_injected_into_system(monkeypatch, tmp_path):
     calls: list[dict] = []
     monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
 
-    correct_srt_llm(srt, ref_files=[ref], use_arbitration=False)
+    correct_srt_llm(srt, ref_files=[ref])
     assert "謝伯讓" in calls[0]["system"]
     assert "訪綱.md" in calls[0]["system"]
 
@@ -360,7 +341,7 @@ def test_run_correct_external_srt_creates_subs_dir(monkeypatch, tmp_path):
     monkeypatch.setattr("shared.llm.ask", _fake_ask_factory(responses, calls))
     monkeypatch.setenv("INTERVIEW_PREP_DIR", str(tmp_path / "無"))
 
-    out = run_correct(ep, srt=ext_srt, mode="llm", use_arbitration=False)
+    out = run_correct(ep, srt=ext_srt, mode="llm")
     assert out.exists()
     assert (ep / "subs" / "correct_manifest.json").exists()
 

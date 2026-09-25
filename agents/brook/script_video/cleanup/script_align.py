@@ -49,7 +49,8 @@ _MIN_FINGERPRINT_CHARS = 6
 # retake 前保留的靜音 lead-in（同 mistake_removal 慣例：4 frames @ 30fps）。
 _LEAD_IN_FRAMES = 4
 
-# SRT 行長慣例 — 對齊 shared/transcriber.py 的 _MAX_SUBTITLE_CHARS/_HARD。
+# SRT 行長慣例 — soft 14 / hard 22，與 shared/cue_builder.py 的 MAX_CHARS / HARD_MAX_CHARS 一致
+# （hard 容許 ASCII 英文 compound name 不被切，例 Traveling Village = 17 字）。
 _MAX_SUBTITLE_CHARS = 14
 _MAX_SUBTITLE_HARD = 22
 

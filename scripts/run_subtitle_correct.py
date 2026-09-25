@@ -6,13 +6,13 @@
     ① `--emit-chunks` 切 chunk + 指示檔到 subs/correct_work/
     ② skill 派 Opus/其他 subagent 逐 chunk 校正、合併成 corrections.json
     ③ `--apply corrections.json` 機械套用（越界過濾 + 過度刪減防護 + Pass 2 + 報告）
-- 付費 API 路徑（Anthropic Opus ± Gemini 仲裁）需明確 `--api`（仲裁再加 `--arbitrate`）
+- 付費 API 路徑（Anthropic Opus）需明確 `--api`
 
 用法：
     python scripts/run_subtitle_correct.py <episode>                    # scripted（有完整稿時）
     python scripts/run_subtitle_correct.py <episode> --emit-chunks      # cowork ①
     python scripts/run_subtitle_correct.py <episode> --apply subs/correct_work/corrections.json
-    python scripts/run_subtitle_correct.py <episode> --api --arbitrate  # 付費路徑（opt-in）
+    python scripts/run_subtitle_correct.py <episode> --api              # 付費路徑（opt-in）
 """
 
 from __future__ import annotations
@@ -116,7 +116,6 @@ def run_correct(
     model: str = "claude-opus-4-7",
     host_name: str = "",
     show_name: str = "",
-    use_arbitration: bool = False,
 ) -> Path:
     """scripted 對稿（零 LLM）或 API 路徑（明確 opt-in，花 API 錢）。"""
     srt_path, srt_content = _load_srt(episode_dir, srt)
@@ -135,7 +134,6 @@ def run_correct(
         corrected, qc_items, stats = correct_srt_scripted(srt_content, script_text)
         stats["script"] = script_path.name
     else:
-        audio_path = episode_dir / "normalized.wav"
         ref_files = [p for p in refs if p != script_path]
         corrected, qc_items, stats = correct_srt_llm(
             srt_content,
@@ -143,8 +141,6 @@ def run_correct(
             model=model,
             host_name=host_name,
             show_name=show_name,
-            audio_path=audio_path if audio_path.exists() else None,
-            use_arbitration=use_arbitration,
         )
 
     return _write_outputs(episode_dir, srt_path, refs, corrected, qc_items, stats)
@@ -202,11 +198,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         action="store_true",
         help="改走付費 API 路徑（Anthropic Opus）；未指定時 llm 模式只接受 cowork 流程",
     )
-    parser.add_argument(
-        "--arbitrate",
-        action="store_true",
-        help="開 Gemini 多模態仲裁（花 API 錢；僅 --api 路徑有效，預設關）",
-    )
     return parser.parse_args(argv)
 
 
@@ -239,7 +230,7 @@ def main(argv: list[str] | None = None) -> int:
             logger.error(
                 "llm 校正預設走 cowork subagent 流程（subscription quota）："
                 "--emit-chunks → 派 subagent 校正 → --apply corrections.json。"
-                "真的要用付費 API 路徑請加 --api（仲裁另加 --arbitrate）"
+                "真的要用付費 API 路徑請加 --api"
             )
             return 2
 
@@ -251,7 +242,6 @@ def main(argv: list[str] | None = None) -> int:
         model=args.model,
         host_name=args.host_name,
         show_name=args.show_name,
-        use_arbitration=args.arbitrate,
     )
     return 0
 

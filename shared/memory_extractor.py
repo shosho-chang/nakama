@@ -19,6 +19,7 @@ from typing import Any
 from shared import agent_memory, episodic_memory
 from shared.agent_memory import VALID_TYPES
 from shared.llm import ask
+from shared.llm_context import set_current_agent
 from shared.log import get_logger
 
 logger = get_logger("nakama.memory_extractor")
@@ -26,6 +27,9 @@ logger = get_logger("nakama.memory_extractor")
 _EXTRACTOR_MODEL = "claude-haiku-4-5"
 _EPISODIC_MODEL = "claude-haiku-4-5"
 _MAX_MESSAGES = 30  # 對話超長時，只看最近 N 則
+# ADR-026 auth routing 的 task 名 —— ``DEFAULT_AUTH["memory_extraction"]`` 在 code 裡
+# 鎖訂閱（shared/llm_router.py），不需要 .env 設定。
+_EXTRACTION_TASK = "memory_extraction"
 
 __all__ = [
     "VALID_TYPES",
@@ -196,6 +200,7 @@ def extract_from_messages(
             prompt=prompt,
             system=_EXTRACTOR_SYSTEM_PROMPT,
             model=_EXTRACTOR_MODEL,
+            task=_EXTRACTION_TASK,
             max_tokens=1024,
         )
     except Exception as e:
@@ -268,6 +273,7 @@ def extract_episodic_from_messages(
             prompt=prompt,
             system=_EPISODIC_SYSTEM_PROMPT,
             model=_EPISODIC_MODEL,
+            task=_EXTRACTION_TASK,
             max_tokens=512,
         )
     except Exception as e:
@@ -293,6 +299,10 @@ def extract_episodic_from_messages(
 def _extract_all(agent: str, user_id: str, messages: list[dict], source_thread: str | None) -> None:
     """Run semantic + episodic extraction back-to-back; isolate each so one
     failing doesn't skip the other."""
+    # 新 thread 不繼承 caller 的 ContextVar —— 不在這裡重設 agent，``ask()`` 會讀到
+    # None、auth 落到 DEFAULT_AUTH="api"、cost 也歸不到 agent（2026-09 VPS 上
+    # Nami 抽取因 API credit 用完全數 400）。
+    set_current_agent(agent)
     try:
         extract_from_messages(agent, user_id, messages, source_thread=source_thread)
     except Exception as e:
