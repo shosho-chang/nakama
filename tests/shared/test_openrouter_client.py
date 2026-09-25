@@ -132,6 +132,29 @@ def test_resolves_model_via_router_default(monkeypatch, _fake_response):
     )
 
 
+def test_ask_openrouter_accepts_arbitrary_unmapped_slug(monkeypatch, _fake_response):
+    """ADR-070 D6（issue #1311）：不在 _SLUG_MAP 白名單的 vendor/model slug 也能
+    直接打成功，並記到實際 cost——L2 可以自由指定 OpenRouter 上任何 model。
+    """
+    monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
+    import shared.openrouter_client as orc
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = _fake_response(cost=0.033)
+    recorded = {}
+
+    with (
+        patch.object(orc, "get_client", return_value=fake_client),
+        patch("shared.state.record_api_call", lambda **k: recorded.update(k)),
+    ):
+        out = orc.ask_openrouter("hi", model="mistralai/mistral-large")
+
+    assert out == "hello from openrouter"
+    call_kwargs = fake_client.chat.completions.create.call_args.kwargs
+    assert call_kwargs["model"] == "mistralai/mistral-large"  # 原樣送出，沒查白名單
+    assert recorded["cost_usd"] == pytest.approx(0.033)
+
+
 def test_grok_model_raises_before_network(monkeypatch):
     """grok-* 在送網路前就 raise（slug 翻譯即 fail-fast guard），xAI 留原生。"""
     monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
