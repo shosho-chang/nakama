@@ -3,8 +3,18 @@ name: Matt Pocock Sandcastle — TS library for AFK Claude Code in Docker worktr
 description: github.com/mattpocock/sandcastle；5 templates；defaults sonnet-4-6；4/4 通過（桌機 Win 3 + Mac 1）含首次 multi-issue batch run；templates 凍結進 docs/runbooks/sandcastle-templates/；runbook 在 docs/runbooks/sandcastle.md
 type: reference
 created: 2026-04-29
-updated: 2026-05-02
+updated: 2026-09-25
 ---
+
+> **2026-09-25 升級後的現況（以本節為準）**：
+> - 版本：`@ai-hero/sandcastle` **0.12.0**（原本 0.5.6）；image 內 Claude Code CLI **2.1.282**。上游最後一次 release 是 2026-06-29，之後約 3 個月沒有新 commit
+> - **認證改走 Claude 訂閱**：`.sandcastle/.env` 放 `CLAUDE_CODE_OAUTH_TOKEN`（`claude setup-token`，一年期）+ `GH_TOKEN`；`main.mts` 的 `docker({ env })` **不再傳 `ANTHROPIC_API_KEY`**（它的優先序高於 OAuth token，且那個 API 帳號 2026-08-17 起沒有額度）。上游 0.9.0 起的 `sandcastle init` 也預設這樣做。ADR-070
+> - **image 要升 pip**：Debian bookworm 內建的 pip 23.0.1 解析 nakama requirements 會崩（`Candidate is not for this requirement lxml[html-clean,html-clean] vs lxml[html-clean]`）。Dockerfile 加 `RUN python3 -m pip install --user --upgrade pip`，`onSandboxReady` 改用 `python3 -m pip install -r requirements.txt -q`
+> - **目標 clone** `E:/nakama-sandcastle` 設 `core.autocrlf false`，開跑前切到最新 `origin/main`（本機分支 `sandcastle/base`）；跑完 commit 在 `sandcastle/base`，host 端推成 `sandcastle/<issue>-<slug>` 分支開 PR
+> - **prompt 的 3 檔上限有例外**（修修 2026-09-25）：issue body 明列 `## 範圍` 檔案清單的（ADR slice），不受 3 檔限制，但只能動清單內的檔案
+> - 0.11.0 修掉了 `merge-to-head` 沒把 commit 合回 host 的 bug，0.5.6 時代的 runs 可能受影響
+> - 升級後第一次試跑：#1317 → PR #1319，一輪完成，沒有認證錯誤、沒有 429
+> - 舊設定備份在 `E:\Sandcastle-Test`：`main.mts.bak-0.5.6-apikey`、`Dockerfile.bak-2026-09-25`、`prompt.issue.md.bak-2026-09-25`、`package*.json.bak-0.5.6`
 
 Matt Pocock 的 AFK runner，**TS library** in Docker，跟 mattpocock/skills repo 是 paired 工具但分開 repo。**不是** Anthropic claude-code-plugins 的 ralph-loop plugin（Matt 自己拒絕後者）。
 
