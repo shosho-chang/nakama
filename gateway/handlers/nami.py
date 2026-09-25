@@ -30,6 +30,7 @@ from claude_agent_sdk.types import HookMatcher
 
 from gateway.handlers.base import BaseHandler, Continuation, HandlerResponse
 from shared import agent_memory, google_calendar, google_gmail
+from shared.agent_sdk import log_sdk_exception, log_sdk_message
 from shared.events import emit
 from shared.google_calendar import CalendarEvent, GoogleCalendarAuthError
 from shared.google_gmail import GoogleGmailAuthError
@@ -1304,6 +1305,7 @@ class NamiHandler(BaseHandler):
         try:
             async with aclosing(query(prompt=prompt, options=options)) as stream:
                 async for message in stream:
+                    log_sdk_message("nami", message)  # ADR-070 S0 取證：只記 log
                     if isinstance(message, ResultMessage) and result_msg is None:
                         result_msg = message
                         # per-call 粒度的成本記錄是 S4；先讓 session 級數字進 log 可查
@@ -1321,6 +1323,7 @@ class NamiHandler(BaseHandler):
                         )
         except Exception as e:
             logger.exception("Agent SDK stream failed")
+            log_sdk_exception("nami", e)  # ADR-070 S0 取證：只記 log
             stream_error = e
 
         # ── 終態 1：ask_user 被 defer —— 問題回 Slack、session 掛起（S3）──
