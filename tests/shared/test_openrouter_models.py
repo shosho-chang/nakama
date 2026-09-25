@@ -44,6 +44,21 @@ def test_unmapped_is_value_error():
     assert issubclass(UnmappedModelError, ValueError)
 
 
+@pytest.mark.parametrize(
+    "slug",
+    [
+        "mistralai/mistral-large",
+        "openai/gpt-5.6-terra-unreleased-tier",
+        "anthropic/claude-opus-9000",
+    ],
+)
+def test_already_slugged_model_passes_through_unchanged(slug):
+    """ADR-070 D6：含 ``/`` 的 model 字串一律原樣送 OpenRouter，不查 ``_SLUG_MAP``
+    白名單——這樣程式裡才能自由指定任何 OpenRouter model，不用等有人先幫忙建對照表。
+    """
+    assert to_openrouter_slug(slug) == slug
+
+
 def test_every_known_model_resolves_except_grok():
     """KNOWN_MODELS 每個非 grok 的 bare ID 都要能翻 slug（避免上線才發現某 slug 漏建）；
     grok-* 確認 raise（明確 carve-out）。這是 plan Slice 4 驗收的前移保護。"""

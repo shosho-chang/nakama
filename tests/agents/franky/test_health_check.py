@@ -506,6 +506,9 @@ def test_run_once_returns_all_probes(_mock_ok_env):
         "gsc",
         "slack",
         "gmail",
+        # ADR-070 D5 (S2a) — daily canary always fires on first tick (no last_check_at yet).
+        # llm_lane_interactive/batch are absent: default lane state is "subscription".
+        "llm_lane_openrouter_canary",
         # ADR-070 D10 / S7b — stubbed via _mock_ok_env, still emitted.
         "sdk_deploy_lag",
         "model_freshness",

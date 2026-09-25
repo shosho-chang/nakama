@@ -13,7 +13,7 @@ Slug 來源：2026-06-25 對 ``https://openrouter.ai/api/v1/models`` 的 preflig
 
 from __future__ import annotations
 
-from shared.llm_router import api_model_id
+from shared.llm_router import api_model_id, is_openrouter_slug
 
 # bare ID（Nakama 內部 registry / env 用）→ OpenRouter slug（provider/model）。
 # 多對一是正常的：dated pin 與 canonical 收斂到同一個 OpenRouter slug
@@ -53,7 +53,14 @@ def to_openrouter_slug(bare_id: str) -> str:
     xAI 呼叫在 facade seam 會留在原生 ``shared.xai_client``，不進 OpenRouter
     （見 Slice 2 + ADR）。這支同時扮演 ``shared.xai_client._require_grok_model``
     那種 fail-fast guard 的角色（錯的 model 在送網路前就擋下）。
+
+    ADR-070 D6：``bare_id`` 本身已經是 ``vendor/model`` slug（含 ``/``）時，代表
+    呼叫端（registry、Bridge override 或呼叫點）直接指定了 OpenRouter 上的任意
+    model，原樣送出，不查 ``_SLUG_MAP`` 白名單——程式裡才能自由指定 OpenRouter
+    上任何 model，不必等有人先幫忙補一行對照表。
     """
+    if is_openrouter_slug(bare_id):
+        return bare_id
     # Agent SDK 簡稱（"sonnet"）先換成完整 ID，跟直接打 API 的路徑同一個替身
     slug = _SLUG_MAP.get(api_model_id(bare_id))
     if slug is not None:
