@@ -18,7 +18,7 @@ from unittest.mock import MagicMock, patch
 import httpx
 import pytest
 
-from agents.franky import health_check
+from agents.franky import health_check, sdk_freshness
 from agents.franky.health_check import (
     _record_and_maybe_alert,
     probe_cron_freshness,
@@ -432,6 +432,28 @@ def test_r2_backup_nakama_threshold_is_env_tunable(_r2_nakama_env, monkeypatch):
 # ---------------------------------------------------------------------------
 
 
+@pytest.fixture(autouse=True)
+def _stub_sdk_freshness(monkeypatch):
+    """ADR-070 S7b 的兩個每週檢查會真的 `git fetch` / 打 OpenRouter。run_once 相關
+    測試不一定都經過 `_mock_ok_env`，這裡預設全部 stub 掉，確保不碰網路與
+    subprocess；要測這兩個檢查本身的，見 tests/agents/franky/test_sdk_freshness.py。
+    """
+    monkeypatch.setattr(
+        sdk_freshness,
+        "check_sdk_deploy_lag",
+        lambda *a, **k: HealthProbeV1(
+            target="sdk_deploy_lag", status="ok", checked_at=_now(), latency_ms=0
+        ),
+    )
+    monkeypatch.setattr(
+        sdk_freshness,
+        "check_model_freshness",
+        lambda *a, **k: HealthProbeV1(
+            target="model_freshness", status="ok", checked_at=_now(), latency_ms=0
+        ),
+    )
+
+
 @pytest.fixture
 def _mock_ok_env(monkeypatch):
     """Make probes pass — wp/r2 env missing (skip) + nakama 200 + vps healthy."""
@@ -445,6 +467,22 @@ def _mock_ok_env(monkeypatch):
         monkeypatch.delenv(k, raising=False)
     for p in _mock_psutil(cpu=10.0, ram_pct=40.0, swap_pct=0.0, disk_pct=30.0):
         p.start()
+    # ADR-070 D10 / S7b probes do their own git fetch / OpenRouter HTTP call —
+    # stub them out here so run_once tests stay network- and subprocess-free.
+    patch.object(
+        sdk_freshness,
+        "check_sdk_deploy_lag",
+        return_value=HealthProbeV1(
+            target="sdk_deploy_lag", status="ok", checked_at=_now(), latency_ms=0
+        ),
+    ).start()
+    patch.object(
+        sdk_freshness,
+        "check_model_freshness",
+        return_value=HealthProbeV1(
+            target="model_freshness", status="ok", checked_at=_now(), latency_ms=0
+        ),
+    ).start()
     with patch.object(
         health_check.httpx,
         "Client",
@@ -471,6 +509,9 @@ def test_run_once_returns_all_probes(_mock_ok_env):
         # ADR-070 D5 (S2a) — daily canary always fires on first tick (no last_check_at yet).
         # llm_lane_interactive/batch are absent: default lane state is "subscription".
         "llm_lane_openrouter_canary",
+        # ADR-070 D10 / S7b — stubbed via _mock_ok_env, still emitted.
+        "sdk_deploy_lag",
+        "model_freshness",
     }
     assert result["operation_id"].startswith("op_")
     assert result["duration_ms"] >= 0

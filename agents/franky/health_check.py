@@ -1109,6 +1109,13 @@ def run_once(
     # 切回訂閱 / 上限用完）；Franky 只負責觸發探測、把結果放進 dashboard。
     probes.extend(probe_llm_lane_recovery(now=now))
 
+    # 8. SDK 部署落後 + model 落後（ADR-070 D10 / S7b）— 自己 gate 成每週一次，
+    # 用 shared.alerts.alert 直接 DM，不走這裡的 AlertV1 / alert_sink pipeline。
+    from agents.franky.sdk_freshness import check_model_freshness, check_sdk_deploy_lag
+
+    probes.append(check_sdk_deploy_lag(now=now))
+    probes.append(check_model_freshness(now=now))
+
     duration_ms = int((time.monotonic() - started) * 1000)
     logger.info(
         "health_check tick op=%s duration_ms=%s probes=%s alerts=%s",
