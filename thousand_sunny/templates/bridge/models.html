@@ -47,7 +47,7 @@
             <td class="mdl-purpose">{{ s.purpose }}<br><code class="mdl-task">{{ s.task }}</code></td>
             <td><span class="mdl-model">{{ s.model }}</span> <span class="mdl-prov mdl-prov--{{ s.provider }}">{{ s.provider }}</span></td>
             <td><span class="mdl-src mdl-src--{{ s.source }}">{{ s.source }}</span></td>
-            <td><span class="mdl-trans mdl-trans--{{ s.transport }}">{{ 'OpenRouter' if s.transport == 'openrouter' else 'native' }}</span></td>
+            <td><span class="mdl-trans mdl-trans--{{ s.transport }}">{{ s.transport_label }}</span></td>
             <td class="mdl-edit">
               <form method="post" action="/bridge/models/set" class="mdl-form">
                 <input type="hidden" name="agent" value="{{ s.agent }}">

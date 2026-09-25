@@ -135,3 +135,83 @@ def test_get_per_agent_transport_override(client, monkeypatch):
     # Nami（claude api）那列 → openrouter；其餘 agent 全域 off → native，兩者並存
     assert "mdl-trans--openrouter" in resp.text
     assert "mdl-trans--native" in resp.text
+
+
+# ── ADR-070 D1：L1 / L2 標示 ───────────────────────────────────────────────
+def _row(model: str, provider: str, agent: str = "robin") -> dict:
+    return {"model": model, "provider": provider, "agent": agent, "task": "x"}
+
+
+def test_transport_for_l2_slug_is_openrouter_regardless_of_transport_env(monkeypatch):
+    from thousand_sunny.routers import bridge_models as bm
+
+    monkeypatch.delenv("LLM_TRANSPORT", raising=False)
+    site = _row("openai/gpt-5.6-terra", "unknown")
+    assert bm._transport_for(site) == "openrouter"
+    assert bm._transport_label(site, "openrouter") == "openrouter (L2)"
+
+
+def test_transport_for_claude_empty_cutover_keeps_legacy(monkeypatch):
+    """S1 出貨狀態（L1_CUTOVER_GROUPS 空）：Claude 列的標示跟以前一模一樣。"""
+    from shared import llm
+    from thousand_sunny.routers import bridge_models as bm
+
+    assert llm.L1_CUTOVER_GROUPS == frozenset()
+    monkeypatch.delenv("LLM_TRANSPORT", raising=False)
+    site = _row("sonnet", "anthropic")
+    assert bm._transport_for(site) == "native"
+    assert bm._transport_label(site, "native") == "native"
+    monkeypatch.setenv("LLM_TRANSPORT", "openrouter")
+    assert bm._transport_for(site) == "openrouter"
+    assert bm._transport_label(site, "openrouter") == "OpenRouter"  # 舊標籤不變
+
+
+def test_transport_for_claude_in_cutover_is_subscription(monkeypatch):
+    from shared import llm
+    from thousand_sunny.routers import bridge_models as bm
+
+    monkeypatch.delenv("LLM_TRANSPORT", raising=False)
+    monkeypatch.setattr(llm, "L1_CUTOVER_GROUPS", frozenset({"gateway", "cron"}))
+    site = _row("claude-sonnet-4-6", "anthropic", agent="nami")
+    # 只切了部分 group：這一列仍是舊路徑（面板不知道它在哪種 process 跑），附註已切的 group
+    assert bm._transport_for(site) == "native"
+    assert bm._transport_label(site, "native") == "native · cron / gateway 程序走 L1"
+    # 非 Claude model 不受 L1 影響
+    gemini = _row("gemini-2.5-pro", "google")
+    monkeypatch.delenv("LLM_TRANSPORT", raising=False)
+    assert bm._transport_for(gemini) == "native"
+
+    monkeypatch.setattr(
+        llm, "L1_CUTOVER_GROUPS", frozenset({"gateway", "cron", "bridge", "desktop"})
+    )
+    assert bm._transport_for(site) == "subscription"
+    assert bm._transport_label(site, "subscription") == "subscription (L1)"
+
+
+def test_get_page_shows_l1_chip_when_cut_over(client, monkeypatch):
+    from shared import llm
+
+    monkeypatch.delenv("LLM_TRANSPORT", raising=False)
+    monkeypatch.setattr(llm, "L1_CUTOVER_GROUPS", frozenset({"gateway"}))
+    c, _ = client
+    resp = c.get("/bridge/models")
+    assert resp.status_code == 200
+    # 部分切換：不能整列標成訂閱（Robin 等在 cron / Bridge 跑的列仍走舊路徑）
+    assert "mdl-trans--subscription" not in resp.text
+    assert "native · gateway 程序走 L1" in resp.text
+
+    monkeypatch.setattr(
+        llm, "L1_CUTOVER_GROUPS", frozenset({"gateway", "cron", "bridge", "desktop"})
+    )
+    resp = c.get("/bridge/models")
+    assert "mdl-trans--subscription" in resp.text
+    assert "subscription (L1)" in resp.text
+
+
+def test_get_page_without_cutover_has_no_l1_chip(client, monkeypatch):
+    monkeypatch.delenv("LLM_TRANSPORT", raising=False)
+    c, _ = client
+    resp = c.get("/bridge/models")
+    assert resp.status_code == 200
+    assert "mdl-trans--subscription" not in resp.text
+    assert "(L1" not in resp.text
