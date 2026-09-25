@@ -66,7 +66,7 @@
 | F4 | 憑證優先序：`ANTHROPIC_AUTH_TOKEN` > `ANTHROPIC_API_KEY` > … > `CLAUDE_CODE_OAUTH_TOKEN`。API key 會壓過訂閱 token | code.claude.com/docs/en/authentication；2026-08-18 實測（`shared/agent_sdk.py:10-14`） |
 | F5 | `claude setup-token` 產生一年期 token | 同上 |
 | F6 | Claude Code / Agent SDK 可以用 `ANTHROPIC_BASE_URL=https://openrouter.ai/api` + `ANTHROPIC_AUTH_TOKEN` + `ANTHROPIC_API_KEY=""` 走 OpenRouter，但**只限 Claude 模型**；Anthropic 不支援經 gateway 跑非 Claude 模型。OpenRouter 只保證 Anthropic 1P provider 能正常運作 | openrouter.ai/docs/cookbook/coding-agents/claude-code-integration；code.claude.com/docs/en/llm-gateway |
-| F7 | SDK 每次 `query` 都會起一個 CLI 子進程，程式註解估計約 100MB（`nami.py:1301`，**不是量測值**）。VPS 總共 3.9G RAM | `docs/research/2026-07-29-agent-sdk-spike-findings.md:83` |
+| F7 | SDK 每次 `query` 都會起一個 CLI 子進程。**實測 RSS：VPS 約 290MB、桌機約 350MB**（S0，2026-09-25），是程式註解估計值 100MB（`nami.py:1301`）的 3 倍。VPS 總共 3.9G RAM | `docs/research/2026-07-29-agent-sdk-spike-findings.md:83` |
 | F8 | 延遲：merger（Opus）單次 14–24s；20 次序列 Haiku 總共 89s | `docs/research/2026-08-18-merger-sdk-spike-findings.md:32,38-41` |
 | F9 | 沒設 `tools=[]` 時，成本是有設時的 3 倍（$0.1102 vs $0.0352）。`setting_sources` 也必須明確給 | `docs/research/2026-07-29-agent-sdk-spike-findings.md:24-33` |
 | F10 | SDK 失敗時先 yield 一個 error `ResultMessage`，再 raise | `docs/research/2026-08-18-merger-sdk-spike-findings.md:49-50` |
@@ -353,20 +353,25 @@ U2、U3、U7、U9 的事實由 orchestrator 在 2026-09-25 查證，照原樣記
 - **U7　版本與別名**：VPS 是 SDK 0.2.128，內附 CLI 2.1.220。桌機 `C:\Python314` 是 SDK 0.2.134（CLI 2.1.226），`E:\nakama\.venv-v2` 是 SDK 0.2.140。兩個 CLI 都解析成 `opus→claude-opus-5`、`sonnet→claude-sonnet-5`、`haiku→claude-haiku-4-5`，兩個都不含 `claude-opus-5-5`。
 - **U9　桌機憑證**：`E:\nakama\.env` **沒有** `CLAUDE_CODE_OAUTH_TOKEN`，也**沒有** `OPENROUTER_API_KEY`；有 `ANTHROPIC_API_KEY`、`GEMINI_API_KEY`、`OPENAI_API_KEY`、`XAI_API_KEY`。`~/.claude/.credentials.json` 存在（互動式登入）。Thousand Sunny 和 RenderWatcher 用 `C:\Python314\python.exe` 執行（`scripts/start_thousand_sunny.ps1:17`）。
 
+### S0 probe 實測（2026-09-25，VPS SDK 0.2.128 / CLI 2.1.220；`scripts/llm_lane_probe.py`）
+
+- **U4　延遲與記憶體**：Haiku 一次性呼叫（`tools=[]`、`max_turns=1`）連跑 5 次，wall time p50 2.36s、p95 2.69s，拿到結果約 1.8s。每個 CLI 子進程峰值 RSS 288–292MB。桌機（token 補上後）2 次：p50 2.40s，RSS 347–358MB。**D2 第 5 項的機器層級上限初始值定為 2**（VPS 約 1.7G 可用，兩個子進程約 580MB）。
+- **U6　OpenRouter 認得別名解析結果**：用 `ANTHROPIC_BASE_URL=https://openrouter.ai/api` 呼叫，`haiku` 成功，model 是 `anthropic/claude-haiku-4.5`，約 4.3s；`opus` 成功，model 是 `anthropic/claude-opus-5`。CLI 別名表 `per_provider.gateway` 那一欄（`opus → claude-opus-4-7`）**沒有被套用**，所以 OpenRouter 模式下的 model 跟訂閱模式一致，也會跟著 D10 的 SDK 升級一起更新。
+- **U8　訂閱沒有開 overage**：每次呼叫的 `RateLimitEvent.rate_limit_info` 都帶 `overage_status: "rejected"`、`overage_disabled_reason: "org_level_disabled"`。所以額度用完時會回報 rejected，不會默默改成付費，D5 可以正常觸發。
+- **U10　structured output**：draft-07 schema 在 `max_turns=1` 就成功（SDK 回報 `num_turns=2`，`structured_output` 有值），`max_turns=3` 也成功。宣告 2020-12 的 schema 會被拒絕，CLI 以 exit code 1 結束（`ProcessError`），跟文件一致。D2 第 2 項維持 `max_turns ≥ 3`，留重試空間。
+- **順帶確認**：訂閱模式下，**每一次呼叫**都會收到 `RateLimitEvent`（`status: "allowed"`、`rate_limit_type: "five_hour"`、`resets_at`）。S2 不必等到用完，平常就能知道目前這個 5 小時窗口什麼時候重置。`total_cost_usd` 每次都是非 0 的估計值（Haiku 約 US$0.0009），跟 U2 一致。
+- **桌機認證失敗的樣本**（補 token 之前）：`AssistantMessage.error = "authentication_failed"`；`ResultMessage` 的 `subtype = "success"`、`is_error = true`、`terminal_reason = "api_error"`；`result = "Failed to authenticate: OAuth session expired and could not be refreshed"`；model 是 `<synthetic>`。D5 的分類器依這個特徵歸為 `auth_error`。
+
 ### 還開著
 
 | # | 狀態 | 怎麼回答 |
 |---|---|---|
-| U1 | 開始累積原始資料 | 3 個 SDK 呼叫點（Nami、Robin merger、Sanji judge）和 `claude -p` 把原文寫進 logger `nakama.llm_lane`：事件 `sdk_rate_limit`、`sdk_assistant_error`、`sdk_result_error`、`sdk_exception`、`cli_result_error`、`cli_exit_error`；成功的 SDK 呼叫另有一行 `sdk_result_ok`（cost、token 數、實際 model id）。第一次真的用完額度時，從 log 取原文回填 |
-| U4 | 待量 | 部署後在 VPS 跑 `scripts/llm_lane_probe.py latency --model haiku --n 5` |
-| U6 | 待量 | 部署後在 VPS 跑 `scripts/llm_lane_probe.py openrouter-alias --model haiku`（桌機沒有 `OPENROUTER_API_KEY`，會 exit 2） |
-| U10 | 待量 | 部署後跑 `scripts/llm_lane_probe.py structured --model haiku` |
-| U5 | 待修修 | OpenRouter 後台 `data_collection: deny` |
-| U8 | 待修修 | Claude 訂閱的 usage credits / overage 設定 |
+| U1 | 累積中 | 3 個 SDK 呼叫點和 `claude -p` 會把原文寫進 logger `nakama.llm_lane`，事件包括 `sdk_rate_limit`、`sdk_assistant_error`、`sdk_result_error`、`sdk_exception`、`cli_result_error`、`cli_exit_error`。第一次真的用完額度時，從 log 取原文回填 |
+| U5 | 待修修 | OpenRouter 後台設 `data_collection: deny` |
 
 ### 實作 S0 時另外查到的（SDK 0.2.134 原始碼、CLI 2.1.226 binary）
 
 - **F15 的欄位在 `RateLimitEvent.rate_limit_info` 底下**，不是直接掛在 `RateLimitEvent` 上。`RateLimitInfo` 的欄位是 `status`、`resets_at`、`rate_limit_type`、`utilization`、`overage_status`、`overage_resets_at`、`overage_disabled_reason`、`raw`（`types.py:1281-1317`）。CLI 在 stdout 送出 `{"type":"rate_limit_event","rate_limit_info":{…camelCase…}}`，SDK 把它當一般 message 轉進 stream（`_internal/query.py:273-367` → `:951-960` → `_internal/client.py:227-230`），由 `_internal/message_parser.py:337-353` 轉成 `RateLimitEvent`。S2 的偵測要讀 `event.rate_limit_info.status`。
 - **error result 之後的例外文字**：SDK 的註解說 CLI 回報 `is_error` 的 result 後會故意以非 0 結束（`_internal/query.py:379-384`）。SDK 把接著來的 `ProcessError` 換成 `Exception("Claude Code returned an error result: <errors 用 ; 串起來，沒有就是 subtype>")`（`:349-355`、`:385-398`、`:957-958`）。
 - **`ClaudeAgentOptions(env=…)` 只能覆寫、不能刪除**：子進程 env 是 `{**os.environ, **options.env}`（`_internal/transport/subprocess_cli.py:791-797`）。D2 第 1 項要「拿掉」的變數，透過 `options.env` 只能設成空字串。
-- **CLI 2.1.226 的別名表還有 `per_provider`**：`opus` 的 `gateway` 欄是 `claude-opus-4-7`，`sonnet` 的 `gateway` 欄是 `claude-sonnet-4-6`（`llm_lane_probe.py aliases` 會印出整張表）。`ANTHROPIC_BASE_URL` 指向 OpenRouter 時，CLI 會不會把它當成 `gateway` provider、改用這一欄，由 U6 的實測回答。
+- **CLI 2.1.226 的別名表還有 `per_provider`**：`opus` 的 `gateway` 欄是 `claude-opus-4-7`，`sonnet` 的 `gateway` 欄是 `claude-sonnet-4-6`（`llm_lane_probe.py aliases` 會印出整張表）。`ANTHROPIC_BASE_URL` 指向 OpenRouter 時，CLI 會不會把它當成 `gateway` provider、改用這一欄，U6 實測結果：**沒有**，見上方「S0 probe 實測」。
