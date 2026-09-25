@@ -121,6 +121,18 @@ def _isolated_runtime_group(monkeypatch):
     monkeypatch.setattr(llm_context, "_runtime_group", llm_context.DEFAULT_RUNTIME_GROUP)
 
 
+@pytest.fixture(autouse=True)
+def _lane_authority_is_vps(monkeypatch):
+    """ADR-070 D5：``shared.llm_lane._is_lane_authority`` 依 ``sys.platform`` 判斷
+    （VPS Linux = 權威、Windows 桌機 = 唯讀）。測試預設模擬 VPS，讓結果不隨執行
+    平台改變（CI 是 Linux、修修的桌機是 Windows）；要測桌機行為的測試自己
+    ``monkeypatch.setattr(llm_lane, "_is_lane_authority", lambda: False)`` 覆寫。
+    """
+    from shared import llm_lane
+
+    monkeypatch.setattr(llm_lane, "_is_lane_authority", lambda: True)
+
+
 _LLM_FACADE_FUNCS = ("ask", "ask_multi", "ask_with_tools", "ask_with_audio")
 
 # caller-binding sweep 只掃 repo 自己的 top-level packages（全部
