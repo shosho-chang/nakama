@@ -17,11 +17,16 @@
 全部擋下（``blocked_family=None``）。``billing_error`` 沒有 ``rate_limit_type``，
 同樣全域擋下。
 
-**本模組只給 VPS-side 呼叫端寫入**（gateway / cron / bridge runtime group）；
-桌機（``shared.llm_context.get_runtime_group() == "desktop"``）不自己決定，
-改用 :func:`get_dispatch_state` 透過 Bridge 的 ``GET /api/llm-lane`` 讀快取
-（60 秒），讀不到就沿用最後一次讀到的值；再讀不到才退回「當作訂閱可用」的
-保守預設，因為桌機沒有本地的權威狀態可用。
+**本模組只給 lane 權威機器寫入。** 權威依「這台機器是不是 VPS」判斷
+（:func:`_is_lane_authority`），**不用 runtime group**：桌機上也會跑正式
+Bridge（``127.0.0.1:8000``，runtime group 同樣是 ``bridge``），runtime group
+分不出「桌機的 Bridge」和「VPS 的 Bridge」，會誤把桌機本機 DB 當權威
+（issue #1322）。非權威機器（桌機）不自己決定，改用 :func:`get_dispatch_state`
+透過 VPS Bridge 的 ``GET /api/llm-lane`` 讀快取（60 秒），讀不到就沿用最後一次
+讀到的值；再讀不到才退回「當作訂閱可用」的保守預設，因為桌機沒有本地的權威
+狀態可用。非權威機器呼叫任何寫入函式（``record_exhausted``、
+``record_openrouter_spend``、``switch_to_subscription``、``approve_batch``、
+``set_state``）一律 raise：桌機不得把本機 `state.db` 當成 lane 狀態寫入。
 """
 
 from __future__ import annotations
@@ -56,12 +61,35 @@ _MODEL_FAMILIES: tuple[str, ...] = ("opus", "sonnet", "haiku", "fable")
 
 _MAX_CAS_RETRIES = 5
 
-DEFAULT_API_BASE = "http://127.0.0.1:8000"
+DEFAULT_VPS_API_BASE = "https://nakama.shosho.tw"
 _REMOTE_CACHE_TTL_S = 60.0
 
 
 class LaneCasConflict(RuntimeError):
     """CAS 更新連續衝突超過重試上限（極端併發下才會發生，正常操作不會踩到）。"""
+
+
+class LaneAuthorityError(RuntimeError):
+    """非權威機器（桌機）呼叫了寫入函式：桌機不得把本機 ``state.db`` 當成 lane 狀態。"""
+
+
+def _is_lane_authority() -> bool:
+    """這台機器是不是 lane 狀態的權威來源。
+
+    用作業系統判斷，**不用 runtime group**：VPS 是 Linux，桌機是 Windows；
+    桌機上也會跑正式 Bridge（``127.0.0.1:8000``，runtime group 同樣是
+    ``bridge``），runtime group 分不出「桌機的 Bridge」和「VPS 的 Bridge」，
+    只有機器本身的平台才穩定分得出來（issue #1322）。
+    """
+    return sys.platform != "win32"
+
+
+def _require_authority(fn_name: str) -> None:
+    if not _is_lane_authority():
+        raise LaneAuthorityError(
+            f"llm_lane.{fn_name}：這台機器不是 lane 狀態權威（VPS），"
+            "不能把本機 state.db 當成 lane 狀態寫入"
+        )
 
 
 def today_taipei() -> str:
@@ -280,6 +308,7 @@ def record_exhausted(
     上限已經用完 → 停在 ``exhausted``。``batch`` 一律停在 ``exhausted``，
     等重置或修修在 Bridge 核准（:func:`approve_batch`）。
     """
+    _require_authority("record_exhausted")
     _check_call_class(call_class)
     family = family_from_rate_limit_type(rate_limit_type)
     day = today_taipei()
@@ -341,6 +370,7 @@ def record_openrouter_spend(call_class: str, *, cost_usd: float) -> LlmLaneState
     ``interactive`` 按台北日累計（換日重新從 0 開始）；``batch`` 按每次核准累計
     （下一次 :func:`approve_batch` 才重新歸零）。
     """
+    _require_authority("record_openrouter_spend")
     _check_call_class(call_class)
     day = today_taipei()
     prefix = call_class
@@ -377,6 +407,7 @@ def record_openrouter_spend(call_class: str, *, cost_usd: float) -> LlmLaneState
 
 def switch_to_subscription(call_class: str) -> LlmLaneState:
     """切回訂閱（探針成功，或修修在 Bridge / CLI 手動按「等重置」）。"""
+    _require_authority("switch_to_subscription")
     _check_call_class(call_class)
     prefix = call_class
 
@@ -405,6 +436,7 @@ def approve_batch(*, cap_usd: float = BATCH_DEFAULT_APPROVAL_CAP_USD) -> LlmLane
 
     不發通知：這是修修自己按下去的操作，不需要再 DM 通知他自己。
     """
+    _require_authority("approve_batch")
     if isinstance(cap_usd, bool) or not isinstance(cap_usd, (int, float)) or cap_usd <= 0:
         raise ValueError(f"cap_usd 必須是正數，收到 {cap_usd!r}")
 
@@ -430,6 +462,7 @@ def set_state(
     cap_usd: float | None = None,
 ) -> LlmLaneState:
     """手動覆寫（CLI ``set`` / 回滾用）：直接把某一類設成任意合法狀態。"""
+    _require_authority("set_state")
     _check_call_class(call_class)
     if status not in STATUSES:
         raise ValueError(f"status 必須是 {sorted(STATUSES)} 之一，收到 {status!r}")
@@ -490,21 +523,22 @@ def _state_from_json(data: dict[str, Any]) -> LlmLaneState:
 
 
 def _fetch_remote_state() -> LlmLaneState:
-    api_base = os.environ.get("NAKAMA_API_BASE", DEFAULT_API_BASE).rstrip("/")
-    api_key = os.environ.get("WEB_SECRET")
-    headers = {"X-Robin-Key": api_key} if api_key else {}
+    api_base = os.environ.get("NAKAMA_VPS_API_BASE", DEFAULT_VPS_API_BASE).rstrip("/")
+    api_key = os.environ.get("NAKAMA_VPS_API_KEY")
+    if not api_key:
+        raise RuntimeError("NAKAMA_VPS_API_KEY 未設置，讀不到 VPS 的 lane 狀態")
+    headers = {"X-Robin-Key": api_key}
     data = _http_get(f"{api_base}/api/llm-lane", headers)
     return _state_from_json(data)
 
 
 def get_dispatch_state() -> LlmLaneState:
-    """``run_text`` dispatch 用的讀取入口：VPS-side 直接讀本機 DB；桌機改讀
-    Bridge 的快取（60 秒），讀不到沿用上一次讀到的值，完全沒有快取時保守當作
-    「訂閱可用」（:func:`_default_state`），不誤把桌機自己的本機 DB 當成權威來源。
+    """``run_text`` dispatch 用的讀取入口：權威機器（VPS）直接讀本機 DB；非權威
+    機器（桌機）改讀 VPS Bridge 的快取（60 秒），讀不到沿用上一次讀到的值，完全
+    沒有快取時保守當作「訂閱可用」（:func:`_default_state`），不誤把桌機自己的
+    本機 DB 當成權威來源。
     """
-    from shared.llm_context import get_runtime_group  # noqa: PLC0415
-
-    if get_runtime_group() != "desktop":
+    if _is_lane_authority():
         return get_state()
 
     now = time.monotonic()
@@ -591,6 +625,7 @@ __all__ = [
     "INTERACTIVE_DAILY_CAP_USD",
     "STATUSES",
     "ClassLaneState",
+    "LaneAuthorityError",
     "LaneCasConflict",
     "LlmLaneState",
     "approve_batch",

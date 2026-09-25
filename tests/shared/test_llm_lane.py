@@ -288,20 +288,16 @@ def _reset_remote_cache():
 
 
 def _as_desktop(monkeypatch):
-    from shared import llm_context
-
-    monkeypatch.setattr(llm_context, "_runtime_group", "desktop")
+    monkeypatch.setattr(llm_lane, "_is_lane_authority", lambda: False)
 
 
-def _as_bridge(monkeypatch):
-    from shared import llm_context
-
-    monkeypatch.setattr(llm_context, "_runtime_group", "bridge")
+def _as_authority(monkeypatch):
+    monkeypatch.setattr(llm_lane, "_is_lane_authority", lambda: True)
 
 
-def test_dispatch_state_non_desktop_reads_local(monkeypatch):
-    """非桌機（gateway/cron/bridge）：get_dispatch_state 就是本機 get_state，不打網路。"""
-    _as_bridge(monkeypatch)
+def test_dispatch_state_authority_reads_local(monkeypatch):
+    """權威機器（VPS）：get_dispatch_state 就是本機 get_state，不打網路。"""
+    _as_authority(monkeypatch)
     llm_lane.record_exhausted("batch", model="opus", rate_limit_type="seven_day_opus", resets_at=1)
 
     def _boom(*a, **k):
@@ -314,6 +310,7 @@ def test_dispatch_state_non_desktop_reads_local(monkeypatch):
 
 def test_dispatch_state_desktop_fetches_and_caches(monkeypatch):
     _as_desktop(monkeypatch)
+    monkeypatch.setenv("NAKAMA_VPS_API_KEY", "key")
     calls = {"n": 0}
 
     def _fake_get(url, headers):
@@ -335,6 +332,7 @@ def test_dispatch_state_desktop_fetches_and_caches(monkeypatch):
 
 def test_dispatch_state_desktop_falls_back_to_last_cached_value(monkeypatch):
     _as_desktop(monkeypatch)
+    monkeypatch.setenv("NAKAMA_VPS_API_KEY", "key")
     good = {
         "version": 1,
         "updated_at": "x",
@@ -359,6 +357,7 @@ def test_dispatch_state_desktop_falls_back_to_last_cached_value(monkeypatch):
 
 def test_dispatch_state_desktop_no_cache_and_network_down_assumes_subscription(monkeypatch):
     _as_desktop(monkeypatch)
+    monkeypatch.setenv("NAKAMA_VPS_API_KEY", "key")
 
     def _always_fail(url, headers):
         raise ConnectionError("network down")
@@ -371,8 +370,8 @@ def test_dispatch_state_desktop_no_cache_and_network_down_assumes_subscription(m
 
 def test_dispatch_state_desktop_sends_api_key_header(monkeypatch):
     _as_desktop(monkeypatch)
-    monkeypatch.setenv("WEB_SECRET", "s3cr3t")
-    monkeypatch.setenv("NAKAMA_API_BASE", "https://nakama.example")
+    monkeypatch.setenv("NAKAMA_VPS_API_KEY", "s3cr3t")
+    monkeypatch.setenv("NAKAMA_VPS_API_BASE", "https://nakama.example")
     seen = {}
 
     def _fake_get(url, headers):
@@ -389,6 +388,77 @@ def test_dispatch_state_desktop_sends_api_key_header(monkeypatch):
     llm_lane.get_dispatch_state()
     assert seen["url"] == "https://nakama.example/api/llm-lane"
     assert seen["headers"] == {"X-Robin-Key": "s3cr3t"}
+
+
+def test_fetch_remote_state_defaults_to_https_vps_base(monkeypatch):
+    monkeypatch.delenv("NAKAMA_VPS_API_BASE", raising=False)
+    monkeypatch.setenv("NAKAMA_VPS_API_KEY", "key")
+    seen = {}
+
+    def _fake_get(url, headers):
+        seen["url"] = url
+        return {
+            "version": 0,
+            "updated_at": "x",
+            "interactive": {"status": "subscription", "spend_usd": 0.0},
+            "batch": {"status": "subscription", "spend_usd": 0.0},
+        }
+
+    monkeypatch.setattr(llm_lane, "_http_get", _fake_get)
+    llm_lane._fetch_remote_state()
+    assert seen["url"] == "https://nakama.shosho.tw/api/llm-lane"
+
+
+def test_fetch_remote_state_without_key_raises(monkeypatch):
+    monkeypatch.delenv("NAKAMA_VPS_API_KEY", raising=False)
+    with pytest.raises(RuntimeError, match="NAKAMA_VPS_API_KEY"):
+        llm_lane._fetch_remote_state()
+
+
+def test_dispatch_state_desktop_without_key_falls_back_to_cache(monkeypatch):
+    """沒設 ``NAKAMA_VPS_API_KEY``：走 fallback（有快取用快取、沒快取當作訂閱可用），
+    不會讓呼叫端炸掉。"""
+    _as_desktop(monkeypatch)
+    monkeypatch.delenv("NAKAMA_VPS_API_KEY", raising=False)
+
+    s = llm_lane.get_dispatch_state()
+    assert s.interactive.status == "subscription"
+    assert s.batch.status == "subscription"
+
+
+# ── 非權威機器呼叫寫入函式 → raise ──────────────────────────────────────
+
+
+def test_non_authority_record_exhausted_raises(monkeypatch):
+    _as_desktop(monkeypatch)
+    with pytest.raises(llm_lane.LaneAuthorityError):
+        llm_lane.record_exhausted(
+            "batch", model="opus", rate_limit_type="seven_day_opus", resets_at=1
+        )
+
+
+def test_non_authority_record_openrouter_spend_raises(monkeypatch):
+    _as_desktop(monkeypatch)
+    with pytest.raises(llm_lane.LaneAuthorityError):
+        llm_lane.record_openrouter_spend("batch", cost_usd=1.0)
+
+
+def test_non_authority_switch_to_subscription_raises(monkeypatch):
+    _as_desktop(monkeypatch)
+    with pytest.raises(llm_lane.LaneAuthorityError):
+        llm_lane.switch_to_subscription("batch")
+
+
+def test_non_authority_approve_batch_raises(monkeypatch):
+    _as_desktop(monkeypatch)
+    with pytest.raises(llm_lane.LaneAuthorityError):
+        llm_lane.approve_batch(cap_usd=20.0)
+
+
+def test_non_authority_set_state_raises(monkeypatch):
+    _as_desktop(monkeypatch)
+    with pytest.raises(llm_lane.LaneAuthorityError):
+        llm_lane.set_state("batch", status="subscription")
 
 
 # ── CLI ─────────────────────────────────────────────────────────────────

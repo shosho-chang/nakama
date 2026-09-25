@@ -46,14 +46,19 @@ S1（ADR-070 D2 八項職責、D3）：本模組成為 **L1（Claude 訂閱）�
 - D2-8 async：目前 thread 已有 event loop 在跑時，改在專用 worker thread 執行
   （帶 context），絕不在 loop 裡 ``asyncio.run``。
 
-S2a（issue #1321，D5 後端）：:func:`run_text` 呼叫前先看 ``shared.llm_lane`` 的
-lane 狀態（``_dispatch_and_run``）——已經被擋的 family 直接 fail-fast 或改走
-OpenRouter；剛好這次呼叫才踩到額度上限的，抓到 :class:`SubscriptionExhausted`
-後記一筆狀態轉換，``interactive`` 在當日上限內就地自動改道重試一次。桌機
-（``shared.llm_context.get_runtime_group() == "desktop"``）不參與這條機制，行為
-與 S1 完全相同——lane 狀態的唯一真相在 VPS，見 ``shared/llm_lane.py`` 模組
-docstring。``L1_CUTOVER_GROUPS`` 仍是空集合，本模組依然沒有任何 production
-呼叫點，所以這個分派邏輯目前是死碼路徑（zero 行為改變）。
+S2a（issue #1321/#1322，D5 後端）：:func:`run_text` 呼叫前先看 lane 狀態
+（``_dispatch_and_run``）。權威機器（VPS，``shared.llm_lane._is_lane_authority()``）
+上：已經被擋的 family 直接 fail-fast 或改走 OpenRouter；剛好這次呼叫才踩到
+額度上限的，抓到 :class:`SubscriptionExhausted` 後記一筆狀態轉換，
+``interactive`` 在當日上限內就地自動改道重試一次。非權威機器（桌機）上：
+只用 ``llm_lane.get_dispatch_state()`` 唯讀查詢這次呼叫是否被擋，被擋就直接
+丟出 :class:`SubscriptionExhausted`——**桌機一律不改走 OpenRouter**，因為它的
+花費記不進 VPS 的上限累計；沒被擋就照常走訂閱；呼叫本身丟出
+:class:`SubscriptionExhausted` 時原樣往上丟、不寫任何狀態（VPS 自己的呼叫會
+偵測到同一次額度用完），只記 warning。authority 判斷**不用 runtime group**，
+見 ``shared/llm_lane.py`` 模組 docstring。``L1_CUTOVER_GROUPS`` 仍是空集合，
+本模組依然沒有任何 production 呼叫點，所以這個分派邏輯目前是死碼路徑
+（zero 行為改變）。
 """
 
 from __future__ import annotations
@@ -996,28 +1001,50 @@ def _dispatch_and_run(
     timeout_s: float,
     call_class: str,
 ) -> Any:
-    """D5 狀態機的分派入口：桌機不參與（唯一真相在 VPS，見 ``shared.llm_lane`` 模組
-    docstring），照舊直接走訂閱；VPS-side（gateway/cron/bridge）先看 lane 狀態，
+    """D5 狀態機的分派入口。權威機器（VPS）先看本機 ``state.db`` 的 lane 狀態，
     已經被擋的 family 直接 fail-fast 或改走 OpenRouter，不浪費一次注定失敗的 SDK
     呼叫；剛好在這次呼叫才踩到額度上限的，抓到 :class:`SubscriptionExhausted`
-    後記一筆狀態轉換，``interactive`` 當日上限內就地自動改道重試一次。
+    後記一筆狀態轉換，``interactive`` 當日上限內就地自動改道重試一次。非權威機器
+    （桌機）唯讀查詢 VPS 狀態，被擋就 fail-fast（不改走 OpenRouter），沒被擋就照常
+    走訂閱；呼叫本身踩到額度用完時原樣往上丟、不寫任何狀態。唯一真相在 VPS，見
+    ``shared.llm_lane`` 模組 docstring。
     """
-    from shared.llm_context import get_runtime_group  # noqa: PLC0415
-
-    if get_runtime_group() == "desktop":
-        return _run_text_blocking(
-            prompt,
-            system=system,
-            model=model,
-            output_schema=output_schema,
-            max_output_tokens=max_output_tokens,
-            timeout_s=timeout_s,
-            call_class=call_class,
-        )
-
     from shared import llm_lane  # noqa: PLC0415
 
     family = llm_lane.model_family(model)
+
+    if not llm_lane._is_lane_authority():  # noqa: SLF001
+        cls = llm_lane.get_dispatch_state().for_class(call_class)
+        if cls.blocks(family):
+            raise SubscriptionExhausted(
+                f"L1 訂閱額度用完，{call_class} 目前擋下（model={model}、"
+                f"rate_limit_type={cls.rate_limit_type}）；桌機不改走 OpenRouter",
+                details={
+                    "rate_limit_type": cls.rate_limit_type,
+                    "resets_at": cls.resets_at,
+                    "lane_status": cls.status,
+                },
+            )
+        try:
+            return _run_text_blocking(
+                prompt,
+                system=system,
+                model=model,
+                output_schema=output_schema,
+                max_output_tokens=max_output_tokens,
+                timeout_s=timeout_s,
+                call_class=call_class,
+            )
+        except SubscriptionExhausted as exc:
+            _lane_logger().warning(
+                "llm_lane %s exhausted on non-authority machine (model=%s "
+                "rate_limit_type=%s); not writing state, VPS-side calls will detect it",
+                call_class,
+                model,
+                exc.rate_limit_type,
+            )
+            raise
+
     lane_state = llm_lane.get_state()
     cls = lane_state.for_class(call_class)
 
