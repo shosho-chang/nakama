@@ -1,0 +1,28 @@
+# ADR-070 D10 / S7（修修 2026-09-25 裁決：改用 Dependabot，不自己寫升級機器人）
+#
+# 只盯 claude-agent-sdk：「opus / sonnet / haiku 解析成哪一版」取決於 SDK 內附的
+# Claude Code CLI，SDK 保持最新 = 別名自動跟上最新 model，不必維護對照表。
+#
+# - Dependabot 開的 PR 會正常觸發 CI（自寫的 GITHUB_TOKEN 機器人開的 PR 不會），
+#   所以不需要 personal access token。
+# - 排在週日凌晨 03:00（台北）：main 在這個時段幾乎沒有合併，CI（約 70 分鐘）跑完
+#   就能直接合併；萬一 main 動了、PR 落後卡住，下週排程時 Dependabot 會自己 rebase。
+# - 自動合併與別名對照表留言：.github/workflows/dependabot-sdk.yml
+# - VPS 部署提醒：Franky（見 issue #1313）
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "sunday"
+      time: "03:00"
+      timezone: "Asia/Taipei"
+    allow:
+      - dependency-name: "claude-agent-sdk"
+    open-pull-requests-limit: 1
+    # PR 標題 = "chore(deps): bump claude-agent-sdk from X to Y"，符合
+    # .github/scripts/lint_commit_title.py 的 conventional commit 規則
+    commit-message:
+      prefix: "chore"
+      include: "scope"
