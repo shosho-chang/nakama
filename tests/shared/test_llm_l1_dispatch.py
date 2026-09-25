@@ -212,12 +212,23 @@ def test_l1_errors_propagate_unchanged(cutover):
 
 
 def test_no_production_code_calls_run_text_directly():
-    """``L1_CUTOVER_GROUPS`` 為空時唯一的入口是 facade；S1 不新增其他 production 呼叫點。"""
+    """``L1_CUTOVER_GROUPS`` 為空時唯一的入口是 facade；不新增其他 production 呼叫點。
+
+    只抓實際的呼叫（``run_text(``），docstring 提到名字不算。唯一的例外是 Franky 的
+    llm_lane 復原探針：它必須繞過 lane 分派直接試訂閱，只准用專用的
+    ``run_text_probe_subscription``（ADR-070 D5，S2a）。
+    """
+    import re
+
     repo = Path(__file__).resolve().parents[2]
-    callers = []
+    callers, probe_callers = [], []
     for top in ("agents", "gateway", "scripts", "shared", "thousand_sunny"):
         for path in (repo / top).rglob("*.py"):
             text = path.read_text(encoding="utf-8", errors="replace")
-            if "run_text" in text:
-                callers.append(path.relative_to(repo).as_posix())
+            rel = path.relative_to(repo).as_posix()
+            if re.search(r"\brun_text\(", text):
+                callers.append(rel)
+            if re.search(r"\brun_text_probe_subscription\(", text):
+                probe_callers.append(rel)
     assert sorted(callers) == ["shared/agent_sdk.py", "shared/llm.py"]
+    assert sorted(probe_callers) == ["agents/franky/health_check.py", "shared/agent_sdk.py"]

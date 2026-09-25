@@ -56,6 +56,7 @@ from thousand_sunny.routers import (  # noqa: E402
     highlight_review,
     inventory,
     kb_review,
+    llm_lane,
     packaging,
     progress,
     promotion_review,
@@ -147,6 +148,7 @@ app.include_router(bridge.router)
 app.include_router(bridge.page_router)
 app.include_router(bridge_digests.page_router)
 app.include_router(bridge_models.router)
+app.include_router(llm_lane.router)
 app.include_router(bridge_projects.page_router)
 app.include_router(packaging.page_router)
 app.include_router(highlight_review.page_router)

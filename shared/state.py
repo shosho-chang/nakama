@@ -581,6 +581,29 @@ def _init_tables(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS idx_llm_l1_leases_expires
             ON llm_l1_leases(expires_at);
+
+        -- ADR-070 D5（S2a）：訂閱額度用完的狀態機，單列全域狀態（id=1），
+        -- interactive / batch 各自一份欄位。Canonical DDL: migrations/021_llm_lane.sql。
+        -- version 是樂觀鎖 CAS 用的欄位（見 shared/llm_lane.py::_cas_update）。
+        CREATE TABLE IF NOT EXISTS llm_lane_state (
+            id                          INTEGER PRIMARY KEY CHECK (id = 1),
+            version                     INTEGER NOT NULL DEFAULT 0,
+            updated_at                  TEXT NOT NULL,
+            interactive_status          TEXT NOT NULL DEFAULT 'subscription',
+            interactive_blocked_family  TEXT,
+            interactive_rate_limit_type TEXT,
+            interactive_resets_at       INTEGER,
+            interactive_spend_usd       REAL NOT NULL DEFAULT 0,
+            interactive_spend_day       TEXT,
+            interactive_switched_at     TEXT,
+            batch_status                TEXT NOT NULL DEFAULT 'subscription',
+            batch_blocked_family        TEXT,
+            batch_rate_limit_type       TEXT,
+            batch_resets_at             INTEGER,
+            batch_spend_usd             REAL NOT NULL DEFAULT 0,
+            batch_cap_usd               REAL,
+            batch_switched_at           TEXT
+        );
     """)
 
     # Migration: api_calls 曾經沒有 cache token 欄位（Phase 4 前）。

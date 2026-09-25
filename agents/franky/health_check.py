@@ -722,6 +722,141 @@ def probe_gmail(now: datetime | None = None) -> HealthProbeV1:
         )
 
 
+# ---------------------------------------------------------------------------
+# ADR-070 D5（S2a，issue #1321）：llm_lane 復原探針 + OpenRouter 每日 canary
+# ---------------------------------------------------------------------------
+
+LLM_LANE_PROBE_INTERVAL_S: float = 30 * 60  # 沒有 resets_at 時的探測間隔
+LLM_LANE_OBSERVATION_WINDOW_S: float = 60 * 60  # 切回訂閱後的觀察期
+LLM_LANE_OPENROUTER_CANARY_INTERVAL_S: float = 24 * 60 * 60
+
+
+def _llm_lane_last_check_at(target: str) -> datetime | None:
+    prev = _get_probe_state(target)
+    if not prev or not prev.get("last_check_at"):
+        return None
+    return datetime.fromisoformat(prev["last_check_at"])
+
+
+def _llm_lane_due(cls_state: Any, *, target: str, now: datetime) -> bool:
+    if cls_state.resets_at is not None:
+        return now.timestamp() >= cls_state.resets_at
+    last = _llm_lane_last_check_at(target)
+    if last is None:
+        return True
+    return (now - last).total_seconds() >= LLM_LANE_PROBE_INTERVAL_S
+
+
+def _llm_lane_in_observation_window(cls_state: Any, *, now: datetime) -> bool:
+    """切回訂閱後 60 分鐘內：這段時間內如果又失敗，不再自動重探，只留 DM
+    （``shared.llm_lane.record_exhausted`` 已經在失敗當下發過那則 DM）。
+    """
+    if not cls_state.switched_at:
+        return False
+    switched = datetime.fromisoformat(cls_state.switched_at)
+    return (now - switched).total_seconds() < LLM_LANE_OBSERVATION_WINDOW_S
+
+
+def _probe_llm_lane_class(call_class: str, *, now: datetime) -> HealthProbeV1 | None:
+    """探一個呼叫類別「訂閱好了沒」；回 ``None`` 代表這個 tick 什麼都不用做
+    （沒被擋、還沒到探測時機，或在切回後的觀察期內）。
+
+    成功就直接呼叫 :func:`shared.llm_lane.switch_to_subscription`（全系統只有
+    這一個 owner，見 ADR-070 §D5）；失敗是預期中的常態（還沒恢復），不再另外
+    發通知 —— 用完當下的通知已經由 ``llm_lane`` 自己發過。
+    """
+    from shared import llm_lane
+    from shared.agent_sdk import run_text_probe_subscription
+
+    target = f"llm_lane_{call_class}"
+    cls_state = llm_lane.get_state().for_class(call_class)
+    if cls_state.status == "subscription":
+        return None
+    if _llm_lane_in_observation_window(cls_state, now=now):
+        return None
+    if not _llm_lane_due(cls_state, target=target, now=now):
+        return None
+
+    started = time.monotonic()
+    model = cls_state.blocked_family or "sonnet"
+    try:
+        run_text_probe_subscription(
+            "Reply with exactly one word: ok", model=model, timeout_s=30.0, call_class=call_class
+        )
+    except Exception as exc:  # noqa: BLE001 — 還沒恢復是預期結果，不能讓 cron 掛掉
+        probe = HealthProbeV1(
+            target=target,  # type: ignore[arg-type]
+            status="fail",
+            checked_at=now,
+            latency_ms=int((time.monotonic() - started) * 1000),
+            error=f"{type(exc).__name__}: {exc}"[:200],
+        )
+        _upsert_probe_state(probe, consecutive_fails=0)  # 只借欄位記 last_check_at，不走 3-fail
+        return probe
+
+    llm_lane.switch_to_subscription(call_class)
+    probe = HealthProbeV1(
+        target=target,  # type: ignore[arg-type]
+        status="ok",
+        checked_at=now,
+        latency_ms=int((time.monotonic() - started) * 1000),
+        detail={"switched_back_from": cls_state.status},
+    )
+    _upsert_probe_state(probe, consecutive_fails=0)
+    return probe
+
+
+def probe_llm_lane_openrouter_canary(now: datetime | None = None) -> HealthProbeV1 | None:
+    """每天一次，用 OpenRouter 打一次最小的 Haiku 呼叫，確認備援路徑沒壞（ADR-070 D5）。
+
+    不影響 lane 狀態機 —— 只是健康檢查；回 ``None`` 代表今天已經跑過了。
+    """
+    now = now or _now()
+    target = "llm_lane_openrouter_canary"
+    last = _llm_lane_last_check_at(target)
+    if last is not None and (now - last).total_seconds() < LLM_LANE_OPENROUTER_CANARY_INTERVAL_S:
+        return None
+
+    started = time.monotonic()
+    try:
+        from shared.openrouter_client import ask_openrouter
+
+        ask_openrouter("Reply with exactly one word: ok", model="claude-haiku-4-5", max_tokens=16)
+    except Exception as exc:  # noqa: BLE001 — probe must never raise
+        probe = HealthProbeV1(
+            target=target,  # type: ignore[arg-type]
+            status="fail",
+            checked_at=now,
+            latency_ms=int((time.monotonic() - started) * 1000),
+            error=f"{type(exc).__name__}: {exc}"[:200],
+        )
+        _upsert_probe_state(probe, consecutive_fails=0)
+        return probe
+
+    probe = HealthProbeV1(
+        target=target,  # type: ignore[arg-type]
+        status="ok",
+        checked_at=now,
+        latency_ms=int((time.monotonic() - started) * 1000),
+    )
+    _upsert_probe_state(probe, consecutive_fails=0)
+    return probe
+
+
+def probe_llm_lane_recovery(now: datetime | None = None) -> list[HealthProbeV1]:
+    """ADR-070 D5：兩個呼叫類別的復原探針 + OpenRouter 每日 canary。全系統只有這一個 owner。"""
+    now = now or _now()
+    results: list[HealthProbeV1] = []
+    for call_class in ("interactive", "batch"):
+        r = _probe_llm_lane_class(call_class, now=now)
+        if r is not None:
+            results.append(r)
+    canary = probe_llm_lane_openrouter_canary(now=now)
+    if canary is not None:
+        results.append(canary)
+    return results
+
+
 def probe_cron_freshness(
     now: datetime | None = None,
 ) -> tuple[HealthProbeV1, list[AlertV1]]:
@@ -968,7 +1103,13 @@ def run_once(
         if a is not None:
             alerts.append(a)
 
-    # 7. SDK 部署落後 + model 落後（ADR-070 D10 / S7b）— 自己 gate 成每週一次，
+    # 7. ADR-070 D5：llm_lane 復原探針 + OpenRouter 每日 canary（S2a，issue #1321）。
+    # 不走 _record_and_maybe_alert 的 3-fail 告警機制：這裡的「fail」代表「還沒恢復」，
+    # 是預期中的常態，通知已經由 shared.llm_lane 自己在狀態轉換時發過（exhausted /
+    # 切回訂閱 / 上限用完）；Franky 只負責觸發探測、把結果放進 dashboard。
+    probes.extend(probe_llm_lane_recovery(now=now))
+
+    # 8. SDK 部署落後 + model 落後（ADR-070 D10 / S7b）— 自己 gate 成每週一次，
     # 用 shared.alerts.alert 直接 DM，不走這裡的 AlertV1 / alert_sink pipeline。
     from agents.franky.sdk_freshness import check_model_freshness, check_sdk_deploy_lag
 

@@ -40,6 +40,10 @@ ProbeTarget = Literal[
     "gsc",
     "slack",
     "gmail",
+    # ADR-070 D5（S2a，issue #1321）：lane 復原探針 + OpenRouter 每日 canary。
+    "llm_lane_interactive",
+    "llm_lane_batch",
+    "llm_lane_openrouter_canary",
     "sdk_deploy_lag",
     "model_freshness",
 ]

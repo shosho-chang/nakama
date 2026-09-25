@@ -132,6 +132,29 @@ def test_resolves_model_via_router_default(monkeypatch, _fake_response):
     )
 
 
+def test_ask_openrouter_accepts_arbitrary_unmapped_slug(monkeypatch, _fake_response):
+    """ADR-070 D6（issue #1311）：不在 _SLUG_MAP 白名單的 vendor/model slug 也能
+    直接打成功，並記到實際 cost——L2 可以自由指定 OpenRouter 上任何 model。
+    """
+    monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
+    import shared.openrouter_client as orc
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = _fake_response(cost=0.033)
+    recorded = {}
+
+    with (
+        patch.object(orc, "get_client", return_value=fake_client),
+        patch("shared.state.record_api_call", lambda **k: recorded.update(k)),
+    ):
+        out = orc.ask_openrouter("hi", model="mistralai/mistral-large")
+
+    assert out == "hello from openrouter"
+    call_kwargs = fake_client.chat.completions.create.call_args.kwargs
+    assert call_kwargs["model"] == "mistralai/mistral-large"  # 原樣送出，沒查白名單
+    assert recorded["cost_usd"] == pytest.approx(0.033)
+
+
 def test_grok_model_raises_before_network(monkeypatch):
     """grok-* 在送網路前就 raise（slug 翻譯即 fail-fast guard），xAI 留原生。"""
     monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
@@ -226,6 +249,69 @@ def test_records_actual_cost_usd_to_record_call(monkeypatch, _fake_response):
         orc.ask_openrouter("hi", model="claude-sonnet-4-6")
 
     assert recorded["cost_usd"] == pytest.approx(0.0789)
+
+
+def test_records_lane_actual_openrouter(monkeypatch, _fake_response):
+    """ADR-070 D2 第 6 項：L2 路徑的 api_calls row 要標 lane_actual=openrouter。"""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
+    import shared.openrouter_client as orc
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = _fake_response()
+    recorded = {}
+
+    with (
+        patch.object(orc, "get_client", return_value=fake_client),
+        patch("shared.state.record_api_call", lambda **k: recorded.update(k)),
+    ):
+        orc.ask_openrouter("hi", model="claude-sonnet-4-6")
+
+    assert recorded["lane_actual"] == "openrouter"
+
+
+def test_on_cost_callback_receives_actual_cost(monkeypatch, _fake_response):
+    """ADR-070 D5：呼叫端（shared.llm_lane）靠 on_cost 拿到這次的實際花費。"""
+    monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
+    import shared.openrouter_client as orc
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = _fake_response(cost=0.042)
+    seen = []
+
+    with patch.object(orc, "get_client", return_value=fake_client):
+        orc.ask_openrouter("hi", model="claude-sonnet-4-6", on_cost=seen.append)
+
+    assert seen == [0.042]
+
+
+def test_on_cost_callback_receives_none_when_cost_unavailable(monkeypatch, _fake_response):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
+    import shared.openrouter_client as orc
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = _fake_response(cost=None)
+    seen = []
+
+    with patch.object(orc, "get_client", return_value=fake_client):
+        orc.ask_openrouter("hi", model="claude-sonnet-4-6", on_cost=seen.append)
+
+    assert seen == [None]
+
+
+def test_on_cost_callback_failure_does_not_break_main_flow(monkeypatch, _fake_response):
+    monkeypatch.setenv("OPENROUTER_API_KEY", "fake-key")
+    import shared.openrouter_client as orc
+
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = _fake_response()
+
+    def _boom(_cost):
+        raise RuntimeError("boom")
+
+    with patch.object(orc, "get_client", return_value=fake_client):
+        out = orc.ask_openrouter("hi", model="claude-sonnet-4-6", on_cost=_boom)
+
+    assert out == "hello from openrouter"
 
 
 def test_records_none_cost_when_openrouter_omits_cost(monkeypatch, _fake_response):
