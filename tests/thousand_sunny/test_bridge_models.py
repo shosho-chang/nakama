@@ -170,11 +170,12 @@ def test_transport_for_claude_in_cutover_is_subscription(monkeypatch):
     from shared import llm
     from thousand_sunny.routers import bridge_models as bm
 
+    monkeypatch.delenv("LLM_TRANSPORT", raising=False)
     monkeypatch.setattr(llm, "L1_CUTOVER_GROUPS", frozenset({"gateway", "cron"}))
     site = _row("claude-sonnet-4-6", "anthropic", agent="nami")
-    assert bm._transport_for(site) == "subscription"
-    # 只切了部分 group：標出是哪幾個
-    assert bm._transport_label(site, "subscription") == "subscription (L1 · cron / gateway)"
+    # 只切了部分 group：這一列仍是舊路徑（面板不知道它在哪種 process 跑），附註已切的 group
+    assert bm._transport_for(site) == "native"
+    assert bm._transport_label(site, "native") == "native · cron / gateway 程序走 L1"
     # 非 Claude model 不受 L1 影響
     gemini = _row("gemini-2.5-pro", "google")
     monkeypatch.delenv("LLM_TRANSPORT", raising=False)
@@ -183,6 +184,7 @@ def test_transport_for_claude_in_cutover_is_subscription(monkeypatch):
     monkeypatch.setattr(
         llm, "L1_CUTOVER_GROUPS", frozenset({"gateway", "cron", "bridge", "desktop"})
     )
+    assert bm._transport_for(site) == "subscription"
     assert bm._transport_label(site, "subscription") == "subscription (L1)"
 
 
@@ -194,8 +196,16 @@ def test_get_page_shows_l1_chip_when_cut_over(client, monkeypatch):
     c, _ = client
     resp = c.get("/bridge/models")
     assert resp.status_code == 200
+    # 部分切換：不能整列標成訂閱（Robin 等在 cron / Bridge 跑的列仍走舊路徑）
+    assert "mdl-trans--subscription" not in resp.text
+    assert "native · gateway 程序走 L1" in resp.text
+
+    monkeypatch.setattr(
+        llm, "L1_CUTOVER_GROUPS", frozenset({"gateway", "cron", "bridge", "desktop"})
+    )
+    resp = c.get("/bridge/models")
     assert "mdl-trans--subscription" in resp.text
-    assert "subscription (L1 · gateway)" in resp.text
+    assert "subscription (L1)" in resp.text
 
 
 def test_get_page_without_cutover_has_no_l1_chip(client, monkeypatch):

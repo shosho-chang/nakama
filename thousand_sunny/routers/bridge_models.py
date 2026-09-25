@@ -52,8 +52,10 @@ def _transport_for(site: dict) -> str:
     回 ``"subscription"``（L1）、``"openrouter"`` 或 ``"native"``。先套 ADR-070 D1：
 
     - ``vendor/model`` slug → ``openrouter``（L2）
-    - Claude 別名 / ``claude-*``，且 ``shared.llm.L1_CUTOVER_GROUPS`` 不是空的 →
-      ``subscription``（L1；只切了部分 runtime group 時，標籤會寫出是哪幾個）
+    - Claude 別名 / ``claude-*``，且**所有** runtime group 都已切到 L1 →
+      ``subscription``。只切了部分 group 時（S1a–d 過渡期）仍回舊路徑的 transport：
+      面板不知道這一列實際在哪種 process 執行，不能整列標成訂閱；已切的 group
+      由 :func:`_transport_label` 附註。
 
     其餘照舊（ADR-049 transport 規則）：
 
@@ -65,7 +67,7 @@ def _transport_for(site: dict) -> str:
     lane = lane_for_model(site.get("model"))
     if lane == LANE_OPENROUTER:
         return "openrouter"
-    if lane == LANE_SUBSCRIPTION and llm_facade.L1_CUTOVER_GROUPS:
+    if lane == LANE_SUBSCRIPTION and llm_facade.L1_CUTOVER_GROUPS >= RUNTIME_GROUPS:
         return "subscription"
     if not openrouter_enabled(agent=site.get("agent")):
         return "native"
@@ -87,20 +89,22 @@ def _transport_label(site: dict, transport: str) -> str:
     """面板 chip 上的文字。L1 / L2 用 ADR-070 的名字；舊路徑沿用原本的
     ``OpenRouter`` / ``native``（``L1_CUTOVER_GROUPS`` 為空時面板顯示跟以前一樣）。
 
-    L1 只切了部分 runtime group 時（S1a–d 過渡期），標出是哪幾個 group 已經走 L1：
-    一個 site 可能在好幾種 process 裡被呼叫（例如 Robin 在 cron 也在 Bridge），面板
-    不假裝知道這一列一定走哪條。
+    L1 只切了部分 runtime group 時（S1a–d 過渡期），chip 仍顯示舊路徑，後面附註哪幾種
+    process 已經走 L1：一個 site 可能在好幾種 process 裡被呼叫（例如 Robin 在 cron 也在
+    Bridge），面板不假裝知道這一列一定走哪條。
     """
     if transport == "subscription":
-        groups = llm_facade.L1_CUTOVER_GROUPS
-        if groups >= RUNTIME_GROUPS:
-            return "subscription (L1)"
-        return f"subscription (L1 · {' / '.join(sorted(groups))})"
+        return "subscription (L1)"
     if transport == "openrouter":
         if lane_for_model(site.get("model")) == LANE_OPENROUTER:
             return "openrouter (L2)"
-        return "OpenRouter"
-    return "native"
+        base = "OpenRouter"
+    else:
+        base = "native"
+    groups = llm_facade.L1_CUTOVER_GROUPS
+    if groups and lane_for_model(site.get("model")) == LANE_SUBSCRIPTION:
+        return f"{base} · {' / '.join(sorted(groups))} 程序走 L1"
+    return base
 
 
 @router.get("/bridge/models", response_class=HTMLResponse)
