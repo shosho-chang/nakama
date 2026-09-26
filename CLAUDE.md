@@ -151,16 +151,19 @@
 - 建立或移除 sibling worktree
 - merge 已 review 且 CI green 的 PR
 
-任何會寫檔的任務都必須先開 task-specific sibling worktree：
+任何會寫檔的任務都必須先開 task-specific worktree，**一律開在 `E:\nakama-worktrees\` 底下**：
 
 ```powershell
 git switch main
 git fetch --prune
 git pull --ff-only
-git worktree add E:\nakama-<topic> -b <branch-name> origin/main
+git worktree add E:\nakama-worktrees\<topic> -b <branch-name> origin/main
 ```
 
-- **每個 task 開 sibling worktree**：例如 `E:\nakama-N513-source-map-builder`、`E:\nakama-toast-inbox-importer`、`E:\nakama-memory-update`
+- **每個 task 一個 worktree，全部放 `E:\nakama-worktrees\<topic>`**：例如 `E:\nakama-worktrees\source-map-builder`、`E:\nakama-worktrees\toast-inbox-importer`、`E:\nakama-worktrees\memory-update`。資料夾名不要再帶 `nakama-` 前綴，父資料夾已經講完了。
+- **不要開在 `E:\` 根目錄**：舊慣例 `E:\nakama-<topic>` 已於 2026-09-20 廢止——它在 E 槽根目錄堆出 33 個資料夾，跟影片素材、下載檔混成一團。
+- **不要開在主 repo 內**：repo 裡放 repo 副本，ripgrep / pytest / Syncthing 會遞迴走進去，而且主 repo 一跑 `git clean -xdf` 就整批炸掉。`.claude\worktrees\` 是桌面版自動管理的，不歸這條管，也不要手動塞東西進去。
+- **收工就收掉**：PR merge 或 close 後 `git worktree remove <path>` 回收，不要留著。若工作區還有未提交內容但該 worktree 已無用，先 commit 推一條 `wip/<topic>` branch 保全，再 remove。
 - **subagent dispatch** 走 Sandcastle (default) 或本機 `isolation: worktree`（見下節）
 - **memory 寫入** 永遠不在 `E:\nakama`，要在 sibling worktree 或專屬 memory worktree
 - **禁止 `git add .`**：只 stage 明確列出的 path，避免多視窗下把 unrelated memory、review artifact、screenshot、generated file 混進 PR
