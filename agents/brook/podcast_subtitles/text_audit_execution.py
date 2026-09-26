@@ -648,6 +648,37 @@ def _safe_directory(path: Path) -> None:
         raise TextAuditExecutionError("text audit workspace directory is unsafe")
 
 
+def _publish_new(path: Path, payload: bytes) -> bool:
+    """Publish complete bytes at ``path`` unless it exists; True only for the creator.
+
+    ``os.link`` never replaces an existing name, so a concurrent executor can
+    neither observe a partial file nor have an artifact it is reading swapped
+    underneath it (``os.replace`` of an open file also fails on Windows).  The
+    temporary name is always removed, so the work-packet directory keeps only
+    content-addressed artifacts.
+    """
+
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "wb") as stream:
+            stream.write(payload)
+            stream.flush()
+            os.fsync(stream.fileno())
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            return False
+        return True
+    finally:
+        try:
+            temporary.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+
 def _atomic_emit(path: Path, payload: bytes) -> None:
     _safe_directory(path.parent)
     if _is_link_or_reparse(path):
@@ -662,25 +693,9 @@ def _atomic_emit(path: Path, payload: bytes) -> None:
         if existing != payload:
             raise TextAuditExecutionError("text audit workspace artifact conflicts")
         return
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
-    temporary = Path(temporary_name)
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        if path.exists():
-            if _is_link_or_reparse(path) or path.read_bytes() != payload:
-                raise TextAuditExecutionError("text audit concurrent workspace conflict")
-        else:
-            os.replace(temporary, path)
-    finally:
-        try:
-            temporary.unlink(missing_ok=True)
-        except OSError:
-            pass
+    if not _publish_new(path, payload):
+        if _is_link_or_reparse(path) or path.read_bytes() != payload:
+            raise TextAuditExecutionError("text audit concurrent workspace conflict")
 
 
 def _safe_read(path: Path) -> bytes:

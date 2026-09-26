@@ -870,6 +870,53 @@ def test_workspace_partial_corrupt_symlink_and_conflicting_request_fail_closed(
         assert unsafe.value.receipt.failure_code == "workspace_integrity_failed"
 
 
+def test_concurrent_request_publish_never_replaces_or_clobbers_a_peer_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: an executor whose existence check went stale used to ``os.replace``
+    a request a concurrent peer had already published.  That swapped the file under
+    readers (PermissionError [WinError 5] on Windows while it was open) and silently
+    overwrote a peer's conflicting bytes."""
+
+    fixture, sources = _inputs(tmp_path)
+    audit_plan, _, _, execution = fixture[:4]
+    workspace = tmp_path / "subscription"
+    with pytest.raises(TextAuditWorkPending) as published:
+        _executor(workspace_root=workspace).execute(execution, audit_plan, sources)
+    request_paths = published.value.request_paths
+    request_dir = request_paths[0].parent
+    identities = {path: (path.stat().st_dev, path.stat().st_ino) for path in request_paths}
+    published_bytes = {path: path.read_bytes() for path in request_paths}
+
+    # The second executor checked existence before the peer's publish landed.
+    stale = set(request_paths)
+    real_exists = Path.exists
+
+    def stale_exists(self: Path, *args: object, **kwargs: object) -> bool:
+        return False if self in stale else real_exists(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "exists", stale_exists)
+    with request_paths[0].open("rb"):  # a peer or work-packet discovery is mid-read
+        with pytest.raises(TextAuditWorkPending):
+            _executor(workspace_root=workspace).execute(execution, audit_plan, sources)
+    for path in request_paths:
+        assert (path.stat().st_dev, path.stat().st_ino) == identities[path]
+        assert path.read_bytes() == published_bytes[path]
+    # Work-packet discovery parses every entry in this directory as a request.
+    assert sorted(item.name for item in request_dir.iterdir()) == sorted(
+        path.name for path in request_paths
+    )
+
+    request_paths[0].write_bytes(b"{}")
+    with pytest.raises(TextAuditExecutionError, match="concurrent workspace conflict"):
+        _executor(workspace_root=workspace).execute(execution, audit_plan, sources)
+    assert request_paths[0].read_bytes() == b"{}"
+    assert sorted(item.name for item in request_dir.iterdir()) == sorted(
+        path.name for path in request_paths
+    )
+
+
 def test_self_consistent_record_forgery_is_rejected_by_schema_and_exact_replay(
     tmp_path: Path,
 ) -> None:
