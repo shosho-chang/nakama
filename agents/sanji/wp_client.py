@@ -5,6 +5,8 @@
 
 重試策略：網路錯誤與 5xx 指數退避重試；4xx 不重試（是我們的 bug 或權限問題）。
 503 = gam_enabled 止血開關關閉——特殊處理成 GamDisabled，loop 收到後安靜等下一輪。
+403 + Cloudflare challenge 頁 = 請求根本沒到 WordPress——特殊處理成 CloudflareChallenge，
+訊息直接指向修法，不把 300 字 HTML 倒進 log / 告警。
 """
 
 from __future__ import annotations
@@ -34,6 +36,21 @@ class GamDisabled(GamAPIError):
     """gam_enabled=0——止血開關關閉中，不是故障。"""
 
 
+class CloudflareChallenge(GamAPIError):
+    """Cloudflare 在 WordPress 之前就把請求攔下（managed challenge 頁）。
+
+    VPS 是 datacenter IP，shosho.tw zone 的 Super Bot Fight Mode 會把沒被 skip rule
+    放行的 User-Agent 當機器人擋。不是 WP 權限問題、不是 plugin 壞掉；重試也沒用。
+    2026-09-06 起 Sanji 因此停擺三週（UA 從沒登記進 skip rule）。
+    """
+
+
+def _is_cf_challenge(res: httpx.Response) -> bool:
+    if res.headers.get("cf-mitigated", "").lower() == "challenge":
+        return True
+    return "<title>Just a moment...</title>" in res.text[:2000]
+
+
 class WPClient:
     def __init__(self, base_url: str, user: str, app_password: str, *, timeout: float = 30.0):
         self._client = httpx.Client(
@@ -58,6 +75,13 @@ class WPClient:
             else:
                 if res.status_code == 503:
                     raise GamDisabled("gam_enabled=0 (kill switch)", status=503)
+                if res.status_code == 403 and _is_cf_challenge(res):
+                    raise CloudflareChallenge(
+                        f"{method} {path} → 403 Cloudflare challenge（請求沒到 WordPress，"
+                        f"cf-ray={res.headers.get('cf-ray', '?')}）。"
+                        "修法：CF WAF skip rule，見 docs/runbooks/cf-waf-skip-rules.md",
+                        status=403,
+                    )
                 if res.status_code < 500:
                     if res.status_code >= 400:
                         raise GamAPIError(
