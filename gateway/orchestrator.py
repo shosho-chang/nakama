@@ -23,6 +23,7 @@ from dataclasses import dataclass
 
 from shared.llm import ask
 from shared.llm_context import set_current_agent
+from shared.llm_context import submit as llm_context_submit
 from shared.log import get_logger
 from shared.prompt_loader import load_prompt
 
@@ -134,9 +135,10 @@ def _collect_views_parallel(participants: list[str], topic: str) -> dict[str, st
     兩個 participant 各約 2-5s 的 LLM call，並行可省一半等待。synthesizer 必須
     等兩邊回來才能開跑，所以只平行化這一階段。
 
-    threading.local 每 worker thread 有獨立副本，所以各自的 `set_current_agent`
-    不會互相污染 cost tracking 的 agent 標記。`_run_participant` 自己包 try/except，
-    future.result() 不會拋出；failed agent 會寫進 views 的占位文字。
+    `shared.llm_context.submit`（ADR-070 D9）幫每個 worker 各自 `copy_context()`，
+    所以各自的 `set_current_agent` 不會互相污染 cost tracking 的 agent 標記，也不會
+    掉回 `agent=None`。`_run_participant` 自己包 try/except，future.result() 不會
+    拋出；failed agent 會寫進 views 的占位文字。
     """
     if not participants:
         return {}
@@ -146,7 +148,9 @@ def _collect_views_parallel(participants: list[str], topic: str) -> dict[str, st
 
     views: dict[str, str] = {}
     with ThreadPoolExecutor(max_workers=len(participants)) as pool:
-        futures = [pool.submit(_run_participant, agent, topic) for agent in participants]
+        futures = [
+            llm_context_submit(pool, _run_participant, agent, topic) for agent in participants
+        ]
         # zip 讓 views 的 insertion order == participants 順序，下游的 Slack block
         # 順序才穩定，即使 robin 的 future 比 sanji 早完成也一樣。
         for agent, future in zip(participants, futures):
@@ -171,7 +175,12 @@ def _run_participant(agent: str, topic: str) -> str:
         "要具體、有 actionable 內容，不要空話。不需要自我介紹，直接切入。"
     )
     try:
-        return ask(prompt=user_msg, system=system, max_tokens=_PARTICIPANT_MAX_TOKENS).strip()
+        return ask(
+            prompt=user_msg,
+            system=system,
+            max_tokens=_PARTICIPANT_MAX_TOKENS,
+            call_class="interactive",
+        ).strip()
     except Exception as e:
         logger.error(f"{agent} brainstorm 失敗：{e}", exc_info=True)
         return f"（{agent} 此次暫時沒給出觀點：{e}）"
@@ -204,7 +213,12 @@ def _synthesize(topic: str, views: dict[str, str]) -> str:
     )
     system = _load_persona(_SYNTHESIZER)
     try:
-        return ask(prompt=user_msg, system=system, max_tokens=_SYNTHESIZER_MAX_TOKENS).strip()
+        return ask(
+            prompt=user_msg,
+            system=system,
+            max_tokens=_SYNTHESIZER_MAX_TOKENS,
+            call_class="interactive",
+        ).strip()
     except Exception as e:
         logger.error(f"synthesizer 失敗：{e}", exc_info=True)
         return f"（整合階段出狀況：{e}。觀點已附上，請自己取捨。）"

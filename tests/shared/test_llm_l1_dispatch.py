@@ -1,11 +1,12 @@
-"""ADR-070 D1 / S1：facade 依 model 字串 + runtime group 分派到 L1 的測試（mock，無網路）。
+"""ADR-070 D1 / S1 / S1a：facade 依 model 字串 + runtime group 分派到 L1 的測試（mock，無網路）。
 
 兩個分支都要鎖：
 
-- ``L1_CUTOVER_GROUPS`` 為空（S1 出貨狀態）→ 舊 ADR-026 路徑，``agent_sdk.run_text``
-  完全不被碰（零行為改變）。
-- 把目前的 runtime group 加進 ``L1_CUTOVER_GROUPS``（patch 常數）→ Claude 別名 /
-  ``claude-*`` 走 ``run_text``；其他 model 仍走舊路徑。
+- 不在 ``L1_CUTOVER_GROUPS`` 裡的 runtime group（S1a 後只剩 ``cron`` / ``bridge`` /
+  ``desktop``）→ 舊 ADR-026 路徑，``agent_sdk.run_text`` 完全不被碰（零行為改變）。
+- ``gateway``（S1a 起的預設值）或用 ``cutover`` fixture 手動加進 ``L1_CUTOVER_GROUPS``
+  → Claude 別名 / ``claude-*`` 走 ``run_text``，帶正確 ``call_class``；其他 model 仍走
+  舊路徑。
 """
 
 from __future__ import annotations
@@ -40,9 +41,9 @@ def cutover(monkeypatch):
     return _apply
 
 
-def test_cutover_set_ships_empty():
-    """S1 出貨狀態：沒有任何 runtime group 切到 L1。S1a–d 才各自加。"""
-    assert llm.L1_CUTOVER_GROUPS == frozenset()
+def test_cutover_set_is_gateway_only_after_s1a():
+    """S1a 完成：只有 ``gateway`` 切到 L1。S1b–d 才各自加 cron / bridge / desktop。"""
+    assert llm.L1_CUTOVER_GROUPS == frozenset({"gateway"})
 
 
 # ── D1 規則本身 ──────────────────────────────────────────────────────────
@@ -72,11 +73,11 @@ def test_lane_for_model(model, lane):
     assert is_openrouter_slug(model) is (lane == "openrouter")
 
 
-# ── 空集合：零行為改變 ────────────────────────────────────────────────────
+# ── 非切換 group：零行為改變 ─────────────────────────────────────────────
 
 
-@pytest.mark.parametrize("group", ["gateway", "cron", "bridge", "desktop"])
-def test_empty_cutover_keeps_legacy_path_for_every_group(group):
+@pytest.mark.parametrize("group", ["cron", "bridge", "desktop"])
+def test_non_cutover_group_keeps_legacy_path(group):
     set_runtime_group(group)
     with (
         patch("shared.agent_sdk.run_text") as m_l1,
@@ -92,15 +93,17 @@ def test_empty_cutover_keeps_legacy_path_for_every_group(group):
     assert m_multi.call_args.kwargs["model"] == "claude-opus-4-8"
 
 
-def test_empty_cutover_keeps_legacy_error_for_alias_old_path_does_not_know():
-    """舊路徑本來就不認得 ``opus`` 別名（只有 sonnet 有 API 替身）—— S1 不改這個行為。"""
+def test_non_cutover_group_keeps_legacy_error_for_alias_old_path_does_not_know():
+    """舊路徑本來就不認得 ``opus`` 別名（只有 sonnet 有 API 替身）—— S1a 不改這個行為。"""
+    set_runtime_group("desktop")
     with patch("shared.agent_sdk.run_text") as m_l1, pytest.raises(ValueError, match="opus"):
         llm.ask("hi", model="opus")
     m_l1.assert_not_called()
 
 
-def test_empty_cutover_does_not_import_agent_sdk_path():
+def test_non_cutover_group_does_not_import_agent_sdk_path():
     """沒切換時 facade 不走 _ask_l1（lazy import 也不會發生）。"""
+    set_runtime_group("desktop")
     with (
         patch("shared.llm._ask_l1") as m_l1,
         patch("shared.llm.ask_claude", return_value="legacy"),
@@ -129,6 +132,38 @@ def test_cutover_group_routes_claude_ask_to_run_text(cutover):
         timeout_s=llm.L1_FACADE_TIMEOUT_S,
         call_class="batch",  # D5：沒宣告的一律當 batch
     )
+
+
+def test_gateway_group_routes_to_l1_without_fixture_override():
+    """S1a：``gateway`` 是 production 預設值，不需要 ``cutover`` fixture 才會切。"""
+    set_runtime_group("gateway")
+    with patch("shared.agent_sdk.run_text", return_value="from-l1") as m_l1:
+        assert llm.ask("hi", model="sonnet") == "from-l1"
+    m_l1.assert_called_once()
+
+
+def test_ask_call_class_kwarg_propagates_to_run_text(cutover):
+    """ADR-070 D5：呼叫點宣告的 ``call_class`` 要原樣傳到 ``run_text``。"""
+    cutover("gateway", current="gateway")
+    with patch("shared.agent_sdk.run_text", return_value="ok") as m_l1:
+        llm.ask("hi", model="haiku", call_class="interactive")
+    assert m_l1.call_args.kwargs["call_class"] == "interactive"
+
+
+def test_ask_call_class_defaults_to_batch(cutover):
+    """沒宣告 ``call_class`` 時走 D5「沒宣告的一律當 batch」。"""
+    cutover("gateway", current="gateway")
+    with patch("shared.agent_sdk.run_text", return_value="ok") as m_l1:
+        llm.ask("hi", model="haiku")
+    assert m_l1.call_args.kwargs["call_class"] == "batch"
+
+
+def test_call_class_kwarg_ignored_on_legacy_path():
+    """非 L1 路徑（未切換的 group）忽略 ``call_class``，不會因為多傳這個 kwarg 出錯。"""
+    set_runtime_group("desktop")
+    with patch("shared.llm.ask_claude", return_value="legacy") as m_claude:
+        assert llm.ask("hi", model="sonnet", call_class="interactive") == "legacy"
+    m_claude.assert_called_once()
 
 
 def test_cutover_group_routes_claude_ask_multi_flattened(cutover):

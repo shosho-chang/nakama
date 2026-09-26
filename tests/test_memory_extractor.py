@@ -186,34 +186,34 @@ def test_extract_in_background_returns_thread():
 
 
 @pytest.mark.real_extractor
-def test_extract_in_background_thread_carries_agent_and_subscription_policy(monkeypatch):
-    """背景 thread 不繼承 ContextVar —— 抽取必須自己設 agent，且不靠 .env 就走訂閱。
+def test_extract_in_background_thread_carries_agent_and_routes_to_l1(monkeypatch):
+    """背景 thread 不繼承 ContextVar —— 抽取必須自己設 agent。
 
-    回歸：VPS 上 Nami 抽取在 thread 內讀到 agent=None → DEFAULT_AUTH="api" →
-    API credit 用完時全數 400。走真的 shared.llm.ask + router，只攔最底層 ask_claude。
+    ADR-070 S1a：``extract_in_background`` 只被 gateway process 呼叫，切到 L1 後
+    一律走 ``agent_sdk.run_text``（別名 model，call_class 預設 batch）。
+    回歸：VPS 上 Nami 抽取在 thread 內讀到 agent=None → cost 也歸不到 agent
+    （2026-09 事故，PR #1298）。走真的 shared.llm.ask，只攔最底層 run_text。
     """
-    from shared.llm_context import clear_current_agent, get_current_agent
+    from shared.llm_context import clear_current_agent, get_current_agent, set_runtime_group
 
-    monkeypatch.delenv("NAKAMA_REQUIRE_MAX_PLAN", raising=False)
-    monkeypatch.delenv("AUTH_NAMI", raising=False)
-    monkeypatch.delenv("AUTH_NAMI_MEMORY_EXTRACTION", raising=False)
     clear_current_agent()  # caller context 沒 agent 也要對
+    set_runtime_group("gateway")
 
-    calls: list[tuple[str | None, str | None]] = []
+    calls: list[tuple[str | None, str, str]] = []
 
-    def _fake_ask_claude(prompt, **kwargs):
-        calls.append((get_current_agent(), kwargs.get("auth_policy")))
+    def _fake_run_text(prompt, **kwargs):
+        calls.append((get_current_agent(), kwargs["model"], kwargs["call_class"]))
         return "[]"
 
-    with patch("shared.llm.ask_claude", side_effect=_fake_ask_claude):
+    with patch("shared.agent_sdk.run_text", side_effect=_fake_run_text):
         t = memory_extractor.extract_in_background(
             "nami", "U1", [{"role": "user", "content": "hi"}]
         )
         t.join(timeout=5.0)
 
     assert not t.is_alive()
-    # semantic + episodic 兩個 call 都要吃到 agent 與訂閱 policy
-    assert calls == [("nami", "subscription_required")] * 2
+    # semantic + episodic 兩個 call 都要吃到 agent、haiku 別名、預設 batch call_class
+    assert calls == [("nami", "haiku", "batch")] * 2
     # thread 內設的 context 不會漏回 caller
     assert get_current_agent() is None
 

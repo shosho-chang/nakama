@@ -152,11 +152,11 @@ def test_transport_for_l2_slug_is_openrouter_regardless_of_transport_env(monkeyp
 
 
 def test_transport_for_claude_empty_cutover_keeps_legacy(monkeypatch):
-    """S1 出貨狀態（L1_CUTOVER_GROUPS 空）：Claude 列的標示跟以前一模一樣。"""
+    """L1_CUTOVER_GROUPS 為空集合時（S1 出貨狀態）：Claude 列的標示跟以前一模一樣。"""
     from shared import llm
     from thousand_sunny.routers import bridge_models as bm
 
-    assert llm.L1_CUTOVER_GROUPS == frozenset()
+    monkeypatch.setattr(llm, "L1_CUTOVER_GROUPS", frozenset())
     monkeypatch.delenv("LLM_TRANSPORT", raising=False)
     site = _row("sonnet", "anthropic")
     assert bm._transport_for(site) == "native"
@@ -164,6 +164,17 @@ def test_transport_for_claude_empty_cutover_keeps_legacy(monkeypatch):
     monkeypatch.setenv("LLM_TRANSPORT", "openrouter")
     assert bm._transport_for(site) == "openrouter"
     assert bm._transport_label(site, "openrouter") == "OpenRouter"  # 舊標籤不變
+
+
+def test_transport_for_claude_gateway_only_cutover_annotates_legacy_label():
+    """S1a 之後的預設值（只切了 gateway）：面板仍走舊路徑，但附註哪個 process 已切 L1。"""
+    from shared import llm
+    from thousand_sunny.routers import bridge_models as bm
+
+    assert llm.L1_CUTOVER_GROUPS == frozenset({"gateway"})
+    site = _row("sonnet", "anthropic")
+    assert bm._transport_for(site) == "native"
+    assert bm._transport_label(site, "native") == "native · gateway 程序走 L1"
 
 
 def test_transport_for_claude_in_cutover_is_subscription(monkeypatch):
