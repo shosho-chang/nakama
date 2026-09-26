@@ -284,6 +284,20 @@ def test_run_text_one_shot_defaults_and_returns_text(fake_sdk):
     assert fake.closed == 1
 
 
+def test_run_text_disables_thinking(fake_sdk):
+    """一次性呼叫要關掉 thinking，跟直接打 API（從沒開 thinking）行為一致。
+
+    2026-09-26 S1a 上線實測：CLI 預設會 thinking，thinking token 也算進
+    ``CLAUDE_CODE_MAX_OUTPUT_TOKENS``。gateway 意圖分類只回約 15 token 的 JSON，
+    卻用掉 193–359 output token，``max_tokens=100`` 直接變成 CLI 錯誤；
+    關掉 thinking 後 28 token、2.1 秒。
+    """
+    fake = fake_sdk(*_ok_stream(text="答案"))
+    _call(prompt="問題", system="你是助理", max_output_tokens=100)
+    [(_, options)] = fake.calls
+    assert options.thinking == {"type": "disabled"}
+
+
 def test_run_text_structured_output(fake_sdk):
     schema = {
         "$schema": "http://json-schema.org/draft-07/schema#",
