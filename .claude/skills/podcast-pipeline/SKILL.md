@@ -2,8 +2,9 @@
 name: podcast-pipeline
 description: >
   訪談集全產線編排：episode 資料夾一路走完 audio-prep → subtitle-gen →
-  subtitle-correct → resolve-project → highlight-cut → packaging
-  （標題×封面 → gate），段間停下給使用者確認中間產物。Use when the user
+  subtitle-correct → resolve-project → highlight-cut → finished-cut review →
+  packaging（標題×封面）→ publish review → YouTube upload + CC，段間停下給使用者
+  確認中間產物。Use when the user
   points at a footage episode folder (e.g. G:\footages\20260723 謝伯讓)
   and says 「跑字幕產線」「整條跑完」「podcast pipeline」「幫我把這集的
   字幕做出來」「一路跑到 gate」, or wants to resume a half-done episode
@@ -17,7 +18,31 @@ description: >
 `/resolve-project`、`/highlight-cut`、`title-brainstorm --batch`、
 `/thumbnail-brainstorm`）照它的手冊做。
 
-## 進度偵測（依檔案存在判斷）
+## 固定錄音素材契約（使用者已核准，不得每集重問）
+
+- episode 的 `Audio/Live-Mix.wav`（口語上也可能簡稱 `Live.wav`）就是完整訪談的
+  canonical program mix；預設保留完整 program clock、**不裁收工閒聊、不做 silence trim**。
+- `Audio/1_COMBO-1.wav` 固定是主持人（修修／使用者）；`Audio/2_COMBO-2.wav`
+  固定是來賓。speaker split 與人讀逐字稿一律沿用此 mapping，不得再請使用者辨認軌道。
+- 來賓姓名與身分先從該集的訪綱、前期研究報告、訪談彈藥卡等 episode-specific
+  資料推定；資料一致時直接採用並附來源。只有資料互相衝突或完全找不到時才停下詢問。
+- 只有來源檔缺失／無法解碼、三軌時長明顯不一致、program mix 不是雙聲道，或使用者
+  明確覆寫上述規則時，才把素材契約列為 blocking gate。不得因「可能有 outtake」自行停工。
+
+**2026-08-19 E2E cutover 警告**：目前 Subtitle V1 production、Subtitle V2 shadow、
+finished-review／packaging／publish 修正分散在不同 worktree，且描述生成、CC recovery、
+平台狀態回收尚未全自動接通。跑新集前必讀
+[`references/e2e-gap-audit-2026-08-19.md`](references/e2e-gap-audit-2026-08-19.md)，
+逐項完成〈明日 Go / No-Go〉；不可只靠檔案存在就宣告完成。
+
+**不得宣稱 Memo-first 已 cut over**：權威 V2 規格雖要求匯入 Memo
+`ggml-large-v2.bin` recognition export 與核准的 Memo cue-boundary manifest，實際
+`production:build_production` 仍以 Qwen3-ASR 為 primary、Faster-Whisper 為
+corroborating recognizer；本 orchestrator 仍呼叫 V1 `subtitle-gen`／
+`subtitle-correct`。在 Memo importer、production factory、下游 Verified Projection
+handoff 與單一 worktree baseline 全部完成前，只能標為 **V1 production + V2 shadow**。
+
+## 進度偵測（依 receipt、gate 與外部狀態共同判斷）
 
 | 檔案 | 意義 |
 |---|---|
@@ -30,8 +55,14 @@ description: >
 | `highlights/選段候選表.md`（無 winners.json） | 盲審排完、**卡在選段 gate** → 把表貼給修修等他挑（見下方 HITL 第 5 條）|
 | `highlights/winners.json` + `highlights/選段企劃-*.md` | highlight-cut 完成 → 下一步 packaging |
 | `packaging/manifest.json` | packaging 進行中/完成 — 用 `python scripts/packaging_manifest.py status` 判斷該續哪支（見下節），全完成 → 去 gate review |
+| `highlights/qa_final.json` 全部 critical cleared + finished review `approved_cut` | 成片內容核准 → 可啟動該 cut 的 publish render；缺任一項不得跳到 packaging/publish |
+| vault `packages.json` + `approval.json` 核准該 cut | packaging gate 完成；下一步必須登錄 Release 並產生 description |
+| release target 有 title + description + thumbnail，status=`draft` | publish review 可用；description 空白不是可接受完成狀態 |
+| release target 有 `video_id` 且 CC error 為空 | YouTube upload + CC 完成；若在 Studio 手動公開，DB 目前不會自動變 `published`，必須明確回報此差異 |
 
-都沒有 → 從 audio-prep 開始。
+都沒有 → 從 audio-prep 開始。**上述列是必要條件的交集，不是「後面的檔案存在就
+代表前面都完成」**；例如 R11 實際已發布但 `qa_final.json` 缺失，這是破口，不是
+可供下一集複製的成功狀態。
 
 **說話者切分**（correct 之後、上 Resolve 之前）：episode 有分軌 mic
 （Audio/ 內兩軌以上人聲）就跑 `python scripts/run_speaker_split.py <episode>`——

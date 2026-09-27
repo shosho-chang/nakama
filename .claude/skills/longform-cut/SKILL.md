@@ -3,10 +3,10 @@ name: longform-cut
 description: >
   Podcast 長精華影片製作線（8–12min 橫式 YT）：吃 highlight-cut 開採出的長片
   winners（punch-L5 等），跑長片專屬的緊湊化 → 機位導播 → 證據驅動・稀疏視覺
-  語彙（滿版轉場卡/名牌/hero/論文卡/stock 演算法）→ SFX → QC。Use when the
-  user says 「長片」「長精華」「longform」或指名長片 cut id（*-L*）的 Step
-  6–11 工作。與短片線（highlight-cut）邏輯差異大，獨立成冊（修修 2026-08-04
-  裁決）。
+  語彙（滿版轉場卡/名牌/hero/論文卡/stock 演算法）→ SFX → QC → packaging →
+  YouTube description / 上架 / CC。Use when the user says 「長片」「長精華」
+  「longform」、長片上架、長片文案，或指名長片 cut id（*-L*）的 Step 6–發布工作。
+  與短片線（highlight-cut）邏輯差異大，獨立成冊（修修 2026-08-04 裁決）。
 ---
 
 # longform-cut — Podcast 長精華影片線
@@ -161,6 +161,42 @@ Step 6 起重走。修修手改過的 timeline 尾端見 Step 6–7 的 `--refre
 
 長片定版後 → 發布線（`publish_prep.py` render+登錄 → 描述生成 → uploader，
 見 `docs/plans/2026-07-26-video-publishing-plan.md` + ADR-054）。
+
+### YouTube description 文體（長 highlight 專用）
+
+生成或改寫 `/bridge/publish` 的長 highlight 文案時，以下是**發布契約**，Claude Code
+與其他執行者都必須遵守：
+
+- 第一段直接進入來賓面對的具體處境；不要先下「這支影片在談……」之類的總論。
+- 禁用「不是 X，而是 Y」「不只 X，更是 Y」等 AI 對偶句。把判斷改成直接肯定句。
+- 刪掉自我導覽句，例如「這一段會從 A 一路談到 B」；章節已負責導航。
+- 每段只推進一件事，句子短、段落短；用具體人物、作品、數字與動作取代抽象形容詞。
+- 因果要落在內容上，可用「這也是……的原因。因為……」；不要靠戲劇化語氣製造重要性。
+- 不得捏造獨特性或動機，例如沒有逐字稿證據時，不寫「只有他才會用的梗」。
+- 標題優先補上能辨識來賓的真實身份（如「泛科學知識長」），不用空泛的「內容人」。
+- description 固定結構：2–3 段內容 hook → `⏱` 章節 → 固定 footer。footer 一律讀
+  `agents/usopp/templates/video_description_footer.md`，禁止在 prompt 裡複製舊版。
+- 交付前逐句掃描「不是／而是」「不只／更」「這一段會」「帶你看」「深入探討」；命中就重寫。
+
+**修修核准範例（2026-08-18，鄭國威 R11；學節奏與具體度，不可跨集照抄事實）：**
+
+> 當泛科學成長趨緩、舊觀眾多、新觀眾少，他決定自己下場寫短影音：把科學論文壓成一千到一千兩百字，再從平常收藏的梗裡找出那個能破圈的入口。
+>
+> 但影響他工作最深的，是《將太的壽司》的一句話：師傅一天做再多壽司，消費者入口的永遠只有眼前這一個。
+>
+> 這也是他對每支內容吹毛求疵的原因。因為你交出去的那一則內容，可能就是某個觀眾今天收到最重要的訊息。
+
+### 發布授權、進度與 CC 補傳
+
+- worktree 的 uploader、Web App 與 OAuth 必須共用主倉庫 runtime data；Windows 執行前設
+  `$env:NAKAMA_DATA_DIR='E:\nakama\data'`，不可各自在 worktree 產生 token 或 progress。
+- `youtube_token.json` 的 scopes 必須包含 `youtube.upload`、`youtube`、
+  `youtube.force-ssl`。`captions.insert` 回 `403 insufficientPermissions` 時，代表舊 token
+  缺 `force-ssl`；執行 `py -3.10 scripts/youtube_auth.py` 重新授權一次。
+- 影片本體已上傳但 CC 失敗時，**禁止重傳影片**。完成 OAuth 後只跑：
+  `py -3.10 scripts/publish_upload.py --cc-only <CUT> --episode "<EPISODE>"`。
+- Web App 的 upload status 也必須從同一個 `NAKAMA_DATA_DIR/upload_progress/` 讀取；
+  不可讀 worktree-relative `data/upload_progress/`，否則畫面會停在無進度直到上傳結束。
 
 ## 收斂後的運行模式（修修 2026-08-04 裁決：剪輯線免 HITL）
 
