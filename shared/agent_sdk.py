@@ -895,6 +895,10 @@ def _run_text_blocking(
         "tools": [],  # F9：沒設時成本是 3 倍
         "setting_sources": [],  # 不讀機器上的 settings / CLAUDE.md
         "max_turns": _STRUCTURED_MAX_TURNS if output_schema is not None else _TEXT_MAX_TURNS,
+        # CLI 預設會 thinking，thinking token 也算進 CLAUDE_CODE_MAX_OUTPUT_TOKENS：
+        # 呼叫點照 API 語意給的小 max_tokens（例如意圖分類 100）會直接變成 CLI 錯誤。
+        # API 路徑從沒開 thinking，關掉才一致（2026-09-26 S1a 上線實測）。
+        "thinking": {"type": "disabled"},
         "env": l1_child_env(max_output_tokens=max_output_tokens),
     }
     if output_schema is not None:
