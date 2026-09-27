@@ -79,7 +79,7 @@ dependencies = [
 
     # Claude Agent SDK — Nami migration S1: in-process MCP tool server (#1112)
     # ADR-070 D10：精確釘版 = VPS 實際版本（S0 U7）；只由 S7 每週自動升級 PR 改
-    "claude-agent-sdk==0.2.157",
+    "claude-agent-sdk==0.2.158",
 ]
 
 [project.optional-dependencies]
