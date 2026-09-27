@@ -313,7 +313,7 @@ html, body {{ margin: 0; width: {canvas_width}px; height: {canvas_height}px;
   background-size: 360px 360px; mix-blend-mode: multiply; }}
 .stage {{ position: absolute; inset: 0 160px 200px; display: flex;
   flex-direction: column; align-items: center; justify-content: center; gap: 36px; }}
-.kicker-row {{ display: flex; align-items: center; gap: 24px;
+.kicker-row {{ display: flex; align-items: center;
   animation: kicker-enter .42s .08s ease-out both; }}
 .kbar {{ width: 96px; height: 22px; overflow: visible; }}
 .kbar path, .uline path {{ fill: none; stroke: #e98965; stroke-width: 9;
@@ -350,7 +350,6 @@ html, body {{ margin: 0; width: {canvas_width}px; height: {canvas_height}px;
       <svg class="kbar" viewBox="0 0 100 22" preserveAspectRatio="none">
         <path d="M3,12 C30,9.5 62,14 97,11"/>
       </svg>
-      <div class="kicker">章節</div>
     </div>
     <div class="title">{title}</div>
     <svg class="uline" viewBox="0 0 100 22" preserveAspectRatio="none">
