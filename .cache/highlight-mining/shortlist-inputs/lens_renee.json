@@ -1,0 +1,546 @@
+{
+  "lens": "Renee",
+  "source_sha256": "d286e4132ab1706f8562dd030613e9060a9047875f2783fceece89e85fe1f9cd",
+  "findings": [
+    {
+      "candidate_id": "L01",
+      "source_candidate_id": "VALUE-L01",
+      "title": "把滑手機時間換成輸出：上班族內容創作的正向循環",
+      "duration_sec": 425.0,
+      "risk": "high",
+      "opening_30s": "開頭從『業外會不會影響工作』的回答後半段切入，雖在 16 秒內講出正向循環，但缺少原問題與標題中的滑手機衝突；觀眾尚未得到留下來等方法的理由。",
+      "drop_off": {
+        "relative_sec": 60.0,
+        "source_time": "00:04:00.080",
+        "quote": "我們現在開始了嗎",
+        "reason": "突然暴露錄影尚未正式開始，接著是炎上風險、粉專回覆等場外暖身；標題主題要到段內 2:23 才出現，這裡會形成明顯早退。"
+      },
+      "energy_high_point": {
+        "relative_sec": 235.0,
+        "source_time": "00:06:55.080",
+        "quote": "就是便秘",
+        "note": "把輸出比作便秘的反差笑點，是全段最明確的能量抬升。"
+      },
+      "ending": "完整；以閱讀讓人升級系統、接觸高手想法收束，但已離開『滑手機換輸出』的原始承諾。",
+      "independence": "低。『國聯』『身價1億』『Barista』『我們剛剛有聊到』都依賴前情，單張字卡也無法補掉段內正式開錄的斷裂。",
+      "trim_if_selected": {
+        "strategy": "刪除整段暖身，只保留真正回應標題的內容；成品會短於長片容忍帶，應重新定位為中短段而非硬撐長片。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:03:00.080",
+            "source_end": "00:05:23.080",
+            "reason": "移除缺題目的前情、正式開錄確認與粉專回覆岔題。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L02",
+      "source_candidate_id": "story-long-01",
+      "title": "投資不是決勝點：先把第一桶金做大",
+      "duration_sec": 371.0,
+      "risk": "medium",
+      "opening_30s": "30 秒內建立財富自由、投資與低本金難靠複利翻身的問題，留下理由清楚；但第一句『你剛剛講到』略依賴前情。",
+      "drop_off": {
+        "relative_sec": 195.0,
+        "source_time": "00:17:35.080",
+        "quote": "就是我們要選對的一個賽道",
+        "reason": "本金與本業增收的論點已完成，接著轉成兩分鐘的科技島、房價與產業資本理論，標題承諾被新題目稀釋。"
+      },
+      "energy_high_point": {
+        "relative_sec": 317.0,
+        "source_time": "00:19:37.080",
+        "quote": "這國家大家都只能打棒球才能賺錢",
+        "note": "棒球國家的具象比喻讓長段理論短暫恢復畫面與節奏。"
+      },
+      "ending": "完整；落在有科技產業就應該親自嘗試、適合再留下，但結尾主題已是進科技業而非第一桶金。",
+      "independence": "中。核心本金觀念可獨立理解；『這本書』『像我們這樣子』可用一張字卡交代來賓在談高薪科技賽道。",
+      "trim_if_selected": {
+        "strategy": "保留本金論證與最後的棒球比喻，壓縮中間產業總論。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:17:35.080",
+            "source_end": "00:19:35.080",
+            "reason": "移除科技島、全球科技薪資與房價外溢的長篇岔題。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L03",
+      "source_candidate_id": "PUNCH-L01",
+      "title": "投資不是起點：多數人的決勝點其實是本金",
+      "duration_sec": 428.0,
+      "risk": "high",
+      "opening_30s": "開頭直接提出財富自由與低本金難產生複利改變，問題意識成立，雖有『你剛剛』與『這本書』的輕度前情。",
+      "drop_off": {
+        "relative_sec": 191.0,
+        "source_time": "00:17:35.080",
+        "quote": "就是我們要選對的一個賽道",
+        "reason": "前三分鐘已完成本金結論，之後連續轉向科技島、產業外溢、求職資訊落差與機械系職涯，觀眾會感到另一支片已開始。"
+      },
+      "energy_high_point": {
+        "relative_sec": 313.0,
+        "source_time": "00:19:37.080",
+        "quote": "這國家大家都只能打棒球才能賺錢",
+        "note": "具象比喻是後半唯一顯著能量高點，但仍無法把主題拉回本金。"
+      },
+      "ending": "局部句意完整，卻以公司與人才的正向循環結束，與標題的本金論題不同，整段論述邊界不完整。",
+      "independence": "中。前半可獨立；後半多次使用『書』『你的故事』『剛才』並進入另一段訪談脈絡，一張字卡只能補人物，不能補主題轉換。",
+      "trim_if_selected": {
+        "strategy": "在本金結論落地後結束；修後僅約 3:08，不應再當長片。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:17:35.080",
+            "source_end": "00:21:32.080",
+            "reason": "刪除科技產業與求職資訊落差的第二、第三主題。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L04",
+      "source_candidate_id": "PUNCH-L02",
+      "title": "學長都在養白蝦，他卻轉進科技業：成功路徑能不能複製？",
+      "duration_sec": 466.0,
+      "risk": "medium",
+      "opening_30s": "一開始就以『人生勝利組／倖存者偏差』交鋒，問題意識與衝突清楚；即使未看前文，也知道這段要驗證方法能否複製。",
+      "drop_off": {
+        "relative_sec": 154.0,
+        "source_time": "00:24:06.080",
+        "quote": "我們也很多人是有學歷很好的",
+        "reason": "白蝦、房仲、樂團經紀人的可轉移技能例子已形成高點，隨後改講學歷是否保證好工作，抽象重述使節奏下滑。"
+      },
+      "energy_high_point": {
+        "relative_sec": 69.0,
+        "source_time": "00:22:41.080",
+        "quote": "他的學長都在賣白蝦",
+        "note": "具體、意外且直接兌現標題，是最強記憶點。"
+      },
+      "ending": "不完整；最後另開『進科技業需要哪些技能』的新問題，只講到科技業不只工程師便截斷。",
+      "independence": "中。主爭點可獨立，但『你這本書』『人生勝利組』需字卡簡介來賓與書的主張；可用一張字卡補。",
+      "trim_if_selected": {
+        "strategy": "刪除學歷重述，並在新問題開始前收尾。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:24:06.080",
+            "source_end": "00:24:47.080",
+            "reason": "移除學歷不等於好工作的重複理論。"
+          },
+          {
+            "action": "remove",
+            "source_start": "00:28:20.080",
+            "source_end": "00:29:18.080",
+            "reason": "移除新問題及被截斷的回答。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L05",
+      "source_candidate_id": "story-long-02",
+      "title": "你是人生勝利組，所以方法不能複製嗎？",
+      "duration_sec": 706.0,
+      "risk": "medium",
+      "opening_30s": "以人生勝利組、特例與倖存者偏差正面交鋒，30 秒內已把『能否複製』說清楚，開場有效。",
+      "drop_off": {
+        "relative_sec": 153.0,
+        "source_time": "00:24:06.080",
+        "quote": "我們也很多人是有學歷很好的",
+        "reason": "前三個跨域案例已證明可複製性，這裡開始用學歷理論再證明一次；接近兩分鐘才由留美低薪故事重新抬升。"
+      },
+      "energy_high_point": {
+        "relative_sec": 68.0,
+        "source_time": "00:22:41.080",
+        "quote": "他的學長都在賣白蝦",
+        "note": "白蝦與科技業業務的極端距離，最有力地把抽象可複製性變成畫面。"
+      },
+      "ending": "完整；最後落在面試不是要求全會，而是證明肯學、能快速符合團隊需求。",
+      "independence": "中。主題可獨立，但需一張字卡說明來賓被質疑是名校人生勝利組，並簡介本段所稱的書。",
+      "trim_if_selected": {
+        "strategy": "維持 8–12 分鐘目標帶，僅壓縮重複的學歷理論。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:24:06.080",
+            "source_end": "00:24:47.080",
+            "reason": "刪除學歷與好工作的重複論述，直接進留美回台低薪的個人故事。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L06",
+      "source_candidate_id": "VALUE-L02",
+      "title": "非本科怎麼進科技業：先找角色，再證明你能被訓練",
+      "duration_sec": 421.0,
+      "risk": "low",
+      "opening_30s": "10 秒內提出『科技業不全是工程師』，並以資工背景卻選業務的自身反差展開；即使首句像接續回答，留下理由仍清楚。",
+      "drop_off": {
+        "relative_sec": 299.0,
+        "source_time": "00:31:17.080",
+        "quote": "就像AI",
+        "reason": "從『可被訓練』轉成 AI 科系、Infrastructure、Architect、FDE 的名詞串，非技術觀眾可能在這 42 秒失速。"
+      },
+      "energy_high_point": {
+        "relative_sec": 367.0,
+        "source_time": "00:32:25.080",
+        "quote": "所以我如果招一個雷包進來",
+        "note": "主管招錯人會拖累老同事的具體焦慮，讓『可被訓練』從口號變成真實利害。"
+      },
+      "ending": "完整；回到證明肯學、能快速符合團隊需要，觀點落地。",
+      "independence": "高。職位、跨域學習與主管招人的因果都在段內；CSBA、MTK、FDE 等名詞可用字幕註解，不需全片前情。",
+      "trim_if_selected": {
+        "strategy": "剪掉 AI 職稱支線，讓『可被訓練』直接進主管招人情境。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:31:18.080",
+            "source_end": "00:32:00.080",
+            "reason": "移除快速過時且名詞密集的 AI/FDE 支線。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L07",
+      "source_candidate_id": "PUNCH-L03",
+      "title": "主管招人最怕的不是你不會，是你進來拖垮全隊",
+      "duration_sec": 713.5,
+      "risk": "high",
+      "opening_30s": "從『所以每個人其實』開始，前 30 秒是資訊、科系限制與文組焦慮的抽象延續，沒有揭露主管招人的風險；標題承諾要到段內 3:07 才出現。",
+      "drop_off": {
+        "relative_sec": 241.0,
+        "source_time": "00:33:19.080",
+        "quote": "我覺得還有一個很重要",
+        "reason": "主管怕雷包的強段剛完整落地，這裡立刻另開理解 HR、家長老師資訊落差與 LinkedIn 路徑，後八分鐘已是另一支片。"
+      },
+      "energy_high_point": {
+        "relative_sec": 187.0,
+        "source_time": "00:32:25.080",
+        "quote": "所以我如果招一個雷包進來",
+        "note": "最直接、最有利害關係且唯一完整兌現標題的高點。"
+      },
+      "ending": "句意完整，以每個人的機會比想像多收束；但與主管招人主題相隔近八分鐘，段落整體沒有在原觀點落地。",
+      "independence": "低。開頭『所以』承接前段，後半又多次引用書與剛才內容；一張字卡無法修復標題出現太晚及兩段主題拼接。",
+      "trim_if_selected": {
+        "strategy": "只保留主管招人核心；修後約 1:15，應改做短段，不能作為長片候選。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:29:18.080",
+            "source_end": "00:32:04.080",
+            "reason": "移除文組、AI 與可訓練性的長前情，從主管視角直接開始。"
+          },
+          {
+            "action": "remove",
+            "source_start": "00:33:19.080",
+            "source_end": "00:41:11.544",
+            "reason": "移除 HR、家庭教育與 LinkedIn 的第二支片。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L08",
+      "source_candidate_id": "story-long-03",
+      "title": "別問網友你行不行：用 LinkedIn 逆推進 NVIDIA 的路",
+      "duration_sec": 472.5,
+      "risk": "medium",
+      "opening_30s": "前 30 秒只說要理解對方與公司需求，並引用『剛剛』『書裡』；LinkedIn 要到 1:53、NVIDIA 要到 2:26 才出現，標題工具承諾過晚。",
+      "drop_off": {
+        "relative_sec": 65.0,
+        "source_time": "00:34:24.080",
+        "quote": "那鐵定不是比如說家庭教育可能很困難",
+        "reason": "開始繞進長輩與老師為何不懂業界的理論，觀眾尚未看到 LinkedIn 示範就可能流失。"
+      },
+      "energy_high_point": {
+        "relative_sec": 146.0,
+        "source_time": "00:35:45.080",
+        "quote": "我可不可以去NVIDIA",
+        "note": "把抽象資訊落差變成私校生想進 NVIDIA 的具體野心，能量與目標同時清楚。"
+      },
+      "ending": "完整；總結職涯遙遠感來自資訊不足，機會比想像多。",
+      "independence": "中。LinkedIn 操作與廣達跳板可獨立，但原開頭需前情；改從工具入口開始並加一張『私校生如何反查進 NVIDIA 路徑』字卡即可補。",
+      "trim_if_selected": {
+        "strategy": "直接從可查到業界路徑的管道開始，保留完整 6 分鐘工具示範與結論。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:33:19.080",
+            "source_end": "00:35:09.080",
+            "reason": "移除抽象需求、家長與老師資訊落差的前言。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L09",
+      "source_candidate_id": "VALUE-L03",
+      "title": "用 LinkedIn 反推職涯跳板：從目標公司倒查校友路徑",
+      "duration_sec": 424.5,
+      "risk": "medium",
+      "opening_30s": "第一句提出大家不知道業界要什麼人，問題成立；但第 17 秒便轉進家庭教育，LinkedIn 仍要等到段內 1:05 才亮相。",
+      "drop_off": {
+        "relative_sec": 17.0,
+        "source_time": "00:34:24.080",
+        "quote": "那鐵定不是比如說家庭教育可能很困難",
+        "reason": "工具片在首 30 秒改談父母與老師資訊過時，觀眾尚未得到可操作方法就被理論岔開。"
+      },
+      "energy_high_point": {
+        "relative_sec": 98.0,
+        "source_time": "00:35:45.080",
+        "quote": "我可不可以去NVIDIA",
+        "note": "明確目標公司讓後續校友、前公司與跳板篩選有戲劇方向。"
+      },
+      "ending": "完整；以資訊不足造成職涯遙遠感、實際機會更多收束。",
+      "independence": "高。只要一張字卡說明案例是『非名校學生想進 NVIDIA』，後續 LinkedIn 篩選流程可完全獨立。",
+      "trim_if_selected": {
+        "strategy": "從提出可用網站與 LinkedIn 開始，修後約 6:02，仍在長片容忍帶。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:34:07.080",
+            "source_end": "00:35:09.080",
+            "reason": "移除家庭與學校資訊來源的理論前言。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L10",
+      "source_candidate_id": "PUNCH-L04",
+      "title": "都要賣肝，為什麼不賣貴一點？",
+      "duration_sec": 436.9,
+      "risk": "low",
+      "opening_30s": "10 秒內拋出『科技業賣肝、有錢沒命花，真的是嗎』，並立刻承認高薪不輕鬆；衝突與留下理由都很清楚。",
+      "drop_off": {
+        "relative_sec": 398.4,
+        "source_time": "00:47:49.984",
+        "quote": "其實通膨是一定會發生的",
+        "reason": "前面已有 3 萬 8 與荷包蛋的具象高點，最後 38 秒改講央行、健康通膨與利率政策，能量突然降為總經理論。"
+      },
+      "energy_high_point": {
+        "relative_sec": 79.6,
+        "source_time": "00:42:31.144",
+        "quote": "你倒不如好賣肝",
+        "note": "緊接『薪水只有一半或三分之一』後說出標題命題，是最清楚的情緒峰值。"
+      },
+      "ending": "完整；原始邊界最終落到做對選擇、增加選擇權，雖稍廣但沒有話講一半。",
+      "independence": "高。賣肝、單位時間價值、高薪懼高與通膨案例均在段內交代，無需全片前情。",
+      "trim_if_selected": {
+        "strategy": "在產業薪資落後通膨的結論後結束，避免央行理論尾巴。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:47:49.984",
+            "source_end": "00:48:28.424",
+            "reason": "移除央行與利率政策的低能量結尾。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L11",
+      "source_candidate_id": "story-long-04",
+      "title": "高薪一定賣肝？真正該比較的是單位時間價值",
+      "duration_sec": 623.8,
+      "risk": "medium",
+      "opening_30s": "以科技業賣肝、有錢沒命花的質疑開場，30 秒內進入高薪必須承壓的回答，鉤子有效且獨立。",
+      "drop_off": {
+        "relative_sec": 398.4,
+        "source_time": "00:47:49.984",
+        "quote": "其實通膨是一定會發生的",
+        "reason": "段內已依序完成單位時間、高薪恐懼與薪資停滯案例，這裡再展開央行與利率理論，會在第 6:38 形成理論斷崖。"
+      },
+      "energy_high_point": {
+        "relative_sec": 79.6,
+        "source_time": "00:42:31.144",
+        "quote": "你倒不如好賣肝",
+        "note": "挑釁語氣直接兌現『都累就賣貴』，後續 8／16／24 小時薪資算例再把觀點具體化。"
+      },
+      "ending": "完整；最後把焦慮轉成知道遊戲規則、看見選項並一步步往目標前進。",
+      "independence": "高。開頭問題、薪資算例與選擇權結論自成一體；『這本書』僅是來源，不妨礙理解。",
+      "trim_if_selected": {
+        "strategy": "整段仍可留在 8–12 分鐘帶，但應移除中後段完整的通膨支線。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:46:22.264",
+            "source_end": "00:48:28.424",
+            "reason": "移除 30 年起薪、荷包蛋、退休金與央行通膨的獨立支線，直接接回選擇權。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L12",
+      "source_candidate_id": "VALUE-L04",
+      "title": "同樣都很累，為什麼有人單位時間賺三倍？",
+      "duration_sec": 434.2,
+      "risk": "medium",
+      "opening_30s": "開場直接質問科技業賣肝迷思，30 秒內用職棒第四棒說明高薪與壓力交換，問題意識清楚。",
+      "drop_off": {
+        "relative_sec": 395.8,
+        "source_time": "00:47:49.984",
+        "quote": "其實通膨是一定會發生的",
+        "reason": "標題的單位時間價值早在段內 1:40 完成，後段已延伸高薪恐懼與薪資停滯，最後再進央行理論會造成尾段流失。"
+      },
+      "energy_high_point": {
+        "relative_sec": 77.0,
+        "source_time": "00:42:31.144",
+        "quote": "你倒不如好賣肝",
+        "note": "與『年薪 300 萬不可能工作 24 小時』形成連續高點，最直接支持單位時間命題。"
+      },
+      "ending": "完整但主題擴張；以做對選擇、增加選擇權落地，不是話講一半。",
+      "independence": "高。無須前情即可理解賣肝迷思與單位時間算例。",
+      "trim_if_selected": {
+        "strategy": "截掉央行理論，保留 6:35 的人物、算例與通膨生活案例。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:47:49.984",
+            "source_end": "00:48:28.424",
+            "reason": "移除與單位時間價值距離最遠的央行說明。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L13",
+      "source_candidate_id": "PUNCH-L05",
+      "title": "AI 時代第一個被淘汰的，可能正是你剛學會的技能",
+      "duration_sec": 471.7,
+      "risk": "high",
+      "opening_30s": "5 秒內點出書裡很少談 AI，但接著用矽谷朋友與訪談背景鋪陳，真正問題到 1:10、回答到 1:23 才開始；鉤子有題目，卻過度延遲兌現。",
+      "drop_off": {
+        "relative_sec": 272.5,
+        "source_time": "00:56:07.784",
+        "quote": "比如說像我書裡面會鼓勵大家去出國念書",
+        "reason": "『AI 淘汰技能、公司買判斷』已完整落地，這裡另開留美、國家優勢與薪資 15 倍故事，後 3:19 與標題不是同一支片。"
+      },
+      "energy_high_point": {
+        "relative_sec": 225.3,
+        "source_time": "00:55:20.624",
+        "quote": "所以AI時代第一個淘汰其實是技能",
+        "note": "最精準兌現標題，前面 boot camp、code 與工程師 sense 已提供足夠支撐。"
+      },
+      "ending": "不完整；最後一句另起『高薪賽道的一個核心觀念』便切斷，且早已離開 AI 技能主題。",
+      "independence": "低。開頭依賴書與訪談背景，後半依賴留美選擇的前後文；單張字卡不能修復主題拼接與截斷句。",
+      "trim_if_selected": {
+        "strategy": "在 AI 技能結論後結束；修後約 4:32，應改成中短段，不宜列長片。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:56:07.784",
+            "source_end": "00:59:27.024",
+            "reason": "移除留美、薪資 15 倍與尋找優勢的第二主題，以及最後的截斷句。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L14",
+      "source_candidate_id": "story-long-05",
+      "title": "AI 裁員潮下，現在還值得進科技業或出國念書嗎？",
+      "duration_sec": 468.8,
+      "risk": "medium",
+      "opening_30s": "開頭直接挑戰書裡少談 AI，並在 30 秒內進到矽谷裁員的腥風血雨；問題張力足夠，但完整提問與回答仍拖到 1:23。",
+      "drop_off": {
+        "relative_sec": 277.3,
+        "source_time": "00:56:12.624",
+        "quote": "因為我那時候要畢業的時候",
+        "reason": "AI 與技能判斷的高密度段結束後，轉入較慢的個人留學、日本或美國回憶；雖仍符合標題，節奏會在第 4:40 下沉。"
+      },
+      "energy_high_point": {
+        "relative_sec": 367.0,
+        "source_time": "00:57:42.344",
+        "quote": "成長15倍",
+        "note": "台灣行銷年薪 30 萬到美國 600 萬的量級跳躍，重新拉高留學題的能量。"
+      },
+      "ending": "大致完整；以不要反推『沒美國學位就完蛋』、重點是尋找自身優勢落地，但切點略急。",
+      "independence": "中。AI 裁員與留學問題都在段內，僅需字卡說明受訪者的書主張高薪科技賽道。",
+      "trim_if_selected": {
+        "strategy": "保留最初挑戰與完整問題，刪除重複的矽谷朋友背景，讓回答提早近一分鐘開始。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:51:45.304",
+            "source_end": "00:52:39.384",
+            "reason": "移除矽谷朋友、Meta 與 reorg 的長背景，直接進主持人的具體提問。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L15",
+      "source_candidate_id": "VALUE-L05",
+      "title": "AI 時代別只追工具：公司真正買的是判斷與問題定義",
+      "duration_sec": 404.7,
+      "risk": "high",
+      "opening_30s": "8 秒內問『去學 AI 嗎、現在怎麼辦』，18 秒開始回答 AI 變動太快、不必只追技能；開頭 30 秒有效。",
+      "drop_off": {
+        "relative_sec": 208.4,
+        "source_time": "00:56:07.784",
+        "quote": "比如說像我書裡面會鼓勵大家去出國念書",
+        "reason": "公司買 sense、品味與問題判斷的標題承諾已完成，後半 3:16 全轉為留美與尋找優勢，等同把另一支片接在後面。"
+      },
+      "energy_high_point": {
+        "relative_sec": 121.8,
+        "source_time": "00:54:41.144",
+        "quote": "這個已經被AI完全取代",
+        "note": "『只會寫 code』的強烈判斷引出技能與 sense 的對照，是核心衝突高點。"
+      },
+      "ending": "句意可收，但落在如何尋找優勢，而不是公司買判斷與問題定義；整段主題邊界不完整。",
+      "independence": "高。開頭問題與 AI 技能回答可獨立；問題在候選後半拼入留學題，不是前情缺失。",
+      "trim_if_selected": {
+        "strategy": "在 AI 判斷與能力結論後結束；修後約 3:28，不足長片容忍帶，應改作中短段。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "00:56:07.784",
+            "source_end": "00:59:24.104",
+            "reason": "移除留美、薪資 15 倍與優勢排序的第二主題。"
+          }
+        ]
+      }
+    },
+    {
+      "candidate_id": "L16",
+      "source_candidate_id": "PUNCH-L06",
+      "title": "留學不是去念書：真正厲害的人第一天就在找工作",
+      "duration_sec": 443.7,
+      "risk": "high",
+      "opening_30s": "10 秒內提出卡關者該留學還是跳槽，20 秒便出現報到第二週 networking，30 秒說出第一天開始找工作；開頭非常強。",
+      "drop_off": {
+        "relative_sec": 99.4,
+        "source_time": "01:01:23.904",
+        "quote": "這個東西不完全正確",
+        "reason": "留學從第一天找工作的故事已完整反轉，這裡轉去熱愛工作、付出代價、舒適圈與職涯規劃，後 5:43 都不再兌現標題。"
+      },
+      "energy_high_point": {
+        "relative_sec": 57.6,
+        "source_time": "01:00:42.184",
+        "quote": "後來就發現是我們自己錯了",
+        "note": "從看不起求職導向的同學到承認自己錯，完成最有戲劇性的立場反轉。"
+      },
+      "ending": "完整但完全離題；以成長 mindset、社會壓力與盡量生存收束，不是留學找工作的結論。",
+      "independence": "高。留學故事本身完全獨立；高風險來自後續多題拼接，不是缺前情。",
+      "trim_if_selected": {
+        "strategy": "在留學反轉與台灣人太夢幻的結論後結束；修後約 1:41，只適合短段。",
+        "operations": [
+          {
+            "action": "remove",
+            "source_start": "01:01:25.384",
+            "source_end": "01:07:08.264",
+            "reason": "移除熱愛、代價、舒適圈、家庭支出、職涯規劃與成長 mindset 的後續多題。"
+          }
+        ]
+      }
+    }
+  ]
+}

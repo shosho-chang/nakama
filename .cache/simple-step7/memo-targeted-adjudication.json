@@ -1,0 +1,143 @@
+{
+  "accepted_count": 0,
+  "contract": "degraded-simple-step7-targeted-memo-adjudication-v1",
+  "inputs": {
+    "audit_a": {
+      "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\simple-step7\\audit-a.json",
+      "sha256": "0a9b6eb7cfb22058f997c3fa21f48b74f9b387d862cea19fe0821322e55ec6d7",
+      "size_bytes": 31309
+    },
+    "audit_b": {
+      "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\simple-step7\\audit-b.json",
+      "sha256": "23809a1ed09ed7f9e2095234e4379979ce07cdb61926a6d22e74e5c73876be01",
+      "size_bytes": 31894
+    },
+    "original_srt": {
+      "path": "G:\\Footages\\20260814 抹布\\subtitle-v2\\memo-recognition.composite.execution.srt",
+      "sha256": "8a045b2438e43fa72ace31f32ba2244a8a44f74c16d65b3719c3b3ce921f0633",
+      "size_bytes": 161401
+    }
+  },
+  "not_independent_audio_quorum": true,
+  "same_asr_only": true,
+  "segments": [
+    {
+      "audit_a_proposal": "其實三、五千萬",
+      "audit_b_proposal": "其實3500萬",
+      "cue_numbers": [
+        444
+      ],
+      "decision": "keep_original_unresolved",
+      "evidence": {
+        "clip": {
+          "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\simple-step7\\memo-targeted\\cue-444-long\\clip.wav",
+          "sha256": "a66131082f73987fc28949645d1f5c7df02b53074a1fae232612206bbfeaa57e",
+          "size_bytes": 384096
+        },
+        "output": {
+          "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\simple-step7\\memo-targeted\\cue-444-long\\memo.srt",
+          "sha256": "ca2222ecdc9fe606262b3ec24955257c47ee45b432050dc814dbc2e51728f774",
+          "size_bytes": 458
+        },
+        "receipt": {
+          "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\simple-step7\\memo-targeted\\cue-444-long\\receipt.json",
+          "sha256": "89d6eb1f694aa912965bd8263ccc064b840facc0bf216fefde0b0a56a93242c8",
+          "size_bytes": 1965
+        }
+      },
+      "memo_exact_text": "其實三千五千萬",
+      "original": "其實35000萬",
+      "reason": "Audit A 與 Audit B 對重大數字的解讀互相衝突；targeted Memo 仍是同一 ASR，且沒有消除『三千、五千』與『三千五百』的歧義。"
+    },
+    {
+      "audit_a_proposal": null,
+      "audit_b_proposal": "你賺三四十年可能不夠",
+      "cue_numbers": [
+        1871
+      ],
+      "decision": "keep_original_unresolved",
+      "evidence": {
+        "clip": {
+          "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\simple-step7\\memo-targeted\\cue-1871-long\\clip.wav",
+          "sha256": "94fb22e5b5b8cf5d8a0b8183c46c24d0b1cd0e29a1f3803e667d074e4482ba43",
+          "size_bytes": 416096
+        },
+        "output": {
+          "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\simple-step7\\memo-targeted\\cue-1871-long\\memo.srt",
+          "sha256": "99fcf7a161cf482ad1f775d0b6dadc7c1e00276d3156be1e59c75defb4fea44d",
+          "size_bytes": 610
+        },
+        "receipt": {
+          "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\simple-step7\\memo-targeted\\cue-1871-long\\receipt.json",
+          "sha256": "bacdf73d00e03e77959631683c3596919a03b449b00c17658ae3f6ddf4a7e0ee",
+          "size_bytes": 1969
+        }
+      },
+      "memo_exact_text": "你賺三四年可能不夠",
+      "original": "你賺三四年可能不夠",
+      "reason": "只有 Audit B 根據語義推測漏了『十』；targeted Memo 直接重複原文，沒有直接證據支持重大年數修正。"
+    },
+    {
+      "audit_a_proposal": "他說日本不要去 要就要去美國",
+      "audit_b_proposal": null,
+      "cue_numbers": [
+        2092,
+        2093
+      ],
+      "decision": "keep_original_unresolved",
+      "evidence": {
+        "clip": {
+          "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\simple-step7\\memo-targeted\\cue-2092-long\\clip.wav",
+          "sha256": "4909abd722a512f1ce24954d314b9d49da9a6af1b4bd5a67deaa2b9fb68c539f",
+          "size_bytes": 416096
+        },
+        "output": {
+          "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\simple-step7\\memo-targeted\\cue-2092-long\\memo.srt",
+          "sha256": "a02c7d112fbbc447c57ae62fac60888e589df6d61a5dc4f189221bbb19e8e067",
+          "size_bytes": 618
+        },
+        "receipt": {
+          "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\simple-step7\\memo-targeted\\cue-2092-long\\receipt.json",
+          "sha256": "e88cb1f4e7e5b2f2e7deaabced5af9c74a73f3546fc50ca526ef4551970e8157",
+          "size_bytes": 1969
+        }
+      },
+      "memo_exact_text": "他說日本沒有去\n最後要去美國",
+      "original": "他說日本沒有去\n最後要去美國",
+      "reason": "Audit A 的修正涉及重大否定範圍，但 Audit B 沒有確切提案，targeted Memo 也只重複原文，沒有收斂的直接文字證據。"
+    },
+    {
+      "audit_a_proposal": "cue 2126：現在600多萬的",
+      "audit_b_proposal": "cue 2126：現在600多萬的；cue 2129–2130：無確切提案",
+      "cue_numbers": [
+        2126,
+        2127,
+        2128,
+        2129,
+        2130
+      ],
+      "decision": "keep_original_unresolved",
+      "evidence": {
+        "clip": {
+          "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\simple-step7\\memo-targeted\\cue-2126-2130-long\\clip.wav",
+          "sha256": "4a51008e5cc01552d9a11f691ed9616196ea42a1095c8d9d0a39a3b7d9e22876",
+          "size_bytes": 608096
+        },
+        "output": {
+          "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\simple-step7\\memo-targeted\\cue-2126-2130-long\\memo.srt",
+          "sha256": "e6db796ba7131691488a851a9f5638a22e9bc24ab495d51f4a240e26a8de9f16",
+          "size_bytes": 575
+        },
+        "receipt": {
+          "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\simple-step7\\memo-targeted\\cue-2126-2130-long\\receipt.json",
+          "sha256": "36562cf55feb43d0529ffbec772c518037b6c4a6c48dc3bfc9e0223cdb23deaa",
+          "size_bytes": 1989
+        }
+      },
+      "memo_exact_text": "現在20多萬美金的年薪\n20萬\n但是他的那一級\n我們叫做他的薪水",
+      "original": "現在200多萬的\n20多萬美金的年薪\n對 20萬\n但是她的那一級\n我們叫做她的薪水",
+      "reason": "兩個 audit 的 600 萬均由上下文推導；targeted Memo 省掉 cue 2126 而非直接確認 600 萬，並再次產出 cue 2129–2130 的損壞文字，因此不足以接受重大數字或跨 cue 修正。"
+    }
+  ],
+  "unresolved_count": 4
+}

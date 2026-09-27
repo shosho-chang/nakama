@@ -1,0 +1,38 @@
+{
+  "schema_version": 1,
+  "contract": "podcast-highlight-long-shortlist-inputs-v1",
+  "candidates_sha256": "d286e4132ab1706f8562dd030613e9060a9047875f2783fceece89e85fe1f9cd",
+  "long_candidate_count": 16,
+  "files": [
+    {
+      "path": "review_azhe.json",
+      "sha256": "3658f203c5ccde028f577d248723139dcd44ad636c8225345a7ba0cf63a8862e",
+      "size_bytes": 20505
+    },
+    {
+      "path": "review_kevin.json",
+      "sha256": "4a42b5eba1f9a1252532c0b29c23126d305fd6260502359f3c3841ced0d9dd7b",
+      "size_bytes": 31790
+    },
+    {
+      "path": "review_shufen.json",
+      "sha256": "c0e265e6530a39540fce8d4c5320f40b01a92fad38c89ab62b1be1e8c6ee144c",
+      "size_bytes": 21262
+    },
+    {
+      "path": "lens_brand.json",
+      "sha256": "7fff101daf9f697fb637dab4f76c423f7a828a8ba7b35b2eb940c4044a0b0819",
+      "size_bytes": 30263
+    },
+    {
+      "path": "lens_renee.json",
+      "sha256": "a2cba6ba239f7c7a4e44351385b7273003625005a3f5ed6448d1413c309f4e7a",
+      "size_bytes": 27349
+    },
+    {
+      "path": "persona-review-verification.json",
+      "sha256": "57695a78aac9a9e73c3231d58ace42f129ff1767b6fb0f03e5e1bff082ebf850",
+      "size_bytes": 7827
+    }
+  ]
+}

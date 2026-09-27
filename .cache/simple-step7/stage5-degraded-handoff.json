@@ -1,0 +1,30 @@
+{
+  "schema_version": 1,
+  "contract": "podcast-subtitle-v2-stage5-degraded-dual-asr-handoff-v1",
+  "episode_id": "20260814-moboo",
+  "provenance_status": "degraded_dual_asr_major_complete_not_full_v2_checkpoint",
+  "release_srt": {
+    "path": "subtitle-v2/degraded-audio-release-v1/release/release-v1-corrected.srt",
+    "sha256": "8cf28558050e9c5d7cf4fbbcfa430fda9ba534acf20297ac7f4a0b49a674681c",
+    "size_bytes": 161425
+  },
+  "release_ledger": {
+    "path": "subtitle-v2/degraded-audio-release-v1/release/release-v1-ledger.json",
+    "sha256": "c83ce46391192b1f6766e6fa9e38ef0c554a23f97c6454214a411e3e6dee19d2",
+    "size_bytes": 48805
+  },
+  "export_manifest": {
+    "path": "subtitle-v2/degraded-audio-release-v1/EXPORT-MANIFEST.json",
+    "sha256": "e8a4cabddbcd9f73c3c360724557847a4a97569d7d285bab933eb907d8ef52fa",
+    "size_bytes": 36098
+  },
+  "gates": {
+    "major_component_count": 32,
+    "major_audio_reviewed_count": 32,
+    "nonmajor_retained_original_count": 23,
+    "cue_count": 2630,
+    "non_positive_duration_count": 0,
+    "overlap_count": 0,
+    "byte_identical_rerun": true
+  }
+}

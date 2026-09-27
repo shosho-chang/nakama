@@ -1,0 +1,128 @@
+{
+  "schema_version": 1,
+  "verification_scope": "Fresh Kevin rerun integrity QA only; no content evaluation and no winner selection.",
+  "inputs": {
+    "candidates": "G:\\Footages\\20260814 抹布\\highlights\\candidates.json",
+    "review": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\highlight-mining\\review_kevin.rerun.json",
+    "explicitly_excluded_from_read_and_verdict": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\highlight-mining\\review_kevin.raw.json"
+  },
+  "rubric": {
+    "name": "yt-longform",
+    "dimension_limits": {
+      "Hook": 20,
+      "留存節奏": 30,
+      "論述完整性": 20,
+      "新知密度": 20,
+      "分享觸發": 10
+    },
+    "total_limit": 100
+  },
+  "method": {
+    "utf8": "Strict UTF-8 decode with decoding errors rejected.",
+    "json": "Strict JSON parse with duplicate object keys rejected.",
+    "source_hash": "Compared source_sha256 to SHA-256 of the exact candidates.json bytes.",
+    "ids": "Required exactly one score for each long candidate ID L01-L16, with no duplicates, omissions, or extras.",
+    "dimensions": "Required exactly Hook/留存節奏/論述完整性/新知密度/分享觸發, integer values in rubric range, and total equal to their sum.",
+    "obstacles": "Required an array of 1-3 obstacles per score.",
+    "bracket_citations": "Searched the entire rerun JSON for markers matching [Lxx cue ...].",
+    "structured_quotes": "For every dropoff, obstacle, and evidence object, required integer cue and non-empty quote; cue must exist within that score ID's candidate cue range and quote must be an exact substring of the declared cue text."
+  },
+  "overall_stats": {
+    "files_checked": 2,
+    "strict_utf8_pass": 2,
+    "strict_json_pass": 2,
+    "source_sha_exact_match": true,
+    "scores_checked": 16,
+    "unique_ids": 16,
+    "complete_long_id_set": true,
+    "duplicate_ids": 0,
+    "missing_ids": 0,
+    "extra_ids": 0,
+    "dimension_records_pass": 16,
+    "total_sum_checks_pass": 16,
+    "obstacle_count_checks_pass": 16,
+    "obstacles_total": 48,
+    "minimum_obstacles_per_score": 3,
+    "maximum_obstacles_per_score": 3,
+    "bracket_citation_markers_found": 0,
+    "dropoff_quotes_checked": 16,
+    "obstacle_quotes_checked": 48,
+    "evidence_quotes_checked": 48,
+    "structured_quotes_checked": 112,
+    "structured_quote_cue_and_text_pass": 112,
+    "structured_quote_fail": 0,
+    "errors": 0,
+    "warnings": 0
+  },
+  "per_file": {
+    "candidates.json": {
+      "path": "G:\\Footages\\20260814 抹布\\highlights\\candidates.json",
+      "stats": {
+        "bytes": 431555,
+        "strict_utf8": true,
+        "strict_json": true,
+        "sha256": "d286e4132ab1706f8562dd030613e9060a9047875f2783fceece89e85fe1f9cd",
+        "candidate_count": 39,
+        "long_candidate_count": 16,
+        "long_ids": [
+          "L01", "L02", "L03", "L04", "L05", "L06", "L07", "L08",
+          "L09", "L10", "L11", "L12", "L13", "L14", "L15", "L16"
+        ]
+      },
+      "errors": [],
+      "warnings": [],
+      "final_verdict": "PASS"
+    },
+    "review_kevin.rerun.json": {
+      "path": "E:\\nakama\\worktrees\\moboo-e2e\\.cache\\highlight-mining\\review_kevin.rerun.json",
+      "stats": {
+        "bytes": 27022,
+        "strict_utf8": true,
+        "strict_json": true,
+        "persona": "凱文-YT",
+        "rubric": "yt-longform",
+        "source_sha256": "d286e4132ab1706f8562dd030613e9060a9047875f2783fceece89e85fe1f9cd",
+        "source_sha_exact_match": true,
+        "score_count": 16,
+        "unique_score_ids": 16,
+        "complete_long_id_set": true,
+        "duplicate_ids": 0,
+        "dimension_records_pass": 16,
+        "total_sum_checks_pass": 16,
+        "obstacle_count_checks_pass": 16,
+        "bracket_citation_markers_found": 0,
+        "dropoff_quotes_checked": 16,
+        "obstacle_quotes_checked": 48,
+        "evidence_quotes_checked": 48,
+        "structured_quotes_checked": 112,
+        "structured_quote_cue_and_text_pass": 112,
+        "structured_quote_fail": 0
+      },
+      "score_checks": {
+        "L01": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L02": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L03": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L04": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L05": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L06": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L07": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L08": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L09": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L10": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L11": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L12": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L13": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L14": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L15": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"},
+        "L16": {"obstacles": 3, "dropoff_quotes": 1, "obstacle_quotes": 3, "evidence_quotes": 3, "quote_pass": 7, "verdict": "PASS"}
+      },
+      "errors": [],
+      "warnings": [],
+      "final_verdict": "PASS"
+    }
+  },
+  "final_verdict": {
+    "status": "PASS",
+    "reason": "The fresh Kevin rerun passes strict encoding/JSON, exact source hash, complete unique L01-L16 coverage, rubric dimensions and sums, 1-3 obstacle cardinality, zero bracket citation markers, and all 112 structured quote cue/text checks."
+  }
+}
