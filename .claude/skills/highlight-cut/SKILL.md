@@ -12,95 +12,152 @@ description: >
 # highlight-cut — 訪談集精華選段
 
 設計凍結：`docs/plans/2026-07-25-highlight-cut-plan.md`（grill Q1–Q7）。
-**零 API 錢**：miner 與 persona 全走 Cowork subagent。
+**不走 paid API**：miner 與 persona 使用已設定的 Codex／Claude Code subscription subagents。
 
 ## 執行環境（v1 收斂裁決，修修 2026-07-27）
 
-**這個 skill 只能在 Claude Code + 本機跑，不走 CoWork / Computer Use。**
+**這個 skill 只能在 Codex 或 Claude Code 的本機 agent runtime 跑，不走 Computer Use。**
 
 理由是機制差異，不是偏好：
 - 本 skill 的 Resolve 操作全走**官方 Python Scripting API**
   （`DaVinciResolveScript`，見 `scripts/build_resolve_project.py`）——
   直接呼叫 timeline/item/Fusion 物件，逐幀關鍵影格、0.05s 精度的音效落點
   都靠它
-- CoWork 走 **Computer Use**（截圖→認畫面→點按鈕），做不到這種精度，
+- Computer Use（截圖→認畫面→點按鈕）做不到這種精度，
   也擋不住版面變動
 - 前提：**Resolve Studio 執行中** + Preferences → System → General →
-  External scripting using = **Local**；跑 Resolve 的 script 用
-  `py -3.10`（3.14 沒有 Resolve 模組），pytest/ruff 用 `python`
+  External scripting using = **Local**；跑 Resolve／Fusion 的 script 用
+  `C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe`；repo non-Resolve commands 用
+  `E:\nakama\.venv-v2\Scripts\python.exe`
 - Sandcastle / 雲端 runner 同樣不適用（沒有 Resolve、沒有素材碟）；
   唯一可外包的是純 render 類工作（hyperframes 卡片），疊軌仍要本機
 
-## 前提
+## 前提與唯一正式字幕來源
 
-episode 已完成 podcast-pipeline 至 resolve-project；該步已把 Verified Projection 原子持久化到
-`<episode>/.stage5/verified-subtitle-handoff.v2.json`。Resolve 專案存在且 Resolve 開著。
-正式流程不得讀 episode root `transcript.srt`；它只屬於 `explicit legacy forensic`。
+Episode 已完成 Podcast Pipeline 的 `memo-dual-audit-v1` release。正式預設由
+`run_highlight_cut.py` 自動發現並驗證：
 
-## Step 1 — 開採（3 miner subagent 平行）
+```text
+<episode>/subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json
+```
 
-先取得唯一合法 mining input：
+不傳任何字幕 flag；不得讀 episode root `transcript.srt`。Resolve project/timeline 已由同一 handoff
+真正建立，不是只有 dry-run。若專案尚未建立，回到 podcast-pipeline 執行 Resolve actual build，不能
+略過後假裝 highlights 已可 materialize。
+
+## Step 1 — 取得 mining input
 
 ```powershell
-python scripts/run_highlight_cut.py <episode> --mining-input
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" --mining-input
 ```
 
-只把輸出中的 persisted Verified Projection `srt_path` 交給 3 個 Opus subagent，並各讀完整該
-SRT + `refs/` 訪綱；不得自行改讀 root `transcript.srt`。視角分工：
+把 stdout JSON 原樣保存為 `highlights/mining-input.json`。它至少包含 `status=mining-input`、唯一
+`srt_path` 與完整 `subtitle_lineage`。三個 miners 只讀該 `srt_path`、訪綱、前期報告與 episode
+references；不得自行尋找別的 SRT。
 
-- **故事弧**：起承轉合完整、能獨立成篇的論述段
-- **金句爆點**：反直覺、情緒強、可當 hook 的瞬間，往外擴到自然邊界
-- **實用價值**：觀眾能帶走方法/清單/protocol 的段落
+## Step 1.1 — agent-owned 3-miner dispatch
 
-每個 miner 提長片 ≥3、短片 ≥3。規格（寫進 miner prompt）：
+Orchestrator 必須平行 dispatch 三個互相隔離、不能讀彼此輸出的 subagents。這一步是 agent-owned，
+不可停下詢問使用者，也不可因 repo 沒有 LLM runner 就跳到 `--validate`：
 
-- 長度：長片目標 8–12min（容忍 6–18）；短片目標 60–120s（容忍 40–180，硬上限 180）
-- **內容邊界優先於長度**：絕不在論述中間切；段落開頭必須是說話者輪替點或提問，
-  結尾必須是觀點落地；容忍帶外不提；偏離目標帶要寫一句「為什麼值得破格」
-- **冷開場必須乾淨**（修修 2026-07-26 血淚 ×2）：段落第一句**不可含上一話題的
-  收尾/反應語**——「對啊我就覺得超級有趣的」「再講X會講一整集」這種殘尾。
-  訪談主持人的慣性是「先收上一題再轉場」，收尾語常跟轉場詞（那現在／我們來講
-  下一個／接下來）黏在**同一個 cue**——這種情況段落要從轉場詞起算，並在輸出裡
-  給 `head_trim` 欄位標出該 cue 內要剔除的殘尾字串（例：`"head_trim": "對啊我就
-  覺得超級有趣的"`）
-- 輸出（每候選）：`{id, format(long/short), t_start, t_end, title, hook(段內第一個
-  抓人的原句), rationale, miner}`——id 格式 L1/L2…（長）、S1/S2…（短），秒為單位
+| Miner | 視角 | 唯一輸出 |
+|---|---|---|
+| `story` | 起承轉合完整、能獨立成篇的故事／論述弧 | `highlights/miner-story.json` |
+| `punch` | 反直覺、情緒強、可當 hook 的金句爆點 | `highlights/miner-punch.json` |
+| `value` | 觀眾能帶走方法、清單或 protocol 的實用價值 | `highlights/miner-value.json` |
 
-合併三家提案 → 寫 `highlights/candidates.json` → 跑：
+每個 worker 都必須讀完整 SRT，而不是摘要；每個至少提出 3 個 long、3 個 short。每份 JSON exact schema：
 
+```json
+{
+  "schema_version": 1,
+  "contract": "podcast-highlight-miner-output-v1",
+  "miner_role": "story|punch|value",
+  "source_srt_sha256": "copy mining-input subtitle_srt_sha256",
+  "subtitle_lineage": {},
+  "candidates": [
+    {
+      "id": "story-L01|story-S01",
+      "format": "long|short",
+      "t_start": 0.0,
+      "t_end": 0.0,
+      "title": "工作代號，不是發布標題",
+      "hook": "段內逐字原句",
+      "rationale": "為何值得剪",
+      "miner": "story|punch|value",
+      "head_trim": null,
+      "cue_start": 1,
+      "cue_end": 2
+    }
+  ]
+}
 ```
-python scripts/run_highlight_cut.py <episode> --validate
+
+`subtitle_lineage` 是 mining-input 除 `status`／`srt_path` 外的完整 identity object；不得刪欄或自行
+重建。`source_srt_sha256` raw exact copy 其中的 `subtitle_srt_sha256`。ID 固定以 miner role 開頭，避免
+跨 worker 撞名。`head_trim` 是 cue 內要去除的秒數或 `null`，不是文字。
+
+每個 candidate 必須滿足：`t_start < t_end`；long 目標 8–12 分鐘、容忍 6–18；short 目標
+60–120 秒、容忍 40–180 且硬上限 180；hook 必須是時間範圍內 raw transcript substring。內容邊界
+優先，不在論述中間切；開頭從提問／轉場／完整論點開始，若同 cue 含上一題殘尾就填 `head_trim`；
+結尾必須觀點落地。Worker 不得自行加 `subtitle_lineage` 以外的 source 或讀 root transcript。
+
+## Step 1.2 — deterministic merge to candidates.json
+
+三份檔案都存在後，orchestrator 必須先做 schema、完整 SRT path、exact `subtitle_lineage`、candidate
+count、finite timing、format、hook substring 與 duplicate local ID 驗證；任一失敗只重跑該 miner。
+不可在這裡問使用者。
+
+候選檔真的存在後才執行 official strict merge：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" --merge-miners
 ```
 
-`--validate` 會把同一份 projection/generation/manifest/SRT lineage 寫入 `candidates.json`；
-shortlist 會原樣帶入 `winners.json`。`--materialize` 與 `--refresh-subs` 只接受完全相同 lineage，
-handoff 缺失、stale 或 tamper 一律停下。
+`--merge-miners` 固定讀上方三個 default paths，嚴格驗 contract、role、SRT hash、完整 lineage、exact
+candidate keys、cue range、finite timing、每家至少一個 long、跨 worker ID 唯一；以
+`(format,t_start,t_end,id)` 排序，原子寫 `podcast-highlight-candidates-v1`
+`highlights/candidates.json`，接著在同一次 command 執行 validate。Validator 吸附 cue 邊界、計算
+duration、將同格式重疊 >50% 標為 variant group（不淘汰）。任何 handoff／SRT drift 都 fail closed。
 
-（吸附 cue 邊界、長度帶檢查、同格式重疊 >50% 標 **variant 群組**——
-**不淘汰**。2026-07-26 教訓：評分前用 rationale 長度去重，害「數位排毒+
-睡眠運動」整塊從未被評分就消失。重疊候選是同素材的不同切法，全部進盲審）
+## Step 2 — agent-owned blind persona and lens review
 
-## Step 2 — persona 盲審（進 persona-review skill）
+Validate 成功後才 dispatch；每個 reviewer 必須 blind，不能讀其他 reviewer output。三位 scoring
+persona 全部覆蓋每個 candidate；brand 覆蓋全體；Renee 只覆蓋 long：
 
-呼叫 `persona-review` skill：
+| Reviewer | Output | Required shape |
+|---|---|---|
+| 阿哲 | `highlights/review_azhe.json` | `{"persona":"azhe","source_sha256":"<candidates sha>","scores":[{"id":"story-L01","total":0,"rationale":"..."}]}` |
+| 凱文 | `highlights/review_kevin.json` | `{"persona":"kevin","source_sha256":"<candidates sha>","scores":[...]}` |
+| 淑芬 | `highlights/review_shufen.json` | `{"persona":"shufen","source_sha256":"<candidates sha>","scores":[...]}` |
+| Brand lens | `highlights/lens_brand.json` | `{"lens":"brand","source_sha256":"<candidates sha>","findings":[{"id":"story-L01","severity":"veto|caution|pass","issue":"...","mitigation":"..."}]}` |
+| Renee lens | `highlights/lens_renee.json` | `{"lens":"renee","source_sha256":"<candidates sha>","findings":[{"id":"story-L01","hook_risk":"...","retention_risk":"...","boundary_action":"..."}]}` |
 
-- artifact：candidates.json 內每個候選段的 transcript 節錄（附時間軸），長短分開審
-- persona set：`yt-audience`（阿哲-YT／凱文-YT／淑芬-YT 評分 + brand-lens +
-  Renee 兩個 lens；Renee 只審長片）
-- rubric：長片 `yt-longform`、短片 `yt-shorts`
-- 評選規則（grill Q6）：三位評分 persona 各給總分 → **取中位數排名**；同分
-  新觀眾判準強的 persona 分數優先；lens 不計分；**brand-lens 可標否決**
-  （斷章取義/害來賓）——否決段標紅進報告等修修裁決，不自動排除
-- **同 variant 群組只取最高分者佔排名**（評分後才去重；落選 variant 照常
-  進報告與 marker）
-- 排名結果**不要自己收成 top 3**——進 Step 2.4 的 gate（見下）
+Persona `total` 必須 finite 0–100；這次 long gate 的三份 scoring file 與 brand findings IDs 必須 exact
+等於 long candidate IDs、無重複、無遺漏；每份 `source_sha256` 必須 raw exact 等於 finalized
+`candidates.json` SHA-256。所有引用原句須為 candidate time range 內 transcript raw substring。Brand veto 只標紅、不能
+自動排除。另派一個 QA pass 驗證 schema、coverage 與 quote citations；任何整份 review citation 錯誤就
+作廢並 blind rerun 該 reviewer，不能局部補分。
 
-## Step 2.4 — 選段 gate（修修挑，**必停**；修修 2026-08-11 裁決）
+Shortlist ranking 由既有 code 計算三人中位數；同 variant group 只有最高分佔 rank，其他仍列出；
+Renee／brand 不計分。只有五份 review outputs 都驗證通過才可進下一步。
 
+Persona dispatch 仍是 orchestrator-owned subscription subagent stage；`run_cut_shortlist.py` 是 strict
+review gate，會拒絕缺檔、stale `source_sha256`、partial/extra/duplicate candidate coverage 與 non-finite
+scores。無法產生 exact review outputs 時回報 `HIGHLIGHT_PERSONA_REVIEW_NOT_IMPLEMENTED`，不能假稱已到
+人工 gate。
+
+## Step 2.4 — long Highlight shortlist gate（唯一正常停點）
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_cut_shortlist.py "<episode>" --format long
 ```
-python scripts/run_cut_shortlist.py <episode> --format long   # 出候選表
-〔把表貼給修修，等他指定 id〕
-python scripts/run_cut_shortlist.py <episode> --pick SL4,SL3,SL7   # 才寫 winners.json
+
+命令成功產出候選表後才停下，把完整表交給修修選 IDs；此時 `winners.json` 必須仍不存在或維持前一個
+已知選擇，不得自動 top 3。收到明確 IDs 後才執行：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\run_cut_shortlist.py "<episode>" --pick L009,L012,L015
 ```
 
 **為什麼停在這裡**：panel 是**讀逐字稿**評分的，評的是素材強度，不是成片吸引力、
@@ -118,6 +175,11 @@ LLM 用量最大的一塊；把 HITL 移到**排完之後、製作之前**幾乎
 - brand-lens 否決段可以被指名，但 script 會在 stderr 警告——**不靜默照做**
 - `winners.json` 只由本 script 寫（schema 由它保證）；既有的 `excluded_group` 保留
 
+## Explicit legacy forensic inputs（不是 production default）
+
+ADR-056 Formal Subtitle V2 的 projection handoff、`--degraded-release-handoff` 與 `--legacy-v1` 只可在
+使用者明確要求調查歷史 artifact 時使用；不得出現在 fresh episode 的 commands，也不得 silent fallback。
+
 ## Step 2.5 — 邊界打磨（物化前，必做）
 
 **Renee／persona 指出的開頭問題必須在這裡消化成動作，不是只寫進報告**
@@ -127,7 +189,7 @@ LLM 用量最大的一塊；把 HITL 移到**排完之後、製作之前**幾乎
 
 1. **首 cue 含前題殘尾**（收尾語+轉場詞同 cue，或 miner 給了 `head_trim`）→
    寫 `highlights/line_moves_fix*.json`（`after_cue` = 該 cue 序號、`delta` 負數
-   把殘尾留在前句）→ `python scripts/run_line_polish.py <episode>` 切開 →
+   把殘尾留在前句）→ `E:\nakama\.venv-v2\Scripts\python.exe scripts\run_line_polish.py <episode>` 切開 →
    candidates.json 該段 `t_start` 改成新 cue 起點（**秒數換算要驗算**：
    28:17.886 = 1697.886，不要心算）
 2. **尾 cue 話講一半** → `t_end` 移到上一個完整句尾
@@ -140,7 +202,8 @@ LLM 用量最大的一塊；把 HITL 移到**排完之後、製作之前**幾乎
 ## Step 3 — 物化 Resolve
 
 ```
-python scripts/run_highlight_cut.py <episode> --materialize
+& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" `
+  scripts\run_highlight_cut.py <episode> --materialize
 ```
 
 - 當選長片 ×3：16:9 timeline（字幕樣式模板自動套）；短片 ×3：1080×1920 直式
@@ -206,9 +269,9 @@ Script 層仍共用 `run_short_*.py`（`FORMAT_*` 參數表）——改 script �
 `短N - <標題>（緊）`（原 timeline 不動，供對照）：
 
 ```
-python scripts/run_short_tighten.py <episode> --detect --id <winner-id>
+& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_tighten.py <episode> --detect --id <winner-id>
 # → agent 複審 highlights/tighten/<id>_cuts.json 的 keep=null 項
-python scripts/run_short_tighten.py <episode> --apply --id <winner-id>
+& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_tighten.py <episode> --apply --id <winner-id>
 ```
 
 複審準則（機械偵測會誤報，語意層把關）：
@@ -237,7 +300,7 @@ python scripts/run_short_tighten.py <episode> --apply --id <winner-id>
 每支短片跑：
 
 ```
-python scripts/run_short_director.py <episode> --id <winner-id> --stills <dir>
+& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_director.py <episode> --id <winner-id> --stills <dir>
 ```
 
 產出**新** timeline `短N - <標題>（緊·導播）`（Step 6 的（緊）版與原版
@@ -366,7 +429,7 @@ hero（tier 1）另加一條：必須是**能單獨當引言卡發出去**的一
 `highlights/tighten/<id>_titles.json`（t0/t1 = 緊·導播 timeline 秒）→
 
 ```
-python scripts/run_short_titles.py <episode> --id <winner-id> --stills <dir>
+& "C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe" scripts\run_short_titles.py <episode> --id <winner-id> --stills <dir>
 ```
 
 （逐卡 render ~20s、參數 hash cache；冪等清舊卡；樣張必驗。渲染要
@@ -488,7 +551,7 @@ sound-designer skill 的字典保留，等日後要開再啟用。
 至少跑一輪，**修完任何 JSON/素材也要再跑**（十七輪首航就抓到 titles 清場
 誤殺 track 4 整條貼紙層——沒 loop 根本不會發現）。
 
-1. `python scripts/run_short_review.py <episode> --id <cid>` →
+1. `C:\Users\Shosho\AppData\Local\Programs\Python\Python310\python.exe scripts\run_short_review.py <episode> --id <cid>` →
    episode `highlights/review/<cid>/`：540×960 preview（**ffmpeg 從 tight
    SRT 燒字幕**——Resolve render API 燒不進字幕，只有 ExportSubtitle
    sidecar）、1fps 縮圖牆、逐事件抽幀、events.json（含節拍器缺口）

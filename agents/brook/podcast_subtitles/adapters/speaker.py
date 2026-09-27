@@ -44,7 +44,7 @@ def _production_algorithm() -> tuple[EnvelopeLoader, SpeakerAssigner, Mapping[st
 
     config: dict[str, object] = {
         "algorithm": "two-track-rms-viterbi",
-        "algorithm_version": speaker_assign.ALGORITHM_VERSION,
+        "algorithm_version": _ADAPTER_VERSION,
         "env_sample_rate": speaker_assign.ENV_SR,
         "frame_samples": speaker_assign.FRAME,
         "evidence_clamp_db": speaker_assign.EVIDENCE_CLAMP_DB,
@@ -53,7 +53,6 @@ def _production_algorithm() -> tuple[EnvelopeLoader, SpeakerAssigner, Mapping[st
         "max_word_seconds": speaker_assign.MAX_WORD_SEC,
         "gap_discount": speaker_assign.GAP_DISCOUNT,
         "minimum_switch_penalty": speaker_assign.MIN_SWITCH_PENALTY,
-        "minimum_assignment_margin": speaker_assign.MIN_ASSIGNMENT_MARGIN,
     }
     return speaker_assign.load_envelopes, speaker_assign.assign_word_speakers, config
 

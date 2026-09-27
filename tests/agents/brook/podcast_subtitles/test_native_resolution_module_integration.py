@@ -24,12 +24,16 @@ from agents.brook.podcast_subtitles.correction_acceptance import (
 from agents.brook.podcast_subtitles.facade import PodcastSubtitleFacade
 from agents.brook.podcast_subtitles.full_audit_attestation import (
     FullAuditAggregateAttestationV2,
+    SelectiveAuditAggregateAttestationV3,
 )
 from agents.brook.podcast_subtitles.hashing import (
     canonical_json_bytes,
     hash_object,
 )
-from agents.brook.podcast_subtitles.loaded_generation import LoadedGenerationState
+from agents.brook.podcast_subtitles.loaded_generation import (
+    LoadedGenerationState,
+    LoadedNativeAuditState,
+)
 from agents.brook.podcast_subtitles.module import (
     AdapterIdentity,
     CreateRequest,
@@ -197,7 +201,7 @@ def _human_audio_receipt(
 
 def _human_original_receipt(
     candidate: TextDiscoveredCandidateV2,
-    aggregate: FullAuditAggregateAttestationV2,
+    aggregate: FullAuditAggregateAttestationV2 | SelectiveAuditAggregateAttestationV3,
     evidence: tuple[RecognitionEvidence, ...],
 ) -> HumanOriginalConfirmationReceiptV2:
     registry = {
@@ -258,7 +262,7 @@ class _ParentScenario:
     parent: NeedsReview
     loaded_parent: LoadedGenerationState
     candidate: TextDiscoveredCandidateV2
-    aggregate: FullAuditAggregateAttestationV2
+    aggregate: FullAuditAggregateAttestationV2 | SelectiveAuditAggregateAttestationV3
 
 
 def _write_clean_text_responses(pending: Interrupted) -> None:
@@ -337,12 +341,8 @@ def _prepare_parent_scenario(tmp_path: Path, *, episode_id: str) -> _ParentScena
         strict=True,
     )
     candidate = text_record.candidate_discovery_set.candidates[0]
-    aggregate = parent_module._load_native_generation_model(
-        parent.generation_id,
-        "native_full_audit/full_audit_aggregate.json",
-        FullAuditAggregateAttestationV2,
-    )
-    assert isinstance(aggregate, FullAuditAggregateAttestationV2)
+    assert isinstance(loaded_parent.audit, LoadedNativeAuditState)
+    aggregate = loaded_parent.audit.aggregate
     return _ParentScenario(
         episode_root=episode_root,
         workspace=workspace,
@@ -546,14 +546,8 @@ def test_accept_exact_candidate_reaudits_and_publishes_verified_child(
         strict=True,
     )
     candidate = text_record.candidate_discovery_set.candidates[0]
-    aggregate = parent_module._load_native_generation_model(
-        parent.generation_id,
-        "native_full_audit/full_audit_aggregate.json",
-        __import__(
-            "agents.brook.podcast_subtitles.full_audit_attestation",
-            fromlist=["FullAuditAggregateAttestationV2"],
-        ).FullAuditAggregateAttestationV2,
-    )
+    assert isinstance(loaded_parent.audit, LoadedNativeAuditState)
+    aggregate = loaded_parent.audit.aggregate
     receipt = _human_audio_receipt(candidate, aggregate, loaded_parent.recognition.evidence)
     resolution_key = "term:exact-candidate"
     target = ReferenceAuthorityTargetV2(

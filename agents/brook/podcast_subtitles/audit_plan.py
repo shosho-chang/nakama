@@ -9,8 +9,11 @@ every semantic transcription error.
 from __future__ import annotations
 
 import re
+from collections import Counter
+from heapq import heappop, heappush
 from pathlib import Path
-from typing import Literal, Sequence
+from types import MappingProxyType
+from typing import Literal, Mapping, Sequence
 
 from shared.schemas.podcast_subtitles_v2 import (
     CORRECTION_AUDIT_BOUNDARY_CATEGORIES,
@@ -128,6 +131,57 @@ def span_text_flags(text: str) -> frozenset[str]:
     if any(character * 2 in text for character in text if character.strip()):
         flags.add("disfluency")
     return frozenset(flags)
+
+
+def _observed_speakers_by_span(
+    spans: Sequence[CanonicalSpan | SpanAuditTarget],
+    recognitions: Sequence[RecognitionEvidence],
+) -> Mapping[str, frozenset[str]]:
+    """Resolve strict-overlap speaker sets with one deterministic interval sweep."""
+
+    ordered_tokens: list[tuple[int, int, int, int, str]] = []
+    for evidence_index, evidence in enumerate(recognitions):
+        for token_index, token in enumerate(evidence.tokens):
+            speaker = token.speaker
+            if speaker is None:
+                continue
+            ordered_tokens.append(
+                (
+                    token.start_ms,
+                    token.end_ms,
+                    evidence_index,
+                    token_index,
+                    speaker,
+                )
+            )
+    ordered_tokens.sort()
+
+    observed: dict[str, frozenset[str]] = {}
+    active: list[tuple[int, int, int, str]] = []
+    speaker_counts: Counter[str] = Counter()
+    token_cursor = 0
+    previous_span_end: int | None = None
+    for span in spans:
+        if previous_span_end is not None and span.start_ms < previous_span_end:
+            raise AuditPlanError("speaker sweep requires ordered non-overlapping spans")
+        while token_cursor < len(ordered_tokens):
+            start_ms, end_ms, evidence_index, token_index, speaker = ordered_tokens[
+                token_cursor
+            ]
+            if start_ms >= span.end_ms:
+                break
+            heappush(active, (end_ms, evidence_index, token_index, speaker))
+            speaker_counts[speaker] += 1
+            token_cursor += 1
+        while active and active[0][0] <= span.start_ms:
+            _, _, _, speaker = heappop(active)
+            speaker_counts[speaker] -= 1
+            if speaker_counts[speaker] == 0:
+                del speaker_counts[speaker]
+        span_id = span.span_id if isinstance(span, SpanAuditTarget) else span.id
+        observed[span_id] = frozenset(speaker_counts)
+        previous_span_end = span.end_ms
+    return MappingProxyType(observed)
 
 
 def cross_span_repetition(left_text: str, right_text: str) -> bool:
@@ -644,6 +698,7 @@ def build_audit_plan(
         seam_ownership.update({key: tuple(value) for key, value in owned.items()})
     receipt_by_span = {item.audio_span_id: item for item in retrievals}
     canonical_by_id = {item.id: item for item in transcript.tokens}
+    observed_speakers_by_span = _observed_speakers_by_span(spans, recognitions)
 
     def span_speaker_disagreement(target: SpanAuditTarget) -> bool:
         # Span identity is intentionally a coarse anomaly trigger.  It detects
@@ -654,14 +709,7 @@ def build_audit_plan(
             for token_id in target.token_ids
             if canonical_by_id[token_id].speaker is not None
         }
-        observed_speakers = {
-            token.speaker
-            for evidence in recognitions
-            for token in evidence.tokens
-            if token.speaker is not None
-            and token.start_ms < target.end_ms
-            and token.end_ms > target.start_ms
-        }
+        observed_speakers = observed_speakers_by_span[target.span_id]
         return bool(canonical_speakers and observed_speakers - canonical_speakers)
 
     def boundary_speaker_conflict(
@@ -669,28 +717,25 @@ def build_audit_plan(
     ) -> bool:
         if left is None or right is None:
             return False
-        left_observed = {
-            token.speaker
-            for evidence in recognitions
-            for token in evidence.tokens
-            if token.speaker is not None
-            and token.start_ms < left.end_ms
-            and token.end_ms > left.start_ms
-        }
-        right_observed = {
-            token.speaker
-            for evidence in recognitions
-            for token in evidence.tokens
-            if token.speaker is not None
-            and token.start_ms < right.end_ms
-            and token.end_ms > right.start_ms
-        }
+        left_observed = observed_speakers_by_span[left.span_id]
+        right_observed = observed_speakers_by_span[right.span_id]
         left_canonical = canonical_by_id[left.token_ids[-1]].speaker
         right_canonical = canonical_by_id[right.token_ids[0]].speaker
         return bool(
             (left_observed and left_observed != {left_canonical})
             or (right_observed and right_observed != {right_canonical})
         )
+
+    span_speaker_disagreements = {
+        target.id: span_speaker_disagreement(target) for target in spans
+    }
+    boundary_speaker_conflicts = {
+        target.id: boundary_speaker_conflict(
+            None if target.ordinal == 0 else spans[target.ordinal - 1],
+            None if target.ordinal == len(spans) else spans[target.ordinal],
+        )
+        for target in boundaries
+    }
 
     cells = tuple(
         _span_cell(
@@ -702,7 +747,7 @@ def build_audit_plan(
                 canonical_by_id[token_id].confidence for token_id in target.token_ids
             ),
             speakers=tuple(canonical_by_id[token_id].speaker for token_id in target.token_ids),
-            speaker_disagreement=span_speaker_disagreement(target),
+            speaker_disagreement=span_speaker_disagreements[target.id],
             low_confidence_threshold=policy.low_confidence_threshold,
             basis_hash=basis_hash,
         )
@@ -724,10 +769,7 @@ def build_audit_plan(
                 if target.ordinal == len(spans)
                 else canonical_by_id[spans[target.ordinal].token_ids[0]].speaker
             ),
-            speaker_conflict=boundary_speaker_conflict(
-                None if target.ordinal == 0 else spans[target.ordinal - 1],
-                None if target.ordinal == len(spans) else spans[target.ordinal],
-            ),
+            speaker_conflict=boundary_speaker_conflicts[target.id],
             coverage_status=coverage_status,
             speech_coverage=speech_coverage,
             seam_status=seam_status,

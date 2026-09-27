@@ -14,7 +14,7 @@ packaging 的成本已經付掉了。他自己的比較：「做 5 支挑 3 支�
     highlights/candidates.json      — id/format/variant_group/hook/rationale/時長
     highlights/review_<persona>.json — 三位評分 persona（scores[].total）
     highlights/lens_brand.json       — 品牌 lens（severity: veto/caution）
-    highlights/lens_renee.json       — 留存 lens（開頭診斷，選配）
+    highlights/lens_renee.json       — 留存／邊界 lens（長片必須完整覆蓋）
 
 輸出：
     highlights/選段候選表.md         — 貼給修修的表（群組、中位數、hook、警示）
@@ -26,6 +26,8 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from shared.highlight_shortlist import (
     SCORERS,

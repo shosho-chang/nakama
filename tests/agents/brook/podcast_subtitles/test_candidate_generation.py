@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import builtins
 import hashlib
 import json
 from pathlib import Path
@@ -9,6 +10,8 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+import agents.brook.podcast_subtitles.audit_plan as audit_plan_module
+import agents.brook.podcast_subtitles.candidate_generation as candidate_generation_module
 from agents.brook.podcast_subtitles.audit_plan import (
     build_audit_plan,
     default_correction_audit_policy,
@@ -18,7 +21,9 @@ from agents.brook.podcast_subtitles.candidate_generation import (
     assert_candidate_group_set,
     assert_candidate_signal_set,
     candidate_group_builder_code_hash,
+    candidate_group_set_bytes,
     candidate_signal_builder_code_hash,
+    candidate_signal_set_bytes,
     derive_candidate_group_set,
     derive_candidate_signal_set,
 )
@@ -31,6 +36,7 @@ from shared.schemas.podcast_subtitles_v2 import (
     CanonicalSpan,
     CanonicalTranscript,
     CorrectionAuditPolicySnapshot,
+    EvidenceToken,
     ReferenceArtifact,
     ReferenceEvidence,
     ReferenceLocator,
@@ -285,6 +291,247 @@ def test_overlapping_numeric_latin_and_acronym_signals_are_grouped_losslessly() 
     assert group_set.proposal_status == "dormant_no_proposals_created"
 
 
+def test_signal_derivation_builds_expensive_identity_indexes_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transcript, recognitions = make_case(("AI3",), confidences=(None,))
+    plan = build_audit_plan(
+        transcript,
+        recognitions,
+        default_correction_audit_policy(),
+        references_enrolled=False,
+    )
+    call_counts = {
+        "audit_plan_digest": 0,
+        "candidate_signal_builder_code_hash": 0,
+        "_cell_index": 0,
+    }
+
+    for name in call_counts:
+        original = getattr(candidate_generation_module, name)
+
+        def counted(*args: object, _name: str = name, _original: object = original) -> object:
+            call_counts[_name] += 1
+            return _original(*args)  # type: ignore[operator]
+
+        monkeypatch.setattr(candidate_generation_module, name, counted)
+
+    signal_set = derive_candidate_signal_set(
+        plan,
+        transcript,
+        recognitions,
+        references_enrolled=False,
+    )
+
+    assert len(signal_set.signals) > 1
+    assert call_counts == {
+        "audit_plan_digest": 1,
+        "candidate_signal_builder_code_hash": 1,
+        "_cell_index": 1,
+    }
+
+
+def test_group_derivation_builds_expensive_identity_indexes_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    transcript, recognitions = make_case(("AI3",), confidences=(None,))
+    plan = build_audit_plan(
+        transcript,
+        recognitions,
+        default_correction_audit_policy(),
+        references_enrolled=False,
+    )
+    signal_set = derive_candidate_signal_set(
+        plan,
+        transcript,
+        recognitions,
+        references_enrolled=False,
+    )
+    call_counts = {
+        "audit_plan_digest": 0,
+        "candidate_signal_builder_code_hash": 0,
+        "_cell_index": 0,
+    }
+
+    for name in call_counts:
+        original = getattr(candidate_generation_module, name)
+
+        def counted(*args: object, _name: str = name, _original: object = original) -> object:
+            call_counts[_name] += 1
+            return _original(*args)  # type: ignore[operator]
+
+        monkeypatch.setattr(candidate_generation_module, name, counted)
+
+    group_set = derive_candidate_group_set(plan, signal_set, transcript)
+
+    assert group_set.signal_ids
+    assert call_counts == {
+        "audit_plan_digest": 1,
+        "candidate_signal_builder_code_hash": 1,
+        "_cell_index": 1,
+    }
+
+
+def test_signal_derivation_hashes_each_recognition_evidence_once(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    texts = tuple("甲" if index % 2 == 0 else "乙" for index in range(12))
+    transcript, recognitions = make_case(texts, confidences=(None,) * len(texts))
+    plan = build_audit_plan(
+        transcript,
+        recognitions,
+        default_correction_audit_policy(),
+        references_enrolled=False,
+    )
+    original = candidate_generation_module.recognition_evidence_content_hash
+    call_count = 0
+
+    def counted(evidence: object) -> str:
+        nonlocal call_count
+        call_count += 1
+        return original(evidence)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(
+        candidate_generation_module,
+        "recognition_evidence_content_hash",
+        counted,
+    )
+
+    signal_set = derive_candidate_signal_set(
+        plan,
+        transcript,
+        recognitions,
+        references_enrolled=False,
+    )
+
+    assert len(plan.span_targets) > len(recognitions)
+    assert signal_set.signals
+    assert call_count == len(recognitions)
+
+
+def test_candidate_speaker_overlap_checks_reuse_one_strict_sweep(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    texts = tuple("甲" if index % 2 == 0 else "乙" for index in range(12))
+    transcript, recognitions = make_case(texts, confidences=(None,) * len(texts))
+    plan = build_audit_plan(
+        transcript,
+        recognitions,
+        default_correction_audit_policy(),
+        references_enrolled=False,
+    )
+    original = EvidenceToken.__getattribute__
+    speaker_reads = 0
+
+    def counted(token: EvidenceToken, name: str) -> object:
+        nonlocal speaker_reads
+        if name == "speaker":
+            speaker_reads += 1
+        return original(token, name)
+
+    monkeypatch.setattr(EvidenceToken, "__getattribute__", counted)
+
+    signal_set = derive_candidate_signal_set(
+        plan,
+        transcript,
+        recognitions,
+        references_enrolled=False,
+    )
+
+    recognition_token_count = sum(len(item.tokens) for item in recognitions)
+    assert signal_set.signals
+    assert speaker_reads <= 3 * recognition_token_count
+
+
+def test_group_overlap_partition_scans_signals_linearly(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    texts = tuple("甲" if index % 2 == 0 else "乙" for index in range(20))
+    transcript, recognitions = make_case(texts, confidences=(None,) * len(texts))
+    plan = build_audit_plan(
+        transcript,
+        recognitions,
+        default_correction_audit_policy(),
+        references_enrolled=False,
+    )
+    signal_set = derive_candidate_signal_set(
+        plan,
+        transcript,
+        recognitions,
+        references_enrolled=False,
+    )
+    max_items_examined = 0
+
+    def counted_max(values: object) -> object:
+        nonlocal max_items_examined
+        materialized = tuple(values)  # type: ignore[arg-type]
+        max_items_examined += len(materialized)
+        return builtins.max(materialized)
+
+    monkeypatch.setattr(candidate_generation_module, "max", counted_max, raising=False)
+
+    group_set = derive_candidate_group_set(plan, signal_set, transcript)
+
+    assert len(group_set.groups) == 1
+    assert max_items_examined <= 4 * len(signal_set.signals)
+
+
+def test_immutable_derivation_context_preserves_golden_artifact_bytes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stable_plan_code_hash = "e" * 64
+    stable_code_hash = "f" * 64
+    monkeypatch.setattr(
+        audit_plan_module,
+        "audit_plan_builder_code_hash",
+        lambda: stable_plan_code_hash,
+    )
+    monkeypatch.setattr(
+        candidate_generation_module,
+        "candidate_signal_builder_code_hash",
+        lambda: stable_code_hash,
+    )
+    monkeypatch.setattr(
+        candidate_generation_module,
+        "candidate_group_builder_code_hash",
+        lambda: stable_code_hash,
+    )
+    transcript, recognitions = make_case(("AI3",), confidences=(None,))
+    plan = build_audit_plan(
+        transcript,
+        recognitions,
+        default_correction_audit_policy(),
+        references_enrolled=False,
+    )
+
+    signal_set = derive_candidate_signal_set(
+        plan,
+        transcript,
+        recognitions,
+        references_enrolled=False,
+    )
+    group_set = derive_candidate_group_set(plan, signal_set, transcript)
+
+    assert hashlib.sha256(candidate_signal_set_bytes(signal_set)).hexdigest() == (
+        "120e55cd6914ce04e52e57fa0ddd60a00c3159f162e0a1984041f2855e2e03ca"
+    )
+    assert hashlib.sha256(candidate_group_set_bytes(group_set)).hexdigest() == (
+        "4f33069c9030edef61ca0d4c912dcd316deabfa94e87e8f876b68d69511b6753"
+    )
+    assert tuple(signal.id for signal in signal_set.signals) == (
+        "0035a2bc8b8c5a6d789e0bea74af5be5bb81fae0c832419a2bb362e0f9b7e848",
+        "15397b7e4669b62e556ff2c071c11f0ffb92b7671f42e2dd5c39a9677a70aee4",
+        "4ff564c5c71f62eb5170686e50004090e041b8018c81350fcb797acc823b93d1",
+        "56007ff9c9c897fea013eaa90a1a2672c68113abd1a0783314042aa3b0ee82c2",
+        "91b8ca64a722cef35074d4b0d3ae8b7fda3d751787280481d3f7caa1307c01bd",
+        "9a9cdae332763deecdaed0f3e55ccfc805b739d32d7dbeeab4858a951aea921f",
+        "c56a117899a27e50c12799e388a07432d78686a9e0c2c1ae3f4fd8d230bf89a2",
+    )
+    assert tuple(group.id for group in group_set.groups) == (
+        "713b19dae59aa001fbf8decfb4bf6cd6f795bb0e57b7b5cb23cf66c870f78f63",
+    )
+
+
 def test_recognition_sources_pair_content_evidence_and_raw_digest() -> None:
     transcript, recognitions = make_case(confidences=(None, 0.95))
     plan = build_audit_plan(
@@ -475,6 +722,51 @@ def test_signal_set_and_group_set_bind_exact_plan_and_source_identities() -> Non
     forged_group_set = type(group_set).model_validate(group_payload)
     with pytest.raises(CandidateGenerationError, match="not reproducible"):
         assert_candidate_group_set(forged_group_set, plan, signal_set, transcript)
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "expected_error"),
+    [
+        ("audit_cell_id", H1, "exact AuditCell"),
+        ("audit_plan_hash", H2, "another AuditPlan|audit_plan_hash mismatch"),
+        ("generator_code_hash", H3, "generator identity drift|generator identity mismatch"),
+        ("target_id", H4, "exact AuditCell"),
+    ],
+)
+def test_group_derivation_still_fails_closed_on_signal_cross_binding_drift(
+    field: str,
+    value: str,
+    expected_error: str,
+) -> None:
+    transcript, recognitions = make_case(("AI3",), confidences=(None,))
+    plan = build_audit_plan(
+        transcript,
+        recognitions,
+        default_correction_audit_policy(),
+        references_enrolled=False,
+    )
+    signal_set = derive_candidate_signal_set(
+        plan,
+        transcript,
+        recognitions,
+        references_enrolled=False,
+    )
+    signal_payload = signal_set.signals[0].model_dump()
+    signal_payload[field] = value
+    signal_payload["id"] = hash_object(
+        {key: item for key, item in signal_payload.items() if key != "id"}
+    )
+    forged_signal = CandidateSignal.model_validate(signal_payload)
+    set_payload = signal_set.model_dump()
+    set_payload["signals"] = tuple(
+        sorted((forged_signal, *signal_set.signals[1:]), key=lambda item: item.id)
+    )
+    set_payload["content_hash"] = hash_object(
+        {key: item for key, item in set_payload.items() if key != "content_hash"}
+    )
+    with pytest.raises((CandidateGenerationError, ValidationError), match=expected_error):
+        forged_set = type(signal_set).model_validate(set_payload)
+        derive_candidate_group_set(plan, forged_set, transcript)
 
 
 def _corpus_cell(plan: object, target_kind: str, category: str, ordinal: int) -> object:

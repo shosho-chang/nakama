@@ -34,7 +34,10 @@ from shared.schemas.podcast_subtitles_v2 import (
 from shared.schemas.podcast_subtitles_v2_audio_audit import AudioDiscoveredCandidateV2
 from shared.schemas.podcast_subtitles_v2_text_audit import TextDiscoveredCandidateV2
 
-from .full_audit_attestation import FullAuditAggregateAttestationV2
+from .full_audit_attestation import (
+    FullAuditAggregateAttestationV2,
+    SelectiveAuditAggregateAttestationV3,
+)
 from .hashing import canonical_json_bytes, hash_object
 from .reference_claims import (
     ReferenceAuthorityProofV2,
@@ -45,6 +48,9 @@ from .reference_claims import (
 
 Sha256 = Annotated[str, StringConstraints(pattern=r"^[0-9a-f]{64}$")]
 CandidateDiscoveryV2: TypeAlias = TextDiscoveredCandidateV2 | AudioDiscoveredCandidateV2
+NativeAuditAggregate: TypeAlias = (
+    FullAuditAggregateAttestationV2 | SelectiveAuditAggregateAttestationV3
+)
 CorrectionAcceptanceActionV2 = Literal["accept_exact_candidate", "defer", "reject"]
 PronunciationOutcomeV2 = Literal["compatible", "incompatible", "indeterminate"]
 HumanAttestationMethodV2 = Literal[
@@ -476,7 +482,7 @@ def _audio_receipt_binding_is_exact(
     receipt: HumanAudioReviewReceiptV2,
     *,
     candidate: CandidateDiscoveryV2,
-    aggregate: FullAuditAggregateAttestationV2,
+    aggregate: NativeAuditAggregate,
     recognition_registry: dict[str, object],
 ) -> bool:
     if (
@@ -565,7 +571,7 @@ def _canonical_reasons(
 def build_correction_acceptance_verdict(
     *,
     candidate: CandidateDiscoveryV2,
-    full_audit_aggregate: FullAuditAggregateAttestationV2,
+    full_audit_aggregate: NativeAuditAggregate,
     recognition_evidence: tuple[RecognitionEvidence, ...],
     resolution_key: str,
     reference_scope: ReferenceClaimScope,
@@ -583,9 +589,14 @@ def build_correction_acceptance_verdict(
     if not isinstance(candidate, (TextDiscoveredCandidateV2, AudioDiscoveredCandidateV2)):
         raise CorrectionAcceptanceError("candidate must be a typed v2 discovery artifact")
     candidate = _validate_exact_model(candidate, type(candidate), "candidate discovery")
+    if not isinstance(
+        full_audit_aggregate,
+        (FullAuditAggregateAttestationV2, SelectiveAuditAggregateAttestationV3),
+    ):
+        raise CorrectionAcceptanceError("Full Audit aggregate has an unsupported schema")
     aggregate = _validate_exact_model(
         full_audit_aggregate,
-        FullAuditAggregateAttestationV2,
+        type(full_audit_aggregate),
         "Full Audit aggregate",
     )
     policy = _validate_exact_model(policy, CorrectionAcceptancePolicyV2, "acceptance policy")
@@ -898,7 +909,7 @@ def verify_correction_acceptance_verdict(
     exact_bytes: bytes,
     *,
     candidate: CandidateDiscoveryV2,
-    full_audit_aggregate: FullAuditAggregateAttestationV2,
+    full_audit_aggregate: NativeAuditAggregate,
     recognition_evidence: tuple[RecognitionEvidence, ...],
     resolution_key: str,
     reference_scope: ReferenceClaimScope,

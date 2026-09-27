@@ -5,13 +5,16 @@ from pathlib import Path
 
 import pytest
 
+import agents.brook.podcast_subtitles.production as production_module
 from agents.brook.podcast_subtitles.adapters import MemoRecognizerAdapter
 from agents.brook.podcast_subtitles.composition import FactoryContextV1
+from agents.brook.podcast_subtitles.hashing import hash_object
 from agents.brook.podcast_subtitles.module import PodcastSubtitleV2
 from agents.brook.podcast_subtitles.production import (
     ProductionConfigurationError,
     build_production,
     load_production_config,
+    production_source_inventory_digest,
 )
 from tests.agents.brook.podcast_subtitles.test_memo_first_production import _memo_fixture
 
@@ -56,8 +59,41 @@ def test_production_defaults_to_memo_only_and_no_auphonic_runtime(
     assert isinstance(module._recognizers[0], MemoRecognizerAdapter)
     assert module._recognition_independence_policy is None
     assert module._memo_boundary_authority_factory is not None
+    assert module._native_full_audit is not None
+    assert module._native_full_audit.audio_selection_policy is not None
+    assert module._native_full_audit.audio_selection_policy.initial_sample_basis_points == 1000
+    assert module._native_full_audit.audio_selection_policy.expanded_sample_basis_points == 3000
+    assert (
+        module._native_full_audit.audio_selection_policy.material_error_threshold_basis_points
+        == 200
+    )
     assert type(module._normalizer).__name__ == "VerifiedNormalizedAudioHandoffAdapter"
     assert after == before
+
+
+def test_production_code_identity_measures_package_source_inventory(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    environment = _valid_environment(tmp_path)
+    monkeypatch.setattr("agents.brook.podcast_subtitles.production.os.environ", environment)
+
+    baseline = production_source_inventory_digest()
+    original_hash_file = production_module.hash_file
+
+    def changed_module_hash(path: Path) -> str:
+        if path.name == "module.py":
+            return "0" * 64
+        return original_hash_file(path)
+
+    monkeypatch.setattr(production_module, "hash_file", changed_module_hash)
+    changed = production_source_inventory_digest()
+    module = build_production(FactoryContextV1(1, tmp_path / "episode", None))
+
+    assert changed != baseline
+    assert module._code_hash == hash_object(
+        {"implementation": "production-source-inventory-v1:" + changed}
+    )
 
 
 @pytest.mark.parametrize(
@@ -99,11 +135,33 @@ def test_optional_corroborators_never_become_primary(
     assert module._recognition_independence_policy is not None
 
 
+def test_production_constructs_mic_energy_speaker_attributor(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    environment = _valid_environment(tmp_path)
+    environment["PODCAST_SUBTITLE_V2_ENABLE_MIC_SPEAKER_ATTRIBUTION"] = "true"
+    monkeypatch.setattr("agents.brook.podcast_subtitles.production.os.environ", environment)
+
+    module = build_production(FactoryContextV1(1, tmp_path / "episode", None))
+
+    assert module._speaker_attributor is not None
+    assert module._speaker_attributor.adapter_name == "mic-energy-speaker-attribution"
+
+
 def test_unknown_or_legacy_paid_setting_fails_closed(tmp_path: Path) -> None:
     environment = _valid_environment(tmp_path)
     environment["PODCAST_SUBTITLE_V2_ALLOW_PAID_GEMINI"] = "true"
     with pytest.raises(ProductionConfigurationError, match="unknown.*ALLOW_PAID_GEMINI"):
         load_production_config(environment)
+
+
+def test_disabled_legacy_paid_setting_is_ignored_for_environment_migration(tmp_path: Path) -> None:
+    environment = _valid_environment(tmp_path)
+    environment["PODCAST_SUBTITLE_V2_ALLOW_PAID_GEMINI"] = "false"
+
+    config = load_production_config(environment)
+
+    assert config.text_audit_model == "gpt-5.6-sol"
 
 
 def test_factory_does_not_import_gpu_runtimes_in_memo_only_mode(

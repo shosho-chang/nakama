@@ -44,6 +44,10 @@ from shared.schemas.podcast_subtitles_v2_correction import (
     CorrectionAuditExecutionPlanV2,
     CorrectionAuditExecutionPolicyV2,
 )
+from shared.schemas.podcast_subtitles_v2_selective_audio import (
+    ModalityAuditExecutionPlanV3,
+    SelectiveAudioAuditRoundReceiptV3,
+)
 from shared.schemas.podcast_subtitles_v2_text_audit import (
     TextAuditAdapterIdentityV2,
     TextAuditExecutionPolicyV2,
@@ -58,7 +62,10 @@ from .correction_acceptance import (
     HumanAudioReviewReceiptV2,
     HumanReferenceAdjudicationReceiptV2,
 )
-from .full_audit_attestation import FullAuditAggregateAttestationV2
+from .full_audit_attestation import (
+    FullAuditAggregateAttestationV2,
+    SelectiveAuditAggregateAttestationV3,
+)
 from .hashing import hash_object, sha256_bytes
 from .native_resolution import (
     HumanOriginalConfirmationReceiptV2,
@@ -666,10 +673,17 @@ class LoadedNativeSourceSet:
     def __post_init__(self) -> None:
         if type(self.sources) is not tuple:
             raise TypeError("native source set requires an immutable tuple")
-        if not self.sources:
+        selective_reconstructible = (
+            self.modality == "audio"
+            and self.index_artifact.name
+            == "native_full_audit/audio_execution_plans_v3.json"
+        )
+        if not self.sources and not selective_reconstructible:
             raise ValueError("native source set requires at least one exact source")
-        expected_index = f"native_full_audit/{self.modality}_source_artifact_index.json"
-        if self.index_artifact.name != expected_index:
+        expected_indexes = {f"native_full_audit/{self.modality}_source_artifact_index.json"}
+        if self.modality == "audio":
+            expected_indexes.add("native_full_audit/audio_execution_plans_v3.json")
+        if self.index_artifact.name not in expected_indexes:
             raise ValueError("native source set has the wrong index role name")
         uris = tuple(item.uri for item in self.sources)
         names = tuple(item.artifact.name for item in self.sources)
@@ -733,6 +747,20 @@ class LoadedNativeAudioRunArtifacts:
         for label, artifacts, payloads in comparisons:
             if tuple(item.payload for item in artifacts.artifacts) != payloads:
                 raise ValueError(f"native audio {label} bytes differ from the verified run")
+
+    def verify_runs(self, runs: tuple[AudioAuditRunResult, ...]) -> None:
+        comparisons = (
+            ("request", self.requests, tuple(item for run in runs for item in run.request_bytes)),
+            (
+                "response",
+                self.responses,
+                tuple(item for run in runs for item in run.response_bytes),
+            ),
+            ("clip", self.clips, tuple(item for run in runs for item in run.clip_bytes)),
+        )
+        for label, artifacts, payloads in comparisons:
+            if tuple(item.payload for item in artifacts.artifacts) != payloads:
+                raise ValueError(f"native selective audio {label} bytes differ")
 
 
 @dataclass(frozen=True, slots=True)
@@ -894,7 +922,7 @@ class LoadedNativeAuditArtifacts:
             self.audio_record.name,
             self.aggregate.name,
         )
-        expected = (
+        legacy = (
             "native_full_audit/audit_plan.json",
             "native_full_audit/candidate_signal_set.json",
             "native_full_audit/candidate_group_set.json",
@@ -903,7 +931,16 @@ class LoadedNativeAuditArtifacts:
             "native_full_audit/audio_audit_execution_record.json",
             "native_full_audit/full_audit_aggregate.json",
         )
-        if actual != expected:
+        selective = (
+            "native_full_audit/audit_plan.json",
+            "native_full_audit/candidate_signal_set.json",
+            "native_full_audit/candidate_group_set.json",
+            "native_full_audit/text_execution_plan_v3.json",
+            "native_full_audit/text_audit_execution_record.json",
+            "native_full_audit/audio_execution_records_v3.json",
+            "native_full_audit/selective_audit_aggregate_v3.json",
+        )
+        if actual not in (legacy, selective):
             raise ValueError("native Full Audit artifacts have incorrect role names")
 
 
@@ -915,22 +952,30 @@ class LoadedNativeAuditState:
     audit_plan: AuditPlan
     candidate_signals: CandidateSignalSet
     candidate_groups: CandidateGroupSet
-    execution_plan: CorrectionAuditExecutionPlanV2
+    execution_plan: CorrectionAuditExecutionPlanV2 | ModalityAuditExecutionPlanV3
     text_sources: LoadedNativeSourceSet
     audio_sources: LoadedNativeSourceSet
     text_run: TextAuditRunResult
     audio_run: AudioAuditRunResult
-    aggregate: FullAuditAggregateAttestationV2
+    aggregate: FullAuditAggregateAttestationV2 | SelectiveAuditAggregateAttestationV3
     audit_artifacts: LoadedNativeAuditArtifacts
     text_run_artifacts: LoadedNativeTextRunArtifacts
     audio_run_artifacts: LoadedNativeAudioRunArtifacts
     runtime: LoadedNativeRuntimeState
     resolution: LoadedNativeResolutionState | None
+    audio_runs: tuple[AudioAuditRunResult, ...] = ()
+    audio_execution_plans: tuple[ModalityAuditExecutionPlanV3, ...] = ()
+    audio_round_receipts: tuple[SelectiveAudioAuditRoundReceiptV3, ...] = ()
     profile: Literal["native_v2"] = field(default="native_v2", init=False)
 
     def __post_init__(self) -> None:
         self.text_run_artifacts.verify_run(self.text_run)
-        self.audio_run_artifacts.verify_run(self.audio_run)
+        if isinstance(self.aggregate, SelectiveAuditAggregateAttestationV3):
+            if not self.audio_runs or self.audio_run != self.audio_runs[-1]:
+                raise ValueError("selective native audit lacks exact audio rounds")
+            self.audio_run_artifacts.verify_runs(self.audio_runs)
+        else:
+            self.audio_run_artifacts.verify_run(self.audio_run)
         generation_id = self.audit_basis.transcript.generation_id
         if (
             self.audit_plan.generation_id != generation_id
@@ -948,7 +993,11 @@ class LoadedNativeAuditState:
             or self.execution_plan.candidate_group_set_content_hash
             != self.candidate_groups.content_hash
             or self.text_run.record.execution_plan_content_hash != self.execution_plan.content_hash
-            or self.audio_run.record.execution_plan_content_hash != self.execution_plan.content_hash
+            or (
+                isinstance(self.aggregate, FullAuditAggregateAttestationV2)
+                and self.audio_run.record.execution_plan_content_hash
+                != self.execution_plan.content_hash
+            )
         ):
             raise ValueError("native Full Audit parents crossed content lineage")
 

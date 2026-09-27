@@ -1,11 +1,19 @@
 # ADR-056: Podcast Subtitle V2 — Memo-first production contract
 
-- Status: Accepted
+- Status: Superseded for production by ADR-063; retained as legacy forensic design
 - Date: 2026-08-16
+- Policy revision: 2026-08-19
 - Owners: Brook / Podcast production
 - Stage: 5 製作
 - Supersedes: ADR-056 revisions before 2026-08-16
 - Retains: ADR-032 exact-copy、ADR-050 D4 provenance
+- Superseded by: ADR-063 Memo Dual-Audit Release V1 (2026-08-21)
+
+> **Historical scope only.** The decision below documents the former Full Subtitle V2 production
+> contract. Podcast E2E must not call this checkpoint／Generation／Verified Projection route by default.
+> It remains readable only through an explicit `legacy-forensic` entry point. The active production
+> decision and migration gates are defined by ADR-063; until its implementation verification finishes,
+> documentation must not claim that the new cutover is already live.
 
 ## Context
 
@@ -75,9 +83,57 @@ Authority content hash 綁定 exact Memo SRT、acceptance receipt、Recognition 
 QC thresholds，並納入 projection output lineage 與 fresh-process replay。Raw
 micro-segments、semantic model 建議、字數偏好或 ASR token gap 都不能自行新增 edge。
 
-### 4. Corrected Canonical text is output authority
+### 4. Selective audio-audit correction policy (2026-08-19 revision)
 
-Full Audit 與 human correction 可以修改 Canonical Transcript 的文字與 provenance；最終
+Production correction 固定採以下順序：
+
+1. 全集、每個 Canonical span 都做 deterministic QC；
+2. 每個 span 都先完成 Reference Evidence retrieval 與 text/reference audit；
+3. 所有 risk-targeted spans 都做 audio audit，再對其餘 ordinary spans 做 deterministic、
+   stratified 10% audio sample；
+4. 10% sample 出現 major error，或 material error rate 大於 2%，擴大成 cumulative 30%；
+5. 30% sample 仍大於 2% 才升級 universal audio full audit；catastrophic finding 則直接升級
+   full audio audit，integrity 類 finding 立即 fail closed。
+
+Risk-targeted selector 只接受 stored Evidence／text audit 的 closed reason codes：recognition
+confidence 或 alternative-hypothesis warning、cue repair、speech coverage／timing／overlap／duration／
+boundary／alignment warning、speaker/mic/crosstalk conflict、未解 name/title/foreign term/homophone/
+number/unit/date/negation/quotation/reference conflict，或有 exact audio 才能決定的 insertion、deletion、
+substitution、omitted-speech finding。每個 reason 必須綁 exact finding ID；只為聽審加入的 adjacent
+context span 不納入 error-rate denominator。
+
+Ordinary population 是 frozen、未被 risk-targeted 的 auditable spans。10% 與 30% tier 分別選
+`ceil(0.10 * N)`、`ceil(0.30 * N)`；30% 包含原 10%。Strata 是十個 equal-duration episode
+clock buckets 與 resolved speaker identity 的交叉；依比例分配，tier 容量允許時每個 non-empty
+stratum 至少一筆。Allocation remainder 與 stratum 內順序以 SHA-256 決定，seed 綁 policy
+version、episode ID、exact normalized-audio SHA-256、tier、stratum ID 與 stable AudioSpan ID，
+不得使用 runtime randomness 或 worker discretion。
+
+Material error 以「有至少一項 accepted correction 會改變 spoken lexical content 或 attribution 的
+sampled ordinary span」計數，包含 insertion、deletion、substitution、omitted speech、speaker、
+name/title/term、number/unit/date、negation 或 meaning-bearing boundary；純標點、空白、正字體例及
+presentation edit 不計。Rate 的 numerator 是 material-error spans，denominator 是 completed
+ordinary sampled spans；risk-targeted 與 context-only spans 分開報告，不可灌入分母。
+
+Major error 是改變 key claim、negation、speaker、proper-name identity、number/unit/date，或遺漏至少
+兩秒 intelligible speech 的 material error。Catastrophic finding 是 wrong episode/audio binding、
+hash/receipt/clock integrity failure、連續至少十秒 intelligible speech omission，或任一十分鐘 clock
+bucket 影響至少 5% spans 的 systematic recognition/timebase failure。Integrity failure 立即停止；
+其餘 catastrophic finding 直接 full audio audit。
+
+每一 tier 必須產 immutable selection receipt，綁 policy version、frozen population、seed inputs、
+strata/allocation、risk reason/finding IDs、selected/context-only span IDs、exact clip hashes、worker/model、
+responses、findings、rate numerator/denominator 與 escalation decision。Fresh replay 必須重現相同
+selection 與 decision；receipt/response 缺失、格式錯、未綁定或不完整，一律 `Interrupted` 或 fail
+closed，不能視為通過。Agent quorum 可接受完整 tier；finding 衝突、unresolved catastrophic finding、
+evidence drift、provider/data destination 改變或最終字幕核准才進 human gate。
+
+Universal text/reference coverage、每-span reference retrieval 與 fail-closed QC 都維持不變；本次修訂
+只取消 ordinary production 對每個 span 強制 audio audit 的要求。
+
+### 5. Corrected Canonical text is output authority
+
+Correction audit 與 human correction 可以修改 Canonical Transcript 的文字與 provenance；最終
 SRT 文字只能是 corrected Canonical token stream 的 exact ordered copy。Memo 的文字只用
 來對齊其 timing boundaries，不能覆蓋校對結果。
 
@@ -95,7 +151,7 @@ SRT 文字只能是 corrected Canonical token stream 的 exact ordered copy。Me
 逐 cue timing 一對一相同。必須保留的是 ordered Memo timing provenance、outer span、
 corrected-token integrity，以及通過 retention/alignment QC。
 
-### 5. Local boundary repair
+### 6. Local boundary repair
 
 Reviewed cue projection 只有在明示、局部、可機器重算時才可改變來源 cue proposal。
 這是額外的人工作業路徑；production alignment 因 duplicate token edge 產生的 adjacent
@@ -113,7 +169,7 @@ merge 由 retention QC 管理，不需要偽裝成 repair。允許的 closed rea
 沒有 repair log 的 reviewed-projection 變動、理由與實際 Evidence 不符、或全域重切
 一律 fail closed。
 
-### 6. Projection profile and delivery
+### 7. Projection profile and delivery
 
 16:9 長影片 profile 固定 `max_lines = 1`。Projection 仍執行文字完整性、時間合法性、
 reading speed 與其他 hard QC，但不得以這些規則發明與 Memo boundary alignment 無關的
@@ -122,16 +178,18 @@ reading speed 與其他 hard QC，但不得以這些規則發明與 Memo boundar
 Production 主路徑只有：
 
 ```text
-verified normalized-audio handoff
+  verified normalized-audio handoff
   -> Memo large-v2 immutable Recognition Evidence
-  -> full text/audio audit and correction
+  -> whole-transcript deterministic QC + text/reference audit
+  -> risk-targeted + deterministic stratified audio audit (10% -> 30% -> full)
+  -> append-only correction decisions
   -> accepted Memo GUI SRT + canonical acceptance receipt
   -> shared alignment / token-edge snap / adjacent-merge projection
   -> fail-closed QC
   -> one-line SRT + sidecar + projection receipt
 ```
 
-### 7. Public operator surface
+### 8. Public operator surface
 
 Public CLI 保留交付所需的 `create`、`status`、`review`、`resolve`／native decision 與
 `project`。Human Gold custody、paired V1/V2 comparator、superiority benchmark 與
@@ -143,7 +201,8 @@ recognition pilot 不屬於 production runtime 或 public operator workflow。
 2. Correction Decision 必須綁定 target spans、Evidence fingerprint、actor、reason 與
    timestamp。
 3. Reference Evidence 只能提出或支持 correction，不得覆蓋清楚的 Audio Evidence。
-4. Accepted Generation 仍須通過完整 text/audio audit、speech coverage 與 replay。
+4. Accepted Generation 仍須通過全集 deterministic QC、完整 text/reference audit、由 authenticated
+   selector 決定的 audio-audit tier、speech coverage 與 replay。
 5. Projection 必須綁定 Memo SRT authority hash；authority drift 時 fresh replay
    失敗。
 6. SRT 是 Canonical Transcript 的可重建 projection，不是 truth source。
@@ -154,7 +213,8 @@ recognition pilot 不屬於 production runtime 或 public operator workflow。
 - 優點：沿用 Memo 已驗證的斷句品質；校對不再任意全域重切；一行字幕與 timing lineage
   可直接測試；外部 Evidence 與人工接受都有 immutable lineage。
 - 代價：Memo GUI cue export 與 acceptance receipt 成為必要 production input；alignment
-  或 retention 不足時必須人工 review，不能靠全域 optimizer 靜默重算。
+  或 retention 不足時必須 review，不能靠全域 optimizer 靜默重算；selective audio audit 必須
+  保存可 replay 的 population、sample、risk 與 escalation receipts。
 - 遷移：舊 Qwen-primary、Subtitle V2 內部 normalization orchestration、全域 boundary
   optimizer、Human Gold comparator 與 benchmark CLI 決策均已 superseded，不再描述
   production 現況。
@@ -170,3 +230,8 @@ recognition pilot 不屬於 production runtime 或 public operator workflow。
 - Memo SRT authority hash 參與 projection lineage，fresh replay 可重現；hash drift fail
   closed。
 - 16:9 SRT 每個 cue 恰好一行。
+- 每個 Canonical span 都完成 deterministic QC、Reference Evidence retrieval 與 text/reference
+  audit；audio audit coverage 精確等於 authenticated risk-targeted set 加目前必要的 10%／30%／full
+  tier，且 fresh replay 重現相同 selection。
+- 10% ordinary sample 的 major error 或 material error rate `> 0.02` 會確定性升到 cumulative 30%；
+  30% rate 仍 `> 0.02` 才升 full，catastrophic finding 則立即 full 或 integrity fail closed。

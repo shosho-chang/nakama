@@ -16,22 +16,28 @@ production workspace 固定為：
 不要自行組 response path，也不要直接把 worker 輸出寫入 `responses/`。標準順序只有：
 
 ```powershell
-python scripts/podcast_subtitle_v2_work_packets.py list --episode-root "<episode>"
+E:\nakama\.venv-v2\Scripts\python.exe -m scripts.podcast_subtitle_v2_work_packets list `
+  --episode-root "<episode>"
 
-python scripts/podcast_subtitle_v2_work_packets.py render `
+E:\nakama\.venv-v2\Scripts\python.exe -m scripts.podcast_subtitle_v2_work_packets render `
   --episode-root "<episode>" `
   --request "<list 的 request_path>"
 
-python scripts/podcast_subtitle_v2_work_packets.py validate `
+E:\nakama\.venv-v2\Scripts\python.exe -m scripts.podcast_subtitle_v2_work_packets validate `
   --episode-root "<episode>" `
   --request "<同一 request_path>" `
   --candidate "<worker 產出的候選 JSON>"
 
-python scripts/podcast_subtitle_v2_work_packets.py accept `
+E:\nakama\.venv-v2\Scripts\python.exe -m scripts.podcast_subtitle_v2_work_packets accept `
   --episode-root "<episode>" `
   --request "<同一 request_path>" `
   --candidate "<同一候選 JSON>"
 ```
+
+目前 production runtime 必須從 worktree root 使用上述 `-m scripts...` 形式。直接執行
+`python scripts/podcast_subtitle_v2_work_packets.py ...` 會因 script directory 成為
+`sys.path[0]` 而出現 `ModuleNotFoundError: No module named 'agents'`；不得把該錯誤誤判為
+episode packet 損壞。
 
 `render` 是完整 contract，必須整包交給 worker：
 

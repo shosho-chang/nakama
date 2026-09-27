@@ -449,6 +449,78 @@ def test_faster_whisper_rejects_unreplayable_provider_topology(
         _adapter(lambda _audio, _request: payload).recognize(_request(tmp_path, audio))
 
 
+@pytest.mark.parametrize(
+    ("segment_start", "segment_end", "word_start", "word_end"),
+    [
+        (0.12, 0.8, 0.1, 0.8),
+        (0.1, 0.78, 0.1, 0.8),
+    ],
+)
+def test_faster_whisper_accepts_one_provider_timestamp_quantum_at_segment_seam(
+    tmp_path: Path,
+    segment_start: float,
+    segment_end: float,
+    word_start: float,
+    word_end: float,
+) -> None:
+    audio = tmp_path / "normalized.wav"
+    _write_wav(audio)
+    payload = _observation()
+    payload["segments"][0].update(start=segment_start, end=segment_end)
+    payload["segments"][0]["words"][1].update(start=word_start, end=word_end)
+
+    evidence = _adapter(lambda _audio, _request: payload).recognize(_request(tmp_path, audio))
+
+    assert evidence.tokens[0].text == " 約會對象"
+
+
+def test_faster_whisper_accepts_first_word_that_crosses_segment_start(
+    tmp_path: Path,
+) -> None:
+    audio = tmp_path / "normalized.wav"
+    _write_wav(audio)
+    payload = _observation()
+    payload["segments"][0].update(start=0.3)
+    payload["segments"][0]["words"] = [
+        {"word": " 約會對象", "start": 0.1, "end": 0.32, "probability": 0.95}
+    ]
+
+    evidence = _adapter(lambda _audio, _request: payload).recognize(_request(tmp_path, audio))
+
+    assert evidence.tokens[0].text == " 約會對象"
+
+
+@pytest.mark.parametrize(
+    ("words", "message"),
+    [
+        (
+            [{"word": " 約會對象", "start": 0.1, "end": 0.2, "probability": 0.95}],
+            "exceeds its provider segment",
+        ),
+        (
+            [
+                {"word": " 約", "start": 0.0, "end": 0.0, "probability": 0.9},
+                {"word": "會對象", "start": 0.1, "end": 0.32, "probability": 0.95},
+            ],
+            "exceeds its provider segment",
+        ),
+    ],
+)
+def test_faster_whisper_rejects_unanchored_early_provider_word(
+    tmp_path: Path,
+    words: list[dict[str, object]],
+    message: str,
+) -> None:
+    audio = tmp_path / "normalized.wav"
+    _write_wav(audio)
+    payload = _observation()
+    payload["segments"][0].update(start=0.3)
+    payload["segments"][0]["words"] = words
+
+    with pytest.raises(AdapterInputError, match=message):
+        _adapter(lambda _audio, _request: payload).recognize(_request(tmp_path, audio))
+
+
 def test_faster_whisper_recognition_run_recovers_without_recalling_provider(
     tmp_path: Path,
 ) -> None:

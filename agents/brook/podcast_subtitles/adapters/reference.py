@@ -319,10 +319,44 @@ def verify_reference_evidence_membership(
 ) -> None:
     """Prove an excerpt is a slice of the explicitly enrolled source extraction."""
 
-    if evidence.artifact != enrolled_artifact:
-        raise AdapterIntegrityError(
-            "Reference Evidence artifact differs from the explicitly enrolled artifact"
+    snapshot = _verified_reference_extraction_snapshot(
+        extraction_snapshot,
+        enrolled_artifact=enrolled_artifact,
+    )
+    _verify_reference_evidence_in_snapshot(
+        evidence,
+        snapshot,
+        enrolled_artifact=enrolled_artifact,
+    )
+
+
+def verify_reference_evidence_membership_batch(
+    evidence: Sequence[ReferenceEvidence],
+    extraction_snapshot: bytes,
+    *,
+    enrolled_artifact: ReferenceArtifact,
+) -> None:
+    """Authenticate one extraction once, then verify every Evidence member."""
+
+    snapshot = _verified_reference_extraction_snapshot(
+        extraction_snapshot,
+        enrolled_artifact=enrolled_artifact,
+    )
+    for item in evidence:
+        _verify_reference_evidence_in_snapshot(
+            item,
+            snapshot,
+            enrolled_artifact=enrolled_artifact,
         )
+
+
+def _verified_reference_extraction_snapshot(
+    extraction_snapshot: bytes,
+    *,
+    enrolled_artifact: ReferenceArtifact,
+) -> ReferenceExtractionSnapshot:
+    """Authenticate and parse one immutable extraction for batch-local reuse."""
+
     artifact = enrolled_artifact
     if (
         sha256_bytes(extraction_snapshot) != artifact.extracted_text.sha256
@@ -349,6 +383,22 @@ def verify_reference_evidence_membership(
         or len(snapshot.blocks) != artifact.extraction_block_count
     ):
         raise AdapterIntegrityError("Reference extraction snapshot crossed artifact lineage")
+    return snapshot
+
+
+def _verify_reference_evidence_in_snapshot(
+    evidence: ReferenceEvidence,
+    snapshot: ReferenceExtractionSnapshot,
+    *,
+    enrolled_artifact: ReferenceArtifact,
+) -> None:
+    """Verify one Evidence member against an already-authenticated typed snapshot."""
+
+    if evidence.artifact != enrolled_artifact:
+        raise AdapterIntegrityError(
+            "Reference Evidence artifact differs from the explicitly enrolled artifact"
+        )
+    artifact = enrolled_artifact
     try:
         block = snapshot.blocks[evidence.extraction_block_index]
     except IndexError as exc:
@@ -1443,6 +1493,10 @@ class LocalReferenceRetriever:
             artifacts=artifacts,
             passage_count=len(self._passages),
         )
+        self._verified_extraction_view_cache: dict[
+            str,
+            tuple[str, ReferenceExtractionSnapshot],
+        ] = {}
 
     @property
     def index(self) -> ReferenceIndex:
@@ -1506,6 +1560,28 @@ class LocalReferenceRetriever:
             self.extraction_snapshot(evidence.artifact),
             enrolled_artifact=enrolled_artifact,
         )
+
+    def _verified_extraction_views(self) -> dict[str, ReferenceExtractionSnapshot]:
+        """Reuse parsed views only after the current batch authenticated exact bytes."""
+
+        views: dict[str, ReferenceExtractionSnapshot] = {}
+        for source_id, artifact in self._artifacts_by_source_id.items():
+            digest = artifact.extracted_text.sha256
+            cached = self._verified_extraction_view_cache.get(source_id)
+            if cached is None:
+                snapshot = _verified_reference_extraction_snapshot(
+                    self.extraction_snapshot(artifact),
+                    enrolled_artifact=artifact,
+                )
+                self._verified_extraction_view_cache[source_id] = (digest, snapshot)
+            else:
+                cached_digest, snapshot = cached
+                if cached_digest != digest:
+                    raise AdapterIntegrityError(
+                        "Reference extraction view crossed enrolled artifact identity"
+                    )
+            views[source_id] = snapshot
+        return views
 
     def verify_index(self) -> ReferenceIndex:
         """Recompute the complete index identity from enrolled artifacts/passages."""
@@ -1884,6 +1960,8 @@ class LocalReferenceRetriever:
     def _retrieve_verified(
         self,
         request: ReferenceRetrievalRequest,
+        *,
+        verified_extraction_views: Mapping[str, ReferenceExtractionSnapshot] | None = None,
     ) -> ReferenceRetrievalReceipt:
         allowed = set(request.allowed_artifact_ids)
         candidate_indexes, phonetic_anchors, query_plan_hash = self._candidate_passage_indexes(
@@ -1977,7 +2055,17 @@ class LocalReferenceRetriever:
                     excerpt_hash=excerpt_hash,
                 )
             )
-            self.verify(evidence[-1])
+            evidence_item = evidence[-1]
+            if verified_extraction_views is None:
+                self.verify(evidence_item)
+            else:
+                _verify_reference_evidence_in_snapshot(
+                    evidence_item,
+                    verified_extraction_views[evidence_item.artifact.source_id],
+                    enrolled_artifact=self._artifacts_by_source_id[
+                        evidence_item.artifact.source_id
+                    ],
+                )
             support_start, support_end, support_kind, candidate_term_index = support
             hits.append(
                 ReferenceRetrievalHit(
@@ -2038,7 +2126,10 @@ class LocalReferenceRetriever:
 
     def retrieve(self, request: ReferenceRetrievalRequest) -> ReferenceRetrievalReceipt:
         self._verify_snapshots()
-        return self._retrieve_verified(request)
+        return self._retrieve_verified(
+            request,
+            verified_extraction_views=self._verified_extraction_views(),
+        )
 
     def retrieve_many(
         self,
@@ -2047,7 +2138,14 @@ class LocalReferenceRetriever:
         """Verify the immutable corpus once, then execute bounded per-span plans."""
 
         self._verify_snapshots()
-        return tuple(self._retrieve_verified(request) for request in requests)
+        verified_extraction_views = self._verified_extraction_views()
+        return tuple(
+            self._retrieve_verified(
+                request,
+                verified_extraction_views=verified_extraction_views,
+            )
+            for request in requests
+        )
 
     def lookup_exact(
         self,
@@ -2159,5 +2257,6 @@ __all__ = [
     "default_trusted_parser_registry",
     "reference_evidence_id",
     "verify_reference_evidence_membership",
+    "verify_reference_evidence_membership_batch",
     "verify_reference_extraction_derivation",
 ]

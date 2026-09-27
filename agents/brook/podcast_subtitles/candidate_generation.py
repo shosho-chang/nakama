@@ -10,12 +10,15 @@ from __future__ import annotations
 
 import re
 from collections import defaultdict
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
+from types import MappingProxyType
+from typing import Iterable, Mapping, Sequence
 
 from shared.schemas.podcast_subtitles_v2 import (
     AuditCell,
     AuditPlan,
+    BoundaryAuditTarget,
     BoundaryConstraintReceipt,
     CandidateGroup,
     CandidateGroupSet,
@@ -40,6 +43,7 @@ from shared.schemas.podcast_subtitles_v2 import (
 
 from .audit_plan import (
     AuditPlanError,
+    _observed_speakers_by_span,
     assert_audit_plan,
     audit_plan_digest,
     cross_span_repetition,
@@ -106,6 +110,38 @@ def _span_index(plan: AuditPlan) -> dict[str, SpanAuditTarget]:
     return {item.span_id: item for item in plan.span_targets}
 
 
+@dataclass(frozen=True, slots=True)
+class _DerivationContext:
+    """Immutable indexes and identities shared by one fresh derivation."""
+
+    plan_hash: str
+    builder_code_hash: str
+    cells: Mapping[tuple[str, str, str], AuditCell]
+    span_targets: Mapping[str, SpanAuditTarget]
+    boundary_targets: Mapping[str, BoundaryAuditTarget]
+    recognition_source_bindings: tuple[CandidateSourceBinding, ...]
+    observed_speakers_by_span: Mapping[str, frozenset[str]]
+
+
+def _build_derivation_context(
+    plan: AuditPlan,
+    recognitions: Sequence[RecognitionEvidence] = (),
+) -> _DerivationContext:
+    return _DerivationContext(
+        plan_hash=audit_plan_digest(plan),
+        builder_code_hash=candidate_signal_builder_code_hash(),
+        cells=MappingProxyType(_cell_index(plan)),
+        span_targets=MappingProxyType({item.id: item for item in plan.span_targets}),
+        boundary_targets=MappingProxyType({item.id: item for item in plan.boundary_targets}),
+        recognition_source_bindings=_recognition_source_bindings(recognitions),
+        observed_speakers_by_span=(
+            _observed_speakers_by_span(plan.span_targets, recognitions)
+            if recognitions
+            else MappingProxyType({})
+        ),
+    )
+
+
 def _token_text(transcript: CanonicalTranscript, start: int, end: int) -> str:
     return "".join(token.text for token in transcript.tokens[start:end])
 
@@ -125,6 +161,39 @@ def _source_binding(
         id=source_id,
         content_hash=content_hash,
         record_ids=records,
+    )
+
+
+def _recognition_source_bindings(
+    recognitions: Sequence[RecognitionEvidence],
+) -> tuple[CandidateSourceBinding, ...]:
+    return tuple(
+        sorted(
+            (
+                binding
+                for item in recognitions
+                for binding in (
+                    _source_binding(
+                        kind="recognition_evidence",
+                        source_id=f"recognition-evidence:{item.invocation_id}",
+                        content_hash=recognition_evidence_content_hash(item),
+                        record_ids=(item.invocation_id,),
+                    ),
+                    _source_binding(
+                        kind="recognition_raw_artifact",
+                        source_id=f"recognition-raw:{item.raw_output_hash}",
+                        content_hash=item.raw_output_hash,
+                        record_ids=(item.invocation_id,),
+                    ),
+                )
+            ),
+            key=lambda binding: (
+                binding.kind,
+                binding.id,
+                binding.content_hash,
+                binding.record_ids,
+            ),
+        )
     )
 
 
@@ -151,6 +220,7 @@ def _artifact_source(
 
 def _make_signal(
     *,
+    context: _DerivationContext,
     plan: AuditPlan,
     cell: AuditCell,
     span_ids: Sequence[str],
@@ -169,11 +239,9 @@ def _make_signal(
     candidate_text: str | None = None,
     detail: object,
 ) -> CandidateSignal:
-    plan_hash = audit_plan_digest(plan)
-    builder_code_hash = candidate_signal_builder_code_hash()
     payload = {
         "schema_version": 1,
-        "audit_plan_hash": plan_hash,
+        "audit_plan_hash": context.plan_hash,
         "target_kind": cell.target_kind,
         "target_id": cell.target_id,
         "audit_cell_id": cell.id,
@@ -187,7 +255,7 @@ def _make_signal(
         "authority": "review_trigger_only",
         "generator_id": CANDIDATE_SIGNAL_BUILDER_ID,
         "generator_version": CANDIDATE_SIGNAL_BUILDER_VERSION,
-        "generator_code_hash": builder_code_hash,
+        "generator_code_hash": context.builder_code_hash,
         "rule_set_hash": plan.policy.rule_set_hash,
         "evidence_kind": evidence_kind,
         "source_bindings": tuple(
@@ -214,6 +282,7 @@ def _make_signal(
 
 def _regex_signal(
     *,
+    context: _DerivationContext,
     plan: AuditPlan,
     cell: AuditCell,
     target: SpanAuditTarget,
@@ -246,6 +315,7 @@ def _regex_signal(
         token_ids = tuple(token.id for token in transcript.tokens[start:end])
         signals.append(
             _make_signal(
+                context=context,
                 plan=plan,
                 cell=cell,
                 span_ids=(target.span_id,),
@@ -292,12 +362,13 @@ def _reference_token_range(
 
 def _reference_signals(
     *,
+    context: _DerivationContext,
     plan: AuditPlan,
     target: SpanAuditTarget,
     transcript: CanonicalTranscript,
     receipt: ReferenceRetrievalReceipt | None,
 ) -> tuple[CandidateSignal, ...]:
-    cell = _cell_index(plan)[("span", target.id, "reference_name_term")]
+    cell = context.cells[("span", target.id, "reference_name_term")]
     if plan.inputs.reference_status == "not_enrolled":
         return ()
     if receipt is None:
@@ -309,6 +380,7 @@ def _reference_signals(
         )
         return (
             _make_signal(
+                context=context,
                 plan=plan,
                 cell=cell,
                 span_ids=(target.span_id,),
@@ -331,6 +403,7 @@ def _reference_signals(
         )
         return (
             _make_signal(
+                context=context,
                 plan=plan,
                 cell=cell,
                 span_ids=(target.span_id,),
@@ -400,6 +473,7 @@ def _reference_signals(
         )
         signals.append(
             _make_signal(
+                context=context,
                 plan=plan,
                 cell=cell,
                 span_ids=(target.span_id,),
@@ -434,42 +508,15 @@ def _reference_signals(
 
 def _recognition_metadata_signals(
     *,
+    context: _DerivationContext,
     plan: AuditPlan,
     target: SpanAuditTarget,
     transcript: CanonicalTranscript,
-    recognitions: Sequence[RecognitionEvidence],
 ) -> tuple[CandidateSignal, ...]:
     signals: list[CandidateSignal] = []
     canonical = transcript.tokens[target.token_start_index : target.token_end_index]
-    recognition_bindings = tuple(
-        sorted(
-            (
-                binding
-                for item in recognitions
-                for binding in (
-                    _source_binding(
-                        kind="recognition_evidence",
-                        source_id=f"recognition-evidence:{item.invocation_id}",
-                        content_hash=recognition_evidence_content_hash(item),
-                        record_ids=(item.invocation_id,),
-                    ),
-                    _source_binding(
-                        kind="recognition_raw_artifact",
-                        source_id=f"recognition-raw:{item.raw_output_hash}",
-                        content_hash=item.raw_output_hash,
-                        record_ids=(item.invocation_id,),
-                    ),
-                )
-            ),
-            key=lambda binding: (
-                binding.kind,
-                binding.id,
-                binding.content_hash,
-                binding.record_ids,
-            ),
-        )
-    )
-    confidence_cell = _cell_index(plan)[("span", target.id, "confidence_integrity")]
+    recognition_bindings = context.recognition_source_bindings
+    confidence_cell = context.cells[("span", target.id, "confidence_integrity")]
     for offset, token in enumerate(canonical, start=target.token_start_index):
         if token.confidence is None:
             code: CandidateSignalCode = "recognition_confidence_missing"
@@ -479,6 +526,7 @@ def _recognition_metadata_signals(
             continue
         signals.append(
             _make_signal(
+                context=context,
                 plan=plan,
                 cell=confidence_cell,
                 span_ids=(target.span_id,),
@@ -492,7 +540,7 @@ def _recognition_metadata_signals(
                 detail={"confidence": token.confidence},
             )
         )
-    speaker_cell = _cell_index(plan)[("span", target.id, "speaker_identity")]
+    speaker_cell = context.cells[("span", target.id, "speaker_identity")]
     missing = tuple(token for token in canonical if token.speaker is None)
     if missing:
         for token in missing:
@@ -503,6 +551,7 @@ def _recognition_metadata_signals(
             )
             signals.append(
                 _make_signal(
+                    context=context,
                     plan=plan,
                     cell=speaker_cell,
                     span_ids=(target.span_id,),
@@ -524,6 +573,7 @@ def _recognition_metadata_signals(
     if len(known) > 1:
         signals.append(
             _make_signal(
+                context=context,
                 plan=plan,
                 cell=speaker_cell,
                 span_ids=(target.span_id,),
@@ -541,17 +591,11 @@ def _recognition_metadata_signals(
                 detail={"speaker_hashes": tuple(sorted(hash_object(item) for item in known))},
             )
         )
-    observed = {
-        token.speaker
-        for evidence in recognitions
-        for token in evidence.tokens
-        if token.speaker is not None
-        and token.start_ms < target.end_ms
-        and token.end_ms > target.start_ms
-    }
+    observed = context.observed_speakers_by_span[target.span_id]
     if known and observed - known:
         signals.append(
             _make_signal(
+                context=context,
                 plan=plan,
                 cell=speaker_cell,
                 span_ids=(target.span_id,),
@@ -575,6 +619,7 @@ def _recognition_metadata_signals(
 
 def _coverage_span_signals(
     *,
+    context: _DerivationContext,
     plan: AuditPlan,
     target: SpanAuditTarget,
     transcript: CanonicalTranscript,
@@ -582,7 +627,7 @@ def _coverage_span_signals(
 ) -> tuple[CandidateSignal, ...]:
     if coverage is None or coverage.status != "completed":
         return ()
-    cell = _cell_index(plan)[("span", target.id, "lexical_fidelity")]
+    cell = context.cells[("span", target.id, "lexical_fidelity")]
     receipt_hash = speech_coverage_receipt_content_hash(coverage)
     signals: list[CandidateSignal] = []
     for interval in coverage.uncovered_intervals:
@@ -590,6 +635,7 @@ def _coverage_span_signals(
             continue
         signals.append(
             _make_signal(
+                context=context,
                 plan=plan,
                 cell=cell,
                 span_ids=(target.span_id,),
@@ -662,6 +708,7 @@ def _seam_ownership(
 
 def _boundary_signals(
     *,
+    context: _DerivationContext,
     plan: AuditPlan,
     transcript: CanonicalTranscript,
     coverage: SpeechCoverageReceipt | None,
@@ -687,7 +734,7 @@ def _boundary_signals(
         span_ids = tuple(item.span_id for item in (left, right) if item is not None)
         observed_text = _token_text(transcript, start, end)
 
-        coverage_cell = _cell_index(plan)[("boundary", target.id, "speech_coverage")]
+        coverage_cell = context.cells[("boundary", target.id, "speech_coverage")]
         if coverage_cell.applicability == "unavailable":
             hash_value = (
                 plan.inputs.speech_coverage_receipt_hash
@@ -695,6 +742,7 @@ def _boundary_signals(
             )
             signals.append(
                 _make_signal(
+                    context=context,
                     plan=plan,
                     cell=coverage_cell,
                     span_ids=span_ids,
@@ -729,6 +777,7 @@ def _boundary_signals(
                     continue
                 signals.append(
                     _make_signal(
+                        context=context,
                         plan=plan,
                         cell=coverage_cell,
                         span_ids=span_ids,
@@ -769,7 +818,7 @@ def _boundary_signals(
         if left is None or right is None:
             continue
 
-        semantic_cell = _cell_index(plan)[("boundary", target.id, "cross_span_fidelity")]
+        semantic_cell = context.cells[("boundary", target.id, "cross_span_fidelity")]
         if boundary_constraints is not None:
             edge = next(
                 (
@@ -789,6 +838,7 @@ def _boundary_signals(
                 boundary_hash = boundary_constraint_receipt_hash(boundary_constraints)
                 signals.append(
                     _make_signal(
+                        context=context,
                         plan=plan,
                         cell=semantic_cell,
                         span_ids=span_ids,
@@ -811,7 +861,7 @@ def _boundary_signals(
                     )
                 )
 
-        seam_cell = _cell_index(plan)[("boundary", target.id, "chunk_seam")]
+        seam_cell = context.cells[("boundary", target.id, "chunk_seam")]
         if seam_cell.applicability == "unavailable":
             hashes = (
                 (plan.inputs.seam_evidence_hash,)
@@ -820,6 +870,7 @@ def _boundary_signals(
             )
             signals.append(
                 _make_signal(
+                    context=context,
                     plan=plan,
                     cell=seam_cell,
                     span_ids=span_ids,
@@ -846,6 +897,7 @@ def _boundary_signals(
                 continue
             signals.append(
                 _make_signal(
+                    context=context,
                     plan=plan,
                     cell=seam_cell,
                     span_ids=span_ids,
@@ -893,7 +945,7 @@ def _boundary_signals(
                 )
             )
 
-        speaker_cell = _cell_index(plan)[("boundary", target.id, "speaker_transition")]
+        speaker_cell = context.cells[("boundary", target.id, "speaker_transition")]
         left_speaker = transcript.tokens[positions[target.left_token_id]].speaker
         right_speaker = transcript.tokens[positions[target.right_token_id]].speaker
         if speaker_cell.applicability == "required":
@@ -906,6 +958,7 @@ def _boundary_signals(
             )
             signals.append(
                 _make_signal(
+                    context=context,
                     plan=plan,
                     cell=speaker_cell,
                     span_ids=span_ids,
@@ -931,10 +984,11 @@ def _boundary_signals(
                 )
             )
 
-        repetition_cell = _cell_index(plan)[("boundary", target.id, "repetition_self_repair")]
+        repetition_cell = context.cells[("boundary", target.id, "repetition_self_repair")]
         if cross_span_repetition(left.observed_text, right.observed_text):
             signals.append(
                 _make_signal(
+                    context=context,
                     plan=plan,
                     cell=repetition_cell,
                     span_ids=span_ids,
@@ -962,24 +1016,29 @@ def _boundary_signals(
     return tuple(signals)
 
 
-def _assert_signal_cross_bindings(plan: AuditPlan, signal: CandidateSignal) -> None:
-    cells = _cell_index(plan)
+def _assert_signal_cross_bindings(
+    plan: AuditPlan,
+    signal: CandidateSignal,
+    context: _DerivationContext,
+) -> None:
     key = (signal.target_kind, signal.target_id, signal.category)
-    cell = cells.get(key)
+    cell = context.cells.get(key)
     if cell is None or cell.id != signal.audit_cell_id:
         raise CandidateGenerationError("CandidateSignal does not bind its exact AuditCell")
-    if signal.audit_plan_hash != audit_plan_digest(plan):
+    if signal.audit_plan_hash != context.plan_hash:
         raise CandidateGenerationError("CandidateSignal audit_plan_hash mismatch")
     if signal.rule_set_hash != plan.policy.rule_set_hash:
         raise CandidateGenerationError("CandidateSignal rule-set identity mismatch")
     if (
         signal.generator_id != CANDIDATE_SIGNAL_BUILDER_ID
         or signal.generator_version != CANDIDATE_SIGNAL_BUILDER_VERSION
-        or signal.generator_code_hash != candidate_signal_builder_code_hash()
+        or signal.generator_code_hash != context.builder_code_hash
     ):
         raise CandidateGenerationError("CandidateSignal generator identity mismatch")
     if signal.target_kind == "span":
-        target = next(item for item in plan.span_targets if item.id == signal.target_id)
+        target = context.span_targets.get(signal.target_id)
+        if target is None:
+            raise CandidateGenerationError("span signal targets an unknown AuditTarget")
         if signal.span_ids != (target.span_id,):
             raise CandidateGenerationError("span signal carries the wrong Canonical span")
         if not (
@@ -990,7 +1049,9 @@ def _assert_signal_cross_bindings(plan: AuditPlan, signal: CandidateSignal) -> N
         ):
             raise CandidateGenerationError("span signal range escapes its AuditTarget")
     else:
-        target = next(item for item in plan.boundary_targets if item.id == signal.target_id)
+        target = context.boundary_targets.get(signal.target_id)
+        if target is None:
+            raise CandidateGenerationError("boundary signal targets an unknown AuditTarget")
         expected_span_ids = tuple(
             item for item in (target.left_span_id, target.right_span_id) if item is not None
         )
@@ -1026,8 +1087,9 @@ def derive_candidate_signal_set(
     except AuditPlanError as exc:
         raise CandidateGenerationError(str(exc)) from exc
 
+    context = _build_derivation_context(plan, recognition_evidence)
     retrieval_by_span = {item.audio_span_id: item for item in reference_retrievals}
-    cells = _cell_index(plan)
+    cells = context.cells
     signals: list[CandidateSignal] = []
     regex_rules: tuple[tuple[str, re.Pattern[str], CandidateSignalCode], ...] = (
         ("numeric_expression", _ARABIC_RE, "numeric_arabic_digits_detected"),
@@ -1051,6 +1113,7 @@ def derive_candidate_signal_set(
                 continue
             signals.extend(
                 _regex_signal(
+                    context=context,
                     plan=plan,
                     cell=cell,
                     target=target,
@@ -1073,6 +1136,7 @@ def derive_candidate_signal_set(
             start = target.token_start_index + index - 1
             signals.append(
                 _make_signal(
+                    context=context,
                     plan=plan,
                     cell=cell,
                     span_ids=(target.span_id,),
@@ -1088,6 +1152,7 @@ def derive_candidate_signal_set(
             )
         signals.extend(
             _reference_signals(
+                context=context,
                 plan=plan,
                 target=target,
                 transcript=transcript,
@@ -1096,14 +1161,15 @@ def derive_candidate_signal_set(
         )
         signals.extend(
             _recognition_metadata_signals(
+                context=context,
                 plan=plan,
                 target=target,
                 transcript=transcript,
-                recognitions=recognition_evidence,
             )
         )
         signals.extend(
             _coverage_span_signals(
+                context=context,
                 plan=plan,
                 target=target,
                 transcript=transcript,
@@ -1112,6 +1178,7 @@ def derive_candidate_signal_set(
         )
     signals.extend(
         _boundary_signals(
+            context=context,
             plan=plan,
             transcript=transcript,
             coverage=speech_coverage,
@@ -1123,7 +1190,7 @@ def derive_candidate_signal_set(
     if len({item.id for item in ordered}) != len(ordered):
         raise CandidateGenerationError("deterministic signal derivation produced duplicates")
     for signal in ordered:
-        _assert_signal_cross_bindings(plan, signal)
+        _assert_signal_cross_bindings(plan, signal, context)
         if signal.observed_text != _token_text(
             transcript, signal.token_start_index, signal.token_end_index
         ):
@@ -1139,12 +1206,12 @@ def derive_candidate_signal_set(
             )
     payload = {
         "schema_version": 1,
-        "audit_plan_hash": audit_plan_digest(plan),
+        "audit_plan_hash": context.plan_hash,
         "audit_plan_content_hash": plan.content_hash,
         "audit_input_hash": plan.inputs.content_hash,
         "builder_id": CANDIDATE_SIGNAL_BUILDER_ID,
         "builder_version": CANDIDATE_SIGNAL_BUILDER_VERSION,
-        "builder_code_hash": candidate_signal_builder_code_hash(),
+        "builder_code_hash": context.builder_code_hash,
         "rule_set_hash": plan.policy.rule_set_hash,
         "authority": "review_trigger_only",
         "derivation_status": "complete_recomputation",
@@ -1237,7 +1304,8 @@ def derive_candidate_group_set(
 ) -> CandidateGroupSet:
     """Partition every signal into one overlap component without dropping it."""
 
-    if signal_set.audit_plan_hash != audit_plan_digest(plan):
+    context = _build_derivation_context(plan)
+    if signal_set.audit_plan_hash != context.plan_hash:
         raise CandidateGenerationError("CandidateSignalSet belongs to another AuditPlan")
     if signal_set.audit_plan_content_hash != plan.content_hash:
         raise CandidateGenerationError("CandidateSignalSet AuditPlan content drift")
@@ -1248,11 +1316,11 @@ def derive_candidate_group_set(
     if (
         signal_set.builder_id != CANDIDATE_SIGNAL_BUILDER_ID
         or signal_set.builder_version != CANDIDATE_SIGNAL_BUILDER_VERSION
-        or signal_set.builder_code_hash != candidate_signal_builder_code_hash()
+        or signal_set.builder_code_hash != context.builder_code_hash
     ):
         raise CandidateGenerationError("CandidateSignalSet builder identity drift")
     for signal in signal_set.signals:
-        _assert_signal_cross_bindings(plan, signal)
+        _assert_signal_cross_bindings(plan, signal, context)
     options = _candidate_options(plan, signal_set.signals, transcript)
     option_by_signal: dict[str, list[CandidateOption]] = defaultdict(list)
     for option in options:
@@ -1264,15 +1332,15 @@ def derive_candidate_group_set(
         key=lambda item: (item.token_start_index, item.token_end_index, item.id),
     )
     components: list[list[CandidateSignal]] = []
+    current_end: int | None = None
     for signal in by_range:
-        if not components:
+        if current_end is None or signal.token_start_index >= current_end:
             components.append([signal])
+            current_end = signal.token_end_index
             continue
-        current_end = max(item.token_end_index for item in components[-1])
-        if signal.token_start_index < current_end:
-            components[-1].append(signal)
-        else:
-            components.append([signal])
+        components[-1].append(signal)
+        if signal.token_end_index > current_end:
+            current_end = signal.token_end_index
 
     groups: list[CandidateGroup] = []
     span_order = {item.span_id: item.ordinal for item in plan.span_targets}
@@ -1323,13 +1391,13 @@ def derive_candidate_group_set(
         "schema_version": 1,
         "signal_set_hash": candidate_signal_set_digest(signal_set),
         "signal_set_content_hash": signal_set.content_hash,
-        "audit_plan_hash": audit_plan_digest(plan),
+        "audit_plan_hash": context.plan_hash,
         "audit_plan_content_hash": plan.content_hash,
         "audit_input_hash": plan.inputs.content_hash,
         "grouping_algorithm": "overlap-connected-components-v1",
         "builder_id": CANDIDATE_GROUP_BUILDER_ID,
         "builder_version": CANDIDATE_GROUP_BUILDER_VERSION,
-        "builder_code_hash": candidate_group_builder_code_hash(),
+        "builder_code_hash": context.builder_code_hash,
         "signal_ids": tuple(sorted(item.id for item in signal_set.signals)),
         "groups": tuple(groups),
         "proposal_status": "dormant_no_proposals_created",
