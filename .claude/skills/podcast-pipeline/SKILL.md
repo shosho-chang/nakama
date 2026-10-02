@@ -441,7 +441,7 @@ S3–S6 的 release 只涵蓋訪談本體，片頭片尾沒有字幕；這一步
    2026-10-02 實際執行——Memo bundled runner（兩次都是這條，只換 `<wav>`／輸出路徑／prompt）：
 
    ```text
-   scripts/podcast_subtitle_v2_evidence.py run-memo-bundled --memo-runner "C:/Users/Shosho/AppData/Local/Programs/Memo/resources/addon/whisper/bin/gpu/main.exe" --memo-model "C:/Users/Shosho/AppData/Roaming/Memo/models/ggml-large-v2.bin" --input-wav <wav> --gpu 0 --language zh --prompt "<proper nouns from the script>" --max-context 0 --max-len 0 --output <srt> --stdout-output <txt> --stderr-output <txt> --receipt-output <json>
+   E:\nakama\.venv-v2\Scripts\python.exe scripts/podcast_subtitle_v2_evidence.py run-memo-bundled --memo-runner "C:/Users/Shosho/AppData/Local/Programs/Memo/resources/addon/whisper/bin/gpu/main.exe" --memo-model "C:/Users/Shosho/AppData/Roaming/Memo/models/ggml-large-v2.bin" --input-wav <wav> --gpu 0 --language zh --prompt "<proper nouns from the script>" --max-context 0 --max-len 0 --output <srt> --stdout-output <txt> --stderr-output <txt> --receipt-output <json>
    ```
 
    - 第一次：`<wav>` ＝ `C5497.16k.wav`，輸出 `C5497.memo.{srt,stdout.txt,stderr.txt,execution.v1.json}`；
