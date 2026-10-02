@@ -424,53 +424,71 @@ S3–S6 的 release 只涵蓋訪談本體，片頭片尾沒有字幕；這一步
    印出 V1 上這支檔每一段的 `tl_start`／`tl_end`／`src_start_frame`／`src_fps`（轉場 item 自動略過）。
    依時間順序替每段命名（2026-10-02：`P1` `P2` `P3` `OUT`），裁決檔用這個名字指段。
 
-2. **Memo 底稿**：抽 16 kHz mono WAV，跑 bundled runner（`$memoRunner`／`$memoModel` 同
-   [`references/memo-dual-audit-production-runbook.md`](references/memo-dual-audit-production-runbook.md)）：
+2. **Memo 底稿**。下面 2–4 的命令是 **2026-10-02 實際執行**的紀錄（`<ep>` ＝
+   `G:\footages\20260722 李海碩`，`C5497.MP4` 的音軌是 pcm_s16be 48kHz stereo）；下一集把檔名、
+   prompt 換成該集的。後面步驟 5–9 用 `$io` 指工作目錄：
 
    ```powershell
    $io = "<episode>\intro-outro"
-   ffmpeg -i "<episode>\<cam>.MP4" -vn -ac 1 -ar 16000 -c:a pcm_s16le "$io\<cam>.16k.wav"
-   E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_subtitle_v2_evidence.py run-memo-bundled `
-     --memo-runner $memoRunner --memo-model $memoModel `
-     --input-wav "$io\<cam>.16k.wav" --gpu 0 --language zh `
-     --prompt "<講稿裡的專有名詞；reference only>" --max-context 0 --max-len 0 `
-     --output "$io\<cam>.memo.srt" --stdout-output "$io\<cam>.memo.stdout.txt" `
-     --stderr-output "$io\<cam>.memo.stderr.txt" `
-     --receipt-output "$io\<cam>.memo.execution.v1.json"
    ```
 
-   stderr 出現 `failed to generate timestamp token - skipping one second` 代表有段落被跳過：對照講稿
-   找出掉字範圍，從那之前切子音檔（`ffmpeg -i <wav> -ss <秒> ...`）重跑同一條命令補文字。
-   **Memo 的時間戳一律不用**（見坑 2）。
+   2026-10-02 實際執行——抽 16 kHz mono WAV：
 
-3. **faster-whisper large-v3 word timestamps**（時間軸唯一來源＋第二份文字），同 S5 pinned model：
+   ```text
+   ffmpeg -v error -y -i "<ep>/C5497.MP4" -vn -ac 1 -ar 16000 -c:a pcm_s16le "<ep>/intro-outro/C5497.16k.wav"
+   ```
 
-   ```powershell
-   E:\nakama\.venv-v2\Scripts\python.exe -c "
-   import json, sys
+   2026-10-02 實際執行——Memo bundled runner（兩次都是這條，只換 `<wav>`／輸出路徑／prompt）：
+
+   ```text
+   scripts/podcast_subtitle_v2_evidence.py run-memo-bundled --memo-runner "C:/Users/Shosho/AppData/Local/Programs/Memo/resources/addon/whisper/bin/gpu/main.exe" --memo-model "C:/Users/Shosho/AppData/Roaming/Memo/models/ggml-large-v2.bin" --input-wav <wav> --gpu 0 --language zh --prompt "<proper nouns from the script>" --max-context 0 --max-len 0 --output <srt> --stdout-output <txt> --stderr-output <txt> --receipt-output <json>
+   ```
+
+   - 第一次：`<wav>` ＝ `C5497.16k.wav`，輸出 `C5497.memo.{srt,stdout.txt,stderr.txt,execution.v1.json}`；
+     receipt 記的 prompt 是 `不正常人類研究所 修修 葳格國際學校 總校長 李海碩 海碩哥 Minerva University Anthropic AI agent 募資 電子報`。
+     片尾跑到 172s 就連續 `failed to generate timestamp token - skipping one second`、尾段掉字。
+   - 重跑片尾：先切子音檔（2026-10-02 實際執行）
+
+     ```text
+     ffmpeg -v error -y -ss 164.0 -i C5497.16k.wav -c:a pcm_s16le outro.from164s.16k.wav
+     ```
+
+     再跑同一條 Memo，輸出 `outro.memo.{srt,stdout.txt,stderr.txt,execution.v1.json}`；receipt 記的
+     prompt 是 `不正常人類研究所 YouTube 頻道 Apple Podcast Spotify 訂閱 留言 分享`。這支的時間
+     要 +164.0s 才是原檔時間，而且只剩整秒，**只拿文字、不拿時間**（見坑 2）。
+
+3. **faster-whisper large-v3 word timestamps**（時間軸唯一來源＋第二份文字）。2026-10-02 實際執行
+   （Python，`.venv-v2`）：
+
+   ```python
    from faster_whisper import WhisperModel
-   m = WhisperModel('Systran/faster-whisper-large-v3', revision='edaa852ec7e145841d8ffdb056a99866b5f0a478', device='cuda', compute_type='float16')
-   segs, _ = m.transcribe(sys.argv[1], language='zh', word_timestamps=True)
-   rows = [{'start': s.start, 'end': s.end, 'text': s.text, 'words': [{'start': w.start, 'end': w.end, 'word': w.word, 'p': w.probability} for w in s.words]} for s in segs]
-   open(sys.argv[2], 'w', encoding='utf-8').write(json.dumps(rows, ensure_ascii=False, indent=1))
-   " "$io\<cam>.16k.wav" "$io\<cam>.faster.words.json"
+   m = WhisperModel("Systran/faster-whisper-large-v3", device="cuda", compute_type="float16", revision="edaa852ec7e145841d8ffdb056a99866b5f0a478")
+   segs, info = m.transcribe(wav, language="zh", word_timestamps=True, vad_filter=False, condition_on_previous_text=False, initial_prompt="<proper nouns>")
    ```
 
-4. **Qwen3-ASR tie-breaker**：只對來源打架的短片段（2026-10-02 是四個爭議點）切 clip 再跑：
+   每個 segment 的 start／end／text 加上 `words[]`（start、end、word、probability；檔內鍵名是 `p`）
+   存成 `intro-outro/C5497.faster.words.json`。
 
-   ```powershell
-   ffmpeg -i "$io\<cam>.16k.wav" -ss <起秒> -to <迄秒> -c copy "$io\clip_<tag>.wav"
-   E:\nakama\.venv-v2\Scripts\python.exe -c "
-   import sys, torch
-   from qwen_asr import Qwen3ASRModel
-   m = Qwen3ASRModel.from_pretrained('Qwen/Qwen3-ASR-1.7B', revision='7278e1e70fe206f11671096ffdd38061171dd6e5', dtype=torch.bfloat16, device_map='cuda:0')
-   for path, r in zip(sys.argv[1:], m.transcribe(audio=sys.argv[1:], language='Chinese')): print(path, r.text)
-   " "$io\clip_<tag1>.wav" "$io\clip_<tag2>.wav"
+4. **Qwen3-ASR tie-breaker**：只對來源打架的短片段。2026-10-02 實際執行——切 clip：
+
+   ```text
+   ffmpeg -v error -y -ss <a> -to <b> -i "<ep>/intro-outro/C5497.16k.wav" "<ep>/intro-outro/clip_<name>.wav"
    ```
+
+   再跑（Python，`.venv-v2`，**不掛 forced aligner**）：
+
+   ```python
+   import torch; from qwen_asr import Qwen3ASRModel
+   m = Qwen3ASRModel.from_pretrained("Qwen/Qwen3-ASR-1.7B", revision="7278e1e70fe206f11671096ffdd38061171dd6e5", dtype=torch.bfloat16, device_map="cuda:0", max_new_tokens=256)
+   r = m.transcribe(audio=clip_wav, language="Chinese"); text = r[0].text
+   ```
+
+   2026-10-02 跑了四個爭議點各一段：`clip_cue5`／`clip_hongli`／`clip_laibin`／`clip_xiejiao`（各數秒）。
 
 5. **裁決**，寫 `$io\intro-outro.adjudicated.json`。`pieces` 直接貼步驟 1 的輸出（改成具名物件）；
-   每句的起訖秒取 faster-whisper 的段落／word 邊界（**來源檔**秒數，不是 timeline 秒數）；`note`
-   寫文字來源與理由，空字串代表 Memo 原文直接採用。規則見下方「裁決規則」。
+   每句的起訖秒取 faster-whisper 的 segment start／end（由 word timestamps 推得；一句跨兩個 segment
+   時合併相鄰 segment）——用的是**來源檔**秒數，不是 timeline 秒數；`note` 寫文字來源與理由，
+   空字串代表 Memo 原文直接採用。規則見下方「裁決規則」。
 
    ```json
    {
