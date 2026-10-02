@@ -81,7 +81,7 @@ consumer 已切換；缺少／stale／tampered receipt 一律 fail closed，不�
 | S5 MAJOR AUDIO | 所有 major-risk components 有 Faster＋Qwen evidence；衝突 retain Memo | 無普通人工 gate |
 | S6 RELEASE | release／ledger／manifest／handoff hash-bound，fresh replay byte-identical | 無普通人工 gate |
 | S7 RESOLVE | project/timeline 建立，字幕 handoff exact-copy | 非字幕 GUI requirement 不算 editorial gate |
-| S7E EDITORIAL MASTER | Intro/Outro、完整節目人工剪輯、master media/SRT/receipt hash-bound | **Editorial Master approval** |
+| S7E EDITORIAL MASTER | Intro/Outro 剪入且字幕已上 ST1 並逐句驗證（[§S7E Intro／Outro 字幕上軌](#s7e-introoutro-字幕上軌)）、完整節目人工剪輯、master media/SRT/receipt hash-bound | **Editorial Master approval** |
 | S7P FULL PACKAGING | 完整節目 title／thumbnail／description variants 已產生 | 可非阻塞 review；發布前必須核准 |
 | S8 HIGHLIGHTS | mining、validate、persona review、long shortlist 完成 | **Highlight shortlist review** |
 | S9 LONGFORM | winners materialize；tightening/director/titles/b-roll/SFX/render | finished-cut review |
@@ -394,6 +394,197 @@ Actual build exit 0 只代表 base timeline 建立成功；agent 必須把 base 
 此時 normalization／subtitle
 已完成，而使用者可放入自己錄好的 Intro／Outro，完整觀看並移除咳嗽、道歉、卡頓、中斷與不要的段落。
 使用者明確核准並鎖定後，才可建立 `podcast-editorial-master-v1` receipt 並開始任何 repurpose。
+
+### S7E Intro／Outro 字幕上軌
+
+> 2026-10-02（20260722 李海碩）第一次做，當時全靠臨時腳本；本節與
+> `scripts/resolve_subtitle_rebuild.py` 是事後整理的固定程序。下一集照這裡跑，不要重新摸索。
+
+**時機**：修修把自己錄的 Intro／Outro 剪進完整節目 timeline 之後、Editorial Master approval 之前。
+S3–S6 的 release 只涵蓋訪談本體，片頭片尾沒有字幕；這一步把它們補進 ST1，讓他在同一條 timeline
+上看完整版。工作檔全部放 `<episode>\intro-outro\`。
+
+**輸入**
+
+- Intro／Outro 是**另一支機位檔**，幀率可能和 timeline 不同（2026-10-02：`C5497.MP4` 29.97fps，
+  timeline 30fps），而且被剪成好幾段（NG take 剪掉）。
+- 講稿在本集 TaskNote
+  `E:\Shosho LifeOS\TaskNotes\Tasks\【Pod】<guest> - 【Pod】<guest>－後製與上架.md`（唯讀）。
+  講稿**只是參考**：修修錄音時會即興，以口說為準；專有名詞照講稿。
+
+**步驟**（Resolve scripting 是單執行緒：碰 Resolve 的步驟一次一個，不要和其他上軌工作並行）
+
+1. **列剪輯段**（唯讀）：
+
+   ```powershell
+   E:\nakama\.venv-v2\Scripts\python.exe scripts\resolve_subtitle_rebuild.py pieces `
+     --project "<project>" --timeline "<timeline>" --source-name "<cam>.MP4"
+   ```
+
+   印出 V1 上這支檔每一段的 `tl_start`／`tl_end`／`src_start_frame`／`src_fps`（轉場 item 自動略過）。
+   依時間順序替每段命名（2026-10-02：`P1` `P2` `P3` `OUT`），裁決檔用這個名字指段。
+
+2. **Memo 底稿**。下面 2–4 的命令是 **2026-10-02 實際執行**的紀錄（`<ep>` ＝
+   `G:\footages\20260722 李海碩`，`C5497.MP4` 的音軌是 pcm_s16be 48kHz stereo）；下一集把檔名、
+   prompt 換成該集的。後面步驟 5–9 用 `$io` 指工作目錄：
+
+   ```powershell
+   $io = "<episode>\intro-outro"
+   ```
+
+   2026-10-02 實際執行——抽 16 kHz mono WAV：
+
+   ```text
+   ffmpeg -v error -y -i "<ep>/C5497.MP4" -vn -ac 1 -ar 16000 -c:a pcm_s16le "<ep>/intro-outro/C5497.16k.wav"
+   ```
+
+   2026-10-02 實際執行——Memo bundled runner（兩次都是這條，只換 `<wav>`／輸出路徑／prompt）：
+
+   ```text
+   E:\nakama\.venv-v2\Scripts\python.exe scripts/podcast_subtitle_v2_evidence.py run-memo-bundled --memo-runner "C:/Users/Shosho/AppData/Local/Programs/Memo/resources/addon/whisper/bin/gpu/main.exe" --memo-model "C:/Users/Shosho/AppData/Roaming/Memo/models/ggml-large-v2.bin" --input-wav <wav> --gpu 0 --language zh --prompt "<proper nouns from the script>" --max-context 0 --max-len 0 --output <srt> --stdout-output <txt> --stderr-output <txt> --receipt-output <json>
+   ```
+
+   - 第一次：`<wav>` ＝ `C5497.16k.wav`，輸出 `C5497.memo.{srt,stdout.txt,stderr.txt,execution.v1.json}`；
+     receipt 記的 prompt 是 `不正常人類研究所 修修 葳格國際學校 總校長 李海碩 海碩哥 Minerva University Anthropic AI agent 募資 電子報`。
+     片尾跑到 172s 就連續 `failed to generate timestamp token - skipping one second`、尾段掉字。
+   - 重跑片尾：先切子音檔（2026-10-02 實際執行）
+
+     ```text
+     ffmpeg -v error -y -ss 164.0 -i C5497.16k.wav -c:a pcm_s16le outro.from164s.16k.wav
+     ```
+
+     再跑同一條 Memo，輸出 `outro.memo.{srt,stdout.txt,stderr.txt,execution.v1.json}`；receipt 記的
+     prompt 是 `不正常人類研究所 YouTube 頻道 Apple Podcast Spotify 訂閱 留言 分享`。這支的時間
+     要 +164.0s 才是原檔時間，而且只剩整秒，**只拿文字、不拿時間**（見坑 2）。
+
+3. **faster-whisper large-v3 word timestamps**（時間軸唯一來源＋第二份文字）。2026-10-02 實際執行
+   （Python，`.venv-v2`）：
+
+   ```python
+   from faster_whisper import WhisperModel
+   m = WhisperModel("Systran/faster-whisper-large-v3", device="cuda", compute_type="float16", revision="edaa852ec7e145841d8ffdb056a99866b5f0a478")
+   segs, info = m.transcribe(wav, language="zh", word_timestamps=True, vad_filter=False, condition_on_previous_text=False, initial_prompt="<proper nouns>")
+   ```
+
+   每個 segment 的 start／end／text 加上 `words[]`（start、end、word、probability；檔內鍵名是 `p`）
+   存成 `intro-outro/C5497.faster.words.json`。
+
+4. **Qwen3-ASR tie-breaker**：只對來源打架的短片段。2026-10-02 實際執行——切 clip：
+
+   ```text
+   ffmpeg -v error -y -ss <a> -to <b> -i "<ep>/intro-outro/C5497.16k.wav" "<ep>/intro-outro/clip_<name>.wav"
+   ```
+
+   再跑（Python，`.venv-v2`，**不掛 forced aligner**）：
+
+   ```python
+   import torch; from qwen_asr import Qwen3ASRModel
+   m = Qwen3ASRModel.from_pretrained("Qwen/Qwen3-ASR-1.7B", revision="7278e1e70fe206f11671096ffdd38061171dd6e5", dtype=torch.bfloat16, device_map="cuda:0", max_new_tokens=256)
+   r = m.transcribe(audio=clip_wav, language="Chinese"); text = r[0].text
+   ```
+
+   2026-10-02 跑了四個爭議點各一段：`clip_cue5`／`clip_hongli`／`clip_laibin`／`clip_xiejiao`（各數秒）。
+
+5. **裁決**，寫 `$io\intro-outro.adjudicated.json`。`pieces` 直接貼步驟 1 的輸出（改成具名物件）；
+   每句的起訖秒取 faster-whisper 的 segment start／end（由 word timestamps 推得；一句跨兩個 segment
+   時合併相鄰 segment）——用的是**來源檔**秒數，不是 timeline 秒數；`note` 寫文字來源與理由，
+   空字串代表 Memo 原文直接採用。規則見下方「裁決規則」。
+
+   ```json
+   {
+     "episode_id": "<episode-id>",
+     "timeline": "<timeline>",
+     "pieces": {
+       "P1": {"tl_start": 3, "tl_end": 705, "src_start_frame": 292, "src_fps": "30000/1001"}
+     },
+     "cues": [
+       {"piece": "P1", "src_start_sec": 15.92, "src_end_sec": 18.94,
+        "text": "每集節目我都會邀請到一位不太正常的來賓",
+        "note": "Memo 漏字；FW 一些／Qwen 一個／講稿 一位／呂冠緯集同句 一位 → 一位"}
+     ]
+   }
+   ```
+
+6. **來源秒數 → timeline 幀**（純計算，不碰 Resolve）：
+
+   ```powershell
+   E:\nakama\.venv-v2\Scripts\python.exe scripts\resolve_subtitle_rebuild.py map-cues `
+     --input "$io\intro-outro.adjudicated.json" --out "$io\intro-outro.cues.json"
+   ```
+
+   夾進剪輯段後變成零長度的句子（落在被剪掉的 take）、彼此重疊的句子都會被拒絕（exit 2）。
+
+7. **先在拋棄式副本演練，再上正式 timeline**：
+
+   ```powershell
+   E:\nakama\.venv-v2\Scripts\python.exe scripts\resolve_subtitle_rebuild.py rebuild `
+     --project "<project>" --timeline "<timeline>" `
+     --add-cues "$io\intro-outro.cues.json" --out-dir $io --scratch
+   E:\nakama\.venv-v2\Scripts\python.exe scripts\resolve_subtitle_rebuild.py rebuild `
+     --project "<project>" --timeline "<timeline>" `
+     --add-cues "$io\intro-outro.cues.json" --out-dir $io
+   ```
+
+   兩次都要印 `VERIFIED`。`--scratch` 在 duplicate 出來的 `zz_scratch ST1重建 … 可刪` 上跑完即刪；
+   正式那次先 duplicate 出 `<timeline> 備份 ST1重建前 <MMDD-HHMMSS>`，最後 `SaveProject`。
+   Exit code：`0` 每一句起訖幀＋文字都和計畫一致；`1` ST1 已被清空／改寫但結果不符 → 從備份 timeline
+   還原；`2` 前置條件不符而中止，ST1 沒動過（照訊息處理後重跑）。`--out-dir` 會留下
+   `st1-rebuild.<timeline>.rNNN.srt` 與 `.pre-snapshot.json`（重建前 live 快照，審計紀錄）。
+   timeline 必須只有一條字幕軌、起點 frame 0，否則 exit 2：append 只落在 ST1、seal 會合併所有字幕軌，
+   而 2026-10-02 驗證過的只有起點 0 的 timeline。
+
+8. **inspect 交叉驗**：跑下一節的 `podcast_editorial_master.py inspect`，`subtitle_cue_count` 必須等於
+   「重建前句數＋新增句數」（2026-10-02：4156＋69＝4225）、`timing_qc` 全 0、timeline uid 不變。
+   然後交給修修看——片頭片尾字幕一樣在 Editorial Master approval 的範圍內。
+
+9. **之後的單句文字修正**（Resolve API 改不了既有字幕 item 的文字，只能走同一條重建）：
+
+   ```powershell
+   E:\nakama\.venv-v2\Scripts\python.exe scripts\resolve_subtitle_rebuild.py rebuild `
+     --project "<project>" --timeline "<timeline>" --out-dir $io `
+     --fix "185351=叫 Ethos, Pathos, Logos=>叫 Ethos Pathos Logos"
+   ```
+
+   格式是 `<起始幀>=<live 原文>=><新文字>`，可重複（上例是 2026-10-02 去掉正片一句的標點）。
+   **不要再傳 `--add-cues`**：第一次重建後 live ST1 已含片頭片尾，同一份 cues 再加一次會被重疊檢查擋下。
+   live 原文對不上也會擋（exit 2）——代表修修已經改過那句，先重讀現況再下修正。
+
+**裁決規則**
+
+- 文字以 Memo bundled runner（large-v2）為底，逐句對照 faster-whisper large-v3 與講稿；來源打架的
+  短片段才拉 Qwen3-ASR（`Qwen/Qwen3-ASR-1.7B` revision `7278e1e70fe206f11671096ffdd38061171dd6e5`，
+  `language="Chinese"`）當 tie-breaker。
+- **口說版優先**：修修錄音時會即興，講稿只是參考（2026-10-02：口說的「以及」、多說的「精英」都照口說）。
+- **專有名詞照講稿**（2026-10-02：葳格、臉友、研究所——ASR 聽成「威革」「連友」「救所」）。
+- Memo **漏掉的字只在兩個以上來源支持時才補**（2026-10-02：「一位」有講稿＋呂冠緯集同句兩個來源；
+  faster-whisper「一些」、Qwen「一個」各只有一個）。
+- ASR 分不出的同音字照講稿用字（2026-10-02：「妳」）。
+- 只上剪輯裡留下的那個 take（重錄時前一個 take 不在 timeline 上）。
+- 格式跟上一集已 seal 的 `master.srt` 一致：不留標點；半形英數與中文之間加空白
+  （規則同 `shared.subtitle_finalize.space_han_latin`）。
+- 每句的來源與理由寫進 `note`。
+
+**踩過的坑**（DaVinci Resolve Studio 21.1.0.14，2026-10-02，20260722 李海碩）
+
+1. **機位檔幀率 ≠ timeline 幀率**：每段用
+   `tl_frame = tl_start + round(src_sec × 30000/1001) − GetSourceStartFrame()`，再夾在該段內。
+   為什麼：`GetSourceStartFrame()` 是來源幀（29.97），`GetLeftOffset()` 是 timeline 幀（30），
+   混用會整段錯位；誤用 30 算，片尾 191.78 s 那句就晚 5 幀。
+2. **Memo 在這支短檔上退化**：連串 `failed to generate timestamp token - skipping one second`、
+   尾段掉字；切子音檔重跑文字完整，但時間戳只剩整秒。為什麼：時間軸改取 faster-whisper word
+   timestamps，Memo 只供文字。
+3. **SRT 的 `MediaPool.AppendToTimeline` 一律落在字幕軌 1 既有內容之後**：傳 item 本身 → 接在 ST1
+   最後一句結尾；傳 clipInfo dict → 接在 timeline 結尾；`recordFrame`／`trackIndex` 被忽略；鎖住 ST1
+   → 回 True 但什麼都沒放。為什麼：intro 字幕插不到正片字幕前面，唯一精確的做法是「快照 live ST1
+   （起訖幀＋文字，含修修手改）→ 合併 → `DeleteClips` 清空 ST1 → append 一份絕對時間 SRT（空軌從
+   frame 0 起算）→ 逐句驗證」，動手前一定先 `DuplicateTimeline` 備份、先在 scratch 副本演練。
+4. **`DuplicateTimeline` 之後 Resolve 可能把副本設成 current timeline**，而 `SetCurrentTimeline` 在 UI
+   忙或有對話框開著時會靜默回 None，接著 `DeleteClips` 就失敗。為什麼：腳本在清空前比對 current
+   timeline 的 uid，對不上就 exit 2、ST1 不動——先關掉 Resolve 的對話框、點一下目標 timeline 再重跑。
+5. **修修會在重建後直接在 Resolve 改字幕（文字或時間），live 狀態才是權威**。為什麼：每次重建都必須
+   重讀 live ST1；不可拿舊快照（包括 `--out-dir` 裡的 `.pre-snapshot.json`）重建，否則會無聲洗掉他的手改。
+
+### Editorial Master：approval → inspect → seal → verify
 
 Human approval 之前只能 `inspect`，不得自行傳 `--human-approved`。核准後 exact exporter route 是：
 
