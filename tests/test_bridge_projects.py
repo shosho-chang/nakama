@@ -13,11 +13,11 @@ import yaml
 from fastapi.testclient import TestClient
 
 
-def _write_project(tmp_path, name, status="active", body=""):
+def _write_project(tmp_path, name, status="active", body="", created="2026-08-01T00:00:00Z"):
     d = tmp_path / "Projects"
     d.mkdir(parents=True, exist_ok=True)
     (d / f"{name}.md").write_text(
-        f"---\ntype: project\nstatus: {status}\ncreated: 2026-08-01T00:00:00Z\n---\n{body}",
+        f"---\ntype: project\nstatus: {status}\ncreated: {created}\n---\n{body}",
         encoding="utf-8",
     )
 
@@ -70,6 +70,35 @@ class TestIndex:
         assert "現役戰線" in html
         assert "已封存" in html
         assert "舊戰線" in html
+
+    def test_fresh_project_dated_by_creation_and_listed_first(self, client, tmp_path):
+        """修修 2026-10-02: 剛開的【Pod】李海碩 最右邊沒有日期、還沉到最底 — its
+        template tasks have no plan[]/timeEntries yet. Creation is the activity;
+        ``created`` is UTC, so 23:30Z on 10-01 is 10-02 in Taipei."""
+        _write_project(tmp_path, "舊戰線")
+        _write_task(
+            tmp_path,
+            "舊戰線 - 做過的事",
+            project="舊戰線",
+            entries=(
+                '{startTime: "2026-09-10T09:00:00+08:00", endTime: "2026-09-10T09:25:00+08:00"}'
+            ),
+        )
+        _write_project(tmp_path, "新戰線", created="2026-10-01T23:30:00Z")
+        _write_task(tmp_path, "新戰線 - 訪綱撰寫", project="新戰線", est=3)
+        html = client.get("/bridge/projects").text
+        assert "2026-10-02" in html
+        assert html.index("新戰線") < html.index("舊戰線")
+
+    def test_rows_keep_every_column_cell(self, client, tmp_path):
+        """Table layout: a row with no kind badge still emits the empty 類型 cell,
+        so its stats sit in the same columns as a templated row's."""
+        _write_project(tmp_path, "自由艦隊")
+        _write_task(tmp_path, "自由艦隊 - 社群文章", project="自由艦隊")
+        html = client.get("/bridge/projects").text
+        assert 'class="pj-thead' in html
+        row = html.split('class="pj-row', 1)[1].split("</a>", 1)[0]
+        assert row.count('class="pj-cell') == 4  # 類型 · 任務 · 番茄 · 最近活動
 
     def test_non_project_files_ignored(self, client, tmp_path):
         (tmp_path / "Projects").mkdir()
@@ -278,6 +307,78 @@ class TestCreateWithTemplate:
         html = tclient.get("/bridge/projects/P").text
         assert "pjd-rail" not in html
         assert "pjd-stage" not in html
+
+
+class TestInlineScheduling:
+    """修修 2026-10-02: 專案頁的任務列表要跟 Weekly 總表一樣，可以當場設定日期，
+    不用再點進去 — the 列表 view renders the shared Weekly row, wired to come back."""
+
+    def _listing(self, html):
+        return html.split('data-pane="list"', 1)[1].split("pjd-attach", 1)[0]
+
+    def test_list_rows_are_the_weekly_row_and_post_back_here(self, client, tmp_path):
+        _write_project(tmp_path, "P")
+        _write_task(tmp_path, "P - 任務", project="P")
+        listing = self._listing(client.get("/bridge/projects/P").text)
+        assert 'class="wk-task-d"' in listing
+        assert 'action="/bridge/weekly/plan"' in listing  # the 排入 form
+        assert 'type="date" name="entry_date"' in listing
+        assert '<input type="hidden" name="from_project" value="P">' in listing
+
+    def test_open_unplanned_task_is_flagged_but_done_one_is_not(self, client, tmp_path):
+        _write_project(tmp_path, "P")
+        _write_task(tmp_path, "P - 還沒排", project="P")
+        _write_task(tmp_path, "P - 做完了", project="P", done=True)
+        listing = self._listing(client.get("/bridge/projects/P").text)
+        rows = listing.split('class="wk-task-d"')[1:]
+        flagged = [r for r in rows if "wk-bl-none" in r]
+        assert len(flagged) == 1 and "還沒排" in flagged[0]
+
+    def test_weekly_dashboard_does_not_flag(self, client, tmp_path):
+        """全部 already sections these under 還沒排定時間 — no amber there."""
+        _write_task(tmp_path, "P - 還沒排", project="P")
+        assert "wk-bl-none" not in client.get("/bridge/weekly").text
+
+    @pytest.mark.parametrize(
+        ("query", "expected"),
+        [
+            ("saved=scheduled", "已排入計畫並建立行事曆事件。"),
+            ("saved=renamed", "已重新命名任務"),
+            ("err=weekend", "週末排程需填寫原因"),
+            ("err=cal_conflict&n=2", "2 個既有事件衝突"),
+        ],
+    )
+    def test_weekly_action_results_are_shown(self, client, tmp_path, query, expected):
+        _write_project(tmp_path, "P")
+        html = client.get(f"/bridge/projects/P?{query}").text
+        assert expected in html
+        assert "✓ ✓" not in html  # the toast's own ✓, not doubled
+
+
+class TestTaskNamedWithProject:
+    """修修 2026-10-02（方案 A）: 任務名前面要帶專案標題，不然總表看不出是哪個節目的
+    任務. Data unchanged — the lists stop hiding the prefix the file already has."""
+
+    def test_weekly_all_tab_names_the_project(self, client, tmp_path):
+        _write_task(tmp_path, "【Pod】李海碩 - 節目錄製", project="【Pod】李海碩")
+        html = client.get("/bridge/weekly").text
+        all_pane = html.split('data-pane="all"', 1)[1]
+        assert '<span class="wk-tname">【Pod】李海碩 - 節目錄製</span>' in all_pane
+
+    def test_project_page_names_the_project_everywhere(self, client, tmp_path):
+        _write_project(tmp_path, "P")
+        _write_task(tmp_path, "P - 節目錄製", project="P")
+        html = client.get("/bridge/projects/P").text
+        assert '<span class="wk-tname">P - 節目錄製</span>' in html  # 列表
+        assert 'value="P - 節目錄製" required' in html  # rename starts from what's shown
+        assert '<span class="pjd-card-n">P - 節目錄製</span>' in html  # 看板
+
+    def test_hand_prefixed_title_is_not_doubled(self, client, tmp_path):
+        """The three 李海碩 tasks 修修 renamed by hand: file 「P - P－節目錄製」."""
+        _write_project(tmp_path, "P")
+        _write_task(tmp_path, "P - P－節目錄製", project="P")
+        html = client.get("/bridge/projects/P").text
+        assert '<span class="wk-tname">P－節目錄製</span>' in html
 
 
 class TestDashboardReadouts:

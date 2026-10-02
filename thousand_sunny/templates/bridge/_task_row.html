@@ -13,8 +13,18 @@
    four logged pomodoros read "0 / 4". Those rows show the ALL-TIME actual over the
    all-time estimate instead. 今日/整週 keep the weekly figures, which is the right
    question for them. #}
-{% macro task_row(t, view, return_to="", lifetime=False) %}
+{# `flag_unscheduled` (Project page, 修修 2026-10-02): an open task with no plan[] at
+   all gets an amber 未排時間 in its date cell — on a project that gap is exactly what
+   makes the 預計完成 date a lie. The Weekly 全部 tab already sections those rows
+   under 還沒排定時間, so it leaves this off. #}
+{# `qualified` (修修 2026-10-02): name the task WITH its project — 「【Pod】李海碩 - 節目錄製」
+   — in lists that are not grouped under a project heading (Weekly 全部, the Project
+   page); a bare 「節目錄製」 there can't tell which episode it is. The rename field
+   starts from the same full name; rename_task drops the typed prefix before
+   re-applying it, so the file never becomes 「P - P - 節目錄製」. #}
+{% macro task_row(t, view, return_to="", lifetime=False, flag_unscheduled=False, qualified=False) %}
   {% set timed = t.plan | selectattr('start') | list %}
+  {% set label = t.full_name if qualified else t.name %}
   <details class="wk-task-d" data-slug="{{ t.slug }}">
     <summary class="wk-task {{ 'done' if t.done }}">
       <form class="sho-box-form" method="post" action="/bridge/weekly/task/{{ t.slug | urlencode }}/done">
@@ -23,22 +33,22 @@
         {% if return_to %}<input type="hidden" name="from_project" value="{{ return_to }}">{% endif %}
         <button type="submit" class="sho-box {{ 'done' if t.done }}"
                 aria-pressed="{{ 'true' if t.done else 'false' }}"
-                aria-label="{{ ('標記未完成：' if t.done else '標記完成：') ~ t.name }}"></button>
+                aria-label="{{ ('標記未完成：' if t.done else '標記完成：') ~ label }}"></button>
       </form>
       {# v3-I.4: inline rename — ✎ swaps the title for an editable field in place
          (修修). stopPropagation in JS keeps the click from toggling the <details>.
          name + ✎ + rename-form share ONE grid cell so the chip/date/🍅 columns to
          their right stay aligned across rows (N541 invisible-table). #}
       <span class="wk-namecell">
-        <span class="wk-tname">{{ t.name }}</span>
+        <span class="wk-tname">{{ label }}</span>
         <button type="button" class="wk-rename-icon" title="重新命名"
-                aria-label="重新命名「{{ t.name }}」">✎</button>
+                aria-label="重新命名「{{ label }}」">✎</button>
         <form class="wk-rename-form" method="post"
               action="/bridge/weekly/task/{{ t.slug | urlencode }}/rename" hidden>
           <input type="hidden" name="week" value="{{ view.week.file_key }}">
           {% if return_to %}<input type="hidden" name="from_project" value="{{ return_to }}">{% endif %}
           <input class="wk-rename-input" type="text" name="new_title" maxlength="80"
-                 value="{{ t.name }}" required autocomplete="off" aria-label="新任務名稱">
+                 value="{{ label }}" required autocomplete="off" aria-label="新任務名稱">
           <button class="wk-rename-go" type="submit" title="儲存重新命名">✓</button>
           <button type="button" class="wk-rename-cancel" title="取消">✕</button>
         </form>
@@ -54,7 +64,8 @@
         {% if timed %}
           {% set first = (timed | sort(attribute='start'))[0] %}
           <span class="wk-bl-when {{ 'wk-bl-linked' if first.is_linked }}" title="{{ '已連動 Google 行事曆事件' if first.is_linked else '已排程（尚未推到 Google 行事曆）' }}">{{ first.date.strftime('%m/%d') }}{% if first.time_label %} {{ first.time_label }}{% endif %}{% if timed | length > 1 %} +{{ timed | length - 1 }}{% endif %}</span>
-        {% elif t.scheduled %}<span class="wk-bl-when" title="已排程（尚未推到 Google 行事曆）">{{ t.scheduled.strftime('%m/%d') }}</span>{% endif %}
+        {% elif t.scheduled %}<span class="wk-bl-when" title="已排程（尚未推到 Google 行事曆）">{{ t.scheduled.strftime('%m/%d') }}</span>
+        {% elif flag_unscheduled and not t.done and not t.plan %}<span class="wk-bl-when wk-bl-none">未排時間</span>{% endif %}
       </span>
       {# v3-I.5: 🍅 actual/estimate only for 工作 tasks — only `work` counts toward the
          weekly 🍅, so a health/growth/misc task shows no count (修修). #}
@@ -67,10 +78,10 @@
       </span>
       <a class="wk-open" href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ view.week.file_key }}" title="開啟任務頁 + 番茄鐘">↗</a>
       <form class="wk-del-form" method="post" action="/bridge/weekly/task/{{ t.slug | urlencode }}/delete"
-            data-confirm="確定要刪除任務「{{ t.name }}」？此操作無法復原。">
+            data-confirm="確定要刪除任務「{{ label }}」？此操作無法復原。">
         <input type="hidden" name="week" value="{{ view.week.file_key }}">
         {% if return_to %}<input type="hidden" name="from_project" value="{{ return_to }}">{% endif %}
-        <button type="submit" class="wk-task-del" aria-label="刪除任務「{{ t.name }}」">✕</button>
+        <button type="submit" class="wk-task-del" aria-label="刪除任務「{{ label }}」">✕</button>
       </form>
     </summary>
 

@@ -22,8 +22,9 @@ from __future__ import annotations
 
 import hashlib
 import unicodedata
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
+from types import SimpleNamespace
 from typing import Optional
 from urllib.parse import quote
 
@@ -51,9 +52,16 @@ from shared.project_templates import (
     stage_rank,
 )
 from shared.project_writer import ProjectWriteError, reassign_task_project
-from shared.weekly_indexer import WeeklyIndexer, WeeklyTask, today_taipei
+from shared.weekly_indexer import (
+    TAIPEI,
+    WeeklyIndexer,
+    WeeklyTask,
+    today_taipei,
+    week_for_date,
+)
 from shared.weekly_writer import TaskNotFoundError, WeeklyWriteError, set_task_done
 from thousand_sunny.auth import check_auth
+from thousand_sunny.routers.bridge_weekly import _PLAN_ERRORS, _SAVED_MSGS
 
 logger = get_logger("nakama.web.bridge_projects")
 
@@ -124,6 +132,19 @@ def _last_activity(t: WeeklyTask) -> Optional[date]:
     return max(dates) if dates else None
 
 
+def _created_date(p: ProjectEntry) -> Optional[date]:
+    """The project's creation day in Taipei time. ``created`` is stored as UTC
+    (``…Z``), so slicing the string would date a 07:00 Taipei project to the day
+    before."""
+    if not p.created:
+        return None
+    try:
+        dt = datetime.fromisoformat(p.created.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return dt.astimezone(TAIPEI).date() if dt.tzinfo else dt.date()
+
+
 def _when_label(t: WeeklyTask) -> str:
     """The task's scheduled time as one short string: ``09-12 10:00–12:00`` for a
     single timed entry, ``09-18 · 09-19`` for two days, ``09-18 +3`` beyond that.
@@ -141,18 +162,15 @@ def _when_label(t: WeeklyTask) -> str:
     return " · ".join(days[:2]) if len(days) == 2 else f"{days[0]} +{len(days) - 1}"
 
 
-def _task_view(t: WeeklyTask, actual: dict[str, int], project: str) -> dict:
+def _task_view(t: WeeklyTask, actual: dict[str, int]) -> dict:
     last = _last_activity(t)
-    # Legacy prefix-only members (no ``projects:`` fm) keep the full title in
-    # t.name — strip the thread prefix here so rows read uniformly.
-    name = t.name
-    prefix = f"{project} - "
-    if name.startswith(prefix):
-        name = name[len(prefix) :] or name
     act = actual.get(t.slug, 0)
     return {
         "slug": t.slug,
-        "name": name,
+        # 「P - 節目錄製」, same as the 列表 rows and the Weekly 全部 tab — 修修 reads
+        # the project in the task's own name (2026-10-02). Legacy prefix-only members
+        # (no ``projects:`` fm) already have it in their title.
+        "name": t.full_name,
         "done": t.done,
         "status": t.status,
         "stage": t.stage,
@@ -203,7 +221,7 @@ def _schedule_rows(
 
 
 def _project_view(p: ProjectEntry, members: list[WeeklyTask], actual: dict[str, int]) -> dict:
-    views = [_task_view(t, actual, p.name) for t in members]
+    views = [_task_view(t, actual) for t in members]
     by_slug = {v["slug"]: v for v in views}
     # 未完在前、已完成沉底；兩組內都以最近活動新→舊排。
     open_views = sorted([v for v in views if not v["done"]], key=lambda v: v["last"], reverse=True)
@@ -218,7 +236,14 @@ def _project_view(p: ProjectEntry, members: list[WeeklyTask], actual: dict[str, 
         for group in (open_views, done_views):
             group.sort(key=lambda v: rank.get(v["stage"], last_rank))
     ordered = open_views + done_views
-    last = max((v["last"] for v in ordered if v["last"]), default="")
+    # A fresh project's tasks have no plan[] / timeEntries yet, so task activity
+    # alone leaves 最近活動 blank and sinks the newest project to the bottom of
+    # the list. Creating the project IS its first activity (修修 2026-10-02).
+    created = _created_date(p)
+    last = max(
+        [v["last"] for v in ordered if v["last"]] + ([created.isoformat()] if created else []),
+        default="",
+    )
 
     # ── 「還差多久 / 還剩多少」(修修 2026-09-10) — every figure read-time ──
     remaining_pom = sum(v["remaining"] for v in open_views)
@@ -236,7 +261,7 @@ def _project_view(p: ProjectEntry, members: list[WeeklyTask], actual: dict[str, 
         "status": p.status,
         "kind": p.kind,
         "kind_label": kind_label(p.kind) if p.kind else "",
-        "created": p.created[:10],
+        "created": created.isoformat() if created else "",
         "tasks": ordered,
         "kanban": {
             "todo": [v for v in ordered if not v["done"] and v["status"] != "doing"],
@@ -341,10 +366,29 @@ async def project_detail(
     if entry is None:
         return RedirectResponse("/bridge/projects?err=missing", status_code=303)
 
-    all_tasks = WeeklyIndexer(vault).read_tasks()
+    idx = WeeklyIndexer(vault)
+    all_tasks = idx.read_tasks()
     members = tasks_for(entry.name, all_tasks)
     actual = _actual_by_slug(vault, members)
     view = _project_view(entry, members, actual)
+
+    # 列表 view = the Weekly 「全部」 row (_task_row.html), so a task can be dated /
+    # timed / renamed in place instead of clicking through (修修 2026-10-02). The
+    # row reads a handful of WeeklyView fields; this is just those, for the current
+    # week. Its forms post to the /bridge/weekly/* routes with ``from_project`` so
+    # each action lands back here. 🍅 = the all-time rollup above (lifetime=True),
+    # the same figure the 全部 tab shows.
+    today = today_taipei()
+    wk = week_for_date(today)
+    top3 = idx.top3(wk, all_tasks, idx.read_review(wk))
+    row_view = SimpleNamespace(
+        week=wk,
+        important_slugs=frozenset(it.slug for it in top3 if it.kind == "task" and it.slug),
+        actual_all_time=actual,
+        today_iso=today.isoformat(),
+    )
+    by_slug = {t.slug: t for t in members}
+    row_tasks = [by_slug[v["slug"]] for v in view["tasks"]]
 
     # Attach picker: every OPEN task that isn't already a member. Tasks belonging
     # to another project stay selectable but carry their owner's name, so moving
@@ -373,14 +417,27 @@ async def project_detail(
                 f"（檔名衝突或已在 Obsidian 改名／移動）——這個專案沒有變動。"
             )
 
+    # Row actions come back with the Weekly routes' own err / saved codes.
+    error_msg = (_ERRORS.get(err) or _PLAN_ERRORS.get(err)) if err else None
+    if err == "cal_conflict" and n > 0:
+        # No-JS fallback; with JS the bridge-weekly.js conflict modal supersedes it.
+        error_msg = (
+            f"此時段與 Google 行事曆 {n} 個既有事件衝突——"
+            "尚未排入（不寫計畫、不建事件）。改個時間重送即可。"
+        )
+    if saved and not saved_msg and saved in _SAVED_MSGS:
+        saved_msg = _SAVED_MSGS[saved].removeprefix("✓ ")  # the toast draws its own ✓
+
     return _templates.TemplateResponse(
         request,
         "projects/detail.html",
         {
             "p": view,
+            "row_tasks": row_tasks,
+            "row_view": row_view,
             "candidates": candidates,
             "notes_html": render_markdown(entry.body) if entry.body else "",
-            "error_msg": (_ERRORS.get(err) if err else None) or error_msg_extra,
+            "error_msg": error_msg or error_msg_extra,
             "saved_msg": saved_msg,
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
