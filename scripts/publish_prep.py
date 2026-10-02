@@ -230,7 +230,13 @@ def _render_master(
     w = int(timeline.GetSetting("timelineResolutionWidth"))
     h = int(timeline.GetSetting("timelineResolutionHeight"))
     project.SetCurrentRenderFormatAndCodec("mp4", "H264")
+    # ExportVideo／ExportAudio 必須明設：沒設就繼承 Deliver 頁當下的 preset。
+    # 2026-10-02 20260722 李海碩：修修剛在 Deliver 頁用「Audio Only」匯 podcast mp3，
+    # master.mp4 跟著變成純音訊，Editorial Master seal 擋在「must contain both
+    # video and audio streams」。
     settings = {
+        "ExportVideo": True,
+        "ExportAudio": True,
         "MarkIn": timeline.GetStartFrame(),
         "MarkOut": timeline.GetEndFrame(),
         "TargetDir": str(out_dir),
