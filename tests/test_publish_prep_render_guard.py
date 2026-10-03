@@ -149,3 +149,18 @@ def test_missing_status_api_falls_back_to_mtime(tmp_path):
     bad = FakeProject(out_dir / "SL7.mp4", job_status=None, writes_file=False)
     with pytest.raises(SystemExit):
         _render_master(bad, FakeTimeline(), out_dir, "SL7")
+
+
+def test_render_always_exports_video_and_audio(tmp_path):
+    """2026-10-02 20260722 李海碩：Deliver 頁停在「Audio Only」preset 時，
+    沒明設的 render 會繼承成純音訊，Editorial Master seal 擋下。"""
+    out_dir = tmp_path / "exports"
+    out_dir.mkdir()
+    proj = FakeProject(
+        out_dir / "master.mp4", job_status={"JobStatus": "Complete"}, writes_file=True
+    )
+
+    _render_master(proj, FakeTimeline(), out_dir, "master")
+
+    assert proj.settings["ExportVideo"] is True
+    assert proj.settings["ExportAudio"] is True
