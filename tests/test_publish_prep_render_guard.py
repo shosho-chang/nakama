@@ -156,7 +156,9 @@ def test_render_always_exports_video_and_audio(tmp_path):
     沒明設的 render 會繼承成純音訊，Editorial Master seal 擋下。"""
     out_dir = tmp_path / "exports"
     out_dir.mkdir()
-    proj = FakeProject(out_dir / "master.mp4", job_status={"JobStatus": "Complete"}, writes_file=True)
+    proj = FakeProject(
+        out_dir / "master.mp4", job_status={"JobStatus": "Complete"}, writes_file=True
+    )
 
     _render_master(proj, FakeTimeline(), out_dir, "master")
 
