@@ -621,14 +621,14 @@ def _safe_directory(path: Path) -> None:
         raise AudioAuditExecutionError("audio audit workspace directory is unsafe")
 
 
-def _atomic_emit(path: Path, payload: bytes) -> None:
-    _safe_directory(path.parent)
-    if _is_link_or_reparse(path):
-        raise AudioAuditExecutionError("audio audit workspace artifact is unsafe")
-    if path.exists():
-        if not path.is_file() or _safe_read(path) != payload:
-            raise AudioAuditExecutionError("audio audit workspace artifact conflicts")
-        return
+def _publish_new(path: Path, payload: bytes) -> bool:
+    """Publish complete bytes at ``path`` unless it exists; True only for the creator.
+
+    ``os.link`` never replaces an existing name, so a concurrent executor can
+    neither observe a partial file nor have an artifact it is reading swapped
+    underneath ``_safe_read`` (``os.replace`` of an open file also fails on Windows).
+    """
+
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
     )
@@ -638,11 +638,11 @@ def _atomic_emit(path: Path, payload: bytes) -> None:
             stream.write(payload)
             stream.flush()
             os.fsync(stream.fileno())
-        if path.exists():
-            if _is_link_or_reparse(path) or _safe_read(path) != payload:
-                raise AudioAuditExecutionError("audio audit concurrent workspace conflict")
-        else:
-            os.replace(temporary, path)
+        try:
+            os.link(temporary, path)
+        except FileExistsError:
+            return False
+        return True
     finally:
         try:
             temporary.unlink(missing_ok=True)
@@ -650,34 +650,36 @@ def _atomic_emit(path: Path, payload: bytes) -> None:
             pass
 
 
+def _atomic_emit(path: Path, payload: bytes) -> None:
+    _safe_directory(path.parent)
+    if _is_link_or_reparse(path):
+        raise AudioAuditExecutionError("audio audit workspace artifact is unsafe")
+    if path.exists():
+        if not path.is_file() or _safe_read(path) != payload:
+            raise AudioAuditExecutionError("audio audit workspace artifact conflicts")
+        return
+    if not _publish_new(path, payload):
+        if _is_link_or_reparse(path) or _safe_read(path) != payload:
+            raise AudioAuditExecutionError("audio audit concurrent workspace conflict")
+
+
 def _exclusive_claim(path: Path, payload: bytes) -> bool:
     """Create one complete claim file without treating identical bytes as ownership.
 
     ``_atomic_emit`` is intentionally idempotent for content-addressed artifacts;
     an invocation claim is different: only the process that created it may call
-    the non-idempotent runner.  A crashed partial claim remains fail-closed.
+    the non-idempotent runner.  The claim becomes visible only once complete and
+    durable, so a concurrent executor never reads a partial claim; a failure
+    before publication leaves no claim, and the runner has not been called.
     """
 
     _safe_directory(path.parent)
     if _is_link_or_reparse(path):
         raise AudioAuditExecutionError("audio audit invocation claim is unsafe")
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL
     try:
-        descriptor = os.open(path, flags, 0o600)
-    except FileExistsError:
-        return False
+        return _publish_new(path, payload)
     except OSError as exc:
         raise AudioAuditExecutionError("audio audit invocation claim cannot be created") from exc
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-    except Exception:
-        # The claim deliberately remains present.  Removing it could authorize a
-        # second paid call after an indeterminate filesystem failure.
-        raise
-    return True
 
 
 def _safe_read(path: Path) -> bytes:
@@ -907,12 +909,22 @@ class AudioFullAuditExecutor:
     ) -> AudioAuditInvocationJournalV2:
         events = self._load_events(request)
         if not events:
-            return self._append_event(
-                request,
-                request_bytes,
-                clip_bytes,
-                "intent_persisted",
+            # Emit the exact index-0 slot instead of appending at "next index": a
+            # concurrent executor may persist the same intent after our empty read,
+            # and an append would then forge a second intent at index 1.
+            intent = _journal_event(
+                request=request,
+                request_bytes=request_bytes,
+                clip_bytes=clip_bytes,
+                event_index=0,
+                event="intent_persisted",
+                previous_event_hash=None,
             )
+            _atomic_emit(
+                self._journal_directory(request) / "000-intent_persisted.json",
+                canonical_json_bytes(intent),
+            )
+            events = self._load_events(request)
         journal = _journal_from_events(events)
         first = journal.events[0]
         if first.request_artifact != _artifact(

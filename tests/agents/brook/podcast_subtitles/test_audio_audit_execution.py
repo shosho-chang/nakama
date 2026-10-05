@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import os
 import wave
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
 from pathlib import Path
-from threading import Barrier, Lock
+from threading import Barrier, BrokenBarrierError, Lock
 from typing import Callable
 
 import pytest
@@ -15,6 +16,7 @@ from agents.brook.podcast_subtitles.audio_audit_execution import (
     AudioAuditExecutionError,
     AudioAuditInvocationAmbiguous,
     AudioAuditProviderFailed,
+    AudioAuditRunResult,
     AudioAuditWorkPending,
     AudioFullAuditExecutor,
     build_audio_audit_adapter_identity,
@@ -35,7 +37,10 @@ from agents.brook.podcast_subtitles.correction_execution import (
 )
 from agents.brook.podcast_subtitles.hashing import canonical_json_bytes, hash_object, sha256_bytes
 from shared.schemas.podcast_subtitles_v2 import BoundaryAuditTarget, SpanAuditTarget
-from shared.schemas.podcast_subtitles_v2_audio_audit import AudioAuditProviderRequestV2
+from shared.schemas.podcast_subtitles_v2_audio_audit import (
+    AudioAuditInvocationJournalEventV2,
+    AudioAuditProviderRequestV2,
+)
 from shared.schemas.podcast_subtitles_v2_correction import (
     CorrectionAuditExecutionPlanV2,
     CorrectionAuditPacketV2,
@@ -1147,20 +1152,125 @@ def test_concurrent_executors_share_one_exclusive_automatic_attempt(
 
     identity = _executor(tmp_path, runner=runner).identity
 
-    def execute_once() -> object:
-        executor = AudioFullAuditExecutor(
+    def make_executor(
+        before_send: Callable[[AudioAuditProviderRequestV2], None] | None = None,
+    ) -> AudioFullAuditExecutor:
+        return AudioFullAuditExecutor(
             identity=identity,
             policy=default_audio_audit_execution_policy(),
             runner=runner,
             workspace_root=tmp_path / "workspace",
             before_send=before_send,
         )
+
+    def execute_once() -> object:
         try:
-            return executor.execute(execution, audit_plan, sources)
+            return make_executor(before_send=before_send).execute(execution, audit_plan, sources)
         except AudioAuditInvocationAmbiguous as exc:
             return exc
+        except BaseException:
+            # Release the peer now; a 10s barrier timeout would hide this real error.
+            barrier.abort()
+            raise
 
     with ThreadPoolExecutor(max_workers=2) as pool:
-        outcomes = tuple(pool.map(lambda _: execute_once(), range(2)))
+        futures = tuple(pool.submit(execute_once) for _ in range(2))
+    errors = sorted(
+        (error for error in (item.exception() for item in futures) if error is not None),
+        key=lambda error: isinstance(error, BrokenBarrierError),
+    )
+    if errors:
+        raise errors[0]
+    outcomes = tuple(item.result() for item in futures)
     assert runner_calls == packet_count
+    assert sum(isinstance(item, AudioAuditRunResult) for item in outcomes) == 1
     assert sum(isinstance(item, AudioAuditInvocationAmbiguous) for item in outcomes) == 1
+
+    # The shared journals stay valid chains: a later run resumes without a new call.
+    assert isinstance(make_executor().execute(execution, audit_plan, sources), AudioAuditRunResult)
+    assert runner_calls == packet_count
+
+
+def test_stale_empty_journal_read_does_not_forge_a_second_intent(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: two executors both read an empty journal; the slower one used to
+    append its intent at index 1 behind the peer's, raising and poisoning the journal."""
+
+    fixture, sources = _audio_inputs(tmp_path, mandatory_boundaries=False)
+    audit_plan, _, _, execution = fixture[:4]
+    packet_count = len(tuple(item for item in execution.packets if item.modality == "audio"))
+    runner_calls = 0
+
+    def runner(request: bytes, clip: bytes) -> bytes:
+        nonlocal runner_calls
+        runner_calls += 1
+        return _response_bytes(request, clip)
+
+    def peer_stops(_request: AudioAuditProviderRequestV2) -> None:
+        raise RuntimeError("peer stops after persisting its intent")
+
+    executor = _executor(tmp_path, runner=runner)
+    peer = AudioFullAuditExecutor(
+        identity=executor.identity,
+        policy=default_audio_audit_execution_policy(),
+        runner=runner,
+        workspace_root=tmp_path / "workspace",
+        before_send=peer_stops,
+    )
+    load_events = executor._load_events
+    raced: list[str] = []
+
+    def load_events_then_peer_persists_intent(request: AudioAuditProviderRequestV2):
+        if raced:
+            return load_events(request)
+        raced.append(request.id)
+        events = load_events(request)
+        assert events == ()
+        with pytest.raises(RuntimeError, match="peer stops"):
+            peer.execute(execution, audit_plan, sources)
+        return events
+
+    monkeypatch.setattr(executor, "_load_events", load_events_then_peer_persists_intent)
+    result = executor.execute(execution, audit_plan, sources)
+
+    assert runner_calls == packet_count
+    assert all(
+        tuple(item.event for item in journal.events)
+        == ("intent_persisted", "attempt_started_at_most_once", "response_committed")
+        for journal in result.record.invocation_journals
+    )
+    journal_dir = tmp_path / "workspace" / "audio-audit" / "journals" / raced[0]
+    assert sorted(item.name for item in journal_dir.glob("*.json")) == [
+        "000-intent_persisted.json",
+        "001-attempt_started_at_most_once.json",
+        "002-response_committed.json",
+    ]
+
+
+def test_journal_events_are_never_visible_before_they_are_complete(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regression: the attempt claim was O_EXCL-created empty before its bytes were
+    written, so a concurrent executor listing the journal in that window failed with a
+    corruption error instead of AudioAuditInvocationAmbiguous."""
+
+    fixture, sources = _audio_inputs(tmp_path, mandatory_boundaries=False)
+    audit_plan, _, _, execution = fixture[:4]
+    journals = tmp_path / "workspace" / "audio-audit" / "journals"
+    real_fdopen = os.fdopen
+    write_windows = 0
+
+    def fdopen_probe(descriptor: int, *args: object, **kwargs: object):
+        nonlocal write_windows
+        # A writer is about to fill a fresh file: every event a peer can list must be whole.
+        for path in journals.glob("*/*.json"):
+            AudioAuditInvocationJournalEventV2.model_validate_json(path.read_bytes())
+        write_windows += 1
+        return real_fdopen(descriptor, *args, **kwargs)
+
+    monkeypatch.setattr(os, "fdopen", fdopen_probe)
+    _executor(tmp_path, runner=_response_bytes).execute(execution, audit_plan, sources)
+    assert write_windows
