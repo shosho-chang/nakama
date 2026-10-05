@@ -383,7 +383,7 @@
 - [長片線 DoD＝B-roll 上 timeline](feedback_longform_dod_is_broll_on_timeline.md) — 選完精華段後一路做到視覺全部鋪上 Resolve timeline 才回報，中途進度報告對修修是雜訊
 - [Lock the win with a test](feedback_lock_the_win_with_a_test.md) — 人眼驗過的成果同一次改動就用測試鎖住；版位版本這類常數只能有一個真相來源
 - [Visuals carry the claim](feedback_visuals_carry_the_claim.md) — B-roll／字卡要承載那一段的主張，不是圖解句子裡的名詞；Hero 不准提前講結論、第一人稱只能是講者本人
-- [給人讀的文件放 Obsidian](feedback_reader_documents_go_to_obsidian.md) — 勘誤單／剪輯清單／選段報告這類修修要讀要改的，直接寫進 `AgentOutputs/interviews/<訪談日>-<來賓>/`；run_log、manifest、SRT 這類機器輸入才留 episode 資料夾
+- [給人讀的文件放 Obsidian](feedback_reader_documents_go_to_obsidian.md) — 勘誤單／剪輯清單／選段報告這類修修要讀要改的，直接寫進 `AgentOutputs/interviews/<訪談日>-<來賓>/`；run_log、manifest、SRT 這類機器輸入才留 episode 資料夾；**交給他的路徑永遠是 Vault 路徑**（2026-10-05 再犯：把 G: 那份候選表路徑給他）
 - [跑到 gate 才停，不要「先給你看一眼」](feedback_run_to_the_gate_dont_stop_to_show.md) — Editorial Master 之後一路做到 packaging 進 gate 才回報；標題／臉／大字是 gate 欄位不是對話題目；停點只有三個，不要自己發明第四個
 - [渲染在跑就不要跑整套測試](feedback_dont_run_full_suite_during_renders.md) — 會被 Resolve／hyperframes 餓到 6 倍慢（19 分變 2 小時），而 `pytest -q` 沒有中途輸出，「慢」和「死」長得一樣；改分段跑，失敗先歸因不要預設是自己弄壞的
 - [人眼驗過的就是定案](feedback_human_verified_is_final.md) — 修修看過並指定的產出（版式、文案、剪輯點）不可用自動 QA 分數推翻或「順手修正」；QA 只對他還沒看過的東西有否決權，不過就先交付再一句話告知

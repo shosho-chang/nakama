@@ -31,6 +31,9 @@ metadata:
 - 給他選的時候要**連機器的排序、分數、否決理由一起端出來**，並明說「這是素材強度不是
   你的品味」；落選的同群組 variant 也要列，他可能指名那個切法
 - 機器的否決（如 brand-lens veto）**可以被他覆蓋**，但不能靜默照做——要警告
+- **轉述時不准說「被否決」「不能做」**：品牌 lens 只是提醒，做不做是他判斷（修修 2026-10-05：
+  「品牌提醒只是提醒，可不可以做是我來判斷」）。表上 veto 已改稱「⛔ 重大提醒」（PR #1337）；
+  轉述就說「提醒比較重，理由是……」，不替他下結論
 - 實作首例：`scripts/run_cut_shortlist.py` + highlight-cut skill Step 2.4（PR #1157）
 - 同源紀律見 [[feedback_minimize_manual_friction]]（減少他的手動操作）與
   [[feedback_hitl_gate_serves_subjective_taste]]（gate 服務的是主觀品味，LLM 變強也不會消失）
