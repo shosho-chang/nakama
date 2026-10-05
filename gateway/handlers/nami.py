@@ -143,12 +143,18 @@ def _now_taipei() -> str:
     return f"{now:%Y-%m-%d}（{_WEEKDAYS_ZH[now.weekday()]}）{now:%H:%M}"
 
 
-async def _empty_prompt_stream():
-    """零則訊息的 prompt stream —— resume 接 deferred tool call 時用。
+async def _held_prompt_stream(released: asyncio.Event):
+    """零則訊息、撐到本輪 ResultMessage 才結束的 prompt stream（resume 接 deferred tool call 用）。
 
-    不產生空 user message：SDK 收到空流即走 end-input，不會為空訊息多跑一輪
-    （避免第二個 ResultMessage），且全路徑自然耗盡讓子進程清理同步跑完（B1）。
+    不產生 user message：不會為空訊息多跑一輪（避免第二個 ResultMessage）。
+    但不能「立刻結束」：SDK ≥0.2.157 對一則都沒寫的 prompt stream 會立刻關 stdin
+    （``stream_input`` 的 ``written == 0`` 分支），而 resume 後 CLI 還要經 control
+    protocol 打 PreToolUse hook 與 in-process MCP tool —— stdin 一關就回
+    ``tool_deferred_unavailable``，ask_user 永遠接不回去（2026-10-05 Nami 鬼打牆事故）。
+    撐到 ResultMessage 到手再結束，等同舊版 ``wait_for_result_and_end_input`` 的語意；
+    本輪若提前崩掉，SDK close() 會 cancel 這個 stream，不會懸住。
     """
+    await released.wait()
     return
     yield  # pragma: no cover — 讓函式是 async generator
 
@@ -1289,10 +1295,11 @@ class NamiHandler(BaseHandler):
             },
         )
 
-        # answer 路徑（回答 pending ask_user）不需要新 user message：給空的
-        # prompt stream，SDK 直接 resume pending tool call，不會為空訊息多跑
-        # 一輪。其餘路徑用字串 prompt。
-        prompt: Any = _empty_prompt_stream() if answer is not None else user_text
+        # answer 路徑（回答 pending ask_user）不需要新 user message：給零則訊息、
+        # 撐到 ResultMessage 才結束的 prompt stream，SDK 直接 resume pending tool
+        # call，不會為空訊息多跑一輪。其餘路徑用字串 prompt。
+        released = asyncio.Event()
+        prompt: Any = _held_prompt_stream(released) if answer is not None else user_text
 
         # SDK 對 error result 的形狀是「先 yield ResultMessage 再 raise」——
         # 所以 ResultMessage 到手當下就 log（失敗的 run 也要留 cost/session 痕跡），
@@ -1308,6 +1315,7 @@ class NamiHandler(BaseHandler):
                     log_sdk_message("nami", message)  # ADR-070 S0 取證：只記 log
                     if isinstance(message, ResultMessage) and result_msg is None:
                         result_msg = message
+                        released.set()  # 本輪終態到手，prompt stream 可以收、stdin 可以關
                         # per-call 粒度的成本記錄是 S4；先讓 session 級數字進 log 可查
                         logger.info(
                             "nami sdk result: session=%s subtype=%s turns=%s cost_usd=%s "
@@ -1325,9 +1333,22 @@ class NamiHandler(BaseHandler):
             logger.exception("Agent SDK stream failed")
             log_sdk_exception("nami", e)  # ADR-070 S0 取證：只記 log
             stream_error = e
+        finally:
+            released.set()
 
-        # ── 終態 1：ask_user 被 defer —— 問題回 Slack、session 掛起（S3）──
-        if result_msg is not None and result_msg.deferred_tool_use is not None:
+        # ── 終態 1：resume 時 pending tool 接不上 —— 必須先於 defer 分支判斷 ──
+        # 這個 error result 仍帶著原本那筆 deferred_tool_use：先判 defer 會把同一題
+        # 原封不動貼回 Slack、pending 狀態續命，使用者怎麼回都鬼打牆（2026-10-05）
+        if result_msg is not None and result_msg.stop_reason == "tool_deferred_unavailable":
+            logger.warning("deferred tool unavailable on resume: session=%s", result_msg.session_id)
+            return HandlerResponse(text="這個流程的狀態已失效，請重新下指令。")
+
+        # ── 終態 2：ask_user 被 defer —— 問題回 Slack、session 掛起（S3）──
+        if (
+            result_msg is not None
+            and result_msg.deferred_tool_use is not None
+            and not result_msg.is_error
+        ):
             deferred = result_msg.deferred_tool_use
             if deferred.name != "mcp__nami__ask_user":
                 # 只有 ask_user 掛 defer hook，理論上到不了這裡
@@ -1343,11 +1364,6 @@ class NamiHandler(BaseHandler):
                     },
                 ),
             )
-
-        # ── 終態 2：resume 時 pending tool 已不在（MCP server 沒接上）────
-        if result_msg is not None and result_msg.stop_reason == "tool_deferred_unavailable":
-            logger.warning("deferred tool unavailable on resume: session=%s", result_msg.session_id)
-            return HandlerResponse(text="這個流程的狀態已失效，請重新下指令。")
 
         ok = result_msg is not None and result_msg.subtype == "success" and not result_msg.is_error
         if ok and stream_error is None:

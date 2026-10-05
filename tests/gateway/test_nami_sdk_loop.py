@@ -382,6 +382,44 @@ def test_tool_deferred_unavailable_reports_invalid_state():
     assert captured["options"].resume == "sess-9"
 
 
+def test_tool_deferred_unavailable_with_stale_deferred_does_not_reask():
+    """真 SDK 的 unavailable error result 仍帶著原本那筆 deferred_tool_use —— 不可
+    走 defer 分支把同一題原封不動貼回 Slack、續命 pending（2026-10-05 鬼打牆事故）。"""
+    captured: dict = {}
+    stale = DeferredToolUse(
+        id="toolu_stale",
+        name="mcp__nami__ask_user",
+        input={"question": "10/16 撞時段了——要改哪個？", "options": ["改時段", "覆蓋"]},
+    )
+    msgs = [
+        _result(text="", is_error=True, deferred=stale, stop_reason="tool_deferred_unavailable")
+    ]
+    with (
+        patch(
+            "gateway.handlers.nami.query",
+            _fake_query(captured, msgs, raise_after=RuntimeError("exit code 1")),
+        ),
+        patch("gateway.handlers.nami.get_model", return_value="m"),
+    ):
+        resp = NamiHandler()._run_loop_sdk("", "U1", resume_session="sess-9", answer="取消")
+    assert "已失效" in resp.text
+    assert "撞時段" not in resp.text
+    assert resp.continuation is None  # 不留 pending —— 下一句話重新開局
+
+
+def test_errored_result_with_deferred_is_not_treated_as_question():
+    captured: dict = {}
+    stale = DeferredToolUse(id="toolu_x", name="mcp__nami__ask_user", input={"question": "Q?"})
+    msgs = [_result(text="", is_error=True, deferred=stale)]
+    with (
+        patch("gateway.handlers.nami.query", _fake_query(captured, msgs)),
+        patch("gateway.handlers.nami.get_model", return_value="m"),
+    ):
+        resp = NamiHandler()._run_loop_sdk("", "U1", resume_session="sess-9", answer="x")
+    assert resp.text != "Q?"
+    assert resp.continuation is None
+
+
 def test_first_result_message_wins_and_stream_drained():
     """取第一個 ResultMessage 為終態，但 stream 要 drain 到自然結束 ——
     break 會把 CLI 子進程清理丟給 GC（review B1）。"""
@@ -396,8 +434,8 @@ def test_first_result_message_wins_and_stream_drained():
     assert captured.get("exhausted") is True  # 沒有 break
 
 
-def test_answer_resume_uses_empty_prompt_stream():
-    """answer 路徑不產生新 user message：prompt 是空的 async stream，不是字串。"""
+def test_answer_resume_uses_message_less_prompt_stream():
+    """answer 路徑不產生新 user message：prompt 是 async stream，不是字串。"""
     captured: dict = {}
     with (
         patch("gateway.handlers.nami.query", _fake_query(captured, [_result("好的")])),
@@ -408,7 +446,35 @@ def test_answer_resume_uses_empty_prompt_stream():
     assert captured["options"].resume == "sess-9"
     prompt = captured["prompt"]
     assert not isinstance(prompt, str)
-    assert hasattr(prompt, "__anext__")  # async generator（零則訊息）
+    assert hasattr(prompt, "__anext__")  # async generator
+
+
+def test_answer_prompt_stream_holds_stdin_until_result():
+    """SDK ≥0.2.157 對零則訊息的 prompt stream 一結束就關 stdin；resume 後 CLI
+    要靠 stdin 打 hook / in-process MCP —— stream 必須撐到 ResultMessage 才結束，
+    且全程不吐任何 user message（2026-10-05 Nami 鬼打牆事故的根因）。"""
+    observed: dict = {}
+
+    async def fake_query(*, prompt, options):
+        pull = asyncio.ensure_future(prompt.__anext__())
+        await asyncio.sleep(0.05)
+        observed["ended_before_result"] = pull.done()
+        yield _result("好的")
+        try:
+            await asyncio.wait_for(pull, timeout=1)
+            observed["yielded_message"] = True
+        except StopAsyncIteration:
+            observed["ended_after_result"] = True
+
+    with (
+        patch("gateway.handlers.nami.query", fake_query),
+        patch("gateway.handlers.nami.get_model", return_value="m"),
+    ):
+        resp = NamiHandler()._run_loop_sdk("", "U1", resume_session="sess-9", answer="取消")
+    assert resp.text == "好的"
+    assert observed["ended_before_result"] is False
+    assert observed.get("ended_after_result") is True
+    assert "yielded_message" not in observed
 
 
 def test_server_built_with_ask_user_and_shared_answer_box():
