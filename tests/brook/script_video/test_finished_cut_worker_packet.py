@@ -326,7 +326,10 @@ def test_long_worker_brief_exposes_exact_core_policy_without_repo_skills() -> No
         "meaningful_visual_gap_max_sec": LONG_MAX_NONSTRUCTURAL_VISUAL_GAP_SEC,
         "stock_min_distinct_asset_backed_events": LONG_MIN_DISTINCT_STOCK_VIDEO_EVENTS,
         "stock_native_landscape": True,
-        "dp_catalog_references_only": True,
+        # 這兩條取代了 `dp_catalog_references_only`。那一條逼 DP 從既有目錄硬挑，
+        # 而目錄裡每一支都是為別的句子買的——2026-09-17 一支長片就抓到兩次配錯。
+        "asset_must_serve_its_own_event_intent": True,
+        "acquire_when_catalog_cannot_serve_intent": True,
         "single_paper_family": True,
         "orange_allowed": False,
         "ink_allowed": False,
@@ -408,7 +411,7 @@ def test_dp_packet_contains_only_the_exact_current_neutral_catalog() -> None:
     }
     assert packet.media == ()
     assert packet.format_policy["stage_instruction"] == (
-        "implement_current_events_using_only_catalog_references"
+        "acquire_or_select_assets_that_serve_each_event_intent"
     )
 
 
@@ -782,3 +785,32 @@ def test_director_packet_rejects_oversized_current_context() -> None:
 
     with pytest.raises(WorkerPacketError, match="JSON size limit"):
         materializer.materialize(_director_request())
+
+
+def test_the_dp_is_never_told_to_make_do_with_the_existing_catalog() -> None:
+    """DP 的指令不准說「只能用目錄裡的」。
+
+    修修從 2026 年中反覆推翻過這條十幾次：「每一個影片都要去經過 director 跟 DP 去
+    下載新的 stock footage」「絕對不要硬挑，一定要去下載」。但 packet 裡一直寫死
+    `implement_current_events_using_only_catalog_references` 與
+    `dp_catalog_references_only: True`，於是 DP 只能靠表面關鍵字硬湊：
+
+    * 「我今天同學欺負我」→ 女孩坐空教室（那支是為「老師當著同學的面誤會我」買的）
+    * 「效忠家庭的連結感」→ 沙發對談（那支是為「我老婆幫我接話」買的）
+
+    兩次都在 2026-09-17 同一支長片裡。根因是 `acquisitions/` 只有 punch-L03 與
+    punch-L04，**punch-L02 從來沒跑過自己的採購**——它的目錄整份是別人買剩的。
+
+    這條測試釘的是指令本身，不是某一次的挑選結果。
+    """
+    packet = ProductionWorkerPacketMaterializer(
+        scope=WorkerPacketScope("run-current", "episode-current", "value-L02", "long"),
+        asset_resolver=_neutral_resolver(),
+        previewer=_UnusedPreviewer(),
+    ).materialize(_dp_request())
+    policy = packet.format_policy
+    assert "only_catalog" not in policy["stage_instruction"]
+    assert "acquire" in policy["stage_instruction"]
+    assert "dp_catalog_references_only" not in policy["constraints"]
+    assert policy["constraints"]["acquire_when_catalog_cannot_serve_intent"] is True
+    assert policy["constraints"]["asset_must_serve_its_own_event_intent"] is True
