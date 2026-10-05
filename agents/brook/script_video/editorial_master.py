@@ -436,12 +436,30 @@ def _approval_time(value: str | None) -> str:
     return parsed.isoformat()
 
 
-def _validate_stage5_identity(identity: Mapping[str, object], episode_id: str) -> dict[str, object]:
+def _validate_stage5_identity(
+    identity: Mapping[str, object],
+    episode_id: str,
+    *,
+    legacy_episode_alias: str | None = None,
+) -> dict[str, object]:
+    """Stage 5 的字幕必須屬於這一集——除非操作者明確宣告一個 legacy 別名。
+
+    這道檢查是為了擋「把 A 集的字幕封進 B 集」。但 ADR-063 換軌前產出的
+    handoff 有自己的 id 慣例（抹布寫的是 `20260814-moboo`，資料夾是
+    `20260814 抹布`），而同一份 ADR 又明文禁止改寫那些產物。
+
+    所以放行的方式是**要求操作者明講**，而不是放寬比對：別名必須逐字給對，
+    而且會寫進不可變收據的 `stage5_subtitle_identity.legacy_episode_alias`，
+    這個例外從此永遠留在證據鏈上，不是靜默通過。
+    """
     if not identity:
         raise EditorialMasterContractError("Stage 5 subtitle identity is required")
     stage5 = dict(identity)
-    if stage5.get("episode_id") != episode_id:
-        raise EditorialMasterContractError("Stage 5 identity belongs to another episode")
+    declared = stage5.get("episode_id")
+    if declared != episode_id:
+        if not legacy_episode_alias or declared != legacy_episode_alias:
+            raise EditorialMasterContractError("Stage 5 identity belongs to another episode")
+        stage5["legacy_episode_alias"] = legacy_episode_alias
     return stage5
 
 
@@ -455,6 +473,7 @@ def seal_editorial_master(
     human_approved: bool,
     approved_by: str,
     approved_at: str | None = None,
+    legacy_episode_alias: str | None = None,
 ) -> EditorialMasterSelection:
     """Seal one approved Timeline transactionally; never edits the Timeline."""
 
@@ -466,7 +485,9 @@ def seal_editorial_master(
     episode_id = root.name
     if request.expected_episode_id and request.expected_episode_id != episode_id:
         raise EditorialMasterContractError("episode root does not match expected episode ID")
-    stage5 = _validate_stage5_identity(stage5_identity, episode_id)
+    stage5 = _validate_stage5_identity(
+        stage5_identity, episode_id, legacy_episode_alias=legacy_episode_alias
+    )
     version_dir = root / VERSION_RELATIVE
     if version_dir.exists():
         existing = verify_editorial_master(
@@ -819,7 +840,13 @@ def verify_editorial_master(
         )
     stage5 = _require_mapping(receipt.get("stage5_subtitle_identity"), "stage5_subtitle_identity")
     if stage5.get("episode_id") != episode_id:
-        raise EditorialMasterContractError("Stage 5 lineage belongs to another episode")
+        # 讀回端沒有操作者可以宣告別名——但**收據自己帶著**封存當下做的那個宣告，
+        # 而收據是不可變且雜湊綁定的。所以這裡認收據裡的 `legacy_episode_alias`，
+        # 且它必須正好等於 handoff 宣告的 id：這樣「當初允許了什麼」與「現在放行
+        # 什麼」是同一份證據，不是兩套判準。
+        alias = stage5.get("legacy_episode_alias")
+        if not alias or alias != stage5.get("episode_id"):
+            raise EditorialMasterContractError("Stage 5 lineage belongs to another episode")
     subtitle_record = _require_mapping(artifacts.get("subtitles"), "artifacts.subtitles")
     timing_qc = _require_mapping(subtitle_record.get("timing_qc"), "subtitle timing_qc")
     expected_qc = {
