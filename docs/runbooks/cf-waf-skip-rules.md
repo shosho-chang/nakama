@@ -24,6 +24,9 @@ Cloudflare Super Bot Fight Mode（SBFM）會擋 datacenter / VPS IP，無論 Use
 | `nakama-external-probe/1.0` | GH Actions external uptime probe | PR #115（2026-04-24） | — (PR-inline) |
 | `NakamaBot/1.0` | seo-audit-post `fetch_html`（D.1 加） | PR #200（2026-04-27） | [2026-04-27-add-nakamabot-cf-skip-rule.md](2026-04-27-add-nakamabot-cf-skip-rule.md) |
 | `nakama-wordpress-client/1.0` | `shared/wordpress_client.py` — Usopp publish + SEO 中控台 wp_post_lister + audit pipeline | PR #252（2026-04-29） | [2026-04-29-add-wp-client-cf-skip-rule.md](2026-04-29-add-wp-client-cf-skip-rule.md) |
+| `nakama-sanji/0.1` | `agents/sanji/wp_client.py` — Sanji 打 fleet 站 `nakama-gam/v1` API（主迴圈＋每日對帳） | 2026-09-26（上線時漏登記，停擺三週才補） | [2026-09-26-add-sanji-cf-skip-rule.md](2026-09-26-add-sanji-cf-skip-rule.md) |
+
+> ⚠️ **CF 不會馬上擋新 UA**：Sanji 沒登記也跑了 12 天，之後才突然被判成 bot。「上線那天能通」不代表不用登記——新 agent 自帶 UA 打 shosho.tw zone，**上線前**就要走下面三步。
 
 加新 agent 要新 UA 時：
 1. Append 進這張表（含對應 task doc 連結）

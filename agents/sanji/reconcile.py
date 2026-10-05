@@ -219,12 +219,14 @@ def _check_event_flow(cfg: SanjiConfig, client: WPClient, store: Store) -> dict:
     store.set_cursor("flow_snapshot", current)
 
     if last_seen and current == last_seen:
-        # 24h 零新事件：捕捉層斷線 / plugin 停用 / 社群真的全靜——都值得有人看一眼
+        # cursor 是本機的——它不動可能是「沒事件」，也可能是「loop 讀不到」。
+        # 2026-09 CF 事件：plugin 端積了 417 筆，這則告警卻叫人去查 plugin/hook。
         alert(
             "error",
             "gam",
             "Sanji 斷流警報：距上次對帳 events cursor 未前進（24h 零事件）。"
-            "檢查 plugin 是否停用、hook 是否失效。",
+            "先看 loop 是否讀不到 API（journalctl -u nakama-sanji 有沒有 cycle error），"
+            "再查 plugin 是否停用、hook 是否失效。",
             dedupe_key="gam-flow-stall",
         )
         return {"stalled": True, "cursor": current}
