@@ -457,3 +457,58 @@ class TestEpisodeIsNotASlug:
 
         written = json.loads((tmp_path / "packages.json").read_text(encoding="utf-8"))
         assert written["episode"] == "20250604 Ray 不平等優勢"
+
+
+class TestEpisodeSlugIsRequired:
+    """`episode_slug` 缺了要當場停，不可以拿 CJK 的 `episode` 頂上。
+
+    2026-07-29 謝伯讓集修過一次「emit 端沿用 episode」，但留了 `or episode` fallback，
+    caller 漏填時它原地復發——2026-09-18 完整版 packaging 又踩一次，vault 裡同一集長出
+    `20260723-xieboran` 與 `20260723 謝伯讓` 兩個目錄。而 `find_packaging_dir()` 掃目錄時
+    半形空格排在 `-` 前面，**錯的那個會贏**，整條發布線指到過期的交接檔。
+    """
+
+    def test_a_missing_episode_slug_is_refused(self, tmp_path):
+        mod = _load_emit_module()
+        payload = _long_input()
+        del payload["episode_slug"]
+
+        with pytest.raises(ValueError) as exc:
+            mod.emit(payload, tmp_path, vault_path=None)
+
+        assert "episode_slug" in str(exc.value)
+        # 失敗要在寫檔之前：半套的 packages.json 比沒有更難收拾
+        assert not (tmp_path / "packages.json").exists()
+
+    def test_an_empty_episode_slug_is_refused(self, tmp_path):
+        """空字串是「我沒填」，不是「落點就叫空字串」——舊 fallback 也是在這裡轉彎。"""
+        mod = _load_emit_module()
+
+        with pytest.raises(ValueError, match="episode_slug"):
+            mod.emit({**_long_input(), "episode_slug": "   "}, tmp_path, vault_path=None)
+
+        assert not (tmp_path / "packages.json").exists()
+
+    def test_a_cjk_episode_slug_is_refused(self, tmp_path):
+        """填進來的就是 footage 資料夾名——正是舊 fallback 會產生的那個值。"""
+        mod = _load_emit_module()
+        vault = tmp_path / "vault"
+
+        with pytest.raises(ValueError) as exc:
+            mod.emit(
+                {**_long_input(), "episode_slug": "20260723 謝伯讓"},
+                tmp_path / "work",
+                vault_path=vault,
+            )
+
+        assert "episode_slug" in str(exc.value)
+        # 擋下來就是連 vault 目錄都不該生出來
+        assert not (vault / "Attachments" / "packaging" / "20260723 謝伯讓").exists()
+
+    def test_a_real_slug_still_passes(self, tmp_path):
+        mod = _load_emit_module()
+        vault = tmp_path / "vault"
+
+        mod.emit(_long_input(), tmp_path / "work", vault_path=vault)
+
+        assert (vault / "Attachments" / "packaging" / "20260723-xieboran").is_dir()

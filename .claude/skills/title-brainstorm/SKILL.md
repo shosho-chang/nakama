@@ -77,7 +77,7 @@ Obsidian Interview 資料夾 `<VAULT_PATH>/AgentOutputs/interviews/<集數資料
 ```json
 {
   "episode": "<footage 資料夾名，例如 20260901 蘇予昕>",
-  "episode_slug": "<ASCII slug，例如 20260901-suyuxin>",
+  "episode_slug": "<ASCII slug，例如 20260901-suyuxin — 必填，缺了 emit 會擋下來>",
   "cut_id": "<cut_id>",
   "format": "long" | "short",
   "information_origin": "full_text" | "one_liner",
@@ -106,6 +106,9 @@ Obsidian Interview 資料夾 `<VAULT_PATH>/AgentOutputs/interviews/<集數資料
 }
 ```
 長片 titles 5 條（rank 1–5），rank 4–5 帶 `panel_note`；短片 titles 1 條。
+
+`episode` 是 footage 資料夾名、`episode_slug` 是 vault 落點目錄名，**兩欄都必填、不可互相頂替**：
+漏填 slug 會讓同一集在 vault 生出第二個目錄，而發布線掃目錄時錯的那個會贏（2026-09-18 謝伯讓集）。
 
 頂層 `keywords` 是 **Step 2 的整份研究**（該集第一支帶就好，之後幾支省略）；
 `title_trace.keywords` 是這一支**用到了哪幾個詞、為什麼**的紀錄，兩者不是同一個東西。
