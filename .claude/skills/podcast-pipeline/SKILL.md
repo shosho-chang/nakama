@@ -477,6 +477,9 @@ subscription subagents 執行。若環境無法產生 exact reviews，必須回�
 `HIGHLIGHT_PERSONA_REVIEW_NOT_IMPLEMENTED`，不能把缺少 review files 冒充成 shortlist gate。
 
 只有 `run_cut_shortlist.py --format long` 成功產出完整表後才停；只列 candidates，不替使用者選 IDs。
+表只在 Vault：`AgentOutputs/interviews/<訪談日>-<來賓>/NN-選段報告.md`（命令最後一行印出路徑）。
+交給修修的是**這個 Vault 路徑**，不是 footage 磁碟上的任何 `.md`——要他讀、要他決定的文件一律在
+Vault（修修 2026-10-05）。品牌 lens 的「⛔ 重大提醒」只是提醒，不要轉述成「被否決」。
 
 收到 winner IDs 後：
 
@@ -539,7 +542,7 @@ Editorial Master 封存
  │     └─ blind，不讀彼此輸出；三位 persona 覆蓋全部候選，Renee 只長片
  ▼
  [序列] run_cut_shortlist.py --format long ＋ --format short
- │        → 兩張候選表 ＋ 一份合併的 Vault 選段報告
+ │        → Vault 選段報告（長短合併；修修讀的唯一一份，episode 資料夾不另存）
  ▼
 ■ 停點 1：他挑（長短各幾支都行，順序＝rank）
  │

@@ -286,7 +286,7 @@ scores。無法產生 exact review outputs 時回報 `HIGHLIGHT_PERSONA_REVIEW_N
 E:\nakama\.venv-v2\Scripts\python.exe scripts\run_cut_shortlist.py "<episode>" --format long
 ```
 
-命令成功產出候選表後才停下，把完整表交給修修選 IDs；此時 `winners.json` 必須仍不存在或維持前一個
+命令成功產出候選表後才停下，把 Vault 選段報告的路徑交給修修選 IDs（表只寫 Vault，不寫 episode 資料夾）；此時 `winners.json` 必須仍不存在或維持前一個
 已知選擇，不得自動 top 3。收到明確 IDs 後才執行：
 
 ```powershell

@@ -21,18 +21,24 @@ packaging 的成本已經付掉了。他自己的比較：「做 5 支挑 3 支�
 review 的 id 集合與該格式的候選**完全相等**，覆蓋長片的那份對短片來說就是「38 支
 全缺」。分格式之後，長片邊界打磨也不會再把短片的盤子打翻（ADR-067 的分家精神）。
 
-輸出（依 --format 分流，不互相覆蓋）：
-    highlights/選段候選表[.short].md — 貼給修修的表（群組、中位數、hook、警示）
-    highlights/winners.json          — long；短片寫 winners.short.json
-                                       只有 --pick 才寫（schema 由本 script 保證）
-
-**同時寫一份長短片合併的報告進 Vault**：
+輸出：
     <VAULT>/AgentOutputs/interviews/<訪談日-來賓>/0N-選段報告.md
+        — 修修讀、修修挑的**唯一**一份表（長短片合併、群組、中位數、hook、品牌提醒）
+    highlights/winners.json — long；短片寫 winners.short.json
+                              只有 --pick 才寫（schema 由本 script 保證）
 
-理由跟 title-brainstorm 的報告一樣（修修 2026-09-04 裁決）：被砍掉的候選比留下
-的更有教育意義，而 `highlights/` 是 footage 磁碟上的工作目錄，下一季開工時沒有
-人會去翻它。報告合併長短片，因為挑選的時候是一起看的——哪一段被長片用掉了，
-短片就不該再挑同一段。Vault 對不到資料夾時印警告繼續跑，本地那張表才是主產物。
+**給修修讀的表只寫 Vault，不寫 episode 資料夾**（修修 2026-10-05：「所有需要我閱讀、
+檢視、下決定的 Markdown file 全部都要放在 Vault 裡面」）。以前另存一份
+`highlights/選段候選表[.short].md`，結果 agent 把那份的路徑交給他，要他去 footage
+磁碟找——兩份並存還會漂。表照樣印到 stdout 給 agent 轉述。
+
+報告合併長短片，因為挑選的時候是一起看的——哪一段被長片用掉了，短片就不該再挑
+同一段。落選的候選連分數一起留著（修修 2026-09-04 裁決：被砍掉的比留下的更有教育
+意義）。Vault 對不到資料夾＝修修沒有表可讀，出表模式直接失敗（`--no-vault-report`
+只給 CI／沒掛 Vault 的環境用）。
+
+**品牌 lens 只是提醒**：`severity: veto` 顯示成「⛔ 重大提醒」，不是「否決」——做不做
+由修修決定（2026-10-05 重申）。挑到它照寫，只在 stderr 提醒一次。
 """
 
 from __future__ import annotations
@@ -67,6 +73,8 @@ sys.stderr.reconfigure(encoding="utf-8")
 
 HIGHLIGHTS = "highlights"
 NEWLINE = chr(10)
+# 品牌 lens 的 severity 只決定提醒的輕重，不決定能不能做——那是修修的判斷。
+BRAND_LABEL = {"veto": "⛔ 重大提醒", "caution": "⚠️ 注意"}
 
 
 def collect(hl_dir: Path, fmt: str) -> list[dict]:
@@ -82,7 +90,7 @@ def render_table(rows: list[dict], fmt: str) -> str:
         f"# 選段候選表（{fmt}）— 等修修挑",
         "",
         "panel 評的是**素材強度**，不是成片吸引力，也不是你的品味。挑幾支都可以",
-        "（預設 3 支），指定 id 給我，我才寫 winners.json 進製作。",
+        "（預設 3 支），指定 id 給我，我才寫 winners.json 進製作。品牌 lens 只是提醒。",
         "",
         "| 排名 | id | 群組 | 中位數 | 阿哲/凱文/淑芬 | 長度 | 主題 | 品牌 lens |",
         "|---|---|---|---|---|---|---|---|",
@@ -90,7 +98,7 @@ def render_table(rows: list[dict], fmt: str) -> str:
     for r in rows:
         s = r["scores"]
         trio = "/".join(str(s.get(w) if s.get(w) is not None else "-") for w in SCORERS)
-        flag = {"veto": "⛔ 否決", "caution": "⚠️ 注意"}.get(r["brand_severity"], "")
+        flag = BRAND_LABEL.get(r["brand_severity"], "")
         rank = str(r["rank"]) if r["rank"] else "（同群組落選）"
         mins = f"{int(r['duration_sec'] // 60)}:{int(r['duration_sec'] % 60):02d}"
         out.append(
@@ -103,7 +111,8 @@ def render_table(rows: list[dict], fmt: str) -> str:
         if r["hook"]:
             out.append(f"- **hook**：{r['hook']}")
         if r["brand_severity"]:
-            out.append(f"- **品牌 lens {r['brand_severity']}**：{r['brand_issue']}")
+            label = BRAND_LABEL.get(r["brand_severity"], r["brand_severity"])
+            out.append(f"- **品牌 lens {label}**：{r['brand_issue']}")
             if r["brand_mitigation"]:
                 out.append(f"  - 對策：{r['brand_mitigation']}")
         out.append("")
@@ -160,6 +169,7 @@ def render_vault_report(
         "這份報告把長片與短片兩張候選表放在一起，因為挑選時本來就要一起看——",
         "一段被長片用掉了，短片就不該再挑同一段。**落選的候選連分數一起留著**：",
         "下一季要參考的是「什麼樣的段落會被打槍」，那只有落選名單答得出來。",
+        "品牌 lens 只是提醒，做不做由修修決定。",
         "",
     ]
     notes = notes or {}
@@ -188,7 +198,7 @@ def render_vault_report(
 
 
 def write_vault_report(episode_dir: Path) -> Path | None:
-    """寫進 Vault 的 interview 專案資料夾。對不到就印警告回 None，不擋本地產出。"""
+    """寫進 Vault 的 interview 專案資料夾。對不到就印警告回 None，由呼叫端決定擋不擋。"""
     episode_id = episode_dir.name
     hl_dir = episode_dir / HIGHLIGHTS
     per_format: dict[str, list[dict]] = {}
@@ -203,7 +213,10 @@ def write_vault_report(episode_dir: Path) -> Path | None:
         print(f"⚠️ 選段報告沒寫進 Vault：{exc}", file=sys.stderr)
         return None
     target = target_dir / next_numbered_name(target_dir, "選段報告")
-    target.write_text(render_vault_report(episode_id, hl_dir, per_format, notes), encoding="utf-8")
+    # Vault 會同步到 Mac／VPS：固定 LF，不讓 Windows 重跑把整份檔的換行改掉。
+    target.write_text(
+        render_vault_report(episode_id, hl_dir, per_format, notes), encoding="utf-8", newline="\n"
+    )
     return target
 
 
@@ -214,7 +227,10 @@ def write_winners(hl_dir: Path, rows: list[dict], picks: list[str], fmt: str = "
             p for p in picks if any(r["id"] == p and r["brand_severity"] == "veto" for r in rows)
         ]
         if picked_veto:
-            print(f"⚠️ 注意：{picked_veto} 是 brand-lens 否決段，仍照你的指定寫入", file=sys.stderr)
+            print(
+                f"⚠️ 提醒：{picked_veto} 有品牌重大提醒（只是提醒），照你的指定寫入",
+                file=sys.stderr,
+            )
         return _write_winners(hl_dir, rows, picks, fmt=fmt)
     except HighlightDataError as exc:
         raise SystemExit(str(exc)) from exc
@@ -258,19 +274,18 @@ def main(argv: list[str] | None = None) -> int:
         print(f"{out.name} 已寫入（{len(picks)} 支）→ {out}")
         return 0
 
-    table = render_table(rows, args.format)
-    # 一個檔名餵兩種格式，跑短片的表就會蓋掉長片那張。
-    out = hl_dir / ("選段候選表.md" if args.format == "long" else f"選段候選表.{args.format}.md")
-    out.write_text(table, encoding="utf-8")
-    print(table)
-    print(f"→ {out}")
+    # 表只印給 agent 轉述；修修讀的那份只在 Vault（不在 footage 磁碟另存一份）。
+    print(render_table(rows, args.format))
+    if args.no_vault_report:
+        return 0
 
-    if not args.no_vault_report:
-        # 報告永遠是長短片合併的：另一種格式還沒跑過就是空的，那本身也是資訊。
-        report = write_vault_report(Path(args.episode))
-        if report is not None:
-            print(f"→ {report}")
-    print("\n把表貼給修修，等他指定 id 後跑 --pick 才進製作（不要自己選 top 3）")
+    # 報告永遠是長短片合併的：另一種格式還沒跑過就是空的，那本身也是資訊。
+    report = write_vault_report(Path(args.episode))
+    if report is None:
+        print("✗ 選段報告沒寫進 Vault——修修沒有表可讀，先修 Vault 對應再跑", file=sys.stderr)
+        return 1
+    print(f"→ {report}")
+    print("\n請修修到 Vault 這份報告挑，指定 id 後跑 --pick 才進製作（不要自己選 top 3）")
     return 0
 
 

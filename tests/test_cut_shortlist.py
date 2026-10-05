@@ -159,9 +159,21 @@ def test_group_dedup_only_top_gets_rank(episode):
 def test_table_marks_veto_and_caution(episode):
     rows = shortlist.collect(episode / "highlights", "long")
     table = shortlist.render_table(rows, "long")
-    assert "⛔ 否決" in table
+    assert "⛔ 重大提醒" in table
     assert "⚠️ 注意" in table
     assert "會害到來賓" in table
+
+
+def test_brand_lens_never_reads_as_a_verdict(episode):
+    """修修 2026-10-05：品牌提醒只是提醒，做不做由他決定。表上寫「否決」會讓人（和 agent）
+    以為那支不能挑——agent 真的照著唸成「被否決」。"""
+    rows = shortlist.collect(episode / "highlights", "long")
+    table = shortlist.render_table(rows, "long")
+    report = shortlist.render_vault_report("ep", episode / "highlights", {"long": rows})
+    for text in (table, report):
+        assert "⛔ 否決" not in text
+        assert "品牌 lens veto" not in text
+        assert "品牌 lens ⛔ 重大提醒" in text
 
 
 def test_pick_order_is_rank(episode):
@@ -586,6 +598,39 @@ def test_report_lands_in_the_guest_interview_folder(episode, monkeypatch, tmp_pa
     assert written is not None
     assert written.name == "07-選段報告.md"
     assert "選段報告" in written.read_text(encoding="utf-8")
+
+
+def test_table_run_writes_only_to_the_vault(episode, monkeypatch, tmp_path):
+    """修修 2026-10-05：要他讀、要他決定的 Markdown 全部放 Vault，不放媒體資料夾。
+    以前另存 highlights/選段候選表.md，agent 就把那份路徑交給他。"""
+    vault = tmp_path / "vault"
+    guest = vault / "AgentOutputs" / "interviews" / "2026-08-31-蘇予昕"
+    guest.mkdir(parents=True)
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    target = episode / "20260901 蘇予昕"
+    target.mkdir()
+    (episode / "highlights").rename(target / "highlights")
+    before = {p.name for p in (target / "highlights").iterdir()}
+
+    assert shortlist.main([str(target), "--format", "long"]) == 0
+
+    assert {p.name for p in (target / "highlights").iterdir()} == before
+    assert not list(target.rglob("*.md"))
+    assert [p.name for p in guest.iterdir()] == ["01-選段報告.md"]
+    # Vault 同步到 Mac／VPS：Windows 上重跑也要是 LF。
+    assert b"\r\n" not in (guest / "01-選段報告.md").read_bytes()
+
+
+def test_table_run_fails_when_the_vault_report_cannot_be_written(episode, monkeypatch, capsys):
+    """Vault 是修修唯一能讀到表的地方——寫不進去就不能假裝出表成功。"""
+    monkeypatch.setenv("VAULT_PATH", str(episode / "no-such-vault"))
+    target = episode / "20260901 蘇予昕"
+    target.mkdir()
+    (episode / "highlights").rename(target / "highlights")
+
+    assert shortlist.main([str(target), "--format", "long"]) == 1
+    assert "修修沒有表可讀" in capsys.readouterr().err
+    assert not list(target.rglob("*.md"))
 
 
 def test_an_unreachable_vault_warns_but_does_not_kill_the_run(episode, monkeypatch, capsys):
