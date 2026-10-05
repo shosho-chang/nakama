@@ -34,6 +34,7 @@ from shared.pomodoro_aggregator import (
     parse_dt,
     weekly_actual,
 )
+from shared.project_writer import strip_project_prefix
 from shared.wikilink import strip_wikilink
 
 TAIPEI = ZoneInfo("Asia/Taipei")
@@ -323,6 +324,18 @@ class WeeklyTask:
     @property
     def priority_label(self) -> str:
         return PRIORITY_LABELS.get(self.priority, "Medium")
+
+    @property
+    def full_name(self) -> str:
+        """``{project} - {name}`` — the task named WITH its 戰線, for lists that do
+        not group by project (Weekly 「全部」, the Project page), where a bare
+        「節目錄製」 hides which episode it belongs to (修修 2026-10-02). ``name``
+        stays the short form for the 今日/整週 tabs, which sit under a project
+        heading. A name that already carries its project (a hand-typed
+        「P－節目錄製」) is left as is, never doubled."""
+        if not self.project or strip_project_prefix(self.name, self.project) != self.name:
+            return self.name
+        return f"{self.project} - {self.name}"
 
     def is_on(self, d: date) -> bool:
         """True if this task is assigned to day ``d`` (plan entry or scheduled)."""
@@ -840,6 +853,22 @@ class WeeklyIndexer:
         return out
 
     # -- assembly --
+    def top3(
+        self, wk: WeekRef, all_tasks: list[WeeklyTask], review: Optional[WeeklyReview]
+    ) -> tuple[Top3Item, ...]:
+        """本週重要任務 for ``wk`` (``review`` = ``read_review(wk)``). Canonical
+        source = weekly-file top3 (wikilink → task|project) (A4); transitional
+        fallback (A5) = task-frontmatter ``weekly_priority`` flags, used only while
+        no weekly file / no top3 exists yet. Not capped at 3 (v3-I follow-up, 修修).
+        Shared by the dashboard and the Project page's task rows."""
+        if review is not None and review.top3:
+            return self._resolve_top3(review.top3, all_tasks)
+        return tuple(
+            Top3Item(raw=t.title, kind="task", title=t.title, slug=t.slug, done=t.done)
+            for t in all_tasks
+            if t.is_priority_for(wk)
+        )
+
     def view(self, wk: Optional[WeekRef] = None) -> WeeklyView:
         today = today_taipei()
         current = week_for_date(today)
@@ -902,19 +931,7 @@ class WeeklyIndexer:
         ufo_count = sum(t.deep_sessions_in(wk) for t in all_tasks if t.is_work)
 
         review = self.read_review(wk)
-
-        # 本週三大要事 (A4): canonical source = weekly-file top3 (wikilink → task|
-        # project). Transitional fallback (A5): task-frontmatter weekly_priority
-        # flags, used only while no weekly file / no top3 exists yet.
-        # v3-I follow-up (修修): 本週重要任務 — no longer capped at 3 (a week can have >3).
-        if review is not None and review.top3:
-            top3 = self._resolve_top3(review.top3, all_tasks)
-        else:
-            top3 = tuple(
-                Top3Item(raw=t.title, kind="task", title=t.title, slug=t.slug, done=t.done)
-                for t in all_tasks
-                if t.is_priority_for(wk)
-            )
+        top3 = self.top3(wk, all_tasks, review)
 
         # targets (A3): 修修-set weekly goals from the weekly file; UFO falls back
         # to the default constant, 🍅 goal falls back to the planned-sum.

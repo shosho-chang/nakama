@@ -639,6 +639,8 @@ body.sho .wk-bl-when {
   white-space: nowrap;
 }
 body.sho .wk-bl-linked { color: color-mix(in oklch, var(--sho-accent) 70%, var(--sho-muted)); }
+/* task_row(flag_unscheduled=True) — Project page only */
+body.sho .wk-bl-none { color: var(--sho-warning); }
 body.sho .wk-bl-locked { padding: 12px 6px 16px 26px; background: var(--sho-bg-2); font-size: 12px; }
 body.sho .wk-bl-locked a { color: var(--sho-accent); }
 /* the picker reuses .wk-plan-edit (column flex, inset bg); these add the rows */
@@ -742,6 +744,16 @@ body.sho .tk-cal-head .wk-mut { font-family: var(--sho-font-mono); font-size: 11
   body.sho .wk-hero { margin-left: 0; gap: 16px; }
   body.sho .wk-rev-grid { grid-template-columns: 1fr; }
   body.sho .wk-plan-edit { padding-left: 12px; }
+  /* N541's 8-column row needs ~650px; narrower, it scrolled the whole page sideways
+     (Weekly and the Project page share the row). Two lines instead:
+     ☐ name ↗ ✕ / category · priority · date · 🍅 indented under the name. The
+     ::after is a zero-height full-width flex item that forces the line break. */
+  body.sho .wk-task { display: flex; flex-wrap: wrap; align-items: center; column-gap: 10px; }
+  body.sho .wk-task > .wk-namecell { flex: 1 1 0; width: auto; }
+  body.sho .wk-task::after { content: ""; order: 1; flex-basis: 100%; }
+  body.sho .wk-task > .wk-chip,
+  body.sho .wk-task > .wk-cell { order: 2; margin-top: 6px; }
+  body.sho .wk-task > .wk-cat-chip { margin-left: 24px; } /* 14px box + 10px gap */
   body.sho .tk-stats { gap: 20px; }
   body.sho .tk-clock-time { font-size: 52px; }
   body.sho .tk-obsidian { margin-left: 0; }
