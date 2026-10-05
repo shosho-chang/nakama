@@ -286,6 +286,9 @@ def test_cli_advance_returns_typed_pending_status(tmp_path: Path, capsys) -> Non
         "current_stage": "director",
         "event_id": None,
         "reason_code": None,
+        # `reason_code` 說「是哪一類事情不對」，`review_reason` 說「到底哪裡不對」。
+        # 沒被退件時是 None——CLI 照樣要把這一欄交出去，不然人只看得到 needs_review。
+        "review_reason": None,
         "run_id": "run-1",
         "scope": "full_stage",
         "state": "pending",

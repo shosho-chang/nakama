@@ -8,7 +8,7 @@ import math
 from collections.abc import Iterable
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, NoReturn, Protocol
 from uuid import uuid4
 
 from ._assets import (
@@ -1181,12 +1181,18 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
     # 送出去之前換上現在的素材目錄——請求是登錄那一刻鑄的，那時候櫃子必然是空的。
     request = _with_live_catalog(request, run.worker_catalog)
     if not _request_base_is_current(run, request, aggregate):
-        return _leave_in_review(run, request)
+        return _leave_in_review(
+            run, request, reason="這份請求的基準已經不是現役的——上游被改過，要重新派工"
+        )
     outcome = aggregate.dispatch(request)
     if outcome.state == "pending":
         return run.view
     if outcome.state in {"failed", "indeterminate"}:
-        return _leave_in_review(run, request)
+        return _leave_in_review(
+            run,
+            request,
+            reason=f"語意派工沒有成功（{outcome.state}）：{outcome.reason_code or '沒有給原因'}",
+        )
     proposal = outcome.proposal
     if proposal is None:  # pragma: no cover - SemanticDispatchOutcome enforces this invariant
         raise RuntimeError("ready semantic dispatch has no proposal")
@@ -1204,10 +1210,15 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
         or proposal.event_id != request.event_id
         or proposal.parent_acceptance_id != request.parent_acceptance_id
     ):
-        return _leave_in_review(run, request)
-    proposal_events = _events_for_acceptance(run, request, proposal)
-    if proposal_events is None:
-        return _leave_in_review(run, request)
+        return _leave_in_review(
+            run,
+            request,
+            reason="回答的信封與請求對不起來（run_id／request_id／stage／attempt／scope 等欄位）",
+        )
+    try:
+        proposal_events = _events_for_acceptance(run, request, proposal)
+    except _AcceptanceRejected as rejection:
+        return _leave_in_review(run, request, reason=str(rejection))
 
     accepted_events = _merge_retry_events(
         run,
@@ -1222,7 +1233,7 @@ def _advance_existing(run: _RunState, aggregate: _AggregateContext) -> _Producti
         aggregate,
     )
     if accepted_built_components is None:
-        return _leave_in_review(run, request)
+        return _leave_in_review(run, request, reason="這一輪重試的既有建置產物接不回去")
     accepted = _mint_accepted_stage(
         acceptance_id=aggregate.mint_id("acceptance"),
         run_id=proposal.run_id,
@@ -1502,11 +1513,17 @@ def _current_chain_is_exact(run: _RunState) -> bool:
     return True
 
 
-def _leave_in_review(run: _RunState, request: StageRequest) -> _ProductionRun:
+def _leave_in_review(run: _RunState, request: StageRequest, *, reason: str) -> _ProductionRun:
+    """把 run 留在 needs_review，**並且說出為什麼**。
+
+    `reason` 是給人看的：它會出現在 `advance` 與 `inspect-run` 的輸出裡。沒有它，
+    畫面上只有 `needs_review` 三個字，而觸發它的分支有三十幾個。
+    """
     run.view = replace(
         run.view,
         status="needs_review",
         outstanding_request=request,
+        review_reason=reason,
     )
     return run.view
 
@@ -1961,25 +1978,43 @@ def _visual_request(
     )
 
 
+class _AcceptanceRejected(Exception):
+    """收件端退掉一份 proposal 的理由。
+
+    以前這裡全是裸的 `return None`：31 個退件點，一個都不說話。`advance` 於是回一句
+    `needs_review`、`reason_code: null`，看起來就像答案被吃掉了——2026-09-17 修修一句
+    `intentional_aroll` 的 `placement_cue_ids` 多填了四個 id，就是這樣卡住的，而且卡住
+    之後兩條救援路（`retry_failed_dispatch`、`request_correction`）都拒絕受理。
+
+    這個檔案 900 行附近早就有一段註解在罵同一件事，但當時只修了觸發的那一個點。
+    退件不說理由，等於要求下一個人用二分法猜 31 個分支。
+    """
+
+
+def _reject(reason: str) -> NoReturn:
+    raise _AcceptanceRejected(reason)
+
+
 def _events_for_acceptance(
     run: _RunState,
     request: StageRequest,
     proposal: StageProposal,
-) -> tuple[EventRecord, ...] | None:
+) -> tuple[EventRecord, ...]:
+    """收下這份 proposal 的事件，或用 `_AcceptanceRejected` 說出哪裡不合格。"""
     if not proposal.events:
-        return None
+        _reject("proposal 沒有任何 event")
     ids = [event.event_id for event in proposal.events]
     if len(ids) != len(set(ids)):
-        return None
+        _reject("proposal 裡有重複的 event_id")
     if request.scope == "event_retry":
         if ids != [request.event_id] or len(request.events) != 1:
-            return None
+            _reject("event_retry 只准回被指名的那一個 event")
     if not _proposal_components_are_valid(request, proposal):
-        return None
+        _reject("proposal 的 components 不合法")
     if request.stage == "director":
         if all(isinstance(event, DirectorEventProposal) for event in proposal.events):
             if run.editorial_context is None or proposal.components:
-                return None
+                _reject("director 階段缺 editorial_context，或 proposal 夾帶了 components")
             derived_events: list[EventRecord] = []
             for event in proposal.events:
                 if (
@@ -1996,11 +2031,14 @@ def _events_for_acceptance(
                     # 2026-09-08 蘇予昕 punch-L04 就是這樣連退 11 次。
                     or event.intentional_aroll != (event.semantic_kind == "intentional_aroll")
                 ):
-                    return None
+                    _reject(
+                        "director event 欄位不完整，或 intentional_aroll 與 semantic_kind "
+                        "不一致（兩者必須同時是 intentional_aroll）"
+                    )
                 try:
                     anchor = run.editorial_context.derive_anchor(event.master_cue_ids)
                 except ValueError:
-                    return None
+                    _reject("master_cue_ids 推導不出錨點——cue 不連續、跨了 section、或根本不存在")
                 # Hero 不准只是把字幕放大。這條 2026-09-09 就寫進 longform-cut 手冊、
                 # 也確實接進了 Director 的 prompt（57k 字裡四句判準全在），而 9/14 蘇予昕
                 # punch-L02/L03 的四張 hero 仍然全是逐字複述。prompt 層的指示守不住，
@@ -2008,7 +2046,7 @@ def _events_for_acceptance(
                 if event.semantic_kind == "hero_title" and is_verbatim_quote(
                     event.display, anchor.text
                 ):
-                    return None
+                    _reject("hero_title 的 display 只是字幕的逐字複述")
                 derived_events.append(
                     EventRecord(
                         event_id=event.event_id,
@@ -2029,12 +2067,15 @@ def _events_for_acceptance(
                 base = request.events[0]
                 event = accepted[0]
                 if event.master_cue_ids != base.master_cue_ids or event.text_hash != base.text_hash:
-                    return None
+                    _reject(
+                        "event_retry 改動了語意證據範圍："
+                        "master_cue_ids 與 text_hash 必須原封不動照抄"
+                    )
             return accepted
         if run.editorial_context is not None:
-            return None
+            _reject("這個階段不該帶 editorial_context")
         if not all(isinstance(event, EventRecord) for event in proposal.events):
-            return None
+            _reject("proposal 的 event 型別不是 EventRecord")
         if not all(
             event.event_id
             and event.master_cue_ids
@@ -2044,22 +2085,22 @@ def _events_for_acceptance(
             and event.visual_status is None
             for event in proposal.events
         ):
-            return None
+            _reject("event 欄位不完整，或帶了這個階段不該有的 asset_ref / visual_status")
         if request.scope == "event_retry":
             base = request.events[0]
             event = proposal.events[0]
             if event.master_cue_ids != base.master_cue_ids or event.text_hash != base.text_hash:
-                return None
+                _reject("event_retry 改動了 master_cue_ids 或 text_hash")
         return tuple(proposal.events)
 
     if request.stage == "dp" and all(
         isinstance(event, DPEventProposal) for event in proposal.events
     ):
         if proposal.components:
-            return None
+            _reject("dp 階段的 proposal 不該夾帶 components")
         expected = {event.event_id: event for event in request.events}
         if ids != list(expected):
-            return None
+            _reject("dp 回的 event_id 與請求不一致")
         selected: list[EventRecord] = []
         for event in proposal.events:
             base = expected[event.event_id]
@@ -2071,7 +2112,12 @@ def _events_for_acceptance(
                     or event.asset_ref is not None
                     or event.placement_cue_ids
                 ):
-                    return None
+                    _reject(
+                        "intentional_aroll 的 event 必須是："
+                        "semantic_kind=intentional_aroll、"
+                        "implementation_kind=intentional_aroll、lane=null、asset_ref=null，"
+                        "且 **placement_cue_ids 留空陣列**"
+                    )
                 placement = None
             else:
                 if (
@@ -2079,22 +2125,22 @@ def _events_for_acceptance(
                     or (base.semantic_kind, event.implementation_kind, event.lane)
                     not in _ALLOWED_PROJECTION
                 ):
-                    return None
+                    _reject("(semantic_kind, implementation_kind, lane) 不是允許的投影組合")
                 expected_asset_kind = _ASSET_KIND_BY_IMPLEMENTATION.get(event.implementation_kind)
                 if expected_asset_kind is None:
                     if event.asset_ref is not None:
-                        return None
+                        _reject("這個 implementation_kind 不吃素材，卻給了 asset_ref")
                 else:
                     if event.asset_ref is None:
-                        return None
+                        _reject("這個 implementation_kind 需要 asset_ref，卻給了 null")
                     try:
                         item = run.worker_catalog.resolve_dp_reference(event.asset_ref)
                     except AssetContractError:
-                        return None
+                        _reject("asset_ref 在素材目錄裡找不到")
                     if item.kind is not expected_asset_kind:
-                        return None
+                        _reject("素材的種類與 implementation_kind 不符")
                 if run.editorial_context is None:
-                    return None
+                    _reject("dp 階段缺 editorial_context")
                 try:
                     placement = run.editorial_context.derive_visual_placement(
                         semantic_cue_ids=base.master_cue_ids,
@@ -2103,7 +2149,7 @@ def _events_for_acceptance(
                         min_show_sec=readable_floor_sec(event.implementation_kind, base.display),
                     )
                 except ValueError:
-                    return None
+                    _reject("placement_cue_ids 推導不出落點——不連續、超出語意範圍、或顯示時間不足")
             selected.append(
                 replace(
                     base,
@@ -2120,12 +2166,12 @@ def _events_for_acceptance(
         isinstance(event, VisualEventProposal) for event in proposal.events
     ):
         if proposal.components:
-            return None
+            _reject("visual_review 的 proposal 不該夾帶 components")
         expected = {event.event_id: event for event in request.events}
         if ids != list(expected) or any(
             event.status not in {"approved", "failed"} for event in proposal.events
         ):
-            return None
+            _reject("visual_review 回的 event_id 不符，或 status 不是 approved／failed")
         return tuple(
             replace(expected[event.event_id], visual_status=event.status)
             for event in proposal.events
@@ -2134,10 +2180,10 @@ def _events_for_acceptance(
     if run.editorial_context is not None or not all(
         isinstance(event, EventRecord) for event in proposal.events
     ):
-        return None
+        _reject("這個階段不該帶 editorial_context，或 event 型別不是 EventRecord")
     expected = {event.event_id: event for event in request.events}
     if set(ids) != set(expected):
-        return None
+        _reject("回的 event_id 集合與請求不符")
     for event in proposal.events:
         base = expected[event.event_id]
         if (
@@ -2145,16 +2191,16 @@ def _events_for_acceptance(
             or event.text_hash != base.text_hash
             or event.intent != base.intent
         ):
-            return None
+            _reject("改動了 master_cue_ids、text_hash 或 intent")
         if request.stage == "dp":
             if not event.asset_ref or event.visual_status is not None:
-                return None
+                _reject("dp 階段缺 asset_ref，或 visual_status 不該有值")
             try:
                 run.worker_catalog.resolve_dp_reference(event.asset_ref)
             except AssetContractError:
-                return None
+                _reject("asset_ref 在素材目錄裡找不到")
         elif event.asset_ref != base.asset_ref or event.visual_status != "approved":
-            return None
+            _reject("asset_ref 與基準不符，或 visual_status 不是 approved")
     return tuple(proposal.events)
 
 
@@ -2417,4 +2463,5 @@ def _public_run_view(run: _ProductionRun) -> RunView:
         current_stage=request.stage if request is not None else None,
         scope=request.scope if request is not None else None,
         event_id=request.event_id if request is not None else None,
+        review_reason=run.review_reason,
     )
