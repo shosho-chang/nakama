@@ -1589,3 +1589,42 @@ def test_a_revision_without_an_intact_base_chain_is_refused(
         fixture.coordinator(stored).prepare(_REVISION_ID)
 
     assert error.value.reason_code == "authority_chain_mismatch", label
+
+
+def _end_state(*, end_frame: int, items: tuple[tuple[str, int], ...]):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        start_frame=0,
+        end_frame=end_frame,
+        items=tuple(SimpleNamespace(track_type=kind, end_frame=end) for kind, end in items),
+    )
+
+
+@pytest.mark.parametrize(
+    ("end_frame", "items", "segments", "covered"),
+    [
+        # 20260722 李海碩 punch-L02：19 段截斷少 1.66 格，字幕收在 14626、影音 14624。
+        (14_626, (("video", 14_624), ("audio", 14_624), ("subtitle", 14_626)), 19, True),
+        # 原本就放行的一格字幕尾巴，照舊放行。
+        (16_541, (("video", 16_540), ("audio", 16_540), ("subtitle", 16_541)), 1, True),
+        # 字幕尾巴超過段數能解釋的量化誤差：擋。
+        (14_630, (("video", 14_624), ("audio", 14_624), ("subtitle", 14_630)), 3, False),
+        # 影音本身超出剪點兩格（不是字幕）：擋。
+        (14_626, (("video", 14_626), ("audio", 14_624), ("subtitle", 14_626)), 19, False),
+        # 影音覆蓋不足（timeline 比剪點短）：擋。
+        (14_620, (("video", 14_620), ("audio", 14_620), ("subtitle", 14_620)), 19, False),
+    ],
+)
+def test_end_frame_tolerates_only_a_subtitle_quantisation_tail(end_frame, items, segments, covered):
+    from agents.brook.script_video.finished_cut_production._materialization import (
+        _end_frame_covers_cut,
+    )
+
+    state = _end_state(end_frame=end_frame, items=items)
+    assert (
+        _end_frame_covers_cut(
+            state, record_cursor=14_624 if end_frame != 16_541 else 16_540, segment_count=segments
+        )
+        is covered
+    )
