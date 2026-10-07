@@ -95,7 +95,6 @@ def _rank(
     fmt: str,
     scores: dict[str, dict[str, float]],
     review_notes: dict[str, dict[str, str]],
-    brand: dict[str, dict[str, Any]],
 ) -> list[dict[str, Any]]:
     """Join one format's candidates with its panel, ordered by median score."""
     result: list[dict[str, Any]] = []
@@ -106,7 +105,6 @@ def _rank(
         assert isinstance(candidate_id, str)
         candidate_scores = scores.get(candidate_id, {})
         values = list(candidate_scores.values())
-        finding = brand.get(candidate_id, {})
         duration = candidate.get("duration_sec") or 0
         try:
             duration = round(float(duration), 1)
@@ -137,9 +135,6 @@ def _rank(
                 "median": statistics.median(values) if values else 0.0,
                 "scores": {scorer: candidate_scores.get(scorer) for scorer in SCORERS},
                 "review_notes": review_notes.get(candidate_id, {}),
-                "brand_severity": str(finding.get("severity") or ""),
-                "brand_issue": str(finding.get("issue") or "")[:160],
-                "brand_mitigation": str(finding.get("mitigation") or "")[:160],
             }
         )
     result.sort(key=lambda row: -row["median"])
@@ -157,7 +152,11 @@ def _rank(
 
 
 def collect(hl_dir: Path, fmt: str, *, verify_binding: bool = True) -> list[dict[str, Any]]:
-    """Join candidates, persona scores and brand lens, ordered by median score.
+    """Join candidates and persona scores (plus the long-only Renee lens), by median.
+
+    There is no brand lens any more (修修 2026-10-07: the whole interview is
+    published as-is, so a brand review of excerpts adds nothing). Older episodes
+    still carry `lens_brand[.<fmt>].json`; those files are never opened.
 
     `verify_binding=False` reads the same files without checking that the panel
     scored *these* candidates. **The gate must never pass it** — that check is the
@@ -236,27 +235,9 @@ def collect(hl_dir: Path, fmt: str, *, verify_binding: bool = True) -> list[dict
                 f"{review_path.name} candidate coverage drift; missing={missing}, extra={extra}"
             )
 
-    brand: dict[str, dict[str, Any]] = {}
-    lens_path, lens_scoped = _scoped_path(hl_dir, "lens_brand", fmt)
-    lens = _load_object(lens_path, required=True)
-    _check_binding(lens, lens_path, lens_scoped)
-    findings = lens.get("findings")
-    if not isinstance(findings, list):
-        raise HighlightDataError(f"{lens_path.name} findings must be an array")
-    for finding in findings:
-        if not isinstance(finding, dict) or not isinstance(finding.get("id"), str):
-            raise HighlightDataError(f"{lens_path.name} contains an invalid finding")
-        candidate_id = finding["id"]
-        if candidate_id in brand:
-            raise HighlightDataError(f"{lens_path.name} contains duplicate id: {candidate_id}")
-        brand[candidate_id] = finding
-    brand_ids = set(brand)
-    if brand_ids != expected_ids:
-        missing = sorted(expected_ids - brand_ids)
-        extra = sorted(brand_ids - expected_ids)
-        raise HighlightDataError(
-            f"{lens_path.name} candidate coverage drift; missing={missing}, extra={extra}"
-        )
+    # 品牌 lens 已拿掉（修修 2026-10-07：「我既然敢把整個訪談放上去，就代表說整段
+    # 都沒有問題。」）。舊集的 lens_brand[.<fmt>].json 留在磁碟上也不讀——讀了就
+    # 會因為它的綁定過期或覆蓋不全，擋下一個根本不需要它的 gate。
 
     # Renee 是**長片**留存曲線 lens。她自己的 persona 檔第一行就寫「只審長片段落
     # （Shorts 不需要她）」，highlight-cut SKILL 的 reviewer 表也標「Renee 只覆蓋
@@ -269,7 +250,7 @@ def collect(hl_dir: Path, fmt: str, *, verify_binding: bool = True) -> list[dict
         # 沒有 lens_renee.<fmt>.json 就是「這個格式沒有 Renee」。**不可以**退回共用的
         # lens_renee.json——那份是長片的，拿來當短片的覆蓋只會報「38 支全缺」，把一個
         # 設計上的缺席講成資料漏了。
-        return _rank(candidates, fmt, scores, review_notes, brand)
+        return _rank(candidates, fmt, scores, review_notes)
     renee = _load_object(renee_path, required=True)
     if set(renee) != {"lens", "source_sha256", "findings"} or renee.get("lens") != "renee":
         raise HighlightDataError(f"{renee_path.name} schema drift")
@@ -298,7 +279,7 @@ def collect(hl_dir: Path, fmt: str, *, verify_binding: bool = True) -> list[dict
             f"{renee_path.name} candidate coverage drift; missing={missing}, extra={extra}"
         )
 
-    return _rank(candidates, fmt, scores, review_notes, brand)
+    return _rank(candidates, fmt, scores, review_notes)
 
 
 def winners_path(hl_dir: Path, fmt: str) -> Path:
@@ -336,11 +317,7 @@ def write_winners(
     missing = [candidate_id for candidate_id in picks if candidate_id not in by_id]
     if missing:
         raise HighlightDataError(f"candidate ids are not in the shortlist: {missing}")
-    vetoed = [
-        {"id": row["id"], "reason": f"brand-lens veto：{row['brand_issue']}"}
-        for row in rows
-        if row["brand_severity"] == "veto"
-    ]
+    # 沒有 `vetoed` 了：它只記品牌 lens 的 veto，而品牌 lens 已拿掉（2026-10-07）。
     payload: dict[str, Any] = {
         "winners": [
             {
@@ -351,7 +328,6 @@ def write_winners(
             }
             for index, candidate_id in enumerate(picks)
         ],
-        "vetoed": vetoed,
         "picked_by": picked_by,
     }
     existing = _load_object(target)
@@ -389,17 +365,19 @@ def append_review_feedback(
     *,
     selected_ids: list[str],
     feedback: dict[str, str],
-    overridden_veto_ids: list[str],
     fmt: str = "long",
 ) -> Path:
-    """Append a timestamped decision; prior feedback is never discarded."""
+    """Append a timestamped decision; prior feedback is never discarded.
+
+    Older decisions may still carry `override_veto_ids` from the retired brand
+    lens; they are kept verbatim like the rest of the history.
+    """
     payload = load_review_feedback(hl_dir, fmt)
     payload["decisions"].append(
         {
             "decided_at": datetime.now(timezone.utc).isoformat(),
             "selected_ids": selected_ids,
             "feedback": feedback,
-            "override_veto_ids": overridden_veto_ids,
         }
     )
     return _atomic_json_write(review_feedback_path(hl_dir, fmt), payload)

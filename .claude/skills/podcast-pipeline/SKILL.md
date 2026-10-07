@@ -458,11 +458,10 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" -
   -> highlights/miner-value.json
   -> E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" --merge-miners
   -> highlights/candidates.json
-  -> blind azhe/kevin/shufen + brand + Renee review
+  -> blind azhe/kevin/shufen + Renee review
   -> highlights/review_azhe.long.json
   -> highlights/review_kevin.long.json
   -> highlights/review_shufen.long.json
-  -> highlights/lens_brand.long.json
   -> highlights/lens_renee.long.json
   -> review schema/coverage/citation QA
   -> E:\nakama\.venv-v2\Scripts\python.exe scripts\run_cut_shortlist.py "<episode>" --format long
@@ -470,13 +469,17 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" -
 ```
 
 三 miners 的隔離 prompt、`podcast-highlight-miner-output-v2` exact schema（long candidates 必須帶完整
-`sections` 語意段落與 transition candidates）、official strict merge、五份
-review schema 與 QA DoD 以 `highlight-cut` skill 為準。Miner/persona inference 是 agent-owned work；中途
+`sections` 語意段落與 transition candidates）、official strict merge、四份
+review schema 與 QA DoD 以 `highlight-cut` skill 為準（沒有品牌 lens，修修 2026-10-07 拿掉）。Miner/persona inference 是 agent-owned work；中途
 不可停下詢問使用者。Mechanical miner merge 已由 `--merge-miners` 實作；persona dispatch 仍由
 subscription subagents 執行。若環境無法產生 exact reviews，必須回報
 `HIGHLIGHT_PERSONA_REVIEW_NOT_IMPLEMENTED`，不能把缺少 review files 冒充成 shortlist gate。
 
 只有 `run_cut_shortlist.py --format long` 成功產出完整表後才停；只列 candidates，不替使用者選 IDs。
+表只在 Vault：`AgentOutputs/interviews/<訪談日>-<來賓>/NN-選段報告.md`（命令最後一行印出路徑）。
+交給修修的是**這個 Vault 路徑**，不是 footage 磁碟上的任何 `.md`——要他讀、要他決定的文件一律在
+Vault（修修 2026-10-05）。長片與短片挑到同一段沒關係（修修 2026-10-07：「我不在乎長精華跟短精華
+有沒有重疊」），不要替他排除。
 
 收到 winner IDs 後：
 
@@ -535,11 +538,11 @@ Editorial Master 封存
  ▼
  [序列] --merge-miners → candidates.json（strict merge + validate）
  │
- ├─【平行 ×5】盲審：阿哲 / 凱文 / 淑芬 / Renee lens / brand lens
+ ├─【平行 ×4】盲審：阿哲 / 凱文 / 淑芬 / Renee lens（沒有品牌 lens）
  │     └─ blind，不讀彼此輸出；三位 persona 覆蓋全部候選，Renee 只長片
  ▼
  [序列] run_cut_shortlist.py --format long ＋ --format short
- │        → 兩張候選表 ＋ 一份合併的 Vault 選段報告
+ │        → Vault 選段報告（長短合併；修修讀的唯一一份，episode 資料夾不另存）
  ▼
 ■ 停點 1：他挑（長短各幾支都行，順序＝rank）
  │
@@ -608,7 +611,9 @@ SHA-256 綁它）與 `packaging/cutouts/*.png`。`social_brief.md` 可有可無�
 E:\nakama\.venv-v2\Scripts\python.exe scripts\run_podcast_carousel.py "<episode>" --copy-spec "<episode>/ig-carousel/editorial/rNNN/copy_spec.v1.json" --panel-result "<episode>/ig-carousel/editorial/rNNN/panel_result.v1.json" --template-dir <template-dir>
 ```
 
-文案是語意工作：三個盲審 lens（IG Audience／Episode Editorial／Brand and Evidence）跑到收斂。
+文案是語意工作：三個盲審 lens（IG Audience／Episode Editorial／Evidence）跑到收斂。Evidence lens
+只查文案對不對得上逐字稿（說話者、引句連續、沒有捏造因果），不做品牌審查；收據 key 仍是
+`brand_evidence`，舊 artifact 照樣有效。
 **文字聲音走 `skills/ig-cards/references/copy-voice.md`**，不要用預設模型語氣（那份是 r001→r002
 的真實對照，七條）。
 

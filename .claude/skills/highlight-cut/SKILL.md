@@ -253,8 +253,11 @@ Validate 成功後才 dispatch；每個 reviewer 必須 blind，不能讀其他 
 | 阿哲 | `review_azhe.long.json` / `review_azhe.short.json` | `{"persona":"azhe","source_sha256":"<該格式 digest>","scores":[{"id":"story-L01","total":0,"rationale":"..."}]}` |
 | 凱文 | `review_kevin.long.json` / `review_kevin.short.json` | 同上，`persona` 換 `kevin` |
 | 淑芬 | `review_shufen.long.json` / `review_shufen.short.json` | 同上，`persona` 換 `shufen` |
-| brand lens | `lens_brand.long.json` / `lens_brand.short.json` | `{"lens":"brand","source_sha256":"...","findings":[{"id":"...","severity":"veto|caution|","issue":"...","mitigation":"..."}]}` |
 | Renee lens | `lens_renee.long.json`（**短片不需要**） | `{"lens":"renee","source_sha256":"...","findings":[{"id":"story-L01","hook_risk":"...","retention_risk":"...","boundary_action":"..."}]}` |
+
+**沒有品牌 lens**：長片派 4 個（阿哲／凱文／淑芬＋Renee），短片派 3 個。修修 2026-10-07 拿掉品牌評審：
+「我既然敢把整個訪談放上去，就代表說整段都沒有問題。」整集訪談本來就完整公開，從裡面切出來的
+精華再做品牌審查不增加任何東西。不要派、不要寫 `lens_brand.*.json`；舊集留著的那幾份 gate 不讀。
 
 ⚠️ **`source_sha256` 綁的是「該格式候選的切片」，不是整個 `candidates.json`。** 用指令拿，不要手算：
 
@@ -273,7 +276,8 @@ Persona `total` 必須 finite 0–100；舊 gate 的三份 scoring file IDs 必�
 作廢並 blind rerun 該 reviewer，不能局部補分。
 
 Shortlist ranking 由既有 code 計算三人中位數；同 variant group 只有最高分佔 rank，其他仍列出；
-Renee 不計分。只有四份 review outputs 都驗證通過才可進下一步。
+Renee 不計分。只有四份 review outputs 都驗證通過才可進下一步（長片：三位 persona＋Renee；
+短片沒有 Renee，三位 persona 即可）。
 
 Persona dispatch 仍是 orchestrator-owned subscription subagent stage；`run_cut_shortlist.py` 是 strict
 review gate，會拒絕缺檔、stale `source_sha256`、partial/extra/duplicate candidate coverage 與 non-finite
@@ -286,7 +290,7 @@ scores。無法產生 exact review outputs 時回報 `HIGHLIGHT_PERSONA_REVIEW_N
 E:\nakama\.venv-v2\Scripts\python.exe scripts\run_cut_shortlist.py "<episode>" --format long
 ```
 
-命令成功產出候選表後才停下，把完整表交給修修選 IDs；此時 `winners.json` 必須仍不存在或維持前一個
+命令成功產出候選表後才停下，把 Vault 選段報告的路徑交給修修選 IDs（表只寫 Vault，不寫 episode 資料夾）；此時 `winners.json` 必須仍不存在或維持前一個
 已知選擇，不得自動 top 3。收到明確 IDs 後才執行：
 
 ```powershell
@@ -301,8 +305,10 @@ LLM 用量最大的一塊；把 HITL 移到**排完之後、製作之前**幾乎
 料在 panel 跑完時就已經齊了。
 
 - 表上有：排名 / id / variant 群組 / 中位數 / 三位分數 / 長度 / 主題，
-  外加每支的 hook 與 lens 細節。同群組落選的 variant **照常列出**（標「同群組落選」），
+  外加每支的 hook。同群組落選的 variant **照常列出**（標「同群組落選」），
   修修可以指名要那個切法
+- 長片與短片挑到同一段沒關係（修修 2026-10-07：「我不在乎長精華跟短精華有沒有重疊」），
+  不要替他把跟長片重疊的短片排除或降級
 - 幾支都可以（預設 3 支）。修修欽點超過預設數量是原始需求，`--pick` 給幾個就寫幾個，
   順序＝rank
 - `winners.json` 只由本 script 寫（schema 由它保證）；既有的 `excluded_group` 保留

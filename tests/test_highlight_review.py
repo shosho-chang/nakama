@@ -13,7 +13,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 
-def _candidate(candidate_id: str, *, veto: bool = False) -> dict:
+def _candidate(candidate_id: str) -> dict:
     index = int(candidate_id[1:])
     return {
         "id": candidate_id,
@@ -26,7 +26,6 @@ def _candidate(candidate_id: str, *, veto: bool = False) -> dict:
         "t_start": index * 100,
         "t_end": index * 100 + 120,
         "duration_sec": 120.0,
-        "veto": veto,
     }
 
 
@@ -78,7 +77,6 @@ def episode_root(tmp_path):
     highlights = tmp_path / "ep-001" / "highlights"
     highlights.mkdir(parents=True)
     candidates = [_candidate(f"L{i}") for i in range(1, 7)]
-    candidates[2] = _candidate("L3", veto=True)
     candidates_path = highlights / "candidates.json"
     candidates_path.write_text(
         json.dumps(
@@ -110,23 +108,7 @@ def episode_root(tmp_path):
             ),
             encoding="utf-8",
         )
-    (highlights / "lens_brand.json").write_text(
-        json.dumps(
-            {
-                "source_sha256": source_sha256,
-                "findings": [
-                    {
-                        "id": f"L{i}",
-                        "severity": "veto" if i == 3 else None,
-                        "issue": "品牌 veto" if i == 3 else "",
-                    }
-                    for i in range(1, 7)
-                ],
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
+    # 刻意沒有 lens_brand.json：品牌 lens 已拿掉（修修 2026-10-07）。
     (highlights / "lens_renee.json").write_text(
         json.dumps(
             {
@@ -186,7 +168,6 @@ def _rebind_review_inputs(candidates_path) -> None:
         "review_azhe.json",
         "review_kevin.json",
         "review_shufen.json",
-        "lens_brand.json",
         "lens_renee.json",
     ):
         path = highlights / name
@@ -229,7 +210,8 @@ def test_shows_at_most_five_ranked_candidates(client):
     for candidate_id in ("L1", "L2", "L3", "L4", "L5"):
         assert f"候選 {candidate_id}" in response.text
     assert "候選 L6" not in response.text
-    assert "品牌 veto" in response.text
+    assert "override_veto" not in response.text
+    assert "highlight-veto" not in response.text
 
 
 def test_invalid_candidate_timecodes_fail_loud(client, episode_root):
@@ -374,23 +356,48 @@ def test_program_media_supports_range_requests_for_seeking(client):
     assert response.content == b"ster"
 
 
-def test_veto_requires_explicit_override(client):
+def _stale_brand_lens(highlights: Path) -> None:
+    """舊集留下的品牌 lens：綁定過期、只覆蓋一支、還標 veto。"""
+    (highlights / "lens_brand.json").write_text(
+        json.dumps(
+            {
+                "source_sha256": "0" * 64,
+                "findings": [{"id": "L3", "severity": "veto", "issue": "品牌 veto"}],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_a_stale_brand_lens_neither_shows_nor_blocks_the_decision(client, episode_root):
+    """品牌 lens 已拿掉（修修 2026-10-07）：舊檔留在磁碟上，頁面不顯示、決策不擋。"""
+    highlights = episode_root / "ep-001" / "highlights"
+    _stale_brand_lens(highlights)
+
+    page = client.get("/bridge/highlights/ep-001", cookies=_auth_cookie())
+    assert page.status_code == 200
+    assert "品牌 veto" not in page.text
+    assert "override_veto" not in page.text
+
     response = client.post(
         "/bridge/highlights/ep-001/decide",
         data={"candidate_id": ["L1", "L2", "L3"]},
         cookies=_auth_cookie(),
+        follow_redirects=False,
     )
-    assert response.status_code == 400
-    assert "override_veto" in response.text
+    assert response.status_code == 303
+    winners = json.loads((highlights / "winners.json").read_text(encoding="utf-8"))
+    assert [winner["id"] for winner in winners["winners"]] == ["L1", "L2", "L3"]
+    assert "vetoed" not in winners
 
 
 def test_writes_compatible_winners_and_append_only_feedback(client, episode_root):
     data = {
         "candidate_id": ["L1", "L2", "L3"],
-        "override_veto": ["L3"],
         "feedback_L1": "成片開頭最有力",
         "feedback_L2": "備選仍保留",
-        "feedback_L3": "理解風險後仍選",
+        "feedback_L3": "第三順位",
     }
     response = client.post(
         "/bridge/highlights/ep-001/decide",
@@ -405,6 +412,7 @@ def test_writes_compatible_winners_and_append_only_feedback(client, episode_root
     assert [winner["id"] for winner in winners["winners"]] == ["L1", "L2", "L3"]
     assert [winner["rank"] for winner in winners["winners"]] == [1, 2, 3]
     assert winners["picked_by"] == "修修 (Bridge highlight review gate)"
+    assert "vetoed" not in winners
     work_plan = json.loads((highlights / "packaging-plan.json").read_text(encoding="utf-8"))
     assert work_plan["schema"] == "nakama.highlight_parallel_work_plan.v1"
     assert [row["cut_id"] for row in work_plan["cuts"]] == ["L1", "L2", "L3"]
@@ -413,7 +421,7 @@ def test_writes_compatible_winners_and_append_only_feedback(client, episode_root
     assert {row["packaging"]["status"] for row in work_plan["cuts"]} == {"queued"}
     audit = json.loads((highlights / "review_feedback.json").read_text(encoding="utf-8"))
     assert audit["decisions"][0]["feedback"]["L1"] == "成片開頭最有力"
-    assert audit["decisions"][0]["override_veto_ids"] == ["L3"]
+    assert "override_veto_ids" not in audit["decisions"][0]
     response = client.post(
         "/bridge/highlights/ep-001/decide",
         data=data,
@@ -617,7 +625,7 @@ def _stage_short_candidates(episode_root: Path) -> None:
 
     短片線一直有候選（20260901 蘇予昕 那集有 38 支），但 Bridge 上沒有入口——
     gate 寫死了 `collect(highlights_dir, "long")`。這個 helper 建的是短片線真正
-    的檔案佈局：per-format 的 `review_*.short.json`／`lens_brand.short.json`，
+    的檔案佈局：per-format 的 `review_*.short.json`，
     綁的是「該格式候選」的 digest，而不是整個 candidates.json。
     """
     from shared.highlight_shortlist import _format_digest
@@ -638,7 +646,6 @@ def _stage_short_candidates(episode_root: Path) -> None:
                 "t_start": 1000 + index * 60,
                 "t_end": 1000 + index * 60 + 45,
                 "duration_sec": 45.0,
-                "veto": False,
             }
         )
     candidates_path.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
@@ -655,16 +662,6 @@ def _stage_short_candidates(episode_root: Path) -> None:
             ),
             encoding="utf-8",
         )
-    (highlights / "lens_brand.short.json").write_text(
-        json.dumps(
-            {
-                "source_sha256": short_sha256,
-                "findings": [{"id": f"S{i}", "severity": None, "issue": ""} for i in range(1, 5)],
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
 
 
 def test_short_format_gate_shows_short_candidates(client, episode_root):
