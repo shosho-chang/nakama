@@ -27,7 +27,9 @@ Anchor production and correction at Content Pipeline Stage 5 (製作). Enter Sta
 
    - IG Audience
    - Episode Editorial
-   - Brand and Evidence
+   - Evidence (receipt and panel key stays `brand_evidence`, so older artifacts remain valid)
+
+   The Evidence lens checks fidelity only: every visible claim matches the transcript, each claim and quote is attributed to the person who actually said it, quotes are contiguous source spans, the rewrite keeps the original meaning, and no causality is invented. It does not review brand safety (修修 2026-10-07: the full interview is published as-is, so a brand review adds nothing).
 
    The current end-to-end agent verifies findings against the Copy Spec and transcript, revises the one main version, and repeats the three-lens panel until it converges. Never use majority vote to erase a supported finding.
 5. Run the deterministic finaliser; it renders reviewed artifacts but does not draft copy or invoke reviewers:

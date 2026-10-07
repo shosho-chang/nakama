@@ -13,8 +13,10 @@ packaging 的成本已經付掉了。他自己的比較：「做 5 支挑 3 支�
 輸入（highlight-cut Step 1/2 的產物）：
     highlights/candidates.json      — id/format/variant_group/hook/rationale/時長
     highlights/review_<persona>.json — 三位評分 persona（scores[].total）
-    highlights/lens_brand.json       — 品牌 lens（severity: veto/caution）
     highlights/lens_renee.json       — 留存／邊界 lens（長片必須完整覆蓋）
+
+**沒有品牌 lens**（修修 2026-10-07 拿掉：「我既然敢把整個訪談放上去，就代表說整段
+都沒有問題。」）。舊集留著的 `lens_brand[.<fmt>].json` 不讀、不擋。
 
 **盲審檔可以分格式**：`review_<persona>.<fmt>.json` / `lens_*.<fmt>.json` 存在時優先
 使用，並改綁「該格式候選」的 digest。一份 persona 檔服務不了兩種格式——gate 要求
@@ -23,7 +25,7 @@ review 的 id 集合與該格式的候選**完全相等**，覆蓋長片的那�
 
 輸出：
     <VAULT>/AgentOutputs/interviews/<訪談日-來賓>/0N-選段報告.md
-        — 修修讀、修修挑的**唯一**一份表（長短片合併、群組、中位數、hook、品牌提醒）
+        — 修修讀、修修挑的**唯一**一份表（長短片合併、群組、中位數、hook）
     highlights/winners.json — long；短片寫 winners.short.json
                               只有 --pick 才寫（schema 由本 script 保證）
 
@@ -32,13 +34,10 @@ review 的 id 集合與該格式的候選**完全相等**，覆蓋長片的那�
 `highlights/選段候選表[.short].md`，結果 agent 把那份的路徑交給他，要他去 footage
 磁碟找——兩份並存還會漂。表照樣印到 stdout 給 agent 轉述。
 
-報告合併長短片，因為挑選的時候是一起看的——哪一段被長片用掉了，短片就不該再挑
-同一段。落選的候選連分數一起留著（修修 2026-09-04 裁決：被砍掉的比留下的更有教育
-意義）。Vault 對不到資料夾＝修修沒有表可讀，出表模式直接失敗（`--no-vault-report`
-只給 CI／沒掛 Vault 的環境用）。
-
-**品牌 lens 只是提醒**：`severity: veto` 顯示成「⛔ 重大提醒」，不是「否決」——做不做
-由修修決定（2026-10-05 重申）。挑到它照寫，只在 stderr 提醒一次。
+報告合併長短片，因為挑選的時候是一起看的。長片與短片挑到同一段也沒關係（修修
+2026-10-07：「我不在乎長精華跟短精華有沒有重疊」）。落選的候選連分數一起留著（修修
+2026-09-04 裁決：被砍掉的比留下的更有教育意義）。Vault 對不到資料夾＝修修沒有表可讀，
+出表模式直接失敗（`--no-vault-report` 只給 CI／沒掛 Vault 的環境用）。
 """
 
 from __future__ import annotations
@@ -73,8 +72,6 @@ sys.stderr.reconfigure(encoding="utf-8")
 
 HIGHLIGHTS = "highlights"
 NEWLINE = chr(10)
-# 品牌 lens 的 severity 只決定提醒的輕重，不決定能不能做——那是修修的判斷。
-BRAND_LABEL = {"veto": "⛔ 重大提醒", "caution": "⚠️ 注意"}
 
 
 def collect(hl_dir: Path, fmt: str) -> list[dict]:
@@ -90,31 +87,25 @@ def render_table(rows: list[dict], fmt: str) -> str:
         f"# 選段候選表（{fmt}）— 等修修挑",
         "",
         "panel 評的是**素材強度**，不是成片吸引力，也不是你的品味。挑幾支都可以",
-        "（預設 3 支），指定 id 給我，我才寫 winners.json 進製作。品牌 lens 只是提醒。",
+        "（預設 3 支），指定 id 給我，我才寫 winners.json 進製作。",
         "",
-        "| 排名 | id | 群組 | 中位數 | 阿哲/凱文/淑芬 | 長度 | 主題 | 品牌 lens |",
-        "|---|---|---|---|---|---|---|---|",
+        "| 排名 | id | 群組 | 中位數 | 阿哲/凱文/淑芬 | 長度 | 主題 |",
+        "|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         s = r["scores"]
         trio = "/".join(str(s.get(w) if s.get(w) is not None else "-") for w in SCORERS)
-        flag = BRAND_LABEL.get(r["brand_severity"], "")
         rank = str(r["rank"]) if r["rank"] else "（同群組落選）"
         mins = f"{int(r['duration_sec'] // 60)}:{int(r['duration_sec'] % 60):02d}"
         out.append(
             f"| {rank} | **{r['id']}** | {r['group']} | {r['median']:.0f} | {trio} | "
-            f"{mins} | {r['title']} | {flag} |"
+            f"{mins} | {r['title']} |"
         )
-    out += ["", "## 各支 hook 與品牌 lens 細節", ""]
+    out += ["", "## 各支 hook", ""]
     for r in rows:
         out.append(f"### {r['id']} — {r['title']}（中位數 {r['median']:.0f}）")
         if r["hook"]:
             out.append(f"- **hook**：{r['hook']}")
-        if r["brand_severity"]:
-            label = BRAND_LABEL.get(r["brand_severity"], r["brand_severity"])
-            out.append(f"- **品牌 lens {label}**：{r['brand_issue']}")
-            if r["brand_mitigation"]:
-                out.append(f"  - 對策：{r['brand_mitigation']}")
         out.append("")
     return "\n".join(out) + "\n"
 
@@ -166,10 +157,9 @@ def render_vault_report(
         f"# 選段報告 — {episode_id}",
         "",
         "panel 評的是**素材強度**（讀逐字稿評分），不是成片吸引力，也不是修修的品味。",
-        "這份報告把長片與短片兩張候選表放在一起，因為挑選時本來就要一起看——",
-        "一段被長片用掉了，短片就不該再挑同一段。**落選的候選連分數一起留著**：",
+        "這份報告把長片與短片兩張候選表放在一起，因為挑選時本來就要一起看。",
+        "**落選的候選連分數一起留著**：",
         "下一季要參考的是「什麼樣的段落會被打槍」，那只有落選名單答得出來。",
-        "品牌 lens 只是提醒，做不做由修修決定。",
         "",
     ]
     notes = notes or {}
@@ -223,14 +213,6 @@ def write_vault_report(episode_dir: Path) -> Path | None:
 def write_winners(hl_dir: Path, rows: list[dict], picks: list[str], fmt: str = "long") -> Path:
     """Compatibility wrapper preserving the CLI's SystemExit error contract."""
     try:
-        picked_veto = [
-            p for p in picks if any(r["id"] == p and r["brand_severity"] == "veto" for r in rows)
-        ]
-        if picked_veto:
-            print(
-                f"⚠️ 提醒：{picked_veto} 有品牌重大提醒（只是提醒），照你的指定寫入",
-                file=sys.stderr,
-            )
         return _write_winners(hl_dir, rows, picks, fmt=fmt)
     except HighlightDataError as exc:
         raise SystemExit(str(exc)) from exc

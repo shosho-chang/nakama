@@ -33,7 +33,7 @@
 
 <main class="highlight-workbench">
   {% if saved %}
-  <div role="status" class="highlight-notice highlight-notice--success">已保存前三順位、逐段 feedback 與 veto override。</div>
+  <div role="status" class="highlight-notice highlight-notice--success">已保存前三順位與逐段 feedback。</div>
   {% endif %}
 
   {% if finished_review_ready %}
@@ -64,11 +64,10 @@
     <input type="hidden" name="selection_order" id="selection-order" value="">
     <div class="highlight-grid">
     {% for row in rows %}
-      <article class="highlight-card {% if row.brand_severity == 'veto' %}highlight-card--veto{% endif %}"
+      <article class="highlight-card"
                data-candidate-id="{{ row.id }}"
                data-start="{{ row.t_start }}"
                data-end="{{ row.t_end }}"
-               data-veto="{{ 'true' if row.brand_severity == 'veto' else 'false' }}"
                data-initial-rank="{{ row.selection_rank or '' }}">
         <div class="highlight-card__rail">
           <span class="highlight-rank" aria-hidden="true">{% if row.selection_rank %}#{{ row.selection_rank }}{% else %}—{% endif %}</span>
@@ -110,16 +109,6 @@
             </details>
             {% endif %}
           </div>
-
-          {% if row.brand_severity %}
-          <div class="highlight-veto" role="alert">
-            <strong>{{ row.brand_severity | upper }}</strong> · {{ row.brand_issue }}
-            {% if row.brand_mitigation %}<span>／{{ row.brand_mitigation }}</span>{% endif %}
-            {% if row.brand_severity == 'veto' %}
-            <label><input type="checkbox" name="override_veto" value="{{ row.id }}"> 我理解此風險，仍要選此段</label>
-            {% endif %}
-          </div>
-          {% endif %}
 
           <label class="highlight-feedback">
             <span>給未來選段流程的 feedback</span>
@@ -167,8 +156,6 @@
       card.classList.toggle('is-selected', rank > 0);
       card.querySelector('.highlight-rank').textContent = rank ? `#${rank}` : '—';
     });
-    const selected = cards.filter(card => card.querySelector('input[name="candidate_id"]').checked);
-    const vetoMissing = selected.some(card => card.dataset.veto === 'true' && !card.querySelector('input[name="override_veto"]:checked'));
     const atLimit = order.length >= 3;
     cards.forEach(card => {
       const checkbox = card.querySelector('input[name="candidate_id"]');
@@ -181,7 +168,7 @@
       item.textContent = id;
       return item;
     }));
-    button.disabled = order.length !== 3 || vetoMissing;
+    button.disabled = order.length !== 3;
   };
 
   cards.forEach(card => {

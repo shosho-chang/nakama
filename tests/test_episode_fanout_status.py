@@ -110,3 +110,19 @@ def test_full_cut_that_still_needs_exporting_is_not_reported_as_done(episode, ca
     assert "匯出 ⬜" in out
     assert "沒有待派的工作了" not in out
     assert "--cut full" in out
+
+
+def test_panel_dispatch_has_no_brand_lens(episode, capsys, monkeypatch):
+    """品牌 lens 已拿掉（修修 2026-10-07）：長片 3 位 persona＋Renee，短片只有 3 位。"""
+    module, root = episode
+    monkeypatch.setattr(module, "_candidates", lambda hl_dir: {"long": 3, "short": 3})
+    monkeypatch.setattr(module, "_winners", lambda hl_dir, fmt: [])
+    monkeypatch.setattr(module, "_panel", lambda hl_dir, fmt: (False, "missing review"))
+
+    module.report(root)
+
+    out = capsys.readouterr().out
+    assert "【平行 ×4】long 盲審：阿哲／凱文／淑芬／Renee lens" in out
+    assert "【平行 ×3】short 盲審：阿哲／凱文／淑芬（Renee 不需要）" in out
+    assert "brand" not in out
+    assert "品牌" not in out

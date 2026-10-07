@@ -125,9 +125,11 @@ def report(episode_dir: Path) -> int:
         note = why if good else ("（綁定已過期，但已挑完，不用重跑）" if won else why)
         print(f"{mark} 盲審 {fmt:5s}　{note}")
         if not good and not won:
+            # 沒有品牌 lens（修修 2026-10-07 拿掉）：長片 3 位 persona＋Renee，短片只有 3 位。
             dispatch.append(
-                f"【平行 ×5】{fmt} 盲審：阿哲／凱文／淑芬／brand lens"
-                + ("／Renee lens" if fmt == "long" else "（Renee 不需要）")
+                f"【平行 ×4】{fmt} 盲審：阿哲／凱文／淑芬／Renee lens"
+                if fmt == "long"
+                else f"【平行 ×3】{fmt} 盲審：阿哲／凱文／淑芬（Renee 不需要）"
             )
             dispatch.append(
                 f"        digest：run_cut_shortlist.py <ep> --format {fmt} --print-digest"

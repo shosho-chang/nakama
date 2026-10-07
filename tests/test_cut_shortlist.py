@@ -61,7 +61,7 @@ def episode(tmp_path):
                     _cand("A1", "G1", "群組一 高分"),
                     _cand("A2", "G1", "群組一 低分"),
                     _cand("B1", "G2", "群組二"),
-                    _cand("C1", "G3", "被否決的"),
+                    _cand("C1", "G3", "群組三"),
                     {**_cand("S1", "G4", "短片不該出現"), "format": "short"},
                 ]
             },
@@ -88,32 +88,7 @@ def episode(tmp_path):
             ),
             encoding="utf-8",
         )
-    (hl / "lens_brand.json").write_text(
-        json.dumps(
-            {
-                "lens": "brand",
-                "source_sha256": source_sha256,
-                "findings": [
-                    {"id": "A1", "severity": "", "issue": "", "mitigation": ""},
-                    {"id": "A2", "severity": "", "issue": "", "mitigation": ""},
-                    {
-                        "id": "C1",
-                        "severity": "veto",
-                        "issue": "會害到來賓",
-                        "mitigation": "改用別支",
-                    },
-                    {
-                        "id": "B1",
-                        "severity": "caution",
-                        "issue": "標題不要停在某句",
-                        "mitigation": "改過去式",
-                    },
-                ],
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
+    # 刻意沒有 lens_brand.json：品牌 lens 已拿掉（修修 2026-10-07）。
     (hl / "lens_renee.json").write_text(
         json.dumps(
             {
@@ -156,24 +131,85 @@ def test_group_dedup_only_top_gets_rank(episode):
     assert rows["C1"]["rank"] == 3
 
 
-def test_table_marks_veto_and_caution(episode):
-    rows = shortlist.collect(episode / "highlights", "long")
-    table = shortlist.render_table(rows, "long")
-    assert "⛔ 重大提醒" in table
-    assert "⚠️ 注意" in table
-    assert "會害到來賓" in table
+# --- 品牌 lens 已拿掉（修修 2026-10-07）--------------------------------------
+# 「我既然敢把整個訪談放上去，就代表說整段都沒有問題。」整集本來就完整公開，
+# 切出來的精華再做品牌審查不增加任何東西。舊集還留著的 lens_brand 檔不讀。
 
 
-def test_brand_lens_never_reads_as_a_verdict(episode):
-    """修修 2026-10-05：品牌提醒只是提醒，做不做由他決定。表上寫「否決」會讓人（和 agent）
-    以為那支不能挑——agent 真的照著唸成「被否決」。"""
-    rows = shortlist.collect(episode / "highlights", "long")
+def _stale_brand_lens(path: Path, ids: tuple[str, ...]) -> None:
+    """舊集留下的品牌 lens：綁定過期、覆蓋不全、還帶 veto——以前每一項都會擋 gate。"""
+    path.write_text(
+        json.dumps(
+            {
+                "lens": "brand",
+                "source_sha256": "0" * 64,
+                "findings": [
+                    {"id": ids[0], "severity": "veto", "issue": "會害到來賓", "mitigation": "x"}
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def test_shortlist_needs_no_brand_lens(episode):
+    hl = episode / "highlights"
+    _short_panel(hl, ("S1",))
+    assert not list(hl.glob("lens_brand*"))
+
+    assert [r["id"] for r in shortlist.collect(hl, "long")] == ["A1", "A2", "B1", "C1"]
+    assert [r["id"] for r in shortlist.collect(hl, "short")] == ["S1"]
+    shortlist.write_winners(hl, shortlist.collect(hl, "long"), ["C1"])
+    assert json.loads((hl / "winners.json").read_text(encoding="utf-8"))["winners"][0]["id"] == (
+        "C1"
+    )
+
+
+def test_a_stale_brand_lens_left_on_disk_is_ignored(episode, capsys):
+    hl = episode / "highlights"
+    _short_panel(hl, ("S1",))
+    _stale_brand_lens(hl / "lens_brand.json", ("C1",))
+    _stale_brand_lens(hl / "lens_brand.short.json", ("S1",))
+    (hl / "lens_brand.long.json").write_text("{not json", encoding="utf-8")
+
+    long_rows = shortlist.collect(hl, "long")
+    short_rows = shortlist.collect(hl, "short")
+
+    assert [r["id"] for r in long_rows] == ["A1", "A2", "B1", "C1"]
+    assert [r["id"] for r in short_rows] == ["S1"]
+    for row in long_rows + short_rows:
+        assert not [key for key in row if key.startswith("brand")]
+    # 挑到舊 lens 標 veto 的那支：照寫，不警告，winners 也不再有 vetoed。
+    shortlist.write_winners(hl, long_rows, ["C1"])
+    assert capsys.readouterr().err == ""
+    data = json.loads((hl / "winners.json").read_text(encoding="utf-8"))
+    assert [w["id"] for w in data["winners"]] == ["C1"]
+    assert "vetoed" not in data
+    report = shortlist.render_vault_report("ep", hl, {"long": long_rows, "short": short_rows})
+    assert "會害到來賓" not in report
+
+
+def test_table_and_report_carry_no_brand_column_or_labels(episode):
+    hl = episode / "highlights"
+    _stale_brand_lens(hl / "lens_brand.json", ("C1",))
+    rows = shortlist.collect(hl, "long")
     table = shortlist.render_table(rows, "long")
-    report = shortlist.render_vault_report("ep", episode / "highlights", {"long": rows})
+    report = shortlist.render_vault_report("ep", hl, {"long": rows})
+
+    header = next(line for line in table.splitlines() if line.startswith("| 排名"))
+    assert header == "| 排名 | id | 群組 | 中位數 | 阿哲/凱文/淑芬 | 長度 | 主題 |"
     for text in (table, report):
-        assert "⛔ 否決" not in text
-        assert "品牌 lens veto" not in text
-        assert "品牌 lens ⛔ 重大提醒" in text
+        for banned in ("品牌", "brand", "lens", "veto", "否決", "重大提醒", "⛔", "⚠️ 注意"):
+            assert banned not in text, banned
+
+
+def test_report_does_not_tell_shorts_to_avoid_long_segments(episode):
+    """修修 2026-10-07：「我不在乎長精華跟短精華有沒有重疊」。"""
+    hl = episode / "highlights"
+    report = shortlist.render_vault_report("ep", hl, {"long": shortlist.collect(hl, "long")})
+    assert "不該再挑" not in report
+    assert "用掉" not in report
 
 
 def test_pick_order_is_rank(episode):
@@ -185,7 +221,7 @@ def test_pick_order_is_rank(episode):
     assert [w["rank"] for w in data["winners"]] == [1, 2]
     assert data["winners"][0]["score"] == 84
     assert data["picked_by"] == "修修 (gate)"
-    assert [v["id"] for v in data["vetoed"]] == ["C1"]
+    assert "vetoed" not in data
 
 
 def test_pick_unknown_id_fails_loud(episode):
@@ -207,14 +243,6 @@ def test_pick_keeps_existing_excluded_group(episode):
     assert data["excluded_group"][0]["ids"] == ["X"]
 
 
-def test_vetoed_pick_allowed_but_warned(episode, capsys):
-    """修修可以覆蓋 brand-lens 否決，但不能靜默——stderr 要出現警告。"""
-    hl = episode / "highlights"
-    rows = shortlist.collect(hl, "long")
-    shortlist.write_winners(hl, rows, ["C1"])
-    assert "C1" in capsys.readouterr().err
-
-
 def test_winners_preserve_verified_projection_lineage(episode):
     hl = episode / "highlights"
     candidates_path = hl / "candidates.json"
@@ -230,7 +258,6 @@ def test_winners_preserve_verified_projection_lineage(episode):
         "review_azhe.json",
         "review_kevin.json",
         "review_shufen.json",
-        "lens_brand.json",
         "lens_renee.json",
     ):
         path = hl / name
@@ -263,7 +290,6 @@ def test_winners_preserve_editorial_master_lineage(episode):
         "review_azhe.json",
         "review_kevin.json",
         "review_shufen.json",
-        "lens_brand.json",
         "lens_renee.json",
     ):
         path = hl / name
@@ -280,7 +306,7 @@ def test_winners_preserve_editorial_master_lineage(episode):
 
 @pytest.mark.parametrize(
     "name",
-    ["review_azhe.json", "review_kevin.json", "review_shufen.json", "lens_brand.json"],
+    ["review_azhe.json", "review_kevin.json", "review_shufen.json"],
 )
 def test_missing_required_review_fails_closed(episode, name):
     path = episode / "highlights" / name
@@ -302,16 +328,6 @@ def test_review_partial_coverage_fails_closed(episode):
     path = episode / "highlights" / "review_azhe.json"
     payload = json.loads(path.read_text(encoding="utf-8"))
     payload["scores"] = []
-    path.write_text(json.dumps(payload), encoding="utf-8")
-
-    with pytest.raises(SystemExit, match="coverage drift"):
-        shortlist.collect(episode / "highlights", "long")
-
-
-def test_brand_partial_coverage_fails_closed(episode):
-    path = episode / "highlights" / "lens_brand.json"
-    payload = json.loads(path.read_text(encoding="utf-8"))
-    payload["findings"] = []
     path.write_text(json.dumps(payload), encoding="utf-8")
 
     with pytest.raises(SystemExit, match="coverage drift"):
@@ -408,17 +424,6 @@ def _short_panel(hl: Path, ids: tuple[str, ...]) -> None:
             ),
             encoding="utf-8",
         )
-    (hl / "lens_brand.short.json").write_text(
-        json.dumps(
-            {
-                "lens": "brand",
-                "source_sha256": digest,
-                "findings": [{"id": i, "severity": "", "issue": "", "mitigation": ""} for i in ids],
-            },
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
     (hl / "lens_renee.short.json").write_text(
         json.dumps(
             {
@@ -550,7 +555,7 @@ def test_report_merges_both_formats_and_records_the_picks(episode):
     assert "群組一 低分" in report
     assert "短片不該出現" in report
     # 細節掛在該格式底下，不跟它平輩。
-    assert "### 各支 hook 與品牌 lens 細節" in report
+    assert "### 各支 hook" in report
     assert "\n## 各支 hook" not in report
 
 

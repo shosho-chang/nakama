@@ -1068,16 +1068,8 @@ async def highlight_review_decide(
             status_code=400, detail=f"candidate is not in this review shortlist: {unknown}"
         )
 
-    override_ids = {str(value) for value in form.getlist("override_veto")}
-    vetoed = {
-        candidate_id
-        for candidate_id in selected_ids
-        if by_id[candidate_id]["brand_severity"] == "veto"
-    }
-    if not vetoed.issubset(override_ids):
-        raise HTTPException(
-            status_code=400, detail="brand-veto candidates require an explicit override_veto"
-        )
+    # No brand-veto override any more: the brand lens was retired (修修 2026-10-07),
+    # so no candidate carries a veto and the form no longer posts `override_veto`.
     feedback: dict[str, str] = {}
     # Keep the editor's rejection rationale too: it is the most useful signal for
     # tuning future shortlists, and the form intentionally exposes it on all cards.
@@ -1115,7 +1107,6 @@ async def highlight_review_decide(
             highlights_dir,
             selected_ids=selected_ids,
             feedback=feedback,
-            overridden_veto_ids=sorted(vetoed),
             fmt=review_format,
         )
         if review_format == "long":
