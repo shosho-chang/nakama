@@ -75,6 +75,36 @@ _COMPLEMENT_HEADS = frozenset("到著了過得掉住完成起出來去上下開"
 #: （「甚至覺得玩是｜很邪惡的事情」）。`_TAIL_STICKY` 已擋掉的不重複列。
 _LIGHT_VERB_TAIL = frozenset({"是", "有", "去", "給", "做", "用", "來"})
 
+#: 雙字趨向補語：jieba 把它們切成獨立的動詞（v），於是「生｜出來」拿到「右段以謂語
+#: 起手」的 +2，贏過正確的「你自己｜生出來的」。只在左段以動詞收尾時才算補語——
+#: 「他從房間｜出來」的「出來」是主要動詞，不罰（20261007 李海碩 story-S06／punch-S07）。
+_DIRECTIONAL_COMPLEMENTS = frozenset(
+    {
+        "出來",
+        "出去",
+        "起來",
+        "下來",
+        "上來",
+        "進來",
+        "回來",
+        "過來",
+        "下去",
+        "上去",
+        "過去",
+        "回去",
+        "進去",
+        "開來",
+    }
+)
+
+#: 固定搭配：jieba 會切開，但兩行各拿一半就讀不出意思（「寫作說｜實在」
+#: 「沒有｜辦法」「準備｜好三成」——20261007 李海碩盲審）。
+_COLLOCATIONS = ("說實在", "說實話", "老實說", "沒有辦法", "沒辦法", "準備好")
+
+#: 指示詞＋名詞是一個名詞組：「再拿這個｜東西去」把「這個東西」剖半。
+#: 單字代名詞（我／你）已由下面的 r 規則處理。
+_DEMONSTRATIVES = frozenset({"這個", "那個", "這些", "那些", "這種", "那種", "一個"})
+
 
 def _posseg(text: str):
     import jieba.posseg as posseg
@@ -83,6 +113,10 @@ def _posseg(text: str):
 
     ensure_tw_jieba()
     return list(posseg.cut(text, HMM=False))
+
+
+def _is_latin(ch: str) -> bool:
+    return ch.isascii() and ch.isalnum()
 
 
 def _line_break_ok(left: str, right: str) -> bool:
@@ -118,6 +152,24 @@ def break_score(text: str, i: int) -> float:
             score -= 3.0
         elif head.flag.startswith("v") or head.flag in PREDICATE_HEAD_FLAGS:
             score += 2.0
+        if tail is not None:
+            if head.word in _DIRECTIONAL_COMPLEMENTS and tail.flag.startswith("v"):
+                score -= 5.0  # 抵掉謂語起手的 +2 之後仍要輸給完整的切點
+            if tail.word in _DEMONSTRATIVES and head.flag.startswith("n"):
+                score -= 3.0
+            if head.flag == "f" and tail.flag.startswith("n"):
+                score -= 3.0  # 方位詞跟著名詞走（「簡報｜裡面」）
+    for phrase in _COLLOCATIONS:
+        j = text.find(phrase)
+        while j != -1:
+            if j < i < j + len(phrase):
+                score -= 5.0
+            j = text.find(phrase, j + 1)
+    stem, rest = left.rstrip(), right.lstrip()
+    if (stem != left or rest != right) and stem and rest:
+        if _is_latin(stem[-1]) and _is_latin(rest[0]):
+            # 英文多字詞（Paul Graham／social linguistic）在空白處斷開＝專名剖半
+            score -= 5.0
     if tail is not None:
         if tail.flag in _COMPLETE_TAIL_FLAGS:
             score += 1.0
