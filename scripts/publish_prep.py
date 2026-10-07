@@ -211,6 +211,21 @@ def _pick_timeline(project, episode_dir: Path, cut: dict):
     return timeline, target.timeline, target.plan_id
 
 
+def _render_mark_out(timeline) -> int:
+    """render 的最後一格（MarkOut 含該格）：收在 V1 主畫面的最後一格。
+
+    timeline 尾是所有軌最遠的那一格；字幕軌的量化尾巴會比畫面多一兩格，照
+    timeline 尾 render 就是片尾黑底只剩一行字幕（2026-10-07 20260722 李海碩
+    長1／長4 preview 實測最後兩格）。實測 Resolve：MarkIn 0／MarkOut 9 出 10 格
+    （含尾），item 的 GetEnd() 是不含的下一格。
+    """
+    end = timeline.GetEndFrame() - 1
+    items = timeline.GetItemListInTrack("video", 1) or []
+    if not items:
+        return end
+    return min(end, max(item.GetEnd() for item in items) - 1)
+
+
 def _render_master(
     project, timeline, out_dir: Path, name: str, *, burn_subtitles: bool = False
 ) -> Path:
@@ -238,7 +253,7 @@ def _render_master(
         "ExportVideo": True,
         "ExportAudio": True,
         "MarkIn": timeline.GetStartFrame(),
-        "MarkOut": timeline.GetEndFrame(),
+        "MarkOut": _render_mark_out(timeline),
         "TargetDir": str(out_dir),
         "CustomName": name,
         "FormatWidth": w,
