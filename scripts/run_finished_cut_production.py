@@ -55,6 +55,15 @@ def _parser() -> argparse.ArgumentParser:
         type=Path,
         help="--semantic-worker handoff 的交接目錄；預設 <runtime-root>/semantic-handoff",
     )
+    parser.add_argument(
+        "--handoff-wait-sec",
+        type=float,
+        help=(
+            "handoff 最多等 response.json 幾秒（預設跟 Codex 一樣 900）。等待時整集的 command "
+            "lock 一直被握著；逾時會記成 failed，之後 retry-failed-dispatch 就能接回。"
+            "不要從外面砍 process——那會讓 dispatch 卡在 claimed、無法復原"
+        ),
+    )
     commands = parser.add_subparsers(dest="operation", required=True)
     register = commands.add_parser("register-approved-cut")
     register.add_argument("--input", required=True, type=Path)
@@ -95,7 +104,9 @@ def main(
         )
 
         handoff_root = args.handoff_root or (args.runtime_root / "semantic-handoff")
-        factory_options["process_runner"] = AgentHandoffProcessRunner(handoff_root)
+        factory_options["process_runner"] = AgentHandoffProcessRunner(
+            handoff_root, max_wait_sec=args.handoff_wait_sec
+        )
     if args.resolve_config is not None:
         payload = json.loads(args.resolve_config.read_text(encoding="utf-8"))
         configuration = _resolve_configuration(payload)

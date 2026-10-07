@@ -69,12 +69,18 @@ class AgentHandoffProcessRunner:
         announce: Callable[[HandoffPaths], None] | None = None,
         sleep: Callable[[float], None] = time.sleep,
         now: Callable[[], float] = time.monotonic,
+        max_wait_sec: float | None = None,
     ) -> None:
         self._root = Path(handoff_root)
         self._poll_sec = poll_sec
         self._announce = announce or _default_announce
         self._sleep = sleep
         self._now = now
+        # 等待期間這個 process 一直握著整集的 production command lock，別支 cut 都動不了。
+        # 從外面把它砍掉更糟：dispatch 會停在 claimed、沒有 outcome，retry-failed-dispatch
+        # 也救不回來（2026-10-07 李海碩四支長片全卡在這裡）。所以要短等就讓它**自己逾時**——
+        # 逾時會記成 failed（process_timeout），之後 retry-failed-dispatch 拿得到新 request。
+        self._max_wait_sec = max_wait_sec
 
     def run(
         self,
@@ -120,6 +126,8 @@ class AgentHandoffProcessRunner:
         )
         self._announce(paths)
 
+        if self._max_wait_sec is not None:
+            timeout_sec = min(timeout_sec, self._max_wait_sec)
         deadline = self._now() + timeout_sec
         while True:
             if paths.response.is_file():
