@@ -667,7 +667,8 @@ def test_source_ranges_must_fit_inside_the_verified_master_duration(tmp_path: Pa
             _replace_item(_canonical(), "audio-1", media_digest="d" * 64),
             "editorial_master_mismatch",
         ),
-        (_replace_item(_canonical(), "video-1", source_in_frame=3_001), "protected_track_drift"),
+        # 差一格是 Resolve 回報 source 格的捨入誤差（`_reported_source_matches`），兩格才算漂移。
+        (_replace_item(_canonical(), "video-1", source_in_frame=3_002), "protected_track_drift"),
         (_replace_item(_canonical(), "audio-1", end_frame=100_799), "protected_track_drift"),
         (
             replace(
@@ -1628,3 +1629,24 @@ def test_end_frame_tolerates_only_a_subtitle_quantisation_tail(end_frame, items,
         )
         is covered
     )
+
+
+@pytest.mark.parametrize(
+    ("reported", "expected", "matches"),
+    [
+        # 20260722 李海碩 punch-L01：GetSourceEndFrame 回報少一格，放在 timeline 上的是對的。
+        ((61_577, 62_045), (61_577, 62_046), True),
+        ((62_064, 62_601), (62_064, 62_602), True),
+        ((61_999, 62_045), (62_000, 62_046), True),
+        ((100, 200), (100, 200), True),
+        # 差兩格以上就不是回報捨入了：照擋。
+        ((61_577, 62_044), (61_577, 62_046), False),
+        ((61_575, 62_046), (61_577, 62_046), False),
+    ],
+)
+def test_reported_source_frames_tolerate_only_resolve_rounding(reported, expected, matches):
+    from agents.brook.script_video.finished_cut_production._materialization import (
+        _reported_source_matches,
+    )
+
+    assert _reported_source_matches(*reported, *expected) is matches

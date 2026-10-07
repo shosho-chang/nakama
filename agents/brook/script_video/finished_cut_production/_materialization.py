@@ -710,6 +710,19 @@ def _within_one_frame(measured_sec: float, expected_sec: float, fps: float) -> b
     return abs(round(measured_sec * fps) - round(expected_sec * fps)) <= 1
 
 
+def _reported_source_matches(
+    source_in: int, source_out: int, expected_in: int, expected_out: int
+) -> bool:
+    """Resolve 回報的 source 起訖格本身會因浮點捨入差一格；容許這一格，不容許更多。
+
+    20260722 李海碩 punch-L01：要 61577–62046，`GetSourceEndFrame` 回 62045；要
+    62064–62602 回 62601——timeline 上的錄製位置與長度（`GetStart`/`GetEnd`/
+    `GetDuration`）全部逐格正確，錯的只是回報值（frame→秒→frame 的往返取整）。
+    呼叫端已經逐格比對錄製位置與長度；這裡只把**回報的 source 格**放寬一格。
+    """
+    return abs(source_in - expected_in) <= 1 and abs(source_out - expected_out) <= 1
+
+
 def _end_frame_covers_cut(state, *, record_cursor: int, segment_count: int) -> bool:
     """影音必須剛好收在剪點上；只有字幕可以多壓一點尾巴。
 
@@ -1123,8 +1136,12 @@ def _validate_editorial_base(
             if (
                 item.start_frame != record_cursor
                 or item.end_frame != expected_record_end
-                or item.source_in_frame != expected_source_in
-                or item.source_out_frame != expected_source_out
+                or not _reported_source_matches(
+                    item.source_in_frame,
+                    item.source_out_frame,
+                    expected_source_in,
+                    expected_source_out,
+                )
             ):
                 raise MaterializationError(
                     "protected V1 or audio source range differs from ApprovedCut",
