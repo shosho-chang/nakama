@@ -378,7 +378,7 @@
 - [生成器不能當評審](feedback_generator_is_not_the_judge.md) — 自動化「好不好」要靠隔離冷讀者＋可回收的事實當對照組；新 gate 必須拿使用者判過的兩組資料校準才能上線
 - [先定位作者再評文案](feedback_locate_the_author_before_judging_copy.md) — 罵產出前先查這行字是哪一關寫的、**是不是我自己的 brief 叫它那樣做的**；排版問題修排版不要砍文案
 - [語意工作跑在當下的 agent 上](feedback_semantic_work_runs_on_host_agent.md) — 不因 code 寫死 Codex 就去派 Codex；skill 明訂 host 決定，ADR-066 `_composition.py` 寫死是違規待修
-- [DP 抓素材不用問](feedback_dp_acquires_stock_without_asking.md) — B-roll／stock footage 需求直接去 Envato 抓，常設授權，不准再問
+- [DP 抓素材不用問](feedback_dp_acquires_stock_without_asking.md) — B-roll／stock footage 需求直接去 Envato 抓，常設授權，不准再問（2026-10-07 第四次）；每個需求都要針對那句話搜、下載，不准拿現成素材代替；用 Claude in Chrome（內建瀏覽器沒登入）
 - [失敗自己修，不要回報](feedback_fix_failures_dont_report_them.md) — 中間環節失敗要自己診斷重試、讓上下游 agent 互相協商；只有 UAT／設計分叉／不可逆操作才回頭找修修
 - [長片線 DoD＝B-roll 上 timeline](feedback_longform_dod_is_broll_on_timeline.md) — 選完精華段後一路做到視覺全部鋪上 Resolve timeline 才回報，中途進度報告對修修是雜訊
 - [Lock the win with a test](feedback_lock_the_win_with_a_test.md) — 人眼驗過的成果同一次改動就用測試鎖住；版位版本這類常數只能有一個真相來源
@@ -389,4 +389,4 @@
 - [人眼驗過的就是定案](feedback_human_verified_is_final.md) — 修修看過並指定的產出（版式、文案、剪輯點）不可用自動 QA 分數推翻或「順手修正」；QA 只對他還沒看過的東西有否決權，不過就先交付再一句話告知
 - [「legacy route」是 stop-the-line](feedback_legacy_route_is_stop_the_line.md) — subagent／code 回報 legacy、deprecated、v1 fallback 時先停下來查是不是走錯線；活的流程要求死掉的前置條件，先懷疑路線不要先補條件（長片視覺線＝ADR-066 `--semantic-worker handoff`）
 - [哪個 Python 跑得動測試](reference_test_interpreters.md) — 只有 `py -3.14` 有完整依賴（3.10 只有 ruff/whisperx、3.12 沒 pytest）；全 repo `tests/` 要兩小時且會被 markdownify 擋死，所以 gate 是「模組目錄＋每個引用改動 API 的檔案」
-- [Stand-in 素材庫](reference_standin_footage_library.md) — Envato `YuriArcursPeopleimages` 的留鬍亞裔男是**所有** stock footage 的首要人選；先查本地庫 `E:\data\stock footage\asian man`（索引 INDEX.md）再去 Envato；十支是 DCI 4K 不是 16:9、對短片沒用；核臉要防「誤收別人」與「誤退本人」兩個方向
+- [Stand-in 素材庫](reference_standin_footage_library.md) — Envato `YuriArcursPeopleimages` 的留鬍亞裔男是**所有** stock footage 的首要人選；每個需求都上 Envato 搜，本地庫 `E:\data\stock footage\asian man` 只用來省重複下載、不能代替搜尋（2026-10-07 改）；十支是 DCI 4K 不是 16:9、對短片沒用；核臉要防「誤收別人」與「誤退本人」兩個方向
