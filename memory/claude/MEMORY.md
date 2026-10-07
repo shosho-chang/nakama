@@ -7,7 +7,7 @@
 - [reference_vps_llm_config_locations.md](reference_vps_llm_config_locations.md) — **VPS 的 LLM 路由設定分三處**：`.env`（`AUTH_*` 等）、systemd unit `nakama-gateway`（`NAMI_USE_AGENT_SDK=1` 在這）、`data/model_overrides.json`（Bridge override）。只看 `.env` 會誤判 Nami 沒走 SDK
 - [../shared/reference/fleet_community_stack.md](../shared/reference/fleet_community_stack.md) — **自由艦隊社群站是 `fleet.shosho.tw` 不是 `shosho.tw` 主站**（FluentCommunity / FluentCart / FluentCRM 全裝這邊，主站一個都沒有）；SSH `nakama-vps` → `/var/www/fleet.shosho.tw`，DB `db2_fleet_shosho` prefix `zcjf_`，wp-cli 要 `sudo -u u2_fleet_shosho`。LiteSpeed object cache 開著、測試帳號是 user 8/9/10。領域知識在 `agents/sanji/CONTEXT.md`
 - [../shared/decision/fluentcart_single_grant_channel.md](../shared/decision/fluentcart_single_grant_channel.md) — **社群權限只能由 FluentCart product feed 授予；FluentCRM funnel #42 的 `add_to_fluent_community` 是刻意刪掉的，不要加回去**（2026-08-16：雙軌授予導致 18 個退款帳號權限殘留半年）。付費空間 privacy 必須 `private`；部分退款不會自動回收（已知 gap 非 bug）
-- [feedback_hitl_at_cheapest_fork.md](feedback_hitl_at_cheapest_fork.md) — **修修的選擇放在成本最低的分叉點：機器排完就給他挑，不要物化完才問**（2026-08-11 安吉三支長片全做完才嫌主題不吸引人）；排序＝per episode、製作＋packaging＝per cut 線性，這個不對稱就是判斷依據
+- [feedback_hitl_at_cheapest_fork.md](feedback_hitl_at_cheapest_fork.md) — **修修的選擇放在成本最低的分叉點：機器排完就給他挑，不要物化完才問**（2026-08-11 安吉三支長片全做完才嫌主題不吸引人）；排序＝per episode、製作＋packaging＝per cut 線性，這個不對稱就是判斷依據；選段品牌 lens 2026-10-07 整個拿掉、長短片可重疊
 - [feedback_subtitle_house_style.md](feedback_subtitle_house_style.md) — **字幕三鐵則（2026-07-25 驗收裁決）：《》「」必標其他標點省略（推翻 PR #23 全刪）；斷句禁字數硬切走 cue_builder；時間軸必須＝原始錄影（靜音裁切 opt-in）**
 - [feedback_qc_self_adjudication.md](feedback_qc_self_adjudication.md) — **QC/uncertain 清單自己裁決完（重開 WhisperX = 聽音檔、分軌 stem、派 agent 查證），只升級真無法判定的 <5 項**（修修 2026-07-25：「要我拍板的地方實在太多」）
 - [feedback_subscription_first_no_api_spend.md](feedback_subscription_first_no_api_spend.md) — **互動 pipeline 一律 subscription quota（cowork 派 subagent）；付費 API 呼叫必須明確 opt-in flag**（修修 2026-07-25 裁決；首例 run_subtitle_correct --api/--arbitrate）
@@ -378,15 +378,15 @@
 - [生成器不能當評審](feedback_generator_is_not_the_judge.md) — 自動化「好不好」要靠隔離冷讀者＋可回收的事實當對照組；新 gate 必須拿使用者判過的兩組資料校準才能上線
 - [先定位作者再評文案](feedback_locate_the_author_before_judging_copy.md) — 罵產出前先查這行字是哪一關寫的、**是不是我自己的 brief 叫它那樣做的**；排版問題修排版不要砍文案
 - [語意工作跑在當下的 agent 上](feedback_semantic_work_runs_on_host_agent.md) — 不因 code 寫死 Codex 就去派 Codex；skill 明訂 host 決定，ADR-066 `_composition.py` 寫死是違規待修
-- [DP 抓素材不用問](feedback_dp_acquires_stock_without_asking.md) — B-roll／stock footage 需求直接去 Envato 抓，常設授權，不准再問
+- [DP 抓素材不用問](feedback_dp_acquires_stock_without_asking.md) — B-roll／stock footage 需求直接去 Envato 抓，常設授權，不准再問（2026-10-07 第四次）；每個需求都要針對那句話搜、下載，不准拿現成素材代替；用 Claude in Chrome（內建瀏覽器沒登入）
 - [失敗自己修，不要回報](feedback_fix_failures_dont_report_them.md) — 中間環節失敗要自己診斷重試、讓上下游 agent 互相協商；只有 UAT／設計分叉／不可逆操作才回頭找修修
 - [長片線 DoD＝B-roll 上 timeline](feedback_longform_dod_is_broll_on_timeline.md) — 選完精華段後一路做到視覺全部鋪上 Resolve timeline 才回報，中途進度報告對修修是雜訊
 - [Lock the win with a test](feedback_lock_the_win_with_a_test.md) — 人眼驗過的成果同一次改動就用測試鎖住；版位版本這類常數只能有一個真相來源
 - [Visuals carry the claim](feedback_visuals_carry_the_claim.md) — B-roll／字卡要承載那一段的主張，不是圖解句子裡的名詞；Hero 不准提前講結論、第一人稱只能是講者本人
-- [給人讀的文件放 Obsidian](feedback_reader_documents_go_to_obsidian.md) — 勘誤單／剪輯清單／選段報告這類修修要讀要改的，直接寫進 `AgentOutputs/interviews/<訪談日>-<來賓>/`；run_log、manifest、SRT 這類機器輸入才留 episode 資料夾
+- [給人讀的文件放 Obsidian](feedback_reader_documents_go_to_obsidian.md) — 勘誤單／剪輯清單／選段報告這類修修要讀要改的，直接寫進 `AgentOutputs/interviews/<訪談日>-<來賓>/`；run_log、manifest、SRT 這類機器輸入才留 episode 資料夾；**交給他的路徑永遠是 Vault 路徑**（2026-10-05 再犯：把 G: 那份候選表路徑給他）
 - [跑到 gate 才停，不要「先給你看一眼」](feedback_run_to_the_gate_dont_stop_to_show.md) — Editorial Master 之後一路做到 packaging 進 gate 才回報；標題／臉／大字是 gate 欄位不是對話題目；停點只有三個，不要自己發明第四個
 - [渲染在跑就不要跑整套測試](feedback_dont_run_full_suite_during_renders.md) — 會被 Resolve／hyperframes 餓到 6 倍慢（19 分變 2 小時），而 `pytest -q` 沒有中途輸出，「慢」和「死」長得一樣；改分段跑，失敗先歸因不要預設是自己弄壞的
 - [人眼驗過的就是定案](feedback_human_verified_is_final.md) — 修修看過並指定的產出（版式、文案、剪輯點）不可用自動 QA 分數推翻或「順手修正」；QA 只對他還沒看過的東西有否決權，不過就先交付再一句話告知
 - [「legacy route」是 stop-the-line](feedback_legacy_route_is_stop_the_line.md) — subagent／code 回報 legacy、deprecated、v1 fallback 時先停下來查是不是走錯線；活的流程要求死掉的前置條件，先懷疑路線不要先補條件（長片視覺線＝ADR-066 `--semantic-worker handoff`）
 - [哪個 Python 跑得動測試](reference_test_interpreters.md) — 只有 `py -3.14` 有完整依賴（3.10 只有 ruff/whisperx、3.12 沒 pytest）；全 repo `tests/` 要兩小時且會被 markdownify 擋死，所以 gate 是「模組目錄＋每個引用改動 API 的檔案」
-- [Stand-in 素材庫](reference_standin_footage_library.md) — Envato `YuriArcursPeopleimages` 的留鬍亞裔男是**所有** stock footage 的首要人選；先查本地庫 `E:\data\stock footage\asian man`（索引 INDEX.md）再去 Envato；十支是 DCI 4K 不是 16:9、對短片沒用；核臉要防「誤收別人」與「誤退本人」兩個方向
+- [Stand-in 素材庫](reference_standin_footage_library.md) — Envato `YuriArcursPeopleimages` 的留鬍亞裔男是**所有** stock footage 的首要人選；每個需求都上 Envato 搜，本地庫 `E:\data\stock footage\asian man` 只用來省重複下載、不能代替搜尋（2026-10-07 改）；十支是 DCI 4K 不是 16:9、對短片沒用；核臉要防「誤收別人」與「誤退本人」兩個方向

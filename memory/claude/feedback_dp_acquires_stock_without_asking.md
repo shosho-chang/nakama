@@ -9,6 +9,19 @@ metadata:
 這是常設授權，不是每次要重新確認的東西。用登入中的 Browser Computer Use 進 Envato
 取得、授權、下載，然後接回 deterministic script 驗收上軌。
 
+**第四次（2026-10-07，李海碩）**：我在流程規劃裡又排了一個「Envato 下載清單給你核准」的停點。
+修修：「我已經講過相當多次了，找素材你就直接下載就好……我不要再一直同意你下載，你就直接下載。」
+同一句話他還補了一條**新規則**：
+
+> 「之前已經發生過很多情況，你沒有自己去針對需求下載，然後就找已經存在的素材，這是無法允許的。」
+
+- **每一個素材需求都要針對那句話上 Envato 搜、下載**。手邊已經有的素材（本地庫、上一集抓的、
+  別支 cut 用過的）**不能拿來代替搜尋**。下載完回報抓了什麼（檔名、規格），不是事先問。
+- **用 Claude in Chrome（`mcp__claude-in-chrome__*`）**：那個 Chrome 登入著 Envato（帳號「修維」）。
+  Claude Desktop 內建瀏覽器（`mcp__Claude_Browser__*`）**沒有登入**，打開是「Sign in／Choose your plan」。
+  2026-10-07 實測 Chrome 端：品項頁 → Download 旁的 chevron 選 1080P → 一點就「Automatically licensed」
+  並開始下載，檔案落 `E:\` 根目錄（1920×1080 H.264，21 秒約 6 MB）。
+
 **Why**：2026-09-07 蘇予昕長片線，DP 產出 3 個要素材的事件（2 stock video + 1 photo），
 我把「要不要去抓素材」做成 A/B/C 三選一丟回去問。修修回：
 「**B，這件事我講過很多次了。Director、有什麼有關 B-roll、Stock footage 的需求，

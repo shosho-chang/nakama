@@ -24,7 +24,14 @@ podcast 的話是 `AgentOutputs/interviews/<YYYY-MM-DD>-<來賓>/`，編號接�
 - 留 episode 資料夾：`run_log.md`、manifest、receipt、`*.json` 契約檔、SRT——那些是產線證據與
   機器輸入，vault 放它們只會變雜訊
 
+**2026-10-05 再犯、修修再講一次**：「所有需要我閱讀、檢視、下決定的 Markdown file 全部都要放在
+Vault 裡面，不要放在媒體檔。」李海碩那集的選段表 Vault 裡明明已經有 `13-選段報告.md`，但
+`run_cut_shortlist.py` 同時在 `highlights/` 另存 `選段候選表.md`，我把**媒體資料夾那份的路徑**交給他。
+規則早就寫了，壞在程式碼還在雙寫、我轉述時抓錯那份。PR #1337 改成只寫 Vault。
+
 **How to apply**：
+- **交給修修的路徑永遠是 Vault 路徑**。回覆裡出現 `G:\footages\...\*.md` 要他去讀或決定，就是違規——
+  要嘛那份本來就該在 Vault（先搬、修 code），要嘛它是機器檔不該叫他讀。
 - 產出這類文件時**直接寫進 vault**，不要先寫 episode 資料夾再搬。
 - 兩邊都留會漂——他改 vault 那份、我讀 episode 那份，然後對不起來。以 vault 為 canonical。
 - 新增或改動 agent 寫入 vault 的路徑，同一個 PR 要更新 `docs/VAULT-LAYOUT.md`（CLAUDE.md 明訂，
