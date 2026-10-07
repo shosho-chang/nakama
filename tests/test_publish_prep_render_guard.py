@@ -21,7 +21,19 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from publish_prep import _render_master  # noqa: E402
 
 
+class FakeItem:
+    def __init__(self, end: int):
+        self.end = end
+
+    def GetEnd(self):
+        return self.end
+
+
 class FakeTimeline:
+    def __init__(self, v1_ends: tuple[int, ...] = (240,), end: int = 240):
+        self.v1_ends = v1_ends
+        self.end = end
+
     def GetSetting(self, key):
         return {"timelineResolutionWidth": "1920", "timelineResolutionHeight": "1080"}[key]
 
@@ -29,7 +41,11 @@ class FakeTimeline:
         return 0
 
     def GetEndFrame(self):
-        return 240
+        return self.end
+
+    def GetItemListInTrack(self, kind, index):
+        assert (kind, index) == ("video", 1)
+        return [FakeItem(e) for e in self.v1_ends]
 
 
 class FakeProject:
@@ -149,3 +165,64 @@ def test_missing_status_api_falls_back_to_mtime(tmp_path):
     bad = FakeProject(out_dir / "SL7.mp4", job_status=None, writes_file=False)
     with pytest.raises(SystemExit):
         _render_master(bad, FakeTimeline(), out_dir, "SL7")
+
+
+def test_render_always_exports_video_and_audio(tmp_path):
+    """2026-10-02 20260722 李海碩：Deliver 頁停在「Audio Only」preset 時，
+    沒明設的 render 會繼承成純音訊，Editorial Master seal 擋下。"""
+    out_dir = tmp_path / "exports"
+    out_dir.mkdir()
+    proj = FakeProject(
+        out_dir / "master.mp4", job_status={"JobStatus": "Complete"}, writes_file=True
+    )
+
+    _render_master(proj, FakeTimeline(), out_dir, "master")
+
+    assert proj.settings["ExportVideo"] is True
+    assert proj.settings["ExportAudio"] is True
+
+
+def test_render_stops_at_the_last_main_picture_frame(tmp_path):
+    """2026-10-07 20260722 李海碩 長1／長4：字幕軌比畫面多兩格，照 timeline 尾
+    render 會在片尾留兩格黑底字幕。MarkOut 含尾，item 的 GetEnd() 不含。"""
+    out_dir = tmp_path / "exports"
+    out_dir.mkdir()
+    proj = FakeProject(
+        out_dir / "punch-L02.mp4", job_status={"JobStatus": "Complete"}, writes_file=True
+    )
+
+    _render_master(
+        proj,
+        FakeTimeline(v1_ends=(9000, 14624), end=14626),
+        out_dir,
+        "punch-L02",
+        end_at_main_picture=True,
+    )
+
+    assert proj.settings["MarkIn"] == 0
+    assert proj.settings["MarkOut"] == 14623
+
+
+def test_render_never_reaches_past_the_timeline_end(tmp_path):
+    out_dir = tmp_path / "exports"
+    out_dir.mkdir()
+    proj = FakeProject(out_dir / "S1.mp4", job_status={"JobStatus": "Complete"}, writes_file=True)
+
+    _render_master(
+        proj, FakeTimeline(v1_ends=(1294,), end=1294), out_dir, "S1", end_at_main_picture=True
+    )
+
+    assert proj.settings["MarkOut"] == 1293
+
+
+def test_editorial_master_seal_keeps_the_whole_timeline(tmp_path):
+    """seal 的 timeline 是修修自己剪的：V2 片尾卡、蓋過黑底的配樂可能比 V1 長。"""
+    out_dir = tmp_path / "exports"
+    out_dir.mkdir()
+    proj = FakeProject(
+        out_dir / "master.mp4", job_status={"JobStatus": "Complete"}, writes_file=True
+    )
+
+    _render_master(proj, FakeTimeline(v1_ends=(9000,), end=9300), out_dir, "master")
+
+    assert proj.settings["MarkOut"] == 9300
