@@ -16,6 +16,7 @@ from run_short_director import (
     DEFAULT_CFG,
     FIT,
     TILT_SCALE,
+    _append_exact,
     _configure_timeline,
     _find_media_item_by_path,
     _pan,
@@ -46,9 +47,13 @@ class _FakeMediaItem:
 
 
 class _FakeTimelineItem:
-    def __init__(self, source_start: int, source_end: int):
+    def __init__(self, source_start: int, source_end: int, *, duration: int | None = None):
         self.source_start = source_start
         self.source_end = source_end
+        self.duration = source_end - source_start if duration is None else duration
+
+    def GetDuration(self):
+        return self.duration
 
     def GetSourceStartFrame(self):
         return self.source_start
@@ -111,6 +116,59 @@ def test_appended_source_range_rejects_resolve_clamp_to_last_frame():
 
     with pytest.raises(SystemExit, match="Resolve clamped source range"):
         _validate_appended_source_range(clamped, 22_032, 22_341)
+
+
+def test_appended_source_range_accepts_resolve_rounded_report():
+    """2026-10-07 李海碩 punch-L01：要 62064–62602，Resolve 回報 62064–62601，
+    但 GetDuration 是 538——放上去的是對的，錯的是回報。"""
+    rounded = _FakeTimelineItem(62_064, 62_601, duration=538)
+
+    _validate_appended_source_range(rounded, 62_064, 62_602)
+
+
+def test_appended_source_range_rejects_a_frame_too_long():
+    """照回報值「補一格」的結果：長度 539，多放了一格，要擋。"""
+    overshoot = _FakeTimelineItem(62_064, 62_603, duration=539)
+
+    with pytest.raises(SystemExit, match="Resolve clamped source range"):
+        _validate_appended_source_range(overshoot, 62_064, 62_602)
+
+
+def test_appended_source_range_rejects_reported_start_far_off():
+    moved = _FakeTimelineItem(61_990, 62_036, duration=46)
+
+    with pytest.raises(SystemExit, match="Resolve clamped source range"):
+        _validate_appended_source_range(moved, 62_000, 62_046)
+
+
+class _AppendPool:
+    def __init__(self, item):
+        self.item = item
+        self.requests = []
+
+    def AppendToTimeline(self, specs):
+        self.requests.append((specs[0]["startFrame"], specs[0]["endFrame"]))
+        return [self.item]
+
+
+def test_append_exact_places_once_and_trusts_duration():
+    mp = _AppendPool(_FakeTimelineItem(61_577, 62_045, duration=469))
+
+    item = _append_exact(
+        mp, None, {"startFrame": 61_577, "endFrame": 62_046}, 61_577, 62_046, label="t"
+    )
+
+    assert item is mp.item
+    assert mp.requests == [(61_577, 62_046)]
+
+
+def test_append_exact_stops_on_failed_append():
+    class _FailPool:
+        def AppendToTimeline(self, specs):
+            return [None]
+
+    with pytest.raises(SystemExit, match="上軌失敗"):
+        _append_exact(_FailPool(), None, {"startFrame": 0, "endFrame": 10}, 0, 10, label="t")
 
 
 def _words(*runs):

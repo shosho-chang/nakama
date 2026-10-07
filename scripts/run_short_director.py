@@ -154,22 +154,58 @@ def _validate_media_source_range(clip, f0: int, f1: int, *, project_fps: float) 
         )
 
 
+#: Resolve 回報的 source 起訖格本身會因浮點捨入差一格（見下方說明），只容許這麼多。
+SOURCE_FRAME_REPORT_TOLERANCE = 1
+
+
 def _validate_appended_source_range(item, f0: int, f1: int) -> None:
-    """Catch Resolve silently clamping an out-of-range request to a freeze frame."""
+    """Catch Resolve silently clamping an out-of-range request to a freeze frame.
+
+    **以 timeline 上的長度（``GetDuration``）為準，不以回報的 source 起訖格為準。**
+    Resolve 把 frame 換成秒再換回來時會捨入：要 62064–62602，``GetSourceEndFrame``
+    回 62601，但 ``GetDuration`` 是 538——放上去的其實是對的，錯的是回報
+    （62602/30 在浮點裡是 2068.73…3 往下取整）。2026-10-07 李海碩 punch-L01 實測；
+    當時照回報值「補償」一格，反而把片段多放了一格。所以：長度必須完全相等
+    （真的被 clamp 成凍結畫面時長度會塌），回報的起訖格只容許差一格。
+    """
     actual_start = item.GetSourceStartFrame()
     actual_end = item.GetSourceEndFrame()
     expected_span = f1 - f0
-    actual_span = (
-        int(actual_end) - int(actual_start)
-        if actual_start is not None and actual_end is not None
-        else -1
+    get_duration = getattr(item, "GetDuration", None)
+    if callable(get_duration):
+        actual_span = int(get_duration())
+    elif actual_start is not None and actual_end is not None:
+        actual_span = int(actual_end) - int(actual_start)
+    else:
+        actual_span = -1
+    reported_ok = (
+        actual_start is not None
+        and actual_end is not None
+        and abs(int(actual_start) - f0) <= SOURCE_FRAME_REPORT_TOLERANCE
+        and abs(int(actual_end) - f1) <= SOURCE_FRAME_REPORT_TOLERANCE
     )
-    if actual_span != expected_span:
+    if actual_span != expected_span or not reported_ok:
         raise SystemExit(
             "Resolve clamped source range: "
             f"requested {f0}-{f1} ({expected_span} frames), "
             f"placed {actual_start}-{actual_end} ({actual_span} frames)"
         )
+
+
+def _append_exact(mp, tl, spec: dict, f0: int, f1: int, *, label: str, track: int = 1):
+    """Append one video item and verify Resolve placed ``[f0, f1)``."""
+    items = mp.AppendToTimeline([spec])
+    # ⚠️ AppendToTimeline 失敗會回傳 [None]——truthy！`if not items` 判不到
+    # （2026-08-04 util-L4 事故：Resolve 忙碌時全片 append 靜默失敗，
+    # script 照報 102 shots、timeline 是空的）
+    if not items or (isinstance(items, list) and items[0] is None):
+        raise SystemExit(f"{label}: 上軌失敗（AppendToTimeline 回 {items!r}）{f0}-{f1}")
+    if isinstance(items, list):
+        item = items[0]
+    else:
+        item = (tl.GetItemListInTrack("video", track) or [])[-1]
+    _validate_appended_source_range(item, f0, f1)
+    return item
 
 
 def _configure_timeline(timeline, *, fmt: str, fps: float) -> None:
@@ -720,19 +756,8 @@ def direct(
         spec = {"mediaPoolItem": clip, "mediaType": 1, "startFrame": f0, "endFrame": f1}
         if extra:
             spec.update(extra)
-        items = mp.AppendToTimeline([spec])
-        # ⚠️ AppendToTimeline 失敗會回傳 [None]——truthy！`if not items` 判不到
-        # （2026-08-04 util-L4 事故：Resolve 忙碌時全片 append 靜默失敗，
-        # script 照報 102 shots、timeline 是空的）
-        if not items or (isinstance(items, list) and items[0] is None):
-            raise SystemExit(f"{label}: 上軌失敗（AppendToTimeline 回 {items!r}）{f0}-{f1}")
-        if isinstance(items, list):
-            item = items[0]
-        else:
-            track = (extra or {}).get("trackIndex", 1)
-            item = (tl.GetItemListInTrack("video", track) or [])[-1]
-        _validate_appended_source_range(item, f0, f1)
-        return item
+        track = (extra or {}).get("trackIndex", 1)
+        return _append_exact(mp, tl, spec, f0, f1, label=label, track=track)
 
     tl_start = tl.GetStartFrame()
     # video：逐 shot 上軌 + 逐 item 設 transform（fit 縮放後 ZoomX/Pan）
