@@ -227,7 +227,13 @@ def _render_mark_out(timeline) -> int:
 
 
 def _render_master(
-    project, timeline, out_dir: Path, name: str, *, burn_subtitles: bool = False
+    project,
+    timeline,
+    out_dir: Path,
+    name: str,
+    *,
+    burn_subtitles: bool = False,
+    end_at_main_picture: bool = False,
 ) -> Path:
     """Resolve render queue 出全解析 H.264 mp4（timeline 原生解析度）。
 
@@ -253,7 +259,9 @@ def _render_master(
         "ExportVideo": True,
         "ExportAudio": True,
         "MarkIn": timeline.GetStartFrame(),
-        "MarkOut": _render_mark_out(timeline),
+        # 精華 cut 收在 V1 主畫面；Editorial Master seal 不收——那是修修自己剪的
+        # timeline，V2 片尾卡或蓋過黑底的配樂可能本來就比 V1 長。
+        "MarkOut": _render_mark_out(timeline) if end_at_main_picture else timeline.GetEndFrame(),
         "TargetDir": str(out_dir),
         "CustomName": name,
         "FormatWidth": w,
@@ -399,18 +407,20 @@ def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
         # 長片發布預設：DRT 攜帶 Shosho YT 樣式，Resolve 明確燒進成品。
         n = _set_subtitle_tracks(resolve, timeline, True)
         logger.info("%s: 長片——啟用 %d 條 Shosho YT 字幕軌並 Burn In", cid, n)
-        final = _render_master(project, timeline, out_dir, cid, burn_subtitles=True)
+        final = _render_master(
+            project, timeline, out_dir, cid, burn_subtitles=True, end_at_main_picture=True
+        )
     elif _covers_full_transcript(episode_dir, cid):
         # mode B（ADR-067）：字卡逐子句承接**全部**逐字稿，字卡就是文字層。
         # 再燒一層字幕＝同一句話在畫面上出現兩次。sidecar SRT 仍然出，
         # 那是 YouTube CC（無障礙與 SEO），跟燒進畫面是兩回事。
-        final = _render_master(project, timeline, out_dir, cid)
+        final = _render_master(project, timeline, out_dir, cid, end_at_main_picture=True)
         logger.info("%s: 短片 mode B——字卡即文字層，不燒字幕", cid)
     else:
         srt = _latest_tight_srt(episode_dir, cid)
         if srt is None:
             raise SystemExit(f"{cid} 沒有 tight SRT——沒有字卡承接就必須燒字幕（Q4b）")
-        clean = _render_master(project, timeline, out_dir, f"{cid}_clean")
+        clean = _render_master(project, timeline, out_dir, f"{cid}_clean", end_at_main_picture=True)
         final = out_dir / f"{cid}.mp4"
         import shutil
 

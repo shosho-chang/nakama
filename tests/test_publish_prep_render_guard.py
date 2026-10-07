@@ -191,7 +191,13 @@ def test_render_stops_at_the_last_main_picture_frame(tmp_path):
         out_dir / "punch-L02.mp4", job_status={"JobStatus": "Complete"}, writes_file=True
     )
 
-    _render_master(proj, FakeTimeline(v1_ends=(9000, 14624), end=14626), out_dir, "punch-L02")
+    _render_master(
+        proj,
+        FakeTimeline(v1_ends=(9000, 14624), end=14626),
+        out_dir,
+        "punch-L02",
+        end_at_main_picture=True,
+    )
 
     assert proj.settings["MarkIn"] == 0
     assert proj.settings["MarkOut"] == 14623
@@ -202,6 +208,21 @@ def test_render_never_reaches_past_the_timeline_end(tmp_path):
     out_dir.mkdir()
     proj = FakeProject(out_dir / "S1.mp4", job_status={"JobStatus": "Complete"}, writes_file=True)
 
-    _render_master(proj, FakeTimeline(v1_ends=(1294,), end=1294), out_dir, "S1")
+    _render_master(
+        proj, FakeTimeline(v1_ends=(1294,), end=1294), out_dir, "S1", end_at_main_picture=True
+    )
 
     assert proj.settings["MarkOut"] == 1293
+
+
+def test_editorial_master_seal_keeps_the_whole_timeline(tmp_path):
+    """seal 的 timeline 是修修自己剪的：V2 片尾卡、蓋過黑底的配樂可能比 V1 長。"""
+    out_dir = tmp_path / "exports"
+    out_dir.mkdir()
+    proj = FakeProject(
+        out_dir / "master.mp4", job_status={"JobStatus": "Complete"}, writes_file=True
+    )
+
+    _render_master(proj, FakeTimeline(v1_ends=(9000,), end=9300), out_dir, "master")
+
+    assert proj.settings["MarkOut"] == 9300
