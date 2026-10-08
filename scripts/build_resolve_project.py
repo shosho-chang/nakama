@@ -383,6 +383,37 @@ def apply_project_settings(project, info: dict) -> None:
     project.SetSetting("timelineInputResMismatchBehavior", "centerCrop")
 
 
+def timeline_from_template(project, media_pool, template: Path, name: str, fill):
+    """從 DRT 模板匯入 timeline、改名、填入主影片；填不進去就丟掉重匯一次。
+
+    ⛔ 2026-10-08（20261001 洪瀞）實測：建置當下匯入的模板 timeline 可能**整條卡死**——
+    之後對它 append 幾次都回 `[None]`，等幾分鐘也一樣；同一個 project、同一個模板、
+    同一支主影片，**重新匯入一條**就立刻放得上去（5/5）。所以對同一條 timeline 加大
+    重試沒用（8/05 安吉集、9/03 蘇予昕都當成時序問題放寬重試），要換一條新的。
+
+    模板匯入失敗回 None，讓呼叫端退回無樣式建立（既有行為）；重匯後仍失敗就 fail loud。
+    """
+    for attempt in (1, 2):
+        timeline = media_pool.ImportTimelineFromFile(str(template), {})
+        if timeline is None:
+            if attempt == 1:
+                return None
+            raise SystemExit(f"模板重新匯入失敗（{template}）")
+        if not timeline.SetName(name):
+            logger.warning(f"timeline 改名失敗，保留模板名「{timeline.GetName()}」")
+        project.SetCurrentTimeline(timeline)
+        try:
+            fill(timeline)
+            return timeline
+        except SystemExit as exc:
+            if attempt == 2:
+                raise
+            logger.warning(f"模板 timeline 卡住（{exc}）——刪掉重新匯入一次")
+            if not media_pool.DeleteTimelines([timeline]):
+                raise SystemExit("卡住的模板 timeline 刪除失敗，無法重新匯入") from exc
+    raise AssertionError("unreachable")
+
+
 def build_project(
     episode_dir: Path,
     *,
@@ -515,12 +546,8 @@ def build_project(
     timeline = None
     if template.exists():
         # 從樣式模板長出 timeline（帶已套 preset 的字幕軌），再改名、填入主影片
-        timeline = mp.ImportTimelineFromFile(str(template), {})
+        timeline = timeline_from_template(project, mp, template, project_name, _fill_av)
         if timeline is not None:
-            if not timeline.SetName(project_name):
-                logger.warning(f"timeline 改名失敗，保留模板名「{timeline.GetName()}」")
-            project.SetCurrentTimeline(timeline)
-            _fill_av(timeline)
             logger.info(f"timeline 由樣式模板建立: {template.name}")
         else:
             logger.warning(f"模板匯入失敗（{template}），退回無樣式建立")
