@@ -458,6 +458,138 @@ def test_sample_host_skips_speaker_validation(monkeypatch, tmp_path):
 
 
 # ---------------------------------------------------------------------------
+# guest_cutout.sample — ADR-063 Memo Dual-Audit 集數（無 subs/words.json）
+# ---------------------------------------------------------------------------
+
+
+def _memo_episode(tmp_path, monkeypatch, speakers: list[int], *, tamper: bool = False):
+    """無 words.json 的 Memo 集數：ledger 綁 hash 的 evidence（每 token 1s）+ 假 mic 判定。
+
+    speaker 判定只 fake 能量那一層（assign_word_speakers 依 token 位置回 speakers），
+    token 載入與 validate_cam_speaker 走真實程式碼。回傳 assign 收到的 words 供斷言。
+    """
+    import shared.speaker_assign as sa
+    import shared.speaker_timing as speaker_timing
+
+    evidence = {
+        "contract": "memo-recognition-evidence-v1",
+        "normalized_audio_sha256": "audio-sha",
+        "tokens": [
+            {"text": f"句{i}", "start_ms": i * 1000, "end_ms": i * 1000 + 900}
+            for i in range(len(speakers))
+        ],
+    }
+    evidence_raw = json.dumps(evidence, ensure_ascii=False).encode()
+    evidence_path = tmp_path / "subtitle-v2" / "memo-recognition.v1.json"
+    evidence_path.parent.mkdir()
+    evidence_path.write_bytes(evidence_raw)
+    ledger_path = tmp_path / "subtitle-release" / "memo-dual-audit-v1" / "release-ledger.json"
+    ledger_path.parent.mkdir(parents=True)
+    ledger_path.write_text(
+        json.dumps(
+            {
+                "normalized_audio_sha256": "audio-sha",
+                "inputs": {
+                    "memo_recognition_evidence": {
+                        "path": "subtitle-v2/memo-recognition.v1.json",
+                        "sha256": "0" * 64 if tamper else hashlib.sha256(evidence_raw).hexdigest(),
+                        "size_bytes": len(evidence_raw),
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    selection = SimpleNamespace(
+        mode="memo-dual-audit-v1",
+        handoff=SimpleNamespace(release_ledger_path=ledger_path),
+    )
+    monkeypatch.setattr(
+        speaker_timing.Stage5SubtitleRequest, "open", lambda self, episode_dir: selection
+    )
+
+    seen_words: list[list[dict]] = []
+
+    def _fake_assign(words, envelopes):
+        seen_words.append(words)
+        return speakers[: len(words)]
+
+    monkeypatch.setattr(sa, "detect_mic_tracks", lambda audio_dir: [])
+    monkeypatch.setattr(sa, "load_envelopes", lambda mics, reference=None: None)
+    monkeypatch.setattr(sa, "assign_word_speakers", _fake_assign)
+    assert not (tmp_path / "subs" / "words.json").exists()
+    return seen_words
+
+
+def _tracking_funnel(monkeypatch) -> dict:
+    import shared.thumbnail_funnel as tf
+
+    seen: dict = {}
+
+    async def _fake_run(video_path, out_dir, *, mode, window):
+        seen.update(mode=mode, window=window)
+        return []
+
+    monkeypatch.setattr(tf, "run", _fake_run)
+    return seen
+
+
+def test_load_word_speakers_memo_mode_uses_ledger_verified_tokens(monkeypatch, tmp_path):
+    seen_words = _memo_episode(tmp_path, monkeypatch, speakers=[1, 1, 0])
+
+    words, spk = guest_cutout.load_word_speakers(tmp_path)
+
+    assert words == [
+        {"word": "句0", "start": 0.0, "end": 0.9},
+        {"word": "句1", "start": 1.0, "end": 1.9},
+        {"word": "句2", "start": 2.0, "end": 2.9},
+    ]
+    assert seen_words == [words]
+    assert spk == [1, 1, 0]
+
+
+def test_sample_memo_mode_happy_path_validates_then_funnels(monkeypatch, tmp_path):
+    _memo_episode(tmp_path, monkeypatch, speakers=[1] * 8 + [0] * 2)  # 80% guest
+    seen = _tracking_funnel(monkeypatch)
+
+    result = asyncio.run(
+        guest_cutout.sample(
+            tmp_path, tmp_path / "cam.mp4", (0.0, 10.0), expected_speaker=1, out_dir=tmp_path
+        )
+    )
+
+    assert result == []
+    assert seen == {"mode": "expression_sample", "window": (0.0, 10.0)}
+
+
+def test_sample_memo_mode_cam_mismatch_still_fails_loud(monkeypatch, tmp_path):
+    """紅線 2：Memo 集數照樣跑 validate_cam_speaker（0.6 門檻），不許繞過。"""
+    _memo_episode(tmp_path, monkeypatch, speakers=[1] * 5 + [0] * 5)  # 50% < 0.6
+    seen = _tracking_funnel(monkeypatch)
+
+    with pytest.raises(ValueError, match="director.json"):
+        asyncio.run(
+            guest_cutout.sample(
+                tmp_path, tmp_path / "cam.mp4", (0.0, 10.0), expected_speaker=1, out_dir=tmp_path
+            )
+        )
+    assert seen == {}
+
+
+def test_sample_memo_mode_tampered_evidence_aborts_before_funnel(monkeypatch, tmp_path):
+    seen_words = _memo_episode(tmp_path, monkeypatch, speakers=[1] * 10, tamper=True)
+    seen = _tracking_funnel(monkeypatch)
+
+    with pytest.raises(SystemExit, match="bytes"):
+        asyncio.run(
+            guest_cutout.sample(
+                tmp_path, tmp_path / "cam.mp4", (0.0, 10.0), expected_speaker=1, out_dir=tmp_path
+            )
+        )
+    assert seen_words == [] and seen == {}
+
+
+# ---------------------------------------------------------------------------
 # render_still — visual_recipe routing fail loud
 # ---------------------------------------------------------------------------
 
