@@ -1370,6 +1370,81 @@ def test_compose_rejects_book_cover_outside_episode(client, vault_with_all_cutou
     assert "episode" in response.text
 
 
+def test_compose_saves_book_cover_position_and_size(client, vault_with_all_cutouts):
+    """書封跟來賓、大字一樣能在 gate 上拖、滾輪縮放（修修 2026-10-11）。
+
+    以前書封只能置中，大小也只有桌機端改得到。
+    """
+    response = _compose(
+        client,
+        package_rank="3",
+        title_rank="3",
+        host_cutout="Attachments/cutouts/podcast/20260723-xieboran/host_v6_laughing.png",
+        guest_cutout="Attachments/cutouts/podcast/20260723-xieboran/guest_v6_laughing.png",
+        book_cover="Attachments/packaging/20260723-xieboran/book-cover.png",
+        book_cover_height_pct="121.5",
+        book_cover_x_pct="58.25",
+        book_cover_y_pct="46.5",
+    )
+    assert response.status_code == 303
+    path = (
+        vault_with_all_cutouts / "Attachments" / "packaging" / "20260723-xieboran" / "packages.json"
+    )
+    recipe = json.loads(path.read_text(encoding="utf-8"))["cuts"][0]["packages"][2]["render_recipe"]
+    assert recipe["book_cover_height_pct"] == 121.5
+    assert (recipe["book_cover_x_pct"], recipe["book_cover_y_pct"]) == (58.25, 46.5)
+
+
+def test_book_cover_is_a_selectable_layer_like_guest_and_text(client, vault_with_all_cutouts):
+    """書封在人物與字塊底下，要先在圖層列選它才拖得到——跟其他圖層同一套操作。"""
+    board = client.get("/bridge/packaging/20260723-xieboran?package_rank=3").text
+
+    assert 'class="st-book st-adjustable" data-role="book"' in board
+    button = board[board.index('data-layer-select="book"') :]
+    assert "disabled" not in button[: button.index(">")]  # 這個 package 有書封
+    assert 'name="book_cover_x_pct" value="50.0"' in board
+    assert 'name="book_cover_y_pct" value="50.0"' in board
+    assert '.pkg-stage-inner[data-selected-role="book"] .st-book' in board
+
+
+def test_book_cover_layer_is_disabled_without_a_book(client, vault_with_all_cutouts):
+    board = client.get("/bridge/packaging/20260723-xieboran?package_rank=1").text
+    button = board[board.index('data-layer-select="book"') :]
+
+    assert "disabled" in button[: button.index(">")]
+
+
+def test_book_cover_position_defaults_match_the_composition():
+    """預設中心點 50/50 必須跟 composition 一致，否則預覽與成品從第一秒就不同位置。"""
+    req = RenderRequestV1(
+        title_rank=1,
+        host_cutout="Attachments/cutouts/podcast/ep/host_1_serious.png",
+        guest_cutout="Attachments/cutouts/podcast/ep/guest_1_serious.png",
+        big_text=["一行"],
+        book_cover="Attachments/packaging/ep/book.png",
+        requested_at=datetime.now(timezone.utc),
+    )
+    assert (req.book_cover_x_pct, req.book_cover_y_pct) == (50.0, 50.0)
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        RenderRequestV1.model_validate({**req.model_dump(mode="json"), "book_cover_x_pct": 101})
+
+    root = Path(__file__).resolve().parents[1]
+    composition = (root / "video/compositions/thumbnail_full/index.html").read_text(
+        encoding="utf-8"
+    )
+    # composition：flex 置中再做 relative 位移，50/50 時位移為 0——舊配方重出圖逐像素不變
+    assert "left: calc(var(--book-x, 50%) - 50%); top: calc(var(--book-y, 50%) - 50%);" in (
+        composition
+    )
+    assert '"book_cover_x_pct":      { "type": "number", "default": 50 }' in composition
+    board = (root / "thousand_sunny/templates/bridge/packaging_board.html").read_text(
+        encoding="utf-8"
+    )
+    assert "left: var(--book-x, 50%); top: var(--book-y, 50%);" in board
+
+
 def test_compose_updates_only_the_selected_package_recipe(client, vault_with_all_cutouts):
     response = _compose(
         client,
@@ -2395,7 +2470,8 @@ def test_stage_material_width_limits_outrank_the_global_img_reset():
     """
     css = _board_css()
     assert "body.sho .st-person { max-width: none; }" in css
-    assert "body.sho .st-book { max-width: 50%; }" in css
+    # 書封的大小 2026-10-11 交給修修用滾輪決定，composition 拿掉了上限，預覽也不能有
+    assert "body.sho .st-book { max-width: none; }" in css
 
 
 def test_the_preview_does_not_cap_people_where_the_composition_does_not():

@@ -65,7 +65,25 @@ def test_render_request_preserves_author_book_layer(tmp_path):
         "book_cover_opacity": 0.42,
         "book_cover_brightness": 0.38,
         "book_cover_height_pct": 100.0,
+        # 舊配方沒有位置 → 置中，跟改版前的 flex 置中同一個位置
+        "book_cover_x_pct": 50.0,
+        "book_cover_y_pct": 50.0,
     }
+
+
+def test_render_request_passes_book_cover_position_from_the_gate(tmp_path):
+    """修修在 gate 上拖過、縮放過的書封，桌機端要照抄（2026-10-11）。"""
+    recipe = {
+        "book_cover": "Attachments/packaging/episode/book-cover.png",
+        "book_cover_height_pct": 118.5,
+        "book_cover_x_pct": 62.25,
+        "book_cover_y_pct": 41.0,
+    }
+
+    variables, _ = render_request._book_cover_layer(recipe, tmp_path)
+
+    assert variables["book_cover_height_pct"] == 118.5
+    assert (variables["book_cover_x_pct"], variables["book_cover_y_pct"]) == (62.25, 41.0)
 
 
 def test_render_request_builds_lossless_n2_reaction_spec(tmp_path):
@@ -850,6 +868,196 @@ def test_attach_full_program_n1_does_not_require_long_highlight_sidecar(monkeypa
         == 3
     )
     assert not (vault / "Attachments/packaging/episode/composition_receipts").exists()
+
+
+def test_attach_full_program_recipe_keeps_book_cover_and_marks_delivered_png(monkeypatch, tmp_path):
+    """N1 作者訪談：attach 寫進 render_recipe 的配方要能無損重出那張有書封的圖。
+
+    2026-10-09 洪瀞集 full：recipe 少了 book_cover*，render_watcher 一接手就重出成
+    沒有書封的版本；recipe 也沒有 rendered_png，watcher 把 attach 寫的 requested_at
+    當成新配方，三張交付的 PNG 全被重解幾何蓋掉。
+    """
+    vault = tmp_path / "vault"
+    monkeypatch.setenv("VAULT_PATH", str(vault))
+    working = tmp_path / "packaging"
+    (working / "_work").mkdir(parents=True)
+    data = _midstate_packages_file()
+    data["cuts"][0]["cut_id"] = "full"
+    (working / "packages.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    host = vault / "Attachments/cutouts/podcast/episode/host_v1_serious.png"
+    guest = vault / "Attachments/cutouts/podcast/episode/guest_v1_serious.png"
+    book = vault / "Attachments/packaging/episode/book-cover-BCB928.png"
+    for path in (host, guest, book):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(b"png")
+    specs = []
+    for n in (1, 2, 3):
+        png = working / f"pkg-full-{n}.png"
+        png.write_bytes(b"png")
+        render_spec = working / "_work" / f"spec-full-{n}.json"
+        render_spec.write_text(
+            json.dumps(
+                {
+                    "composition": "thumbnail_full",
+                    "variables": {
+                        "title_lines": ["真的讀進去", "才是你的"],
+                        "highlight_text": "讀進去",
+                        "guest_credit": "《思考城堡》作者 洪瀞",
+                        "host_height_pct": 113.13,
+                        "host_x_pct": -20.51,
+                        "host_y_pct": -7.04,
+                        "guest_height_pct": 113.23,
+                        "guest_x_pct": -21.08,
+                        "guest_y_pct": -0.12,
+                        "title_max_width": 580,
+                        "text_center_pct": 48.5,
+                        "text_top_pct": 44,
+                        "book_cover_opacity": 0.38,
+                        "book_cover_brightness": 0.52,
+                        "book_cover_height_pct": 94,
+                        "book_cover_x_pct": 55.5,
+                        "book_cover_y_pct": 48,
+                    },
+                    "images": {
+                        "host_cutout_data_url": str(host),
+                        "guest_cutout_data_url": str(guest),
+                        "book_cover_data_url": str(book),
+                    },
+                },
+                ensure_ascii=False,
+            ),
+            encoding="utf-8",
+        )
+        specs.append(
+            {
+                "title_rank": n,
+                "thumbnail": str(png),
+                "render_spec": str(render_spec),
+                "thumb_archetype_id": "T-V7",
+                "joint_pairing_id": "author-book-n1",
+                "host_cutout": str(host),
+                "guest_cutout": str(guest),
+            }
+        )
+
+    out = attach_packages.attach(working, "full", "episode", specs)
+
+    from shared.schemas.packaging import parse_packages
+
+    for path in (working / "packages.json", out):
+        package = parse_packages(path).cuts[0].packages[0]
+        recipe = package.render_recipe
+        assert recipe.book_cover == "Attachments/packaging/episode/book-cover-BCB928.png"
+        assert (recipe.book_cover_opacity, recipe.book_cover_brightness) == (0.38, 0.52)
+        assert recipe.book_cover_height_pct == 94
+        assert (recipe.book_cover_x_pct, recipe.book_cover_y_pct) == (55.5, 48)
+        assert (recipe.text_center_pct, recipe.text_top_pct) == (48.5, 44)
+        # 這份配方就是這張圖的配方：已出圖，watcher 不該再接手
+        assert recipe.rendered_png == package.thumbnail_png
+        assert recipe.geometry is not None and not recipe.geometry_manual
+
+    # 往回接得上 render_request：gate 重出圖時書封還在
+    raw = json.loads(out.read_text(encoding="utf-8"))["cuts"][0]["packages"][0]
+    variables, images = render_request._book_cover_layer(raw["render_recipe"], vault)
+    assert images == {"book_cover_data_url": str(book)}
+    assert variables["book_cover_height_pct"] == 94.0
+
+
+def test_render_request_rerenders_textonly_after_highlight_padding_converges(monkeypatch, tmp_path):
+    """text-only 對照圖必須跟成品用同一組橘框 padding。
+
+    舊流程：text-only 在遮蔽迴圈裡出（padding 還是 CSS 保底），之後橘框收斂只重出
+    成品。_work/ 裡留下的那組事後重驗會把橘框位移算成遮蔽（洪瀞集 r1：3015／2115）。
+    """
+    vault = tmp_path / "vault"
+    ep_vault = vault / "Attachments" / "packaging" / "episode"
+    cut_dir = vault / "Attachments" / "cutouts" / "podcast" / "episode"
+    working = tmp_path / "episode" / "packaging"
+    for path in (ep_vault, cut_dir, working):
+        path.mkdir(parents=True)
+    (cut_dir / "cutouts_manifest.json").write_text("{}", encoding="utf-8")
+    packages = {
+        "episode": "Episode",
+        "cuts": [
+            {
+                "cut_id": "full",
+                "titles": [{"rank": 1, "text": "title"}],
+                "packages": [
+                    {
+                        "title_rank": 1,
+                        "thumbnail_png": "Attachments/packaging/episode/pkg-full-1.png",
+                        "render_recipe": {
+                            "composition": "thumbnail_full",
+                            "title_rank": 1,
+                            "host_cutout": "Attachments/cutouts/podcast/episode/host_v1_serious.png",
+                            "guest_cutout": "Attachments/cutouts/podcast/episode/guest_v1_serious.png",
+                            "big_text": ["真的讀進去", "才是你的"],
+                            "highlight_text": "讀進去",
+                            "guest_credit": "作者",
+                            "requested_at": "2026-10-09T10:00:00+00:00",
+                            "rendered_png": None,
+                        },
+                    }
+                ],
+            }
+        ],
+    }
+    for path in (ep_vault / "packages.json", working / "packages.json"):
+        path.write_text(json.dumps(packages, ensure_ascii=False), encoding="utf-8")
+
+    monkeypatch.setattr(render_request, "get_vault_path", lambda: vault)
+    monkeypatch.setattr(render_request, "_resolve_baseline", lambda *a: "baseline.png")
+    monkeypatch.setattr(
+        render_request,
+        "_landmarks",
+        lambda *a: {"chin": 600, "head_top": 100, "cutout_h": 1000},
+    )
+    monkeypatch.setattr(
+        render_request,
+        "_solve",
+        lambda *a: {"height_pct": 100.0, "x_pct": 0.0, "y_pct": 0.0, "eye": 307.0, "crown": 30.0},
+    )
+    gaps = iter([(20, 14, 14, 14), (14, 14, 14, 14)])
+    monkeypatch.setattr(render_request, "_measure_highlight", lambda png: next(gaps))
+
+    renders: list[tuple[str, list]] = []
+
+    def fake_run(command):
+        joined = " ".join(command)
+        if "render_still.py" in joined:
+            spec = json.loads(Path(command[command.index("--spec") + 1]).read_text("utf-8"))
+            dest = Path(command[command.index("--out") + 1])
+            dest.write_bytes(b"png")
+            renders.append((dest.name, spec["variables"]["highlight_pad"]))
+            return SimpleNamespace(returncode=0, stderr="", stdout="")
+        if "occlusion_check.py" in joined:
+            return SimpleNamespace(returncode=0, stderr="", stdout="左遮 0px² 右遮 0px²\nPASS\n")
+        return SimpleNamespace(returncode=0, stderr="", stdout="QA PASS\n")
+
+    monkeypatch.setattr(render_request, "_run", fake_run)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "render_request.py",
+            "--episode-slug",
+            "episode",
+            "--packaging-dir",
+            str(working),
+            "--cut-id",
+            "full",
+            "--package-rank",
+            "1",
+        ],
+    )
+
+    assert render_request.main() == 0
+
+    final_full = [pad for name, pad in renders if name == "pkg-full-1.png"][-1]
+    final_textonly = [pad for name, pad in renders if name == "_textonly-req-full.png"][-1]
+    assert final_full, "橘框收斂應該改過 padding（否則這個測試沒測到東西）"
+    assert final_textonly == final_full
 
 
 @pytest.mark.parametrize("failure", ["missing-sidecar", "png-tamper", "asset-path-drift"])

@@ -347,6 +347,11 @@
           <input type="hidden" name="book_cover_opacity" value="{{ req.book_cover_opacity if req else 0.42 }}">
           <input type="hidden" name="book_cover_brightness" value="{{ req.book_cover_brightness if req else 0.38 }}">
           <input type="hidden" name="book_cover_height_pct" value="{{ req.book_cover_height_pct if req else 100 }}">
+          {#-- 書封中心點。跟字塊一樣由拖曳維護（修修 2026-10-11：「書的區塊大小和位置
+               也能讓我自己調整，就像來賓和大字一樣」）；大小就是上面那格 height_pct，
+               由滾輪維護。書封沒有自動對齊，所以不需要「改回自動」那一行。 --#}
+          <input type="hidden" name="book_cover_x_pct" value="{{ req.book_cover_x_pct if req else 50 }}">
+          <input type="hidden" name="book_cover_y_pct" value="{{ req.book_cover_y_pct if req else 50 }}">
 
           {# 排版預覽（修修 2026-08-15：「有辦法讓我直接在 web UI 去做調整嗎？讓我
              可以縮放跟移動位置？」）。舞台是 1280×720 的等比縮小版，CSS 跟
@@ -358,7 +363,7 @@
               <div class="pkg-stage-inner"
                    data-selected-role="{{ 'center' if req and req.composition == 'thumbnail_reaction' else 'host' }}">
                 <img class="st-bg" src="/bridge/packaging/still-asset/bg" alt="">
-                <img class="st-book" alt="書封背景"
+                <img class="st-book st-adjustable" data-role="book" alt="書封背景" draggable="false"
                      {% if req and req.book_cover %}src="/bridge/packaging/{{ episode_slug }}/recipe-asset/{{ req.book_cover.split('/')[-1] }}"{% endif %}>
                 <div class="st-center st-adjustable" data-role="center"
                      {% if not req or req.composition != 'thumbnail_reaction' %}hidden{% endif %}>
@@ -380,6 +385,7 @@
                   <div class="st-title"></div>
                   <div class="st-credit"></div>
                 </div>
+                <span class="st-book-frame" aria-hidden="true"></span>
                 <img class="st-logo" src="/bridge/packaging/still-asset/logo" alt="">
                 <span class="st-grid-line st-grid-line--v1" aria-hidden="true"></span>
                 <span class="st-grid-line st-grid-line--v2" aria-hidden="true"></span>
@@ -407,6 +413,14 @@
                    2026-09-14 想點它卻點不到。加進來之後三者同一套操作。 #}
                 <button class="sho-btn sho-btn--ghost pkg-layer-button" type="button"
                         data-layer-select="text" aria-pressed="false">大字</button>
+                {#-- 書封在人物與字塊底下，直接點點不到——跟其他圖層一樣先按這裡選它，
+                     選中後上層的 pointer-events 會關掉，拖曳與滾輪就落在書封上。
+                     沒有書封（或 N2 中央圖卡）時停用，可用狀態由 syncStageBook 維護。 --#}
+                <button class="sho-btn sho-btn--ghost pkg-layer-button" type="button"
+                        data-layer-select="book" aria-pressed="false"
+                        {% if not (req and req.book_cover) or req.composition == 'thumbnail_reaction' %}disabled{% endif %}>
+                  書封
+                </button>
                 {#-- 原本這裡有「− 縮小／＋ 放大」。修修 2026-09-15：「縮小、放大那兩格
                      也拿掉，因為我都是用滑鼠滾輪。」滾輪對三種圖層（人物／中央圖／大字）
                      本來就都生效，按鈕只是同一件事的第二個入口。 --#}
@@ -951,13 +965,16 @@
     --glow: rgba(243,116,37,0.5); --glow-soft: rgba(243,116,37,0.3); --fade: 9%;
   }
   .st-bg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
+  /* 中心點定位，跟 composition 的 #book-cover 同一套寫法（--book-x/--book-y）。 */
   .st-book {
-    position: absolute; left: 50%; top: 50%; z-index: 2; width: auto; max-width: 50%;
-    height: var(--book-h, 94%); object-fit: contain; transform: translate(-50%, -50%);
+    position: absolute; left: var(--book-x, 50%); top: var(--book-y, 50%); z-index: 2;
+    width: auto; height: var(--book-h, 94%); object-fit: contain;
+    transform: translate(-50%, -50%); cursor: grab;
     opacity: var(--book-opacity, 0.38);
     filter: brightness(var(--book-brightness, 0.52)) saturate(0.78);
   }
   .st-book:not([src]) { display: none; }
+  .st-book:active { cursor: grabbing; }
   .st-center {
     position: absolute; left: var(--center-x, 50%); top: var(--center-y, 50%);
     width: var(--center-w, 53%); height: var(--center-h, 455px); z-index: 4;
@@ -996,13 +1013,15 @@
   /* tokens.css 的 `.sho img { max-width: 100% }` 是 (0,1,1)，蓋過寫在這裡的
      (0,1,0)——所以舞台素材的寬度上限一直不是我們宣告的那個值。加 body.sho 前綴
      才贏得過。人物：兩個 composition 都沒有寬度上限，這裡也不能有。
-     書封：composition 明訂 max-width 50%，被蓋成 100% 等於預覽可以放到成品兩倍寬。 */
+     書封：composition 2026-10-11 拿掉了 max-width（大小交給修修用滾輪決定），
+     這裡也不能有，否則預覽放大到撞牆就凍住、成品卻繼續變大。 */
   body.sho .st-person { max-width: none; }
-  body.sho .st-book { max-width: 50%; }
+  body.sho .st-book { max-width: none; }
   .st-adjustable { pointer-events: none; }
   .pkg-stage-inner[data-selected-role="center"] .st-center,
   .pkg-stage-inner[data-selected-role="host"] .st-host,
   .pkg-stage-inner[data-selected-role="text"] .st-text,
+  .pkg-stage-inner[data-selected-role="book"] .st-book,
   .pkg-stage-inner[data-selected-role="guest"] .st-guest { pointer-events: auto; }
   /* 選中的元件要在舞台上看得出來（修修 2026-08-29：「當我選擇某一個元件要調整的
      時候，它必須要有顯示，我才知道我現在已經選擇了那個元件」）。在此之前只有上面
@@ -1015,6 +1034,16 @@
     outline: 2px solid var(--sho-accent);
     outline-offset: 2px;
   }
+  /* 書封不能直接畫 outline：它自己的 opacity／brightness 會把框一起壓暗，而且四邊
+     大半被人物蓋住——選了等於沒選。改用一個疊在最上層、跟書封同幾何的框，
+     寬度靠 --book-ar（書封原圖長寬比，syncStageBook 載入後寫入）。 */
+  .st-book-frame {
+    display: none; position: absolute; z-index: 8; pointer-events: none;
+    left: var(--book-x, 50%); top: var(--book-y, 50%); height: var(--book-h, 94%);
+    aspect-ratio: var(--book-ar, 0.7); transform: translate(-50%, -50%);
+    outline: 2px solid var(--sho-accent); outline-offset: 2px;
+  }
+  .pkg-stage-inner[data-selected-role="book"] .st-book-frame { display: block; }
   .st-host {
     left: var(--host-x, -2%); bottom: var(--host-y, 0%); height: var(--host-h, 108%);
     object-position: bottom left;
@@ -1184,6 +1213,8 @@
     setValue("book_cover_opacity", recipe?.book_cover_opacity ?? 0.42);
     setValue("book_cover_brightness", recipe?.book_cover_brightness ?? 0.38);
     setValue("book_cover_height_pct", recipe?.book_cover_height_pct ?? 100);
+    setValue("book_cover_x_pct", recipe?.book_cover_x_pct ?? BOOK_DEFAULT.x);
+    setValue("book_cover_y_pct", recipe?.book_cover_y_pct ?? BOOK_DEFAULT.y);
     setValue("composition", recipe?.composition ?? "thumbnail_full");
     setValue("center_visual_asset", recipe?.center_visual_asset ?? "");
     syncCenterPool(form);
@@ -1278,6 +1309,22 @@
   }
 
   const TEXT_DEFAULT = { x: 50, y: 44 };
+  // 書封：中心點 50/50（置中）＋高度 100%，跟 schema 預設一致。
+  const BOOK_DEFAULT = { x: 50, y: 50, height: 100 };
+
+  function bookInputs(stage) {
+    const form = stage.closest("form");
+    return {
+      x: form.querySelector('[name="book_cover_x_pct"]'),
+      y: form.querySelector('[name="book_cover_y_pct"]'),
+      height: form.querySelector('[name="book_cover_height_pct"]'),
+    };
+  }
+
+  function bookNum(field, key) {
+    const parsed = parseFloat(field?.value);
+    return Number.isFinite(parsed) ? parsed : BOOK_DEFAULT[key];
+  }
 
   function textInputs(stage) {
     const form = stage.closest("form");
@@ -1428,8 +1475,14 @@
     const form = stage.closest("form");
     const path = form.querySelector('[name="book_cover"]')?.value || "";
     const image = stage.querySelector(".st-book");
+    const composition = form.querySelector('[name="composition"]')?.value || "thumbnail_full";
+    const bookButton = form.querySelector('[data-layer-select="book"]');
+    if (bookButton) bookButton.disabled = !path || composition === "thumbnail_reaction";
     if (!path) {
       image.removeAttribute("src");
+      if (stage.querySelector(".pkg-stage-inner").dataset.selectedRole === "book") {
+        selectStageLayer(stage, "host");
+      }
       return;
     }
     const file = path.split("/").pop();
@@ -1444,6 +1497,15 @@
     inner.style.setProperty("--book-opacity", val("book_cover_opacity", 0.42));
     inner.style.setProperty("--book-brightness", val("book_cover_brightness", 0.38));
     inner.style.setProperty("--book-h", val("book_cover_height_pct", 100) + "%");
+    inner.style.setProperty("--book-x", val("book_cover_x_pct", BOOK_DEFAULT.x) + "%");
+    inner.style.setProperty("--book-y", val("book_cover_y_pct", BOOK_DEFAULT.y) + "%");
+    const setRatio = () => {
+      if (image.naturalWidth && image.naturalHeight) {
+        inner.style.setProperty("--book-ar", image.naturalWidth / image.naturalHeight);
+      }
+    };
+    if (image.complete) setRatio();
+    else image.addEventListener("load", setRatio, { once: true });
   }
 
   function syncStageComposition(stage, centerUrl = null) {
@@ -1459,8 +1521,11 @@
     if (reaction && centerUrl) center.querySelector(".st-center-image").src = centerUrl;
     const centerButton = form.querySelector('[data-layer-select="center"]');
     if (centerButton) centerButton.disabled = !reaction;
+    const bookButton = form.querySelector('[data-layer-select="book"]');
+    if (bookButton && reaction) bookButton.disabled = true;
     const inner = stage.querySelector(".pkg-stage-inner");
     if (!reaction && inner.dataset.selectedRole === "center") selectStageLayer(stage, "host");
+    if (reaction && inner.dataset.selectedRole === "book") selectStageLayer(stage, "center");
   }
 
   function selectStageLayer(stage, role) {
@@ -1502,6 +1567,14 @@
       e.preventDefault();
       return;
     }
+    if (role === "book") {
+      const book = bookInputs(stage);
+      drag = { stage, role, book, x0: e.clientX, y0: e.clientY,
+               sx: bookNum(book.x, "x"), sy: bookNum(book.y, "y"), s: stage.clientWidth / 1280 };
+      layer.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
     if (role === "text") {
       const text = textInputs(stage);
       const num = (k) => (text[k].value === "" ? TEXT_DEFAULT[k] : parseFloat(text[k].value));
@@ -1534,6 +1607,13 @@
       markManual(drag.stage);
       return;
     }
+    if (drag.role === "book") {
+      // 書封跟字塊一樣是中心點定位：x/y 直接加，不反號、不翻轉。
+      drag.book.x.value = Math.min(100, Math.max(0, drag.sx + dx)).toFixed(2);
+      drag.book.y.value = Math.min(100, Math.max(0, drag.sy + dy)).toFixed(2);
+      syncStageBook(drag.stage);
+      return;
+    }
     if (drag.role === "text") {
       // 字塊是 translate(-50%,-50%) 的中心點定位：x/y 都直接加，沒有 guest 那種
       // 貼右緣的反號，也沒有人物「y 從底部算」的翻轉。
@@ -1564,6 +1644,14 @@
         field.value = Math.min(1000, Math.max(300, current + (e.deltaY < 0 ? 8 : -8)));
         fitStageTitle(stage);
       }
+      return;
+    }
+    if (person.dataset.role === "book") {
+      // 範圍 20–150% 跟 schema（RenderRequestV1.book_cover_height_pct）一致
+      const book = bookInputs(stage);
+      const current = bookNum(book.height, "height");
+      book.height.value = Math.min(150, Math.max(20, current + (e.deltaY < 0 ? 1 : -1))).toFixed(2);
+      syncStageBook(stage);
       return;
     }
     if (person.dataset.role === "center") {
