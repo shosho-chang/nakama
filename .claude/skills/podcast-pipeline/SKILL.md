@@ -356,8 +356,14 @@ Stage 5 consumers 預設發現並驗證
 > 於是一度把 `subtitle-template.drt` 標成壞的。事後用同一支檔案、同一個模板、同一種 append
 > 寫法重測 **3/3 全過**——兩邊的差別只是中間隔了時間。**單次觀察不能當結論，要重現。**
 >
-> 真的又卡住：先確認 Resolve 沒有 modal dialog、媒體池的 clip 有正確 duration/resolution，
-> 再加大 `append_checked` 的 retries/delay。不要急著把模板或素材判死。
+> **2026-10-08（20261001 洪瀞）重現後更正**：「隔了時間就過」靠的其實是**換了一條新匯入的
+> timeline**。建置當下的模板 timeline 可能整條卡死——幾分鐘後對它 append 仍回 `[None]`；
+> 同一 project 重新匯入模板，立刻放得上去（5/5）。build 現在會自動丟掉卡死的那條、重匯一次
+> （`timeline_from_template`），**不要再加大 `append_checked` 的 retries/delay**。
+>
+> 重匯後仍卡住：先確認 Resolve 沒有 modal dialog、媒體池的 clip 有正確 duration/resolution，
+> 再用 API 對同一 project 另開一條空白 timeline append 主影片，分辨是 clip 還是 timeline 的問題。
+> 不要急著把模板或素材判死。
 
 ```powershell
 $env:RESOLVE_SUBTITLE_TEMPLATE = "E:\nakama\data\resolve\subtitle-template.drt"
