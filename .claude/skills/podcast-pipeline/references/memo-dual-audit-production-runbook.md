@@ -128,6 +128,36 @@ Never run `repair-memo-srt` on a clean SRT—it fails closed when there is no ze
 branch must pass `@repairLineageArgs` to every downstream prepare/accept command. The clean branch passes an
 empty array; never provide only one lineage flag.
 
+### 1.2 Conditional final-cue overrun repair
+
+Memo closes the last segments of a file on a fixed 2-second grid, so the **final** cue can end a fraction of a
+second after the normalized audio. `prepare-recognition` then fails closed with
+`Memo recognition token exceeds normalized audio duration` (20260903 程世嘉: cue 2544 ended 902 ms late).
+Do not hand-edit the SRT and do not re-run Memo—the same audio yields the same grid. Run the tail repair,
+which clamps only the final cue's end to the exact normalized duration and binds the normalized audio hash
+and duration into contract `memo-srt-tail-overrun-repair-v1`:
+
+```powershell
+$memoRepaired = Join-Path $episode "subtitle-v2\memo-recognition.tail-repaired.srt"
+$repairReceipt = Join-Path $episode "subtitle-v2\memo-recognition.tail-repair.v1.json"
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_subtitle_v2_evidence.py repair-memo-srt-tail `
+  --source-export $memoRaw `
+  --normalized-audio (Join-Path $episode "normalized.wav") `
+  --normalized-manifest (Join-Path $episode "normalized-handoff.v1.json") `
+  --output $memoRepaired `
+  --receipt-output $repairReceipt
+
+$memo = $memoRepaired
+$repairLineageArgs = @(
+  "--raw-source-export", $memoRaw,
+  "--repair-receipt", $repairReceipt
+)
+```
+
+It fails closed (catastrophic, stop) when the final cue starts beyond the audio, when the overrun exceeds
+2000 ms, or when any earlier cue is malformed. It does not combine with the zero-duration repair; an SRT that
+needs both is new evidence—stop and diagnose.
+
 ### 2. Prepare recognition evidence
 
 ```powershell
