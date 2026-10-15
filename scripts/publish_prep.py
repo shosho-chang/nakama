@@ -211,8 +211,29 @@ def _pick_timeline(project, episode_dir: Path, cut: dict):
     return timeline, target.timeline, target.plan_id
 
 
+def _render_mark_out(timeline) -> int:
+    """render 的最後一格（MarkOut 含該格）：收在 V1 主畫面的最後一格。
+
+    timeline 尾是所有軌最遠的那一格；字幕軌的量化尾巴會比畫面多一兩格，照
+    timeline 尾 render 就是片尾黑底只剩一行字幕（2026-10-07 20260722 李海碩
+    長1／長4 preview 實測最後兩格）。實測 Resolve：MarkIn 0／MarkOut 9 出 10 格
+    （含尾），item 的 GetEnd() 是不含的下一格。
+    """
+    end = timeline.GetEndFrame() - 1
+    items = timeline.GetItemListInTrack("video", 1) or []
+    if not items:
+        return end
+    return min(end, max(item.GetEnd() for item in items) - 1)
+
+
 def _render_master(
-    project, timeline, out_dir: Path, name: str, *, burn_subtitles: bool = False
+    project,
+    timeline,
+    out_dir: Path,
+    name: str,
+    *,
+    burn_subtitles: bool = False,
+    end_at_main_picture: bool = False,
 ) -> Path:
     """Resolve render queue 出全解析 H.264 mp4（timeline 原生解析度）。
 
@@ -230,9 +251,17 @@ def _render_master(
     w = int(timeline.GetSetting("timelineResolutionWidth"))
     h = int(timeline.GetSetting("timelineResolutionHeight"))
     project.SetCurrentRenderFormatAndCodec("mp4", "H264")
+    # ExportVideo／ExportAudio 必須明設：沒設就繼承 Deliver 頁當下的 preset。
+    # 2026-10-02 20260722 李海碩：修修剛在 Deliver 頁用「Audio Only」匯 podcast mp3，
+    # master.mp4 跟著變成純音訊，Editorial Master seal 擋在「must contain both
+    # video and audio streams」。
     settings = {
+        "ExportVideo": True,
+        "ExportAudio": True,
         "MarkIn": timeline.GetStartFrame(),
-        "MarkOut": timeline.GetEndFrame(),
+        # 精華 cut 收在 V1 主畫面；Editorial Master seal 不收——那是修修自己剪的
+        # timeline，V2 片尾卡或蓋過黑底的配樂可能本來就比 V1 長。
+        "MarkOut": _render_mark_out(timeline) if end_at_main_picture else timeline.GetEndFrame(),
         "TargetDir": str(out_dir),
         "CustomName": name,
         "FormatWidth": w,
@@ -378,18 +407,20 @@ def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
         # 長片發布預設：DRT 攜帶 Shosho YT 樣式，Resolve 明確燒進成品。
         n = _set_subtitle_tracks(resolve, timeline, True)
         logger.info("%s: 長片——啟用 %d 條 Shosho YT 字幕軌並 Burn In", cid, n)
-        final = _render_master(project, timeline, out_dir, cid, burn_subtitles=True)
+        final = _render_master(
+            project, timeline, out_dir, cid, burn_subtitles=True, end_at_main_picture=True
+        )
     elif _covers_full_transcript(episode_dir, cid):
         # mode B（ADR-067）：字卡逐子句承接**全部**逐字稿，字卡就是文字層。
         # 再燒一層字幕＝同一句話在畫面上出現兩次。sidecar SRT 仍然出，
         # 那是 YouTube CC（無障礙與 SEO），跟燒進畫面是兩回事。
-        final = _render_master(project, timeline, out_dir, cid)
+        final = _render_master(project, timeline, out_dir, cid, end_at_main_picture=True)
         logger.info("%s: 短片 mode B——字卡即文字層，不燒字幕", cid)
     else:
         srt = _latest_tight_srt(episode_dir, cid)
         if srt is None:
             raise SystemExit(f"{cid} 沒有 tight SRT——沒有字卡承接就必須燒字幕（Q4b）")
-        clean = _render_master(project, timeline, out_dir, f"{cid}_clean")
+        clean = _render_master(project, timeline, out_dir, f"{cid}_clean", end_at_main_picture=True)
         final = out_dir / f"{cid}.mp4"
         import shutil
 
