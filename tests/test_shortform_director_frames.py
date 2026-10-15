@@ -13,7 +13,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "scripts"))
 
-from run_shortform_director import _piece_source_frames  # noqa: E402
+from run_shortform_director import _piece_source_frames, _placed_span  # noqa: E402
 
 from shared.editorial_conform import project_master_range  # noqa: E402
 
@@ -50,3 +50,18 @@ def test_in_point_still_follows_the_camera_timeline():
     f0, f1 = _piece_source_frames(piece, FPS)
     assert f0 == int(round(94.2333 * FPS))
     assert f1 - f0 == int(round(30.95 * FPS)) - int(round(30.25 * FPS))
+
+
+class _Item:
+    def __init__(self, duration=None):
+        if duration is not None:
+            self.GetDuration = lambda: duration
+
+
+def test_placed_span_trusts_get_duration_over_rounded_source_report():
+    # 要 62064–62602：回報終點捨入成 62601，但實際放上去的是 538 格——不能補償
+    assert _placed_span(_Item(duration=538), 62064, 62601) == 538
+
+
+def test_placed_span_falls_back_to_reported_frames_without_get_duration():
+    assert _placed_span(_Item(), 62064, 62601) == 537

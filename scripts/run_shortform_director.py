@@ -192,6 +192,18 @@ def _piece_source_frames(piece: dict, fps: float) -> tuple[int, int]:
     return f0, f0 + span
 
 
+def _placed_span(item, a0: int, a1: int) -> int:
+    """片段放上 timeline 的實際長度——**以 ``GetDuration`` 為準**。
+
+    回報的 source 終點會因浮點捨入少一格（要 62064–62602 回 62601，``GetDuration``
+    是 538），照回報值補償會把片段多放一格、後面每一段都跟著位移（同
+    ``run_short_director._validate_appended_source_range``，2026-10-07 李海碩實測）。
+    沒有 ``GetDuration`` 才退回用回報的起訖格相減。
+    """
+    get_duration = getattr(item, "GetDuration", None)
+    return int(get_duration()) if callable(get_duration) else a1 - a0
+
+
 def _split_long_cues(srt_path: Path) -> tuple[int, list[str]]:
     """mode B：把排不進字卡版面的 cue，在語法接縫處拆開後原地重寫 SRT。
 
@@ -624,7 +636,8 @@ def direct(
                 _validate_appended_source_range(item, req0, req1)
                 return item
             a0, a1 = int(a0), int(a1)
-            if a1 - a0 == want_span:
+            placed_span = _placed_span(item, a0, a1)
+            if placed_span == want_span:
                 return item
             if not tl.DeleteClips([item]):
                 _validate_appended_source_range(item, req0, req1)  # 交給既有的硬失敗
@@ -637,13 +650,13 @@ def direct(
                 want_span,
                 a0,
                 a1,
-                a1 - a0,
+                placed_span,
             )
             if a0 != req0:  # in-point 被退格：整段往後平移，長度不變
                 req0 += req0 - a0
                 req1 = req0 + want_span
             else:  # 起點對、長度不對：補足差額
-                req1 += want_span - (a1 - a0)
+                req1 += want_span - placed_span
         raise SystemExit(
             f"{label}: 來源區間 {f0}-{f1} 連續 {IN_POINT_MAX_NUDGE} 次都放不出正確長度"
             "——素材的解碼邊界異常，先轉檔成 all-I 或換來源"
