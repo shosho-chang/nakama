@@ -667,7 +667,8 @@ def test_source_ranges_must_fit_inside_the_verified_master_duration(tmp_path: Pa
             _replace_item(_canonical(), "audio-1", media_digest="d" * 64),
             "editorial_master_mismatch",
         ),
-        (_replace_item(_canonical(), "video-1", source_in_frame=3_001), "protected_track_drift"),
+        # 差一格是 Resolve 回報 source 格的捨入誤差（`_reported_source_matches`），兩格才算漂移。
+        (_replace_item(_canonical(), "video-1", source_in_frame=3_002), "protected_track_drift"),
         (_replace_item(_canonical(), "audio-1", end_frame=100_799), "protected_track_drift"),
         (
             replace(
@@ -1589,3 +1590,63 @@ def test_a_revision_without_an_intact_base_chain_is_refused(
         fixture.coordinator(stored).prepare(_REVISION_ID)
 
     assert error.value.reason_code == "authority_chain_mismatch", label
+
+
+def _end_state(*, end_frame: int, items: tuple[tuple[str, int], ...]):
+    from types import SimpleNamespace
+
+    return SimpleNamespace(
+        start_frame=0,
+        end_frame=end_frame,
+        items=tuple(SimpleNamespace(track_type=kind, end_frame=end) for kind, end in items),
+    )
+
+
+@pytest.mark.parametrize(
+    ("end_frame", "items", "segments", "covered"),
+    [
+        # 20260722 李海碩 punch-L02：19 段截斷少 1.66 格，字幕收在 14626、影音 14624。
+        (14_626, (("video", 14_624), ("audio", 14_624), ("subtitle", 14_626)), 19, True),
+        # 原本就放行的一格字幕尾巴，照舊放行。
+        (16_541, (("video", 16_540), ("audio", 16_540), ("subtitle", 16_541)), 1, True),
+        # 字幕尾巴超過段數能解釋的量化誤差：擋。
+        (14_630, (("video", 14_624), ("audio", 14_624), ("subtitle", 14_630)), 3, False),
+        # 影音本身超出剪點兩格（不是字幕）：擋。
+        (14_626, (("video", 14_626), ("audio", 14_624), ("subtitle", 14_626)), 19, False),
+        # 影音覆蓋不足（timeline 比剪點短）：擋。
+        (14_620, (("video", 14_620), ("audio", 14_620), ("subtitle", 14_620)), 19, False),
+    ],
+)
+def test_end_frame_tolerates_only_a_subtitle_quantisation_tail(end_frame, items, segments, covered):
+    from agents.brook.script_video.finished_cut_production._materialization import (
+        _end_frame_covers_cut,
+    )
+
+    state = _end_state(end_frame=end_frame, items=items)
+    assert (
+        _end_frame_covers_cut(
+            state, record_cursor=14_624 if end_frame != 16_541 else 16_540, segment_count=segments
+        )
+        is covered
+    )
+
+
+@pytest.mark.parametrize(
+    ("reported", "expected", "matches"),
+    [
+        # 20260722 李海碩 punch-L01：GetSourceEndFrame 回報少一格，放在 timeline 上的是對的。
+        ((61_577, 62_045), (61_577, 62_046), True),
+        ((62_064, 62_601), (62_064, 62_602), True),
+        ((61_999, 62_045), (62_000, 62_046), True),
+        ((100, 200), (100, 200), True),
+        # 差兩格以上就不是回報捨入了：照擋。
+        ((61_577, 62_044), (61_577, 62_046), False),
+        ((61_575, 62_046), (61_577, 62_046), False),
+    ],
+)
+def test_reported_source_frames_tolerate_only_resolve_rounding(reported, expected, matches):
+    from agents.brook.script_video.finished_cut_production._materialization import (
+        _reported_source_matches,
+    )
+
+    assert _reported_source_matches(*reported, *expected) is matches

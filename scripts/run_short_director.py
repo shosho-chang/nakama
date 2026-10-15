@@ -21,7 +21,6 @@ camera 或 normalized audio 重建對白。舊的 speaker/camera 規劃純函數
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import logging
 import os
@@ -47,8 +46,10 @@ from run_short_tighten import (  # noqa: E402
     import_srt_tidy,
 )
 
-from agents.brook.script_video.subtitle_handoff import Stage5SubtitleRequest  # noqa: E402
 from shared.resolve_append import append_checked, delete_checked  # noqa: E402
+from shared.speaker_timing import (  # noqa: E402
+    load_speaker_timing_tokens as _speaker_timing_tokens,
+)
 
 logger = logging.getLogger("short_director")
 
@@ -154,22 +155,58 @@ def _validate_media_source_range(clip, f0: int, f1: int, *, project_fps: float) 
         )
 
 
+#: Resolve 回報的 source 起訖格本身會因浮點捨入差一格（見下方說明），只容許這麼多。
+SOURCE_FRAME_REPORT_TOLERANCE = 1
+
+
 def _validate_appended_source_range(item, f0: int, f1: int) -> None:
-    """Catch Resolve silently clamping an out-of-range request to a freeze frame."""
+    """Catch Resolve silently clamping an out-of-range request to a freeze frame.
+
+    **以 timeline 上的長度（``GetDuration``）為準，不以回報的 source 起訖格為準。**
+    Resolve 把 frame 換成秒再換回來時會捨入：要 62064–62602，``GetSourceEndFrame``
+    回 62601，但 ``GetDuration`` 是 538——放上去的其實是對的，錯的是回報
+    （62602/30 在浮點裡是 2068.73…3 往下取整）。2026-10-07 李海碩 punch-L01 實測；
+    當時照回報值「補償」一格，反而把片段多放了一格。所以：長度必須完全相等
+    （真的被 clamp 成凍結畫面時長度會塌），回報的起訖格只容許差一格。
+    """
     actual_start = item.GetSourceStartFrame()
     actual_end = item.GetSourceEndFrame()
     expected_span = f1 - f0
-    actual_span = (
-        int(actual_end) - int(actual_start)
-        if actual_start is not None and actual_end is not None
-        else -1
+    get_duration = getattr(item, "GetDuration", None)
+    if callable(get_duration):
+        actual_span = int(get_duration())
+    elif actual_start is not None and actual_end is not None:
+        actual_span = int(actual_end) - int(actual_start)
+    else:
+        actual_span = -1
+    reported_ok = (
+        actual_start is not None
+        and actual_end is not None
+        and abs(int(actual_start) - f0) <= SOURCE_FRAME_REPORT_TOLERANCE
+        and abs(int(actual_end) - f1) <= SOURCE_FRAME_REPORT_TOLERANCE
     )
-    if actual_span != expected_span:
+    if actual_span != expected_span or not reported_ok:
         raise SystemExit(
             "Resolve clamped source range: "
             f"requested {f0}-{f1} ({expected_span} frames), "
             f"placed {actual_start}-{actual_end} ({actual_span} frames)"
         )
+
+
+def _append_exact(mp, tl, spec: dict, f0: int, f1: int, *, label: str, track: int = 1):
+    """Append one video item and verify Resolve placed ``[f0, f1)``."""
+    items = mp.AppendToTimeline([spec])
+    # ⚠️ AppendToTimeline 失敗會回傳 [None]——truthy！`if not items` 判不到
+    # （2026-08-04 util-L4 事故：Resolve 忙碌時全片 append 靜默失敗，
+    # script 照報 102 shots、timeline 是空的）
+    if not items or (isinstance(items, list) and items[0] is None):
+        raise SystemExit(f"{label}: 上軌失敗（AppendToTimeline 回 {items!r}）{f0}-{f1}")
+    if isinstance(items, list):
+        item = items[0]
+    else:
+        item = (tl.GetItemListInTrack("video", track) or [])[-1]
+    _validate_appended_source_range(item, f0, f1)
+    return item
 
 
 def _configure_timeline(timeline, *, fmt: str, fps: float) -> None:
@@ -240,65 +277,6 @@ def _panel_props(cfg: dict, spk: int, top: bool) -> dict[str, float]:
         "CropTop": y0 * FIT,
         "CropBottom": (1080 - (y0 + win_h)) * FIT,
     }
-
-
-def _speaker_timing_tokens(episode_dir: Path) -> list[dict]:
-    """Load fresh, episode-bound timing tokens for speaker switching."""
-    legacy = episode_dir / "subs" / "words.json"
-    if legacy.is_file():
-        raw = json.loads(legacy.read_text(encoding="utf-8"))
-        words = raw.get("words") if isinstance(raw, dict) else raw
-        if not isinstance(words, list):
-            raise SystemExit(f"{legacy} 的 words 必須是 array")
-        return words
-
-    selection = Stage5SubtitleRequest().open(episode_dir)
-    handoff = selection.handoff
-    ledger_path = getattr(handoff, "release_ledger_path", None)
-    if selection.mode != "memo-dual-audit-v1" or not isinstance(ledger_path, Path):
-        raise SystemExit(
-            "導播缺少正式 speaker timing evidence（無 words.json／Memo release ledger）"
-        )
-    ledger = json.loads(ledger_path.read_text(encoding="utf-8"))
-    ref = ledger.get("inputs", {}).get("memo_recognition_evidence")
-    if not isinstance(ref, dict) or set(ref) != {"path", "sha256", "size_bytes"}:
-        raise SystemExit("release ledger 的 memo_recognition_evidence schema 不完整")
-    evidence_path = (episode_dir / ref["path"]).resolve()
-    root = episode_dir.resolve()
-    if evidence_path != root and root not in evidence_path.parents:
-        raise SystemExit("memo_recognition_evidence path escape")
-    evidence_raw = evidence_path.read_bytes()
-    if (
-        len(evidence_raw) != ref["size_bytes"]
-        or hashlib.sha256(evidence_raw).hexdigest() != ref["sha256"]
-    ):
-        raise SystemExit("memo_recognition_evidence bytes 與 release ledger 不符")
-    evidence = json.loads(evidence_raw)
-    if evidence.get("contract") != "memo-recognition-evidence-v1" or evidence.get(
-        "normalized_audio_sha256"
-    ) != ledger.get("normalized_audio_sha256"):
-        raise SystemExit("memo_recognition_evidence identity 與 release ledger 不符")
-    tokens = evidence.get("tokens")
-    if not isinstance(tokens, list) or not tokens:
-        raise SystemExit("memo_recognition_evidence tokens 必須是 non-empty array")
-    words: list[dict] = []
-    previous_end = -1
-    for index, token in enumerate(tokens):
-        if not isinstance(token, dict):
-            raise SystemExit(f"Memo token {index} 必須是 object")
-        text, start_ms, end_ms = token.get("text"), token.get("start_ms"), token.get("end_ms")
-        if (
-            not isinstance(text, str)
-            or not text.strip()
-            or type(start_ms) is not int
-            or type(end_ms) is not int
-            or start_ms < previous_end
-            or end_ms <= start_ms
-        ):
-            raise SystemExit(f"Memo token {index} timing/text 無效")
-        words.append({"word": text, "start": start_ms / 1000, "end": end_ms / 1000})
-        previous_end = end_ms
-    return words
 
 
 def _word_speakers(episode_dir: Path, t0: float, t1: float) -> list[tuple[float, float, int]]:
@@ -720,19 +698,8 @@ def direct(
         spec = {"mediaPoolItem": clip, "mediaType": 1, "startFrame": f0, "endFrame": f1}
         if extra:
             spec.update(extra)
-        items = mp.AppendToTimeline([spec])
-        # ⚠️ AppendToTimeline 失敗會回傳 [None]——truthy！`if not items` 判不到
-        # （2026-08-04 util-L4 事故：Resolve 忙碌時全片 append 靜默失敗，
-        # script 照報 102 shots、timeline 是空的）
-        if not items or (isinstance(items, list) and items[0] is None):
-            raise SystemExit(f"{label}: 上軌失敗（AppendToTimeline 回 {items!r}）{f0}-{f1}")
-        if isinstance(items, list):
-            item = items[0]
-        else:
-            track = (extra or {}).get("trackIndex", 1)
-            item = (tl.GetItemListInTrack("video", track) or [])[-1]
-        _validate_appended_source_range(item, f0, f1)
-        return item
+        track = (extra or {}).get("trackIndex", 1)
+        return _append_exact(mp, tl, spec, f0, f1, label=label, track=track)
 
     tl_start = tl.GetStartFrame()
     # video：逐 shot 上軌 + 逐 item 設 transform（fit 縮放後 ZoomX/Pan）

@@ -133,9 +133,10 @@ otherwise it records a Memo-retention decision. This sequence has no ordinary hu
 13. Highlight miners write `podcast-highlight-miner-output-v1` files bound to the official Stage 5 lineage.
     `run_highlight_cut.py --merge-miners` is the only mechanical merge: it validates all three roles, writes
     `podcast-highlight-candidates-v1`, and validates candidate boundaries before persona review.
-14. The shortlist command fails closed unless the three scoring reviews, brand lens, and Renee lens bind the
+14. The shortlist command fails closed unless the three scoring reviews and Renee lens bind the
     exact final candidates SHA-256 and completely cover the long-candidate ID set. Renee remains required by
-    the runtime strict gate even though it does not affect numeric rank.
+    the runtime strict gate even though it does not affect numeric rank. (Amended 2026-10-07: the brand
+    lens reviewer was retired — no `lens_brand*` file is dispatched or read; see `highlight-cut` skill.)
 
 ## Human gates
 

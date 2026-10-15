@@ -54,16 +54,25 @@ def _recipe_from_render_spec(spec: dict, *, episode_slug: str, vault_root: Path)
     gate 的預填來源正是 `package.render_recipe`，退路 `_legacy_reaction_recipe()` 又是
     給 N2 精華卡用的、還硬寫 `big_text=[]`。所以 N1 完整節目走這條路，大字必定空白。
 
-    幾何一併存下來：`render_request.py` 有 geometry 就直接當 composition 變數用、不重解，
-    所以他在 gate 上只改一個字重出時，版位跟桌機這次做出來的完全一樣——不會因為
-    solver 重算而漂掉（本集的 y 就是實測內插調過的，solver 自己解不回來）。
+    幾何一併存下來，但**只當 gate 拖曳介面的起點**：`render_request.py` 只在
+    `geometry_manual` 為真時照抄 geometry，否則一律重解（house style）。這個旗標的
+    意思是「修修自己拖過」，attach 不替他設——所以 gate 上沒拖、只改字重出時，
+    版位會回到 solver 的解，不是這次桌機交付的版位。
+
+    `rendered_png` 指向這次交付的 PNG：這份配方就是那張圖的配方，已經出過圖了。
+    沒填的話 render_watcher 會把 attach 寫的 `requested_at` 當成新配方，立刻重解
+    幾何、蓋掉剛交付的 PNG（2026-10-09 洪瀞集 full 三張全被蓋掉）；gate 的三態
+    也會把它誤標成「配方比封面新」。
+
+    N1 作者訪談的書封（`book_cover*`）與字塊位置（`text_*_pct`）也要帶上，否則 gate
+    重出圖時書封直接消失（同一集 r1 被 watcher 重出成沒有書封的版本）。
     """
     render_spec = spec.get("render_spec")
     if not render_spec:
         return None
-    variables = (json.loads(Path(render_spec).read_text(encoding="utf-8")) or {}).get(
-        "variables"
-    ) or {}
+    payload = json.loads(Path(render_spec).read_text(encoding="utf-8")) or {}
+    variables = payload.get("variables") or {}
+    images = payload.get("images") or {}
     if not variables.get("title_lines"):
         return None
     geometry_keys = (
@@ -75,6 +84,25 @@ def _recipe_from_render_spec(spec: dict, *, episode_slug: str, vault_root: Path)
         "guest_y_pct",
     )
     geometry = {k: float(variables[k]) for k in geometry_keys if k in variables}
+    book_cover = {}
+    if images.get("book_cover_data_url"):
+        book_cover = {
+            "book_cover": to_vault_relative(images["book_cover_data_url"], vault_root),
+            **{
+                k: float(variables[k])
+                for k in (
+                    "book_cover_opacity",
+                    "book_cover_brightness",
+                    "book_cover_height_pct",
+                    "book_cover_x_pct",
+                    "book_cover_y_pct",
+                )
+                if k in variables
+            },
+        }
+    text_position = {
+        k: float(variables[k]) for k in ("text_center_pct", "text_top_pct") if k in variables
+    }
     return {
         "composition": "thumbnail_full",
         "title_rank": spec["title_rank"],
@@ -84,8 +112,11 @@ def _recipe_from_render_spec(spec: dict, *, episode_slug: str, vault_root: Path)
         "highlight_text": variables.get("highlight_text", ""),
         "title_max_width": int(variables.get("title_max_width", 580)),
         "guest_credit": variables.get("guest_credit", ""),
+        **text_position,
+        **book_cover,
         "requested_at": datetime.now(timezone.utc).isoformat(),
         **({"geometry": geometry} if len(geometry) == len(geometry_keys) else {}),
+        "rendered_png": f"Attachments/packaging/{episode_slug}/{Path(spec['thumbnail']).name}",
     }
 
 
