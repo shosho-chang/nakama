@@ -393,6 +393,24 @@ def test_load_add_cues_rejects_non_integer_frames(tmp_path: Path) -> None:
         rsr.load_add_cues(path)
 
 
+def test_load_add_cues_accepts_a_bom(tmp_path: Path) -> None:
+    path = tmp_path / "cues.json"
+    path.write_text(
+        json.dumps({"cues": [{"tl_start_frame": 54, "tl_end_frame": 60, "text": "x"}]}),
+        encoding="utf-8-sig",
+    )
+    assert rsr.load_add_cues(path) == [Cue(54, 60, "x")]
+
+
+def test_load_add_cues_rejects_cues_built_for_another_timeline(tmp_path: Path) -> None:
+    path = tmp_path / "cues.json"
+    row = {"tl_start_frame": 54, "tl_end_frame": 60, "text": "x"}
+    path.write_text(json.dumps({"timeline": "A", "cues": [row]}), encoding="utf-8")
+    assert rsr.load_add_cues(path, "A") == [Cue(54, 60, "x")]
+    with pytest.raises(RebuildError):
+        rsr.load_add_cues(path, "B")
+
+
 def test_artifact_paths_take_the_next_unused_revision(tmp_path: Path) -> None:
     srt, snapshot = rsr.artifact_paths(tmp_path, "20260722 李海碩")
     assert srt.name == "st1-rebuild.20260722_李海碩.r001.srt"

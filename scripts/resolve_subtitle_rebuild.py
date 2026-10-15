@@ -388,12 +388,26 @@ def map_cues(pieces: Mapping[str, Piece], rows: object) -> list[dict[str, Any]]:
     return mapped
 
 
-def load_add_cues(path: Path) -> list[Cue]:
-    """讀 map-cues 產出的 cues.json（只用 tl_start_frame／tl_end_frame／text）。"""
+def load_add_cues(path: Path, expected_timeline: str | None = None) -> list[Cue]:
+    """讀 map-cues 產出的 cues.json（只用 tl_start_frame／tl_end_frame／text）。
+
+    cues.json 有寫 ``timeline`` 時必須等於這次要改的 timeline——為別條 timeline 算的
+    格數套上來，overlap 檢查擋不住，字幕會整段錯位還印 VERIFIED。
+    """
     try:
-        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        # utf-8-sig：PowerShell 5.1 `-Encoding UTF8` 會寫 BOM
+        data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
     except (OSError, json.JSONDecodeError) as exc:
         raise RebuildError(f"cannot read {path}: {exc}") from exc
+    if (
+        expected_timeline is not None
+        and isinstance(data, Mapping)
+        and data.get("timeline") is not None
+        and data["timeline"] != expected_timeline
+    ):
+        raise RebuildError(
+            f"{path}: built for timeline {data['timeline']!r}, not {expected_timeline!r}"
+        )
     rows = data.get("cues") if isinstance(data, Mapping) else None
     if not isinstance(rows, list) or not rows:
         raise RebuildError(f"{path}: no 'cues' list")
@@ -576,7 +590,7 @@ def cmd_pieces(args: argparse.Namespace) -> int:
 def cmd_map_cues(args: argparse.Namespace) -> int:
     try:
         try:
-            data = json.loads(args.input.read_text(encoding="utf-8"))
+            data = json.loads(args.input.read_text(encoding="utf-8-sig"))
         except (OSError, json.JSONDecodeError) as exc:
             raise RebuildError(f"cannot read {args.input}: {exc}") from exc
         pieces = load_pieces(data)
@@ -610,7 +624,7 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
     # 1. 規劃：只讀，任何問題都在動到 Resolve 之前擋下
     try:
         fixes = [parse_fix(spec) for spec in args.fix]
-        added = load_add_cues(args.add_cues) if args.add_cues else []
+        added = load_add_cues(args.add_cues, args.timeline) if args.add_cues else []
         resolve = _connect()
         manager, project = _current_project(resolve, args.project)
         original = _timeline_by_name(project, args.timeline)
