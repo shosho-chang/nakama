@@ -14,8 +14,9 @@ description: >
 （詞級說話者、機位偏移）、`shared/speaker_timing.py`（token）、`shared/resolve_append.py`（上軌坑）——
 本 skill 只呼叫，不重新發明，也不要再每集在 scratchpad 寫一次性 driver。** 20260901 蘇予昕、
 20260723 謝伯讓、20260903 程世嘉三集各寫過一次 driver；腳本是程世嘉那兩版的正式化：三機版（462 shots
-驗證通過）與插話切回版（57 個插話切回）。同一集 dry-run 重算出完全相同的數字：`--no-interject`
-133564 frames／462 shots；預設（插話切回開）57 個插話切回（修修 38／程世嘉 19）、552 shots。
+驗證通過）與插話切回版（含短 shot 守門：54 個插話切回）。同一集 dry-run 重算出跟 driver 相同的
+結果：`--no-interject` 133564 frames／462 shots；預設比 `--interject-base-min 0` 只有修修點名的
+3 處機位不同（frame 範圍跟定案版逐格一致）；機位 audit 0 處。
 
 ## 完整節目：直接跑腳本
 
@@ -127,15 +128,28 @@ DEFAULT_CFG = {
   （重疊講話；說話時對方 mic 的 bleed 約 -45 ~ -60 dB）。hot frame 之間停頓 ≤ 0.3s 視為同一段
   （「我也是阿伯」頭兩個音中間只停 0.15s，沒接上的話切點晚 0.6s），長度 ≥ 0.9s，事件最長 2.5s
 
-只處理落在 `kind=="talk"` 且無 `cam` 覆寫的 shot；同一人相鄰 < 0.6s 的事件合併。插入沿用
+只處理落在 `kind=="talk"` 且無 `cam` 覆寫的 shot；同一人相鄰 < 0.6s 的事件合併。**合併後事件中點
+所在的 base talk shot 短於 4.0s 就不插**（`--interject-base-min`）——短 talk shot 是一來一往的對話，
+不是長篇講話；插話鏡頭補前後 pad、再把 < `min_residual` 的碎片併進去，會把說話者整支 shot 吃掉。
+程世嘉：來賓「謝謝 真的是太捧場了」(228.30–230.94s，2.6s) 整支被換成修修鏡頭，3537.92–3541.24、
+3997.88–4001.40 同型；加上這條後全集只有這 3 處機位改變，用 token 說話者與 mic 主導核對過都是改對。插入沿用
 `inject_reaction_cuts` 的切分邏輯（觸發字用佔位字元「插」，`reaction_trigger_min_sec` 1.5、
 `pad_lead` 0.15、`pad_lag` 0.45、`min_residual` 1.0），切到插話者**臉部特寫**；切出來的 shot 標
 `kind="interject"`，跑完會印「插話切回 N（spk 0：…／spk 1：…）」。
 
 **能量事件最短長度是調出來的**：0.5s → 114 個太碎、0.7s → 80、**0.9s → 57 個且修修指出的兩處都抓到**
-（程世嘉）。全部參數都有 CLI 旗標（`--interject-token-min/-max`、`--interject-loud-db`、
-`--interject-near-db`、`--interject-event-min/-cap/-bridge`、`--interject-merge-gap`），預設就是上面
-這組定案值；修修說太碎／漏抓再調，一次調一個方向。
+（程世嘉；之後再加 4s 守門剩 54 個）。全部參數都有 CLI 旗標（`--interject-token-min/-max`、
+`--interject-loud-db`、`--interject-near-db`、`--interject-event-min/-cap/-bridge`、
+`--interject-merge-gap`、`--interject-base-min`），預設就是上面這組定案值；修修說太碎／漏抓再調，
+一次調一個方向。
+
+## 機位 audit：鏡頭在 A 臉上、B 卻明顯在講（只報告，不擋）
+
+dry-run 與正式跑都會印「機位 audit：… N 處」（`audit_dominance`）。對最終 shot list 裡 `kind=="talk"`
+且無 `cam` 的 shot，以 50ms mic 主導（某支 mic > -36 dB 且 ≥ 另一支 + 8 dB）找「另一人主導連續 ≥ 2s
+（容許 0.5s 空白、主導比例 ≥ 50%）」的區間。全景、開場、反應鏡頭、插話切回都是刻意的，不看。
+程世嘉最終版 **0 處**；把每支 talk shot 的說話者對調當反向對照會抓到 **358 處**，證明它看得到切錯人。
+不是 0 就逐處列給修修看（印出的時間是節目來源秒數），不要自己調參數把它壓到 0。
 
 ## 執行順序（腳本已實作；這裡留給讀懂它在做什麼、或處理腳本拒絕的情況）
 
@@ -153,9 +167,18 @@ DEFAULT_CFG = {
    已包好重試）
 7. 全景片段套 `--wide-zoom`
 8. 驗證（腳本自動）：V1 每個 clip 跟計畫一致、涵蓋範圍跟原 V1 相同、A1／字幕／V2 以上前後一致、原
-   timeline 未動、全景 zoom。腳本做不到的
+   timeline 未動、全景 zoom。回報的 LeftOffset 容許 Resolve 的一格捨入（剪輯段 coalesce 同理），
+   機位與 timeline 位置必須完全一致。腳本做不到的
    要人工補：抽驗幾個時間點的畫面與字幕是否對得上（說話者身份可用逐字稿自證，如「叫修修的名字」
    「叫來賓的名字」的句子）
+
+## 已知限制（腳本不擋，跑之前心裡要有數）
+
+- **開場全景放在來源時間**：第一個剪輯段來源起點的頭 5 秒。後面的段若重用同一段來源，那段也會是全景；
+  第一段若是短的 cold-open 預告，全景會落在預告上，正片開頭沒有。
+- **重建 V1 會丟掉原 V1 上每個 clip 的手動調整**（個別 zoom／pan／變速）——只有全景 zoom 會重套。
+  有變速的 clip 也會讓 coalesce 的來源連續性失準。原 timeline 若有這類手動調整，先問修修。
+- **V1 若跟音軌 linked**，清 V1 會連 A1 一起刪；驗證會抓到（A1 不同 → 不存檔），但要等全部上軌完。
 
 ## 怎麼問（如果真的要問）
 

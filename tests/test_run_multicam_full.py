@@ -228,6 +228,72 @@ def test_interject_requires_envelopes():
         mc.build_full_shots(tokens, speakers, 70.0, dict(mc.DEFAULT_CFG), interject=P)
 
 
+def test_short_base_talk_shot_is_not_interjected():
+    """一來一往的短 talk shot（< base_min 4s）不插：插話鏡頭補 pad + 併碎片會把說話者整支吃掉。
+    程世嘉：來賓「謝謝 真的是太捧場了」(228.30–230.94, 2.6s) 被整支換成修修鏡頭。"""
+    shots = [_talk(0.0, 10.0, 0), _talk(10.0, 12.6, 1), _talk(12.6, 30.0, 0)]
+    tokens, speakers = _words([(10.8, 11.8, 0, "對對對"), (20.0, 21.0, 1, "嗯對")])
+    events = mc.interjection_events(shots, tokens, speakers, _quiet_env(30), P)
+    assert [(e["start"], e["spk"]) for e in events] == [(20.0, 1)]
+    # 守門關掉（base_min 0）就會插進短 shot——這條規則確實是它擋下的
+    loose = mc.interjection_events(shots, tokens, speakers, _quiet_env(30), {**P, "base_min": 0})
+    assert [(e["start"], e["spk"]) for e in loose] == [(10.8, 0), (20.0, 1)]
+    out = mc.inject_interjections(shots, events, dict(mc.DEFAULT_CFG))
+    assert out[1] == shots[1]  # 短 shot 原樣保留
+
+
+def test_short_base_guard_uses_merged_event_midpoint():
+    """守門看的是**合併後**事件中點所在的 shot（同 mc_interject_cheng 定案版）。"""
+    shots = [_talk(0.0, 10.0, 1), _talk(10.0, 13.0, 1)]
+    # 兩句各自中點：9.3（10s 長 shot）、10.75（3s 短 shot）→ 合併成 9.0–11.5，中點 10.25 落在短 shot
+    tokens, speakers = _words([(9.0, 9.6, 0, "我也是"), (10.0, 11.5, 0, "阿伯")])
+    assert mc.interjection_events(shots, tokens, speakers, _quiet_env(13), P) == []
+    loose = {**P, "base_min": 0}
+    events = mc.interjection_events(shots, tokens, speakers, _quiet_env(13), loose)
+    assert [(e["start"], e["end"]) for e in events] == [(9.0, 11.5)]
+
+
+# --- 機位 audit ------------------------------------------------------------------
+
+
+def test_audit_flags_camera_on_wrong_speaker():
+    env = _quiet_env(20)
+    _loud(env, 1, 3.0, 6.0, db=-20.0)  # 鏡頭在 spk 0，但 spk 1 明顯主導 3s
+    shots = [_talk(0.0, 10.0, 0), _talk(10.0, 20.0, 1)]
+    issues = mc.audit_dominance(shots, env, mc.AUDIT_DEFAULTS)
+    assert len(issues) == 1
+    it = issues[0]
+    assert (it["camera_spk"], it["dominant_spk"]) == (0, 1)
+    assert it["s"] == pytest.approx(3.0) and it["e"] == pytest.approx(6.0)
+
+
+def test_audit_tolerates_short_gaps_and_ignores_intentional_shots():
+    env = _quiet_env(40)
+    # 1.2s + 0.4s 空白 + 1.2s = 2.8s：空白 ≤ gap_sec 0.5，接成一段 → 報
+    _loud(env, 1, 2.0, 3.2)
+    _loud(env, 1, 3.6, 4.8)
+    # 1.5s：太短，不報
+    _loud(env, 1, 7.0, 8.5)
+    # 反應鏡頭／全景裡對方主導是刻意的，不報
+    _loud(env, 1, 12.0, 16.0)
+    _loud(env, 1, 22.0, 26.0)
+    shots = [
+        _talk(0.0, 10.0, 0),
+        {"s": 10.0, "e": 20.0, "spk": 0, "kind": "reaction"},
+        {"s": 20.0, "e": 30.0, "spk": 0, "kind": "talk", "cam": "wide"},
+        _talk(30.0, 40.0, 1),
+    ]
+    issues = mc.audit_dominance(shots, env, mc.AUDIT_DEFAULTS)
+    assert [(round(i["s"], 2), round(i["e"], 2)) for i in issues] == [(2.0, 4.8)]
+
+
+def test_audit_requires_clear_margin():
+    env = _quiet_env(10)
+    _loud(env, 0, 0.0, 10.0, db=-25.0)
+    _loud(env, 1, 2.0, 6.0, db=-20.0)  # 只大 5 dB < margin 8：重疊講話，不算主導
+    assert mc.audit_dominance([_talk(0.0, 10.0, 0)], env, mc.AUDIT_DEFAULTS) == []
+
+
 # --- 剪輯段 ----------------------------------------------------------------------
 
 
@@ -281,6 +347,13 @@ def test_coalesce_merges_source_continuous_camera_clips():
         {"t0": 400, "t1": 600, "s0": 900},
         {"t0": 700, "t1": 800, "s0": 1100},
     ]
+
+
+def test_coalesce_tolerates_one_frame_report_jitter_only():
+    jitter = [Item(CAMS["0"], 0, 100, 0), Item(CAMS["1"], 100, 200, 101)]  # 回報差一格：沒剪
+    assert mc.coalesce_segments(jitter, ALLOWED) == [{"t0": 0, "t1": 200, "s0": 0}]
+    cut = [Item(CAMS["0"], 0, 100, 0), Item(CAMS["1"], 100, 200, 102)]  # 差兩格：真的剪了
+    assert len(mc.coalesce_segments(cut, ALLOWED)) == 2
 
 
 def test_coalesce_single_program_clip():
@@ -802,6 +875,54 @@ def test_failure_after_duplicate_says_how_to_clean_up(tmp_path, monkeypatch):
     with pytest.raises(SystemExit, match="刪掉它再重跑"):
         _materialize(project, src, clips, [], tmp_path)
     assert project.timelines[-1].GetName() == "EP（三機）"  # 留著給人看，不自動刪
+
+
+def test_unexpected_error_after_duplicate_still_warns(tmp_path, monkeypatch, capsys):
+    project = _project(tmp_path)
+    src, segs = _preflight(project)
+
+    def resolve_returned_none(*_a, **_k):
+        raise TypeError("'NoneType' object is not subscriptable")
+
+    monkeypatch.setattr(mc, "append_checked", resolve_returned_none)
+    clips = mc.plan_clips(_shots(), segs, FPS, CAMS, WIDE)
+    with pytest.raises(TypeError):
+        _materialize(project, src, clips, [], tmp_path)
+    assert "刪掉它再重跑" in capsys.readouterr().err
+
+
+def test_verify_tolerates_one_frame_left_offset_report(tmp_path, monkeypatch):
+    """Resolve 回報的來源格會因秒數捨入差一格；位置與長度對就是放對了，不能因此擋存檔。"""
+    project = _project(tmp_path)
+    src, segs = _preflight(project)
+    real_append = FakeMediaPool.AppendToTimeline
+
+    def rounded(self, specs):
+        out = real_append(self, specs)
+        if specs[0]["recordFrame"] == 240:
+            out[0].left -= 1
+        return out
+
+    monkeypatch.setattr(FakeMediaPool, "AppendToTimeline", rounded)
+    saved: list = []
+    clips = mc.plan_clips(_shots(), segs, FPS, CAMS, WIDE)
+    _materialize(project, src, clips, saved, tmp_path)
+    assert saved == [True]
+
+
+def test_materialize_edited_timeline_at_hour_timecode(tmp_path):
+    """timeline 起點 01:00:00:00（108000 @30fps）：recordFrame 以段的 t0 為準。"""
+    t0 = 108000
+    edited = [Item(PROGRAM, t0, t0 + 300, 0), Item(PROGRAM, t0 + 300, t0 + 600, 1050)]
+    project = _project(tmp_path, v1=edited)
+    src, segs = _preflight(project)
+    clips = mc.plan_clips(_shots(), segs, FPS, CAMS, WIDE)
+    saved: list = []
+    _materialize(project, src, clips, saved, tmp_path)
+    v1 = project.timelines[-1].GetItemListInTrack("video", 1)
+    assert v1[0].GetStart() == t0 and v1[-1].GetEnd() == t0 + 600
+    assert [(x.GetStart() - t0, x.GetLeftOffset()) for x in v1][-2:] == [(300, 1050), (450, 1200)]
+    assert saved == [True]
 
 
 def test_speaker_tokens_requires_exactly_two_mics(tmp_path, monkeypatch):

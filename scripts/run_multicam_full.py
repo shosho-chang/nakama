@@ -12,7 +12,7 @@
       Resolve 上軌與清軌的已知坑
 
 20260901 蘇予昕、20260723 謝伯讓、20260903 程世嘉三集各寫過一次性 driver；本檔是
-20260903 程世嘉那兩版（三機 462 shots、插話切回 57 個）的正式化。
+20260903 程世嘉那兩版（三機 462 shots、插話切回＋短 shot 守門）的正式化。
 
 流程：
   1. token → 說話者（mic 軌必須剛好 2 軌）
@@ -53,6 +53,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from build_resolve_project import _probe, find_main_video  # noqa: E402
 from run_short_director import (  # noqa: E402
+    SOURCE_FRAME_REPORT_TOLERANCE,
     _find_media_item_by_path,
     _media_pool_items,
     _validate_appended_source_range,
@@ -101,6 +102,23 @@ INTERJECT_DEFAULTS = {
     "event_cap": 2.5,
     "event_bridge": 0.3,
     "merge_gap": 0.6,  # 同一人相鄰事件間隔 < 此值合併
+    # 事件所在的 base talk shot 短於此就不插（修修 2026-10-15 抓到）：短 talk shot 是
+    # 一來一往的對話，插話鏡頭補 pad、再把 < min_residual 的碎片併進去，會把說話者
+    # 整支 shot 吃掉——程世嘉來賓「謝謝 真的是太捧場了」(228.30–230.94, 2.6s) 整支被換成
+    # 修修鏡頭。加上這條後全集只有 3 處機位改變，三處都核對過是改對。
+    "base_min": 4.0,
+}
+
+# 最終 shot list 的機位 audit（只報告，不擋）：kind=="talk" 且無 cam 的 shot 裡，找
+# 「另一人的 mic 明顯主導」連續 ≥ min_sec 的區間。主導 = 該支 mic > loud_db 且 ≥ 另一支
+# + margin_db；區間內容許 gap_sec 的空白，主導比例 ≥ min_frac。程世嘉最終版 0 處；把每支
+# shot 的說話者對調當反向對照，會抓到 358 處——audit 真的看得到切錯人。
+AUDIT_DEFAULTS = {
+    "loud_db": -36.0,
+    "margin_db": 8.0,
+    "min_sec": 2.0,
+    "gap_sec": 0.5,
+    "min_frac": 0.5,
 }
 # 插入沿用 inject_reaction_cuts 的切分邏輯，觸發字換成佔位字元「插」
 INTERJECT_CUT_CFG = {
@@ -188,7 +206,51 @@ def interjection_events(
                 m["src"] = "token+energy"
         else:
             merged.append(dict(e))
-    return sorted(merged, key=lambda e: e["start"])
+    merged.sort(key=lambda e: e["start"])
+
+    def base_len(e: dict) -> float:
+        i = bisect.bisect_right(starts, (e["start"] + e["end"]) / 2) - 1
+        return shots[i]["e"] - shots[i]["s"] if i >= 0 else 0.0
+
+    return [e for e in merged if base_len(e) >= p["base_min"]]
+
+
+def audit_dominance(shots: list[dict], envelopes: np.ndarray, p: dict) -> list[dict]:
+    """鏡頭在 A 臉上、B 的 mic 卻明顯主導 ≥ min_sec 的區間（節目來源秒數）。"""
+    db = 20 * np.log10(envelopes + 1e-9)
+    dom = np.full(envelopes.shape[1], -1)
+    dom[(db[0] > p["loud_db"]) & (db[0] >= db[1] + p["margin_db"])] = 0
+    dom[(db[1] > p["loud_db"]) & (db[1] >= db[0] + p["margin_db"])] = 1
+    gap = int(round(p["gap_sec"] / FRAME_SEC))
+    issues: list[dict] = []
+    for sh in shots:
+        if sh.get("cam") or sh.get("kind") != "talk":
+            continue  # 全景、開場、聽者反應、插話切回都是刻意的
+        spk, other = sh["spk"], 1 - sh["spk"]
+        seg = dom[int(sh["s"] / FRAME_SEC) : int(sh["e"] / FRAME_SEC)]
+        i = 0
+        while i < len(seg):
+            if seg[i] != other:
+                i += 1
+                continue
+            j = last = i
+            while j < len(seg) and seg[j] != spk and j - last <= gap:
+                if seg[j] == other:
+                    last = j
+                j += 1
+            frac = float((seg[i : last + 1] == other).mean())
+            if (last + 1 - i) * FRAME_SEC >= p["min_sec"] and frac >= p["min_frac"]:
+                issues.append(
+                    {
+                        "s": sh["s"] + i * FRAME_SEC,
+                        "e": sh["s"] + (last + 1) * FRAME_SEC,
+                        "camera_spk": spk,
+                        "dominant_spk": other,
+                        "frac": round(frac, 2),
+                    }
+                )
+            i = last + 1
+    return issues
 
 
 def inject_interjections(shots: list[dict], events: list[dict], cfg: dict) -> list[dict]:
@@ -262,6 +324,9 @@ def coalesce_segments(items: list, allowed: set[str]) -> list[dict]:
 
     三機與 program feed 逐格對齊，所以任一機的 LeftOffset 就是節目時鐘。相鄰 item
     `t` 連續**且** `s` 連續才是同一段；`s` 跳號 = 真的剪過一刀，即使 `t` 是連續的。
+    `s` 的連續性容許 SOURCE_FRAME_REPORT_TOLERANCE 格：Resolve 回報的來源格會因秒數
+    捨入差一格（見 run_short_director._validate_appended_source_range），不容許的話
+    會在沒有剪的地方切出假剪輯段、而且那段的來源整段錯位一格。段的 s0 取第一個 item 的值。
     """
     others = sorted({x.GetName() for x in items if x.GetName() not in allowed})
     if others:
@@ -272,7 +337,8 @@ def coalesce_segments(items: list, allowed: set[str]) -> list[dict]:
     for x in sorted(items, key=lambda x: x.GetStart()):
         t0, t1, s0 = x.GetStart(), x.GetEnd(), x.GetLeftOffset()
         prev = segs[-1] if segs else None
-        if prev and prev["t1"] == t0 and prev["s0"] + (prev["t1"] - prev["t0"]) == s0:
+        expected = prev["s0"] + (prev["t1"] - prev["t0"]) if prev else None
+        if prev and prev["t1"] == t0 and abs(expected - s0) <= SOURCE_FRAME_REPORT_TOLERANCE:
             prev["t1"] = t1
         else:
             segs.append({"t0": t0, "t1": t1, "s0": s0})
@@ -546,11 +612,15 @@ def materialize(
             wide_zoom=wide_zoom,
         )
         report["wide_zoomed"] = zoomed
-    except SystemExit as exc:
-        raise SystemExit(
-            f"{exc}\n⚠ 新 timeline「{new}」已建立但沒完成（未存檔）——"
+    except BaseException as exc:  # Resolve 回 None 的 TypeError、Ctrl-C 也要提示
+        warning = (
+            f"⚠ 新 timeline「{new}」已建立但沒完成（未存檔）——"
             "在 Resolve 刪掉它再重跑；原 timeline 沒動"
-        ) from exc
+        )
+        if isinstance(exc, SystemExit):
+            raise SystemExit(f"{exc}\n{warning}") from exc
+        print(warning, file=sys.stderr)
+        raise
     if not save():
         raise SystemExit("SaveProject 失敗")
     return report
@@ -572,9 +642,14 @@ def verify(
     problems: list[str] = []
     planned = [(c["cam"], c["rec"], c["rec"] + c["f1"] - c["f0"], c["f0"]) for c in clips]
     actual = _clip_sig(v1)
-    if actual != planned:
+
+    def same(a: tuple, b: tuple) -> bool:
+        # 機位、timeline 位置要完全一致；回報的 LeftOffset 容許 Resolve 的一格捨入
+        return a[:3] == b[:3] and abs(a[3] - b[3]) <= SOURCE_FRAME_REPORT_TOLERANCE
+
+    if len(actual) != len(planned) or not all(map(same, actual, planned)):
         diff = next(
-            (i for i, (a, b) in enumerate(zip(actual, planned)) if a != b),
+            (i for i, (a, b) in enumerate(zip(actual, planned)) if not same(a, b)),
             min(len(actual), len(planned)),
         )
         problems.append(
@@ -617,6 +692,7 @@ _INTERJECT_HELP = {
     "event_cap": "事件最長秒數",
     "event_bridge": "能量事件：hot frame 之間停頓 ≤ 此秒數視為同一段",
     "merge_gap": "同一人相鄰事件間隔 < 此秒數合併",
+    "base_min": "事件所在的 base talk shot 短於此秒數就不插",
 }
 
 
@@ -728,6 +804,13 @@ def run(args: argparse.Namespace, *, connect=None) -> dict:
     summary = summarize(clips, fps)
     print(f"shot list：{summary}")
     cuts = [sh for sh in shots if sh.get("kind") == "interject"]
+    issues = audit_dominance(shots, envelopes, AUDIT_DEFAULTS)
+    print(f"機位 audit：鏡頭在 A、B 的 mic 明顯主導 ≥ 2s 的區間 {len(issues)} 處")
+    for it in issues[:20]:
+        print(
+            f"  {it['s']:.2f}-{it['e']:.2f}s 鏡頭 spk {it['camera_spk']}、"
+            f"主導 spk {it['dominant_spk']}（{it['frac']:.0%}）"
+        )
     if interject is not None:
         per = {spk: sum(1 for sh in cuts if sh["spk"] == spk) for spk in (0, 1)}
         print(f"插話切回 {len(cuts)}（spk 0：{per[0]}／spk 1：{per[1]}）")
@@ -742,6 +825,7 @@ def run(args: argparse.Namespace, *, connect=None) -> dict:
         "segments": len(segs),
         "offsets": offsets,
         "interject_cuts": len(cuts),
+        "audit_issues": len(issues),
         **summary,
     }
     if args.dry_run:
