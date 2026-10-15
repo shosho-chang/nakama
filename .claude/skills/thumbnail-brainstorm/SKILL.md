@@ -71,7 +71,12 @@ v1.1 = 封面設計系統 v1 接入；v1.0 = ADR-054 D8/D9 首落地。
   （本 skill 就是來補滿的）。
 - podcast 配方另需：`highlights/winners.json`（段落時間窗）、
   `highlights/tighten/director.json`（機位 `cams` 對應）、episode 資料夾
-  （`subs/words.json` + `Audio/` 分軌 + `normalized.wav`）。
+  （speaker timing + `Audio/` 分軌 + `normalized.wav`）。speaker timing 二擇一：
+  舊集數的 `subs/words.json`，或 ADR-063 Memo 集數的
+  `subtitle-release/memo-dual-audit-v1/` release ledger（`sample` 自動讀 ledger
+  hash 驗證過的 Memo evidence tokens，與 short-director 共用
+  `shared/speaker_timing.py`）。兩者皆無、或 evidence 與 ledger 不符 → `sample`
+  SystemExit，停下報明，不繞過。
 
 缺輸入 → 停下報明缺哪個檔，不腦補。
 
