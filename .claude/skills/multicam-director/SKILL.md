@@ -3,8 +3,8 @@ name: multicam-director
 description: >
   完整節目／單一段落三機切換：把單機直切的 Resolve timeline，依詞級說話者判定自動切
   CAM1／CAM2／CAM3（全景），全景套 zoom，並偵測聽者的純反應詞（哈/哇）內容驅動切一個
-  短反應鏡頭到反應者臉上。Use when 修修 says 「三機切換」「切機位」「把這段變成三機版」
-  「加反應鏡頭」，指著一條已經在 Resolve 裡剪好（單機或已是三機）的 timeline。
+  短反應鏡頭到反應者臉上，聽者插話（重疊講話）切回插話者。Use when 修修 says 「三機切換」「切機位」「把這段變成三機版」
+  「加反應鏡頭」「插話沒切回」，指著一條已經在 Resolve 裡剪好（單機或已是三機）的 timeline。
 ---
 
 # multicam-director
@@ -13,8 +13,9 @@ description: >
 `scripts/run_short_director.py`（`build_shots` / `inject_reaction_cuts`）、`shared/speaker_assign.py`
 （詞級說話者、機位偏移）、`shared/speaker_timing.py`（token）、`shared/resolve_append.py`（上軌坑）——
 本 skill 只呼叫，不重新發明，也不要再每集在 scratchpad 寫一次性 driver。** 20260901 蘇予昕、
-20260723 謝伯讓、20260903 程世嘉三集各寫過一次 driver；腳本是程世嘉那版（462 shots 驗證通過）的
-正式化，同一集 dry-run 重算出完全相同的 133564 frames／462 shots。
+20260723 謝伯讓、20260903 程世嘉三集各寫過一次 driver；腳本是程世嘉那兩版的正式化：三機版（462 shots
+驗證通過）與插話切回版（57 個插話切回）。同一集 dry-run 重算出完全相同的數字：`--no-interject`
+133564 frames／462 shots；預設（插話切回開）57 個插話切回（修修 38／程世嘉 19）、552 shots。
 
 ## 完整節目：直接跑腳本
 
@@ -23,25 +24,34 @@ description: >
 python scripts/run_multicam_full.py "G:/Footages/<episode>" \
     --source-timeline "<episode>" --new-timeline "<episode>（三機）" \
     --wide-zoom 1.4 --cams "0=1_CAMERA 1.mp4,1=2_CAMERA 2.mp4" \
-    --wide-cam "3_CAMERA 3.mp4" --dry-run
+    --wide-cam "3_CAMERA 3.mp4" --mics "1_COMBO-1.wav,2_COMBO-2.wav" --dry-run
 
 # 2. 同一行拿掉 --dry-run：Resolve 必須開著該集專案（專案名預設 = episode 資料夾名，或 --project）
 ```
 
-腳本做的事（照下方「執行順序」，不用自己串）：token（legacy `words.json` 或 ADR-063 Memo release）
-→ `Audio/` 偵測 mic（**必須剛好 2 軌**，speaker 0 = 檔名排序第一軌）→ 三機對 program feed 偏移
-（>1 frame 或量不到就 fail）→ `build_shots` → `inject_reaction_cuts` → 開場 5s 全景 → 複製原 timeline
-（帶 A1 與字幕，原 timeline 不動）→ `delete_checked` 清 V1 → 逐 shot `append_checked`（帶
-`recordFrame`）→ 全景套 ZoomX/ZoomY → 驗證（V1 空隙=0、機位順序=shot list、A1／字幕前後完全一致、
-原 timeline 未動、全景 zoom 全部正確）→ `SaveProject`。驗證任一項不過就 fail、不存檔。
+dry-run 不讀 timeline，以「完整節目一整段」計算；已剪過的 timeline 實際會切成幾段，要連上 Resolve
+才知道（非 dry-run 會先印「剪輯段」）。
 
-**拒絕條件（fail closed，不要繞過）**：`--new-timeline` 已存在（不覆寫）；原 timeline 不是單機直切
-（V1 不是一整段 program feed）；Resolve 開的專案不對；mic 不是 2 軌；機位不在 media pool；機位 FPS
-或長度跟節目不符。
+腳本做的事（照下方「執行順序」，不用自己串）：讀原 timeline V1、coalesce 回剪輯段 → 三機對 program
+feed 偏移（>1 frame 或量不到就 fail）→ token（legacy `words.json` 或 ADR-063 Memo release）→ `Audio/`
+偵測 mic（**必須剛好 2 軌**，speaker 0 = 檔名排序第一軌）→ `build_shots` → `inject_reaction_cuts`
+（哈/哇）→ 插話切回 → 開場 5s 全景 → 複製原 timeline 成新 timeline（帶 A1、字幕、V2 以上；原
+timeline 不動，它就是備份）→ `delete_checked` 清新 timeline 的 V1 → 逐段 × 逐 shot `append_checked`
+（`recordFrame = 段.t0 + (f0 - 段.s0)`）→ 全景套 ZoomX/ZoomY → 驗證（V1 每個 clip 的機位／位置／
+LeftOffset 跟計畫完全一致、V1 涵蓋範圍跟原 timeline 相同、A1／字幕／V2 以上前後完全一致、原
+timeline 未動、全景 zoom 全部正確）→ `SaveProject`。驗證任一項不過就 fail、不存檔；新 timeline
+建了一半時錯誤訊息會叫你在 Resolve 刪掉它再重跑（腳本不自動刪）。
+
+**拒絕條件（fail closed，不要繞過）**：`--new-timeline` 已存在（不覆寫）；原 timeline V1 有 program
+feed 與這三台機位以外的素材（Intro/Outro 等）；Resolve 開的專案不對；timeline fps 跟 program feed
+不同；mic 不是 2 軌、或跟 `--mics` 不符；缺 `normalized.wav`；機位不在 media pool、或 media pool 裡被
+改過名；機位 FPS 或長度不夠。
 
 **每集要確認的只有三件事**，都在 CLI 上明講、沒有預設值：
 - `--cams`：哪台機位拍誰——抽格看 CAMERA1／CAMERA2 是誰，對上 mic 軌序（dry-run 會印
-  `spk 0：mic 1_COMBO-1.wav → 1_CAMERA 1.mp4`，核對說話分鐘數合不合理）。
+  `spk 0：mic 1_COMBO-1.wav → 1_CAMERA 1.mp4`，核對說話分鐘數合不合理）。再用 `--mics` 把兩軌
+  mic 檔名寫死：`Audio/` 若多一軌夠活躍的 wav（備援錄音機、第二位來賓），自動偵測可能擠掉其中
+  一軌、讓說話者跟機位對調；有 `--mics` 就會 fail 而不是默默切錯人。
 - `--wide-cam`：雙人全景那台。
 - `--wide-zoom`：**全景倍率每集量黑邊，修修可指定**。20260901 蘇予昕全景左右各 150px 黑邊，1.185x
   剛好消除，修修選 **1.2x**；20260903 程世嘉同樣左右各 150px 黑邊，修修指定 **1.4x**。換集若
@@ -49,7 +59,8 @@ python scripts/run_multicam_full.py "G:/Footages/<episode>" \
 
 ## 前置：這條 timeline 現在長什麼樣
 
-先讀，不要假設。三種可能結構，處理方式不同：
+先讀，不要假設。三種可能結構——**腳本都用同一個方法處理**（`coalesce_segments`），這裡寫的是
+它為什麼這樣做：
 
 1. **單機直切**（一段或多段 `Default_*.mp4` 直切片段）——最簡單，`(tl0,tl1,src0)` 直接讀 V1 的
    `GetStart()/GetEnd()/GetLeftOffset()`。
@@ -59,13 +70,15 @@ python scripts/run_multicam_full.py "G:/Footages/<episode>" \
    coalesce 回真實剪輯段——三機都跟 program feed 逐格對齊（先用 `shared.speaker_assign._measure_offset`
    驗證這集是不是也 0.0000s，不要假設），所以任一機的 `src_in` 换算下就是同一時刻在完整節目時鐘上的
    frame。相鄰片段 `tl` 連續**且** `src` 連續（`prev.src0 + (prev.tl1-prev.tl0) == this.src0`）才是
-   同一段；`src` 跳號＝真的剪過一刀，即使 `tl` 是連續的。開工前用這個方法重新推導，不要用記憶。
+   同一段；`src` 跳號＝真的剪過一刀，即使 `tl` 是連續的。開工前用這個方法重新推導，不要用記憶
+   ——腳本每次都從**目前**的 V1 重新推導，修修事後的手動編輯會被保留。
 3. **重複使用同一段素材**（修修把同一段內容搬到 timeline 兩個不同位置）——詞級 token 用「絕對來源
    時間」查找，同一句話在兩個位置各自獨立投影、各自獨立判斷鏡位，這是正確行為，不用特殊處理。
 
-**動手前一定先複製一份備份**（`DuplicateTimeline`），原timeline名稱加後綴（如
-`<name> (加反應鏡頭前)`）。V1 全部清空重建前，**先確認 A1／字幕軌的數量與涵蓋範圍**，重建只碰 V1，
-事後要能對比確認 A1／字幕沒被波及。
+**原 timeline 就是備份**：腳本 `DuplicateTimeline` 出 `--new-timeline`，只重建新 timeline 的 V1，
+原 timeline 從頭到尾不動。要在已三機版上再加插話切回，就拿目前那條三機版當 `--source-timeline`、
+取一個新名字（如 `<episode>（三機・插話切回）`）當 `--new-timeline`。重建前後腳本會比對 A1／字幕／
+V2 以上的每一個 item，任何不同就 fail。
 
 ## 節奏參數（`run_multicam_full.DEFAULT_CFG`，修修已核准）
 
@@ -76,7 +89,7 @@ DEFAULT_CFG = {
     "reaction_every": 20.0,   # 同人講超過這麼久，插一個聽者反應鏡頭
     "reaction_sec": 2.0,
     "reaction_style": "alternate",  # 聽者特寫／全景交替
-    "opener_sec": 5.0,        # 開場（tl=0）用全景
+    "opener_sec": 5.0,        # 開場（第一個剪輯段來源起點的頭 5 秒）用全景
 }
 ```
 
@@ -103,22 +116,44 @@ DEFAULT_CFG = {
 95 鏡頭裡是 0 個（7 個候選全數因「反應者=當下鏡頭上的人」或「已有全景覆寫」被正確排除，不是漏檢）。
 跑完直接報實際切了幾個、為什麼，不用先預告一定會有效果。
 
+## 插話切回：聽者插一句話，切回插話者（預設開，`--no-interject` 關）
+
+修修 2026-10-15（20260903 程世嘉）：開場來賓講梗圖時修修插「我也是阿伯」，鏡頭沒切回給他。兩個原因：
+(1) 那句跟來賓重疊，Memo 句級 token 整句判給來賓；(2) 就算判對，也短於 `min_shot` 2s 被併掉。所以
+插話事件取**兩個來源的聯集**（`interjection_events`）：
+
+- **token**：聽者（≠ 當下 talk shot 的 spk）被判定說了一句 0.5–2.5s 的話
+- **mic 能量**（`load_envelopes` 的 50ms frame）：聽者 mic > -36 dB **且** ≥ 說話者 mic − 3 dB
+  （重疊講話；說話時對方 mic 的 bleed 約 -45 ~ -60 dB）。hot frame 之間停頓 ≤ 0.3s 視為同一段
+  （「我也是阿伯」頭兩個音中間只停 0.15s，沒接上的話切點晚 0.6s），長度 ≥ 0.9s，事件最長 2.5s
+
+只處理落在 `kind=="talk"` 且無 `cam` 覆寫的 shot；同一人相鄰 < 0.6s 的事件合併。插入沿用
+`inject_reaction_cuts` 的切分邏輯（觸發字用佔位字元「插」，`reaction_trigger_min_sec` 1.5、
+`pad_lead` 0.15、`pad_lag` 0.45、`min_residual` 1.0），切到插話者**臉部特寫**；切出來的 shot 標
+`kind="interject"`，跑完會印「插話切回 N（spk 0：…／spk 1：…）」。
+
+**能量事件最短長度是調出來的**：0.5s → 114 個太碎、0.7s → 80、**0.9s → 57 個且修修指出的兩處都抓到**
+（程世嘉）。全部參數都有 CLI 旗標（`--interject-token-min/-max`、`--interject-loud-db`、
+`--interject-near-db`、`--interject-event-min/-cap/-bridge`、`--interject-merge-gap`），預設就是上面
+這組定案值；修修說太碎／漏抓再調，一次調一個方向。
+
 ## 執行順序（腳本已實作；這裡留給讀懂它在做什麼、或處理腳本拒絕的情況）
 
-1. 確認/推導這條 timeline 的真實段落結構（見上）。**腳本只接受結構 1 的「一整段 program feed」**；
-   結構 2（已剪過／已是三機）或多段直切會被拒絕——要先照上面的 coalesce 規則推導段落，那部分
-   還沒進腳本，不要為了讓它跑過去而改原 timeline
+1. 從目前 V1 推導真實剪輯段（見上）。V1 只能有 program feed 與這三台機位；有其他素材就 fail——
+   不要為了讓它跑過去而改原 timeline，先問修修那段素材要怎麼處理
 2. 備份——腳本用 `DuplicateTimeline` 複製出新 timeline，原 timeline 從頭到尾不動
 3. `shared.speaker_assign` 判定詞級說話者（含文字）
-4. `build_shots(tl_segs, words_tuple, CFG)` → `inject_reaction_cuts(shots, words_text, CFG)` → 開場全景
+4. `build_shots([(0, 節目長)], words_tuple, CFG)` → `inject_reaction_cuts(shots, words_text, CFG)` →
+   插話切回 → 開場全景（shot 用節目來源時間算，再逐剪輯段取交集）
 5. 清空 V1（**先 `project.SetCurrentTimeline(timeline)` 再 `DeleteClips`**——Resolve 對非 current
    timeline 呼叫 `DeleteClips` 會靜默回 `False`，不報錯也不做事；`shared.resolve_append.delete_checked`
    已包好這個坑）
-6. 逐 shot 算來源 frame，`AppendToTimeline`（`mediaType:1` 純視訊、帶 `recordFrame`；缺
+6. 逐段 × 逐 shot 算來源 frame，`AppendToTimeline`（`mediaType:1` 純視訊、帶 `recordFrame`；缺
    `startFrame`/`endFrame` 在 Resolve 21 有時會回 `[None]`，`shared.resolve_append.append_checked`
    已包好重試）
 7. 全景片段套 `--wide-zoom`
-8. 驗證（腳本自動）：V1 涵蓋範圍與空隙、A1／字幕前後一致、原 timeline 未動、全景 zoom。腳本做不到的
+8. 驗證（腳本自動）：V1 每個 clip 跟計畫一致、涵蓋範圍跟原 V1 相同、A1／字幕／V2 以上前後一致、原
+   timeline 未動、全景 zoom。腳本做不到的
    要人工補：抽驗幾個時間點的畫面與字幕是否對得上（說話者身份可用逐字稿自證，如「叫修修的名字」
    「叫來賓的名字」的句子）
 
