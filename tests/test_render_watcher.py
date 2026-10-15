@@ -977,6 +977,23 @@ def test_a_pending_package_job_still_wins_over_the_legacy_path(modern_episode):
     assert [job["key"] for job in jobs] == ["20260901-suyuxin/punch-L02/r1"]
 
 
+def test_a_recipe_that_already_has_its_png_is_not_rendered_again(modern_episode):
+    """attach 交付時配方就帶著 rendered_png——那張圖就是這份配方出的。
+
+    2026-10-09 洪瀞集 full：attach 寫完配方，watcher 把 attach 的 requested_at 當成
+    新配方，重解幾何、蓋掉剛交付的三張 PNG。gate 存配方一律不帶 rendered_png，
+    所以「有成品」就是「不需要再出」。
+    """
+    vault_root, _ = modern_episode
+    path = vault_root / "Attachments" / "packaging" / "20260901-suyuxin" / "packages.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    recipe = data["cuts"][0]["packages"][0]["render_recipe"]
+    recipe["rendered_png"] = data["cuts"][0]["packages"][0]["thumbnail_png"]
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    assert pending_requests(vault_root, {}) == [], "已有成品的配方不該排進 render"
+
+
 def test_an_episode_with_no_recipe_still_uses_the_legacy_path(vault):
     """真正的舊資料（只有 approval.json）照舊撿得到——這條 fallback 還有用。"""
     jobs = pending_requests(vault, {})

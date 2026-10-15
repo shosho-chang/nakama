@@ -117,6 +117,9 @@ def _book_cover_layer(req: dict, vault: Path) -> tuple[dict, dict]:
             "book_cover_opacity": float(req.get("book_cover_opacity", 0.42)),
             "book_cover_brightness": float(req.get("book_cover_brightness", 0.38)),
             "book_cover_height_pct": float(req.get("book_cover_height_pct", 100)),
+            # 中心點：gate 上拖過的位置（舊配方沒有這兩格 → 置中，跟以前一樣）
+            "book_cover_x_pct": float(req.get("book_cover_x_pct", 50)),
+            "book_cover_y_pct": float(req.get("book_cover_y_pct", 50)),
         },
         {"book_cover_data_url": str(vault / req["book_cover"])},
     )
@@ -726,6 +729,30 @@ def main() -> int:
                 raise SystemExit(f"render 失敗：{r.stderr[-500:]}")
         else:
             print("⚠ 橘框留白兩輪仍未收斂——字型可能有異常側距", file=sys.stderr)
+
+    if hl_pad:
+        # text-only 對照圖是在遮蔽迴圈裡出的，那時橘框還是 CSS 保底 padding；上面的
+        # 收斂只重出成品。兩張的橘框邊緣不再重疊，事後拿這組重驗會把橘框位移算成
+        # 遮蔽（2026-10-09 洪瀞集 r1 重驗得 3015／2115 FAIL，迴圈內其實是 0／0）。
+        # 用最終 padding 重出 text-only，_work/ 裡留下的就是跟成品配對的那張。
+        r = _run(
+            [
+                sys.executable,
+                render,
+                "--composition",
+                "thumbnail_full",
+                "--spec",
+                str(build(center, True)),
+                "--out",
+                str(tout),
+            ]
+        )
+        if r.returncode != 0:
+            raise SystemExit(f"render 失敗：{r.stderr[-500:]}")
+        c = _run([sys.executable, occ, str(out), str(tout)])
+        m = _DIFF_RE.search(c.stdout or "")
+        if m:
+            print(f"  最終遮蔽（橘框收斂後）：左遮 {m.group(1)} 右遮 {m.group(2)}")
 
     qa = _run(
         [

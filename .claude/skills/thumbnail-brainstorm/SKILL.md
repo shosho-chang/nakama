@@ -214,7 +214,10 @@ spec 的 variables 見各 composition 檔頭註解。**定案參數表在
 - **N1 作者／新書訪談**：有可驗證的實際書封時，以
   `book_cover_data_url` 置中作低亮度中景，書封必須完整可辨識但不得壓過標題與人臉；
   預設 `book_cover_opacity: 0.38`、`book_cover_brightness: 0.52`、
-  `book_cover_height_pct: 94`。主持人／來賓依然在左右邊緣，不把書封放成取代中央圖的 N2；
+  `book_cover_height_pct: 94`、中心點 `book_cover_x_pct: 50`／`book_cover_y_pct: 50`（置中）。
+  這三格是起點不是定案：修修在 gate〈組封面〉選「書封」圖層就能拖位置、滾輪縮放
+  （2026-10-11），跟來賓、大字同一套操作；書封沒有 solver，存什麼 render 就照抄什麼。
+  主持人／來賓依然在左右邊緣，不把書封放成取代中央圖的 N2；
   只能用出版社、書店或使用者提供的書封，在 run log 記錄來源與 SHA-256。
   若設計是「獨立書本置於背景」，必須把書本外部的白底／掃描留白完整去除並檢查
   alpha 邊緣；不能把帶白色矩形底的原始 JPG 直接調暗後當完成。保留書封本身的白色
@@ -469,6 +472,19 @@ python .claude/skills/thumbnail-brainstorm/scripts/attach_packages.py \
 script 會：PNG 複製進 vault `Attachments/packaging/<slug>/`、cutout 路徑轉
 vault-relative、整檔過 `PackagesFileV1` 驗證（失敗即不落任何一份）、
 working set 與 vault 雙寫（ADR-054 D10）。驗證錯誤讀訊息修 specs，不改 schema。
+
+**N1 的 `render_recipe` 從 spec 的 `render_spec` 抄**：大字、橘框詞、credit、字塊位置
+（`text_center_pct`／`text_top_pct`）、幾何，以及作者訪談的書封
+（`images.book_cover_data_url` → vault-relative `book_cover`，加上
+`book_cover_opacity`／`_brightness`／`_height_pct`）。書封檔必須已在 vault 內，否則 attach 失敗。
+
+**attach 跟桌機 `render_watcher.py` 的交接**（2026-10-09 洪瀞集訂正）：attach 寫的配方帶
+`rendered_png` = 這次交付的 PNG，watcher 看到有成品就不接手，交付的圖原樣保留。
+以前沒帶，watcher 把 attach 的 `requested_at` 當成新配方，立刻用 house style 重解幾何、
+蓋掉三張 PNG 與 `final/cover-full.png`。幾何照樣存進配方，但 `geometry_manual` 維持
+false（那個旗標代表修修自己拖過，agent 不替他設）——所以修修在 gate 上沒拖、只改字
+重出時，版位會回到 solver 的解。**手改配方要重出圖**：`rendered_png` 清成 `null`
+再更新 `requested_at`（只動 `requested_at` 不會觸發）。
 
 ### 目錄分層（修修 2026-08-15：「package 那個資料夾裡面太亂了」）
 
