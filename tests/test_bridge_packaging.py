@@ -2899,6 +2899,10 @@ def test_render_status_carries_the_same_three_state_as_the_board(
     rendered = client.get(endpoint, params={"requested_at": requested_at})
     assert rendered.json()["recipe_state"]["state"] == "rendered"
     assert rendered.json()["recipe_state"]["label"] == "已出圖 · 與配方相符"
+    # attach 交付的配方 watcher 永遠不會寫 state 列——進度條不能卡在「排隊中」
+    assert stale.json()["status"] == "queued"
+    assert rendered.json()["status"] == "done"
+    assert rendered.json()["thumbnail_url"]
 
 
 # ---------------------------------------------------------------------------

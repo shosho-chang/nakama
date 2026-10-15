@@ -1764,7 +1764,17 @@ async def packaging_render_status(
             # A partial/corrupt state file cannot be trusted as success or failure.
             state = {}
     row = state.get(key) if isinstance(state.get(key), dict) else None
-    if row is None or not _same_requested_at(str(row.get("requested_at", "")), expected):
+    row_matches = row is not None and _same_requested_at(str(row.get("requested_at", "")), expected)
+    if not row_matches and getattr(recipe, "rendered_png", None):
+        # attach 交付的配方本來就帶著成品 PNG，watcher 刻意跳過、永遠不會寫 state 列。
+        # 不在這裡判 done，進度條會永遠「排隊中」，旁邊的配方狀態卻是「已出圖」。
+        row = None
+        status = "done"
+        message = "封面已交付"
+        error = None
+        error_detail = None
+        attended = True
+    elif not row_matches:
         status = "queued"
         # 「排隊中」和「根本沒人在聽」在畫面上長得一模一樣——一條不停跳動的進度條。
         # 修修 2026-08-29 連續三次對著它等，三次都是後者：跑著的 watcher 綁死在
