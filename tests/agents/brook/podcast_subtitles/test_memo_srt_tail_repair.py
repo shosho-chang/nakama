@@ -62,7 +62,7 @@ def test_clamps_only_the_final_cue_end_to_the_audio_duration() -> None:
         (
             "1\n00:00:00,100 --> 00:00:03,100\nA\n",
             1_000,
-            "timebase fault",
+            "overruns the audio by 2100 ms",
         ),
         # 零長度、重疊照舊由 parse_srt 擋下（零長度走 repair-memo-srt）
         ("1\n00:00:00,500 --> 00:00:00,500\nA\n", 400, "invalid raw Memo SRT"),
