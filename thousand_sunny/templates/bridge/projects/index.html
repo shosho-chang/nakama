@@ -42,37 +42,44 @@
       </form>
     </header>
 
+    {# 表格版面：每一欄跨列對齊（CSS subgrid），沒有類型／沒有任務的列也留空格，
+       欄位不會因為少一個 badge 就整列位移（修修 2026-10-02）。 #}
     {% macro project_row(v) %}
       <a class="pj-row{% if v.status == 'archived' %} pj-row--archived{% endif %}"
          href="/bridge/projects/{{ v.name | urlencode }}">
         <span class="pj-row-name">{{ v.name }}</span>
-        {% if v.kind_label %}<span class="pj-row-kind">{{ v.kind_label }}</span>{% endif %}
-        <span class="pj-row-meta sho-mono">
-          {% if v.open_count or v.done_count %}
-            <span class="pj-stat" title="完成任務／全部任務">✓ {{ v.done_count }}<span class="pj-frac">/{{ v.done_count + v.open_count }}</span></span>
-            <span class="pj-stat" title="實際🍅／預估🍅">🍅 {{ v.actual_total }}<span class="pj-frac">/{{ v.est_total }}</span></span>
-          {% else %}
-            <span class="pj-stat pj-stat--empty">尚無任務</span>
-          {% endif %}
-          {% if v.last %}<span class="pj-stat pj-last" title="最近活動">{{ v.last }}</span>{% endif %}
-        </span>
+        <span class="pj-cell">{% if v.kind_label %}<span class="pj-row-kind">{{ v.kind_label }}</span>{% endif %}</span>
+        {% if v.open_count or v.done_count %}
+          <span class="pj-cell pj-stat sho-mono" title="完成任務／全部任務">✓ {{ v.done_count }}<span class="pj-frac">/{{ v.done_count + v.open_count }}</span></span>
+          <span class="pj-cell pj-stat sho-mono" title="實際🍅／預估🍅">🍅 {{ v.actual_total }}<span class="pj-frac">/{{ v.est_total }}</span></span>
+        {% else %}
+          <span class="pj-cell pj-cell--span2 pj-stat pj-stat--empty sho-mono">尚無任務</span>
+        {% endif %}
+        <span class="pj-cell pj-last sho-mono" title="最近活動">{{ v.last or "—" }}</span>
       </a>
     {% endmacro %}
 
-    <section class="sho-panel pj-list" aria-label="進行中戰線">
-      {% for v in active %}
-        {{ project_row(v) }}
-      {% else %}
+    {% macro project_table(rows, label) %}
+      <section class="sho-panel pj-list pj-table" aria-label="{{ label }}">
+        <div class="pj-thead sho-mono sho-mono-up" aria-hidden="true">
+          <span>專案</span><span>類型</span><span>任務</span><span>番茄</span><span class="pj-last">最近活動</span>
+        </div>
+        {% for v in rows %}{{ project_row(v) }}{% endfor %}
+      </section>
+    {% endmacro %}
+
+    {% if active %}
+      {{ project_table(active, "進行中戰線") }}
+    {% else %}
+      <section class="sho-panel pj-list" aria-label="進行中戰線">
         <p class="pj-empty sho-mono">還沒有專案 — 開一個，選類型就會自動把該類型的任務建好。</p>
-      {% endfor %}
-    </section>
+      </section>
+    {% endif %}
 
     {% if archived %}
       <details class="pj-archived">
         <summary class="sho-mono-up">已封存 · {{ archived | length }}</summary>
-        <section class="sho-panel pj-list">
-          {% for v in archived %}{{ project_row(v) }}{% endfor %}
-        </section>
+        {{ project_table(archived, "已封存戰線") }}
       </details>
     {% endif %}
 

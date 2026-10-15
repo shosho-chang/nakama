@@ -422,7 +422,8 @@
                     <span class="wk-tsection-label">{{ label }}</span>
                     <span class="wk-tsection-n">{{ tasks | length }}</span>
                   </div>
-                  {% for t in tasks %}{{ task_row(t, view, lifetime=True) }}{% endfor %}
+                  {# not grouped by project → name each task WITH its project (修修 2026-10-02) #}
+                  {% for t in tasks %}{{ task_row(t, view, lifetime=True, qualified=True) }}{% endfor %}
                 </section>
               {% endif %}
             {% endfor %}

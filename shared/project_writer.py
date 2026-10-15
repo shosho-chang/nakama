@@ -221,6 +221,24 @@ def create_task(
     return task_path
 
 
+# The separator between a task's project prefix and its own name: the canonical
+# " - " that create_task writes, plus the dash variants a hand-typed title carries
+# (修修 typed 「【Pod】李海碩－節目錄製」 with the full-width 「－」, 2026-10-02).
+_PROJECT_PREFIX_SEP_RE = re.compile(r"\s*[-—–－]\s*")
+
+
+def strip_project_prefix(text: str, project: str | None) -> str:
+    """``text`` without a leading ``{project}`` + dash separator.
+
+    ``"P - 節目錄製"`` / ``"P－節目錄製"`` → ``"節目錄製"``. A project name NOT
+    followed by a dash is part of the name and stays (``"自由艦隊週報"``). Returns
+    ``""`` when nothing follows the separator; ``text`` unchanged without a project."""
+    if not project or not text.startswith(project):
+        return text
+    m = _PROJECT_PREFIX_SEP_RE.match(text, len(project))
+    return text[m.end() :] if m else text
+
+
 def task_project(fm: dict[str, Any]) -> str | None:
     """The project a task belongs to, from its ``projects:`` frontmatter.
 
@@ -342,6 +360,14 @@ def rename_task(
             project = old_slug.split(" - ", 1)[0]
     elif project:
         project = unicodedata.normalize("NFC", str(project)).strip() or None
+
+    # Lists now show a task WITH its project (「P - 節目錄製」), so the rename field
+    # starts from that full name. Drop a typed-in prefix before re-applying it —
+    # otherwise the file becomes 「P - P - 節目錄製」 (修修's three 李海碩 tasks,
+    # 2026-10-02).
+    new_title = strip_project_prefix(new_title, project)
+    if not new_title:
+        raise ProjectWriteError("new title cannot be empty")
 
     new_basename = f"{project} - {new_title}" if project else new_title
     new_path = vault_root / TASKS_DIR / f"{new_basename}.md"
