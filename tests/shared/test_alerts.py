@@ -310,3 +310,34 @@ def test_alert_no_dedup_key_does_not_write_alert_state(fake_slack):
     fake_slack.post_plain.assert_called_once()
     n = _get_conn().execute("SELECT COUNT(*) AS n FROM alert_state").fetchone()["n"]
     assert n == 0
+
+
+# ---- resolve() ---------------------------------------------------------------
+
+
+def test_resolve_without_firing_key_is_noop(fake_slack):
+    assert alerts.resolve("backup", "R2 recovered", dedupe_key="never-fired") is False
+
+    fake_slack.post_plain.assert_not_called()
+
+
+def test_resolve_firing_key_dms_once_and_marks_resolved(fake_slack):
+    from shared.state import _get_conn
+
+    alerts.alert("error", "backup", "R2 upload failed", dedupe_key="r2")
+    assert alerts.resolve("backup", "R2 recovered", dedupe_key="r2") is True
+    assert alerts.resolve("backup", "R2 recovered", dedupe_key="r2") is False
+
+    texts = [c.args[0] for c in fake_slack.post_plain.call_args_list]
+    assert len(texts) == 2
+    assert texts[1] == ":white_check_mark: *[backup]* R2 recovered"
+    row = _get_conn().execute("SELECT state FROM alert_state WHERE dedup_key = 'r2'").fetchone()
+    assert row["state"] == "resolved"
+
+
+def test_resolve_lifts_suppression_for_next_outage(fake_slack):
+    alerts.alert("error", "backup", "fail 1", dedupe_key="r2", dedupe_minutes=1440)
+    alerts.resolve("backup", "recovered", dedupe_key="r2")
+    alerts.alert("error", "backup", "fail 2", dedupe_key="r2", dedupe_minutes=1440)
+
+    assert fake_slack.post_plain.call_count == 3
