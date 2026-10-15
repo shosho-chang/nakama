@@ -77,7 +77,7 @@ def test_full_shots_opener_reactions_and_no_gaps():
     _seamless(shots, 70.0)
 
     clips = mc.plan_clips(shots, [{"t0": 0, "t1": 2100, "s0": 0}], FPS, CAMS, WIDE)
-    assert clips[0] == {"rec": 0, "f0": 0, "f1": 150, "cam": WIDE, "kind": "opener"}
+    assert clips[0] == {"rec": 0, "f0": 0, "f1": 150, "cam": WIDE, "kind": "opener", "spk": 0}
     assert clips[-1]["f1"] == 2100
     assert all(a["f1"] == b["f0"] and a["rec"] == a["f0"] for a, b in zip(clips, clips[1:]))
 
@@ -396,6 +396,90 @@ def test_plan_clips_rejects_gap_and_short_coverage():
         mc.plan_clips([_talk(0.0, 4.0, 0), _talk(5.0, 10.0, 1)], seg, FPS, CAMS, WIDE)
     with pytest.raises(SystemExit, match="只蓋到"):
         mc.plan_clips([_talk(0.0, 9.0, 0)], seg, FPS, CAMS, WIDE)
+
+
+# --- 全景反應鏡頭延長 --------------------------------------------------------------
+
+
+def _clip(rec, f0, f1, cam, kind="talk", spk=0):
+    return {"rec": rec, "f0": f0, "f1": f1, "cam": cam, "kind": kind, "spk": spk}
+
+
+def _seamless_clips(clips):
+    for a, b in zip(clips, clips[1:]):
+        assert a["rec"] + a["f1"] - a["f0"] == b["rec"]
+
+
+def test_wide_reaction_extends_forward_into_next_close_up():
+    clips = [
+        _clip(0, 0, 300, CAMS["0"]),
+        _clip(300, 300, 360, WIDE, "reaction"),  # 2.0s
+        _clip(360, 360, 600, CAMS["0"]),
+    ]
+    stats = mc.widen_wide_reactions(clips, FPS, WIDE, 3.5, 2.0)
+    assert stats == {"forward": 1, "backward": 0, "skipped": 0}
+    assert (clips[1]["f0"], clips[1]["f1"]) == (300, 405)  # 3.5s
+    assert (clips[2]["rec"], clips[2]["f0"], clips[2]["f1"]) == (405, 405, 600)
+    _seamless_clips(clips)
+
+
+def test_wide_reaction_extends_backward_when_next_too_short():
+    clips = [
+        _clip(0, 0, 300, CAMS["0"]),
+        _clip(300, 300, 360, WIDE, "reaction"),
+        _clip(360, 360, 450, CAMS["0"]),  # 3.0s：吃 1.5s 後剩 1.5s < 2.0
+    ]
+    stats = mc.widen_wide_reactions(clips, FPS, WIDE, 3.5, 2.0)
+    assert stats == {"forward": 0, "backward": 1, "skipped": 0}
+    assert (clips[0]["f1"], clips[1]["rec"], clips[1]["f0"], clips[1]["f1"]) == (255, 255, 255, 360)
+    _seamless_clips(clips)
+
+
+def test_wide_reaction_not_extended_across_cut_or_into_short_or_wide_neighbours():
+    clips = [
+        _clip(0, 0, 90, CAMS["0"]),  # 前一支太短
+        _clip(90, 90, 150, WIDE, "reaction"),
+        _clip(150, 900, 1200, CAMS["0"]),  # 剪輯段交界：來源跳號
+    ]
+    assert mc.widen_wide_reactions(clips, FPS, WIDE, 3.5, 2.0)["skipped"] == 1
+    assert (clips[1]["f0"], clips[1]["f1"]) == (90, 150)
+
+
+def test_opener_and_listener_close_ups_keep_their_length():
+    clips = [
+        _clip(0, 0, 150, WIDE, "opener"),
+        _clip(150, 150, 450, CAMS["1"]),
+        _clip(450, 450, 510, CAMS["0"], "reaction"),  # 聽者特寫：維持 2.0s
+        _clip(510, 510, 900, CAMS["1"]),
+    ]
+    before = [dict(c) for c in clips]
+    assert mc.widen_wide_reactions(clips, FPS, WIDE, 3.5, 2.0) == {
+        "forward": 0,
+        "backward": 0,
+        "skipped": 0,
+    }
+    assert clips == before
+
+
+def test_wide_reaction_sec_at_or_below_current_length_is_noop():
+    clips = [_clip(0, 0, 300, CAMS["0"]), _clip(300, 300, 360, WIDE, "reaction")]
+    before = [dict(c) for c in clips]
+    mc.widen_wide_reactions(clips, FPS, WIDE, 2.0, 2.0)
+    assert clips == before
+
+
+def test_full_plan_wide_reactions_are_longer_than_listener_reactions():
+    tokens, speakers = _conversation()
+    shots = mc.build_full_shots(tokens, speakers, 70.0, dict(mc.DEFAULT_CFG))
+    clips = mc.plan_clips(shots, [{"t0": 0, "t1": 2100, "s0": 0}], FPS, CAMS, WIDE)
+    mc.widen_wide_reactions(clips, FPS, WIDE, 3.5, 2.0)
+    reactions = [c for c in clips if c["kind"] == "reaction"]
+    wide = [c["f1"] - c["f0"] for c in reactions if c["cam"] == WIDE]
+    close = [c["f1"] - c["f0"] for c in reactions if c["cam"] != WIDE]
+    assert wide == [105]  # 全景 3.5s
+    assert close and all(n <= 60 for n in close)  # 聽者特寫維持 ≤ 2.0s
+    _seamless_clips(clips)
+    assert clips[-1]["f1"] == 2100
 
 
 def test_parse_cams():
@@ -824,6 +908,7 @@ def test_cli_interject_flags():
     assert args.interject is False and args.interject_event_min == 0.7
     args = mc._parser().parse_args(_argv(Path("x")))
     assert args.interject is True
+    assert args.wide_reaction_sec == 3.5
     assert {k: getattr(args, f"interject_{k}") for k in mc.INTERJECT_DEFAULTS} == P
 
 

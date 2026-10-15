@@ -91,8 +91,16 @@ DEFAULT_CFG = {
     "reaction_sec": 2.0,
     "reaction_style": "alternate",  # 聽者特寫／全景交替
     "opener_sec": 5.0,        # 開場（第一個剪輯段來源起點的頭 5 秒）用全景
+    "wide_reaction_sec": 3.5, # 節奏反應鏡頭交替到全景時延長到 3.5s（--wide-reaction-sec）
+    "wide_reaction_keep_min": 2.0,  # 被吃頭／尾的鄰居特寫至少留這麼長
 }
 ```
+
+**全景反應鏡頭比聽者特寫長**（修修 2026-10-15：「切到全景的畫面時間有一些短，再增加個 1 到 2 秒感覺會
+比較好」→ 取中間 3.5s）。`alternate` 交替時，聽者特寫那一半維持 `reaction_sec` 2.0s，全景那一半在
+上軌片段層延長到 3.5s：優先往後吃下一支特寫的開頭，不行就往前吃前一支特寫的結尾；鄰居必須是同一
+剪輯段、來源連續的特寫，吃完仍 ≥ 2.0s，否則不動（`widen_wide_reactions`）。開場 5s 全景不變。
+程世嘉 83 個全景：80 往後、3 往前、0 無法延長，延長後機位 audit 仍 0 處。
 
 `min_shot`／`reaction_every` 是從長片參數（`run_short_director.FORMAT_CFG["long"]`）起跳、再放慢調出來
 的——完整節目篇幅遠長於精華片，原節奏會嚴重 over-edit。這組數字修修已核准，**當作起點直接用**，不用
@@ -145,8 +153,8 @@ DEFAULT_CFG = {
 
 ## 機位 audit：鏡頭在 A 臉上、B 卻明顯在講（只報告，不擋）
 
-dry-run 與正式跑都會印「機位 audit：… N 處」（`audit_dominance`）。對最終 shot list 裡 `kind=="talk"`
-且無 `cam` 的 shot，以 50ms mic 主導（某支 mic > -36 dB 且 ≥ 另一支 + 8 dB）找「另一人主導連續 ≥ 2s
+dry-run 與正式跑都會印「機位 audit：… N 處」（`audit_dominance`）。對最終上軌片段（全景延長之後）裡
+`kind=="talk"` 且無 `cam` 的 shot，以 50ms mic 主導（某支 mic > -36 dB 且 ≥ 另一支 + 8 dB）找「另一人主導連續 ≥ 2s
 （容許 0.5s 空白、主導比例 ≥ 50%）」的區間。全景、開場、反應鏡頭、插話切回都是刻意的，不看。
 程世嘉最終版 **0 處**；把每支 talk shot 的說話者對調當反向對照會抓到 **358 處**，證明它看得到切錯人。
 不是 0 就逐處列給修修看（印出的時間是節目來源秒數），不要自己調參數把它壓到 0。

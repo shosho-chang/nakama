@@ -84,6 +84,10 @@ DEFAULT_CFG = {
     "reaction_sec": 2.0,
     "reaction_style": "alternate",  # 聽者特寫／全景交替
     "opener_sec": 5.0,  # 開場（第一段來源起點）用全景
+    # 節奏反應鏡頭交替時，全景那一半延長到這麼長（聽者特寫那一半維持 reaction_sec）。
+    # 修修 2026-10-15：「切到全景的畫面時間有一些短，再增加個 1 到 2 秒感覺會比較好」→ 取 3.5s
+    "wide_reaction_sec": 3.5,
+    "wide_reaction_keep_min": 2.0,  # 被吃掉頭／尾的鄰居特寫至少留這麼長
 }
 
 # 插話切回（修修 2026-10-15，20260903 程世嘉實測定案）。開場來賓講梗圖時修修插
@@ -373,12 +377,76 @@ def plan_clips(
             cam = wide_cam if sh.get("cam") == "wide" else cams[str(sh["spk"])]
             kind = sh.get("kind", "talk")
             clips.append(
-                {"rec": seg["t0"] + (f0 - src0), "f0": f0, "f1": f1, "cam": cam, "kind": kind}
+                {
+                    "rec": seg["t0"] + (f0 - src0),
+                    "f0": f0,
+                    "f1": f1,
+                    "cam": cam,
+                    "kind": kind,
+                    "spk": sh["spk"],
+                }
             )
             cursor = f1
         if cursor != src1:
             raise SystemExit(f"shot list 只蓋到來源 frame {cursor}，剪輯段到 {src1}")
     return clips
+
+
+def widen_wide_reactions(
+    clips: list[dict], fps: float, wide_cam: str, wide_sec: float, keep_min: float
+) -> dict:
+    """節奏反應鏡頭的全景片段延長到 wide_sec（就地改 clips）；回傳 {forward, backward, skipped}。
+
+    同 20260903 程世嘉 mc_widen_cheng 的做法（83 個全景：80 往後、3 往前、0 無法延長）：
+    優先往後吃下一支特寫的開頭，不行就往前吃前一支特寫的結尾；鄰居必須是同一剪輯段、
+    來源連續的特寫，吃完仍 ≥ keep_min。都不行就不動。開場全景（kind="opener"）不動。
+    timeline 位置與來源同步移動，所以剪輯段、音軌、字幕都不受影響。
+    """
+    target = round(wide_sec * fps)
+    keep = round(keep_min * fps)
+    stats = {"forward": 0, "backward": 0, "skipped": 0}
+
+    def contiguous(a: dict, b: dict) -> bool:  # b 緊接在 a 後面，而且來源連續
+        return a["rec"] + (a["f1"] - a["f0"]) == b["rec"] and a["f1"] == b["f0"]
+
+    def close_up(c: dict | None) -> bool:
+        return c is not None and c["cam"] != wide_cam
+
+    for i, w in enumerate(clips):
+        if w["cam"] != wide_cam or w["kind"] != "reaction":
+            continue
+        need = target - (w["f1"] - w["f0"])
+        if need <= 0:
+            continue
+        nxt = clips[i + 1] if i + 1 < len(clips) else None
+        prv = clips[i - 1] if i > 0 else None
+        if close_up(nxt) and contiguous(w, nxt) and nxt["f1"] - nxt["f0"] - need >= keep:
+            w["f1"] += need
+            nxt["f0"] += need
+            nxt["rec"] += need
+            stats["forward"] += 1
+        elif close_up(prv) and contiguous(prv, w) and prv["f1"] - prv["f0"] - need >= keep:
+            prv["f1"] -= need
+            w["f0"] -= need
+            w["rec"] -= need
+            stats["backward"] += 1
+        else:
+            stats["skipped"] += 1
+    return stats
+
+
+def clips_as_shots(clips: list[dict], fps: float, wide_cam: str) -> list[dict]:
+    """最終上軌片段 → shot 形狀（節目來源秒數），給 audit 看實際會上軌的機位。"""
+    return [
+        {
+            "s": c["f0"] / fps,
+            "e": c["f1"] / fps,
+            "spk": c["spk"],
+            "kind": c["kind"],
+            **({"cam": "wide"} if c["cam"] == wide_cam else {}),
+        }
+        for c in clips
+    ]
 
 
 def summarize(clips: list[dict], fps: float) -> dict:
@@ -737,6 +805,15 @@ def _parser() -> argparse.ArgumentParser:
             default=default,
             help=f"{_INTERJECT_HELP[key]}（預設 {default:g}）",
         )
+    p.add_argument(
+        "--wide-reaction-sec",
+        type=float,
+        default=DEFAULT_CFG["wide_reaction_sec"],
+        help=(
+            "節奏反應鏡頭交替到全景時延長到幾秒（聽者特寫維持 reaction_sec；"
+            f"預設 {DEFAULT_CFG['wide_reaction_sec']:g}，設成 ≤ reaction_sec 就不延長）"
+        ),
+    )
     p.add_argument("--dry-run", action="store_true", help="只算 shot list，不連 Resolve")
     return p
 
@@ -801,10 +878,17 @@ def run(args: argparse.Namespace, *, connect=None) -> dict:
         opener_start=segs[0]["s0"] / fps,
     )
     clips = plan_clips(shots, segs, fps, args.cams, args.wide_cam)
+    widened = widen_wide_reactions(
+        clips, fps, args.wide_cam, args.wide_reaction_sec, cfg["wide_reaction_keep_min"]
+    )
+    print(
+        f"全景反應鏡頭延長到 {args.wide_reaction_sec:g}s：往後 {widened['forward']}、"
+        f"往前 {widened['backward']}、無法延長 {widened['skipped']}"
+    )
     summary = summarize(clips, fps)
     print(f"shot list：{summary}")
     cuts = [sh for sh in shots if sh.get("kind") == "interject"]
-    issues = audit_dominance(shots, envelopes, AUDIT_DEFAULTS)
+    issues = audit_dominance(clips_as_shots(clips, fps, args.wide_cam), envelopes, AUDIT_DEFAULTS)
     print(f"機位 audit：鏡頭在 A、B 的 mic 明顯主導 ≥ 2s 的區間 {len(issues)} 處")
     for it in issues[:20]:
         print(
@@ -825,6 +909,7 @@ def run(args: argparse.Namespace, *, connect=None) -> dict:
         "segments": len(segs),
         "offsets": offsets,
         "interject_cuts": len(cuts),
+        "wide_widened": widened,
         "audit_issues": len(issues),
         **summary,
     }
