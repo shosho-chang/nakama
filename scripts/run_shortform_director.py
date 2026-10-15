@@ -176,6 +176,34 @@ def _camera_pieces(cmap: dict, spk: int, master_s: float, master_e: float) -> li
     return project_master_range(cmap, master_s, master_e, source_key=key)
 
 
+def _piece_source_frames(piece: dict, fps: float) -> tuple[int, int]:
+    """機位片段的來源格區間——**長度以 Master 時間軸上的取整為準**。
+
+    聲音逐保留段在 Master 時間軸上取整（``round(seg_e*fps) - round(seg_s*fps)``）。
+    機位與 Master 之間的同步位移是小數格，畫面若在機位時間上各自取整，每個 shot
+    都可能多或少一格、而且累積：20261007 李海碩 punch-S05 從 30s 起剪點差一格，
+    片尾畫面比聲音短一格，最後一格黑底只剩字卡（盲審抓到）。起點照機位取整，
+    長度改從 Master 格數推，兩軌逐保留段同長。
+    """
+    f0 = int(round(float(piece["source_start_sec"]) * fps))
+    span = int(round(float(piece["master_end_sec"]) * fps)) - int(
+        round(float(piece["master_start_sec"]) * fps)
+    )
+    return f0, f0 + span
+
+
+def _placed_span(item, a0: int, a1: int) -> int:
+    """片段放上 timeline 的實際長度——**以 ``GetDuration`` 為準**。
+
+    回報的 source 終點會因浮點捨入少一格（要 62064–62602 回 62601，``GetDuration``
+    是 538），照回報值補償會把片段多放一格、後面每一段都跟著位移（同
+    ``run_short_director._validate_appended_source_range``，2026-10-07 李海碩實測）。
+    沒有 ``GetDuration`` 才退回用回報的起訖格相減。
+    """
+    get_duration = getattr(item, "GetDuration", None)
+    return int(get_duration()) if callable(get_duration) else a1 - a0
+
+
 def _split_long_cues(srt_path: Path) -> tuple[int, list[str]]:
     """mode B：把排不進字卡版面的 cue，在語法接縫處拆開後原地重寫 SRT。
 
@@ -556,7 +584,7 @@ def direct(
         for key, value in props.items():
             item.SetProperty(key, value)
 
-    def _append_cam(clip, src_s: float, src_e: float, extra: dict | None = None):
+    def _append_cam(clip, piece: dict, extra: dict | None = None):
         """把一段機位素材接上軌，並保證**放上去的長度等於要求的長度**。
 
         三個實測到的 Resolve 行為，每個都會安靜地毀掉整支片：
@@ -576,7 +604,8 @@ def direct(
         還會累積。所以這裡收斂的目標是長度：對不上就退掉、調整請求區間重接，
         起點漂一兩格是可以接受的（內容晚一格，肉眼看不出來），長度不行。
         """
-        f0, f1 = int(round(src_s * fps)), int(round(src_e * fps))
+        src_s, src_e = piece["source_start_sec"], piece["source_end_sec"]
+        f0, f1 = _piece_source_frames(piece, fps)
         if f1 <= f0:
             return None
         track = (extra or {}).get("trackIndex", 1)
@@ -607,7 +636,8 @@ def direct(
                 _validate_appended_source_range(item, req0, req1)
                 return item
             a0, a1 = int(a0), int(a1)
-            if a1 - a0 == want_span:
+            placed_span = _placed_span(item, a0, a1)
+            if placed_span == want_span:
                 return item
             if not tl.DeleteClips([item]):
                 _validate_appended_source_range(item, req0, req1)  # 交給既有的硬失敗
@@ -620,13 +650,13 @@ def direct(
                 want_span,
                 a0,
                 a1,
-                a1 - a0,
+                placed_span,
             )
             if a0 != req0:  # in-point 被退格：整段往後平移，長度不變
                 req0 += req0 - a0
                 req1 = req0 + want_span
             else:  # 起點對、長度不對：補足差額
-                req1 += want_span - (a1 - a0)
+                req1 += want_span - placed_span
         raise SystemExit(
             f"{label}: 來源區間 {f0}-{f1} 連續 {IN_POINT_MAX_NUDGE} 次都放不出正確長度"
             "——素材的解碼邊界異常，先轉檔成 all-I 或換來源"
@@ -639,20 +669,17 @@ def direct(
             cursor = tl_start
             for piece in pieces:
                 extra = {"trackIndex": track, "recordFrame": cursor} if track == 2 else None
-                item = _append_cam(
-                    cam_items[spk], piece["source_start_sec"], piece["source_end_sec"], extra
-                )
+                item = _append_cam(cam_items[spk], piece, extra)
                 if item is not None:
                     _set_props(item, _panel_props(cfg, spk, top=top))
-                cursor += int(round((piece["source_end_sec"] - piece["source_start_sec"]) * fps))
+                f0, f1 = _piece_source_frames(piece, fps)
+                cursor += f1 - f0
 
     appended: list[dict] = []
     tl_cursor = (opener_span[1] - opener_span[0]) if opener_span else 0.0
     for sh in shots:
         for piece in _camera_pieces(cmap, sh["spk"], sh["s"], sh["e"]):
-            item = _append_cam(
-                cam_items[sh["spk"]], piece["source_start_sec"], piece["source_end_sec"]
-            )
+            item = _append_cam(cam_items[sh["spk"]], piece)
             if item is None:
                 continue
             _set_props(

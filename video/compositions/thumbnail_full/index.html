@@ -54,12 +54,22 @@
         width: 100%; height: 100%; object-fit: cover; display: none;
       }
       /* 作者訪談：書封是可辨識的中景，不是第一視覺層。 */
+      /* 位置是中心點（--book-x/--book-y，% of 畫布）——2026-10-11 修修要在 gate 上
+         自己拖、自己縮放。仍然 flex 置中，再用 relative 位移 (x−50%, y−50%)：預設
+         50/50 位移為 0，版面跟改版前一模一樣。不用 translate(-50%,-50%)，那會讓
+         整塊書封換一條取樣路徑，置中的舊配方重出圖也跟著變（實測 7.5k px 不同）。
+         max-width: 50% 拿掉：大小由他決定，有上限的話滾輪放大到一半就不再變大。
+         既有兩集的書封都沒碰到那個上限（525／476px < 640px），拿掉不改舊圖；
+         flex-shrink: 0 免得放到比畫布寬時被 flex 擠窄。 */
       #book-layer {
         position: absolute; inset: 0; z-index: 1; display: none;
         align-items: center; justify-content: center; overflow: hidden;
       }
       #book-cover {
-        height: var(--book-h, 94%); width: auto; max-width: 50%; object-fit: contain;
+        position: relative;
+        left: calc(var(--book-x, 50%) - 50%); top: calc(var(--book-y, 50%) - 50%);
+        flex-shrink: 0;
+        height: var(--book-h, 94%); width: auto; max-width: none; object-fit: contain;
         opacity: var(--book-opacity, 0.38);
         filter: brightness(var(--book-brightness, 0.52)) saturate(0.78)
                 drop-shadow(0 12px 34px rgba(0,0,0,0.55));
@@ -178,6 +188,8 @@
         "book_cover_opacity":    { "type": "number", "default": 0.38 },
         "book_cover_brightness": { "type": "number", "default": 0.52 },
         "book_cover_height_pct": { "type": "number", "default": 94 },
+        "book_cover_x_pct":      { "type": "number", "default": 50 },
+        "book_cover_y_pct":      { "type": "number", "default": 50 },
         "host_height_pct":       { "type": "number", "default": 108 },
         "guest_height_pct":      { "type": "number", "default": 108 },
         "host_x_pct":            { "type": "number", "default": -2 },
@@ -266,6 +278,10 @@
           vars.book_cover_brightness !== undefined ? vars.book_cover_brightness : 0.52);
         root.style.setProperty("--book-h",
           (vars.book_cover_height_pct !== undefined ? vars.book_cover_height_pct : 94) + "%");
+        if (vars.book_cover_x_pct !== undefined)
+          root.style.setProperty("--book-x", vars.book_cover_x_pct + "%");
+        if (vars.book_cover_y_pct !== undefined)
+          root.style.setProperty("--book-y", vars.book_cover_y_pct + "%");
         layer.style.display = "flex";
         root.classList.add("book-mode");
       }

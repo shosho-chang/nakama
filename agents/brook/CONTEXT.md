@@ -42,9 +42,10 @@ _Avoid_: Generic copy score、platform compliance check
 檢查 Carousel 是否涵蓋整集最值得傳播的重點、敘事弧是否成立，以及是否漏掉關鍵主題的 panel reviewer 視角。
 _Avoid_: Exhaustive transcript coverage、chronological summary check
 
-**Brand and Evidence Lens**:
-檢查是否改變原意、錯置說話者、創造不存在的因果或讓來賓被斷章取義的 panel reviewer 視角。
-_Avoid_: Legal approval、majority vote、verbatim-only enforcement
+**Evidence Lens**:
+檢查是否改變原意、錯置說話者、創造不存在的因果或讓來賓被斷章取義的 panel reviewer 視角。只查證據，不做品牌審查
+（修修 2026-10-07 拿掉品牌評審）；收據與 panel 的 key 仍是 `brand_evidence`，舊 artifact 照樣有效。
+_Avoid_: Brand safety review、Legal approval、majority vote、verbatim-only enforcement
 
 **Episode Highlight Arc**:
 一份 Podcast Carousel 對整集訪談中多個吸引人重點的編排，不限於單一主題，也不要求逐段摘要全部內容。
@@ -91,7 +92,7 @@ _Avoid_: Per-card radio decision、blank-as-approval、free-floating comment
 _Avoid_: Provider-specific task、implicit executor、direct JSON mutation
 
 **Carousel Correction Executor**:
-實際承接整輪 E2E 修訂的當前 Codex 或 Claude Code agent；它 claim job、回報 progress、產生新 revision，並把 IG Audience、Episode Editorial、Brand and Evidence 分派給三個獨立 subagents。
+實際承接整輪 E2E 修訂的當前 Codex 或 Claude Code agent；它 claim job、回報 progress、產生新 revision，並把 IG Audience、Episode Editorial、Evidence 分派給三個獨立 subagents。
 _Avoid_: External LLM API、hidden provider、reviewer-as-executor
 
 **Podcast Carousel Flow**:
@@ -133,7 +134,7 @@ _Avoid_: Second authoring source、mutable latest template、untracked template 
 - 主要 Hook 使用 **Hook Copy**，並為後續所有 points 建立清楚一致的 episode payoff；renderer 只負責 fit 與視覺套用，不替 Copy Skill補寫欄位。
 - 一份 **Podcast Carousel Copy Spec** 最多 20 頁；超過 20 頁必須重新篩選內容。
 - 主版本進入 **Podcast Carousel Render** 前必須通過 **Internal Editorial Panel**：reviewer agent 獨立盲審，主 agent 逐項查證其發現是否能由 Copy Spec、Transcript Evidence 與乾淨逐字稿支持，再收斂成修訂。
-- **Internal Editorial Panel** 固定包含三個互不替代的 reviewer：**IG Audience Lens**、**Episode Editorial Lens**、**Brand and Evidence Lens**；三者獨立輸出 findings，不以平均分或多數決消除少數 lens 的有效問題。
+- **Internal Editorial Panel** 固定包含三個互不替代的 reviewer：**IG Audience Lens**、**Episode Editorial Lens**、**Evidence Lens**；三者獨立輸出 findings，不以平均分或多數決消除少數 lens 的有效問題。
 - **Internal Editorial Panel** 不新增 copy-only HITL gate；只有 render 後的 **Carousel Review Gate** 是人類正式 approval。
 - **Publish Compatibility** 只描述發布路徑，不得為了維持 `api_compatible` 而刪除重要內容；11–20 頁可以完整 render，但標為 `manual_only`。
 - **Podcast Carousel Copy Spec** 產生後直接進入 **Podcast Carousel Render**，不先停在獨立的純文字 approval。

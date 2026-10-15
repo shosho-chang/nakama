@@ -20,6 +20,8 @@
 
 sample 的機位驗證：expected-speaker 在窗內的說話占比 < 0.6 即 ValueError
 （ADR-054 A8③ — 機位對應寫錯時會穩定抽到錯的人且不報錯，必須 fail loud）。
+speaker timing 來源 = shared.speaker_timing（subs/words.json，或 ADR-063 Memo
+release ledger 驗證過的 evidence tokens）——與 run_short_director 同一個 loader。
 finalize 檔名 = cutout_filename("guest", i, emotion)（A8④ — 帶 emotion，
 否則表情匹配永遠 miss 掉入隨機 fallback）。
 """
@@ -49,14 +51,20 @@ _HYPERFRAMES_VIDEO_DIR = Path(__file__).resolve().parents[4] / "video"
 
 
 def load_word_speakers(episode_dir: Path) -> tuple[list[dict], list[int | None]]:
-    """episode 的 subs/words.json + 分軌 mic 能量 → (words, word_speakers)。"""
+    """episode timing tokens + 分軌 mic 能量 → (words, word_speakers)。
+
+    timing tokens 與 short-director 共用同一個 loader：有 subs/words.json 就讀它，
+    沒有（ADR-063 Memo Dual-Audit 集數）就讀 release ledger hash 驗證過的
+    Memo evidence tokens；兩者皆無或驗證不過 → SystemExit，不降級。
+    """
     from shared.speaker_assign import (
         assign_word_speakers,
         detect_mic_tracks,
         load_envelopes,
     )
+    from shared.speaker_timing import load_speaker_timing_tokens
 
-    words = json.loads((episode_dir / "subs" / "words.json").read_text(encoding="utf-8"))["words"]
+    words = load_speaker_timing_tokens(episode_dir)
     mics = detect_mic_tracks(episode_dir / "Audio")
     envs = load_envelopes(mics, reference=episode_dir / "normalized.wav")
     return words, assign_word_speakers(words, envs)

@@ -31,6 +31,34 @@ def test_wrap_lines_picks_the_grammatical_seam(text, expected):
     assert wrap_lines(text, 10, 2) == expected
 
 
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # 雙字趨向補語跟著動詞走
+        ("其實不是你自己生出來的", ["其實不是你自己", "生出來的"]),
+        ("哪一個產業跑出來跟我講說", ["哪一個產業", "跑出來跟我講說"]),
+        # 固定搭配不剖半
+        ("也是寫作說實在最困難的地方", ["也是寫作", "說實在最困難的地方"]),
+        ("有一天他發現他沒有辦法100分的時候", ["有一天他發現他", "沒有辦法100分的時候"]),
+        ("憲哥講準備好三成就衝了", ["憲哥講", "準備好三成就衝了"]),
+        # 指示詞＋名詞是同一個名詞組
+        ("再拿這個東西去ChatGPT", ["再拿這個東西去", "ChatGPT"]),
+        # 英文多字詞不在空白處斷開
+        ("爬到social linguistic", ["爬到", "social linguistic"]),
+    ],
+)
+def test_wrap_lines_keeps_phrases_whole(text, expected):
+    """20261007 李海碩六支短片盲審抓到的斷行。"""
+    assert wrap_lines(text, 10, 2) == expected
+
+
+def test_main_verb_chu_lai_is_not_treated_as_a_complement():
+    """左段不是動詞收尾時，「出來」是主要動詞，照常可以起手。"""
+    lines = wrap_lines("那個時候我們全家人一起出來", 10, 2)
+    assert lines is not None
+    assert "".join(lines) == "那個時候我們全家人一起出來"
+
+
 def test_short_text_stays_on_one_line():
     assert wrap_lines("狗也愛玩", 10, 2) == ["狗也愛玩"]
 
