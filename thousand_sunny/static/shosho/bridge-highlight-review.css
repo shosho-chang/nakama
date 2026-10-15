@@ -58,7 +58,6 @@
 }
 .highlight-card.is-selected { border-left-color: var(--sho-accent); background: var(--sho-bg); }
 .highlight-card.is-previewing { border-color: var(--sho-accent-line); }
-.highlight-card--veto:not(.is-selected) { border-left-color: var(--sho-error); }
 
 .highlight-card__rail {
   display: flex;
@@ -93,8 +92,6 @@
 .highlight-review-notes dt { font-weight: 800; text-transform: uppercase; }
 .highlight-review-notes dd { margin: 0; color: var(--sho-text-2); line-height: 1.6; }
 
-.highlight-veto { display: grid; gap: var(--sho-s-2); margin-top: var(--sho-s-3); border-top: 1px dashed var(--sho-error); padding-top: var(--sho-s-3); color: var(--sho-text-2); }
-.highlight-veto label { cursor: pointer; font-weight: 700; }
 .highlight-feedback { display: block; margin-top: var(--sho-s-4); color: var(--sho-text-2); font-size: .84rem; font-weight: 700; }
 .highlight-feedback textarea { box-sizing: border-box; display: block; width: 100%; min-height: 4.75rem; resize: vertical; margin-top: var(--sho-s-2); border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); background: var(--sho-bg); color: var(--sho-text); font: inherit; font-weight: 400; line-height: 1.6; padding: var(--sho-s-2) var(--sho-s-3); }
 
