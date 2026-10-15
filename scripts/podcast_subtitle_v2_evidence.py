@@ -53,6 +53,10 @@ from agents.brook.podcast_subtitles.memo_srt_repair import (  # noqa: E402
     load_verified_memo_srt_repair,
     repair_memo_srt_bytes,
 )
+from agents.brook.podcast_subtitles.memo_srt_tail_repair import (  # noqa: E402
+    load_verified_memo_srt_tail_repair,
+    repair_memo_srt_tail_overrun_bytes,
+)
 from agents.brook.podcast_subtitles.memo_vad_gap_repair import (  # noqa: E402
     MemoVadGapRepairInputs,
     MemoVadGapRepairReceiptV1,
@@ -371,6 +375,7 @@ def _source_repair_lineage(
     *,
     source_export: Path,
     expected_normalized_audio_hash: str | None = None,
+    expected_normalized_audio_duration_ms: int | None = None,
 ) -> dict[str, str | int | None]:
     raw_value = getattr(args, "raw_source_export", None)
     receipt_value = getattr(args, "repair_receipt", None)
@@ -397,6 +402,20 @@ def _source_repair_lineage(
         )
         raw_hash = receipt.raw_source_sha256
         raw_size = receipt.raw_source_size_bytes
+    elif contract == "memo-srt-tail-overrun-repair-v1":
+        # 這條修補改的是時間（截齊音檔長度），必須綁住同一份 normalized audio 的
+        # hash 與長度，否則收據可以拿去套別的檔案。
+        if expected_normalized_audio_hash is None or expected_normalized_audio_duration_ms is None:
+            raise ValueError("Memo tail repair verification requires the normalized audio identity")
+        tail_receipt = load_verified_memo_srt_tail_repair(
+            raw_source=raw_source,
+            repaired_source=source_export,
+            receipt_path=receipt_path,
+            expected_normalized_audio_sha256=expected_normalized_audio_hash,
+            expected_normalized_audio_duration_ms=expected_normalized_audio_duration_ms,
+        )
+        raw_hash = tail_receipt.raw_source_sha256
+        raw_size = tail_receipt.raw_source_size_bytes
     elif contract == "memo-bundled-runner-vad-gap-repair-v1":
         loaded_receipt = _load_canonical_model(receipt_path, MemoVadGapRepairReceiptV1)
         assert isinstance(loaded_receipt, MemoVadGapRepairReceiptV1)
@@ -443,6 +462,26 @@ def _repair_memo_srt(args: argparse.Namespace) -> int:
     if output.exists() or receipt_output.exists():
         raise FileExistsError("repair-memo-srt outputs must not already exist")
     repaired, receipt = repair_memo_srt_bytes(source.read_bytes())
+    _write_new(output, repaired)
+    _write_new(receipt_output, canonical_json_bytes(receipt))
+    return 0
+
+
+def _repair_memo_srt_tail(args: argparse.Namespace) -> int:
+    source = Path(args.source_export)
+    output = Path(args.output)
+    receipt_output = Path(args.receipt_output)
+    if output.exists() or receipt_output.exists():
+        raise FileExistsError("repair-memo-srt-tail outputs must not already exist")
+    audio = Path(args.normalized_audio)
+    verified = VerifiedNormalizedAudioHandoffAdapter(Path(args.normalized_manifest)).normalize(
+        NormalizeRequest(source_audio=audio, expected_source_hash=hash_file(audio))
+    )
+    repaired, receipt = repair_memo_srt_tail_overrun_bytes(
+        source.read_bytes(),
+        normalized_audio_sha256=verified.receipt.normalized.sha256,
+        normalized_audio_duration_ms=verified.receipt.normalized_duration_ms,
+    )
     _write_new(output, repaired)
     _write_new(receipt_output, canonical_json_bytes(receipt))
     return 0
@@ -541,6 +580,7 @@ def _prepare_recognition(args: argparse.Namespace) -> int:
         args,
         source_export=source_export,
         expected_normalized_audio_hash=verified.receipt.normalized.sha256,
+        expected_normalized_audio_duration_ms=verified.receipt.normalized_duration_ms,
     )
     tokens, token_hash, token_source = _recognition_tokens(
         source_export=source_export,
@@ -603,6 +643,7 @@ def _accept_recognition(args: argparse.Namespace) -> int:
         args,
         source_export=source,
         expected_normalized_audio_hash=loaded.normalized_audio_sha256,
+        expected_normalized_audio_duration_ms=loaded.normalized_audio_duration_ms,
     )
     _assert_repair_lineage_matches(loaded, repair_lineage)
     tokens, token_hash, token_source = _recognition_tokens(
@@ -718,6 +759,7 @@ def _prepare_cues(args: argparse.Namespace) -> int:
         args,
         source_export=source,
         expected_normalized_audio_hash=recognition.normalized_audio_sha256,
+        expected_normalized_audio_duration_ms=recognition.normalized_audio_duration_ms,
     )
     try:
         parsed = parse_srt(source_bytes.decode("utf-8-sig"))
@@ -767,6 +809,7 @@ def _accept_cues(args: argparse.Namespace) -> int:
         args,
         source_export=source,
         expected_normalized_audio_hash=recognition.normalized_audio_sha256,
+        expected_normalized_audio_duration_ms=recognition.normalized_audio_duration_ms,
     )
     _assert_repair_lineage_matches(loaded, repair_lineage)
     episode_id, agent_audits = _load_worker_audits(
@@ -897,6 +940,13 @@ def _parser() -> argparse.ArgumentParser:
     repair.add_argument("--output", required=True)
     repair.add_argument("--receipt-output", required=True)
     repair.set_defaults(handler=_repair_memo_srt)
+    tail = commands.add_parser("repair-memo-srt-tail")
+    tail.add_argument("--source-export", required=True)
+    tail.add_argument("--normalized-audio", required=True)
+    tail.add_argument("--normalized-manifest", required=True)
+    tail.add_argument("--output", required=True)
+    tail.add_argument("--receipt-output", required=True)
+    tail.set_defaults(handler=_repair_memo_srt_tail)
     bundled = commands.add_parser("run-memo-bundled")
     bundled.add_argument("--memo-runner", required=True)
     bundled.add_argument("--memo-model", required=True)
