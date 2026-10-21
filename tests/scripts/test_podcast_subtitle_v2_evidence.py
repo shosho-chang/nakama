@@ -28,6 +28,7 @@ from agents.brook.podcast_subtitles.memo_boundary import (
 from agents.brook.podcast_subtitles.memo_bundled_runner import (
     MemoBundledRunnerExecutionReceiptV1,
 )
+from agents.brook.podcast_subtitles.memo_projection import parse_srt
 from agents.brook.podcast_subtitles.memo_srt_repair import (
     load_verified_memo_srt_repair,
     repair_memo_srt_bytes,
@@ -1727,6 +1728,165 @@ def test_repair_memo_srt_tail_clamps_final_overrun_through_cue_acceptance(
     receipt = json.loads(repair_receipt.read_bytes())
     assert receipt["contract"] == "memo-srt-tail-overrun-repair-v1"
     assert receipt["clamp"]["original_end_ms"] == 1_400
+    assert receipt["normalized_audio_sha256"] == hash_file(audio)
+
+    lineage = ["--raw-source-export", str(raw), "--repair-receipt", str(repair_receipt)]
+    review = tmp_path / "memo-recognition-review.json"
+    assert (
+        evidence_cli.main(
+            [
+                "prepare-recognition",
+                "--normalized-audio",
+                str(audio),
+                "--normalized-manifest",
+                str(handoff),
+                "--source-export",
+                str(repaired),
+                "--source-export-kind",
+                "memo_srt",
+                *lineage,
+                "--memo-version",
+                "1.7.5",
+                "--language",
+                "zh",
+                "--prompt",
+                "test",
+                "--output",
+                str(review),
+            ]
+        )
+        == 0
+    )
+    assert json.loads(review.read_bytes())["source_repair_receipt_sha256"] == hash_file(
+        repair_receipt
+    )
+    recognition_receipt = tmp_path / "memo-recognition-acceptance.json"
+    recognition_manifest = tmp_path / "memo-recognition.json"
+    assert (
+        evidence_cli.main(
+            [
+                "accept-recognition",
+                "--review",
+                str(review),
+                "--normalized-audio",
+                str(audio),
+                "--normalized-manifest",
+                str(handoff),
+                "--source-export",
+                str(repaired),
+                *lineage,
+                *_recognition_quorum_args(tmp_path, review),
+                "--accepted-at",
+                "2026-10-15T15:30:00+08:00",
+                "--receipt-output",
+                str(recognition_receipt),
+                "--manifest-output",
+                str(recognition_manifest),
+            ]
+        )
+        == 0
+    )
+    cue_review = tmp_path / "memo-cue-review.json"
+    assert (
+        evidence_cli.main(
+            [
+                "prepare-cues",
+                "--recognition-manifest",
+                str(recognition_manifest),
+                "--source-export",
+                str(repaired),
+                *lineage,
+                "--output",
+                str(cue_review),
+            ]
+        )
+        == 0
+    )
+    cue_receipt = tmp_path / "memo-cue-acceptance.json"
+    assert (
+        evidence_cli.main(
+            [
+                "accept-cues",
+                "--review",
+                str(cue_review),
+                "--recognition-manifest",
+                str(recognition_manifest),
+                "--source-export",
+                str(repaired),
+                *lineage,
+                *_cue_quorum_args(tmp_path, cue_review, recognition_manifest),
+                "--accepted-at",
+                "2026-10-15T16:00:00+08:00",
+                "--receipt-output",
+                str(cue_receipt),
+            ]
+        )
+        == 0
+    )
+    accepted_cues = MemoSrtAcceptanceReceiptV1.model_validate_json(
+        cue_receipt.read_bytes(), strict=True
+    )
+    assert accepted_cues.raw_source_export_sha256 == hash_file(raw)
+    assert accepted_cues.source_repair_receipt_sha256 == hash_file(repair_receipt)
+
+
+def test_repair_memo_srt_chain_fixes_zero_duration_and_tail_through_cue_acceptance(
+    tmp_path: Path,
+) -> None:
+    """20261009 周慕姿：同一份 export 同時有零長度 cue 與結尾超出。
+
+    兩段修補串成一張收據，下游每一個 prepare/accept 只帶一組 lineage 就能重驗，
+    release 端看到的 raw hash 仍是 Memo 執行輸出。
+    """
+    audio = _wav(tmp_path / "normalized.wav", duration_ms=1_000)
+    handoff = tmp_path / "normalized-handoff.json"
+    evidence_cli.main(
+        [
+            "seal-normalized",
+            "--audio",
+            str(audio),
+            "--output",
+            str(handoff),
+            "--accepted-at",
+            "2026-10-15T15:00:00+08:00",
+        ]
+    )
+    raw = tmp_path / "memo-raw.srt"
+    raw.write_text(
+        "1\n00:00:00,100 --> 00:00:00,500\nA\n\n2\n00:00:00,500 --> 00:00:00,500\nB\n\n"
+        "3\n00:00:00,500 --> 00:00:01,400\nC\n",
+        encoding="utf-8",
+    )
+    intermediate = tmp_path / "memo-zero-repaired.srt"
+    repaired = tmp_path / "memo-chain-repaired.srt"
+    repair_receipt = tmp_path / "memo-chain-repair.json"
+    assert (
+        evidence_cli.main(
+            [
+                "repair-memo-srt-chain",
+                "--source-export",
+                str(raw),
+                "--normalized-audio",
+                str(audio),
+                "--normalized-manifest",
+                str(handoff),
+                "--intermediate-output",
+                str(intermediate),
+                "--output",
+                str(repaired),
+                "--receipt-output",
+                str(repair_receipt),
+            ]
+        )
+        == 0
+    )
+    repaired_cues = parse_srt(repaired.read_text(encoding="utf-8"))
+    assert all(cue.end_ms > cue.start_ms for cue in repaired_cues)
+    assert repaired_cues[-1].end_ms == 1_000
+    receipt = json.loads(repair_receipt.read_bytes())
+    assert receipt["contract"] == "memo-srt-zero-duration-then-tail-repair-v1"
+    assert receipt["tail"]["clamp"]["original_end_ms"] == 1_400
+    assert receipt["zero_duration"]["repaired_source_sha256"] == hash_file(intermediate)
     assert receipt["normalized_audio_sha256"] == hash_file(audio)
 
     lineage = ["--raw-source-export", str(raw), "--repair-receipt", str(repair_receipt)]
