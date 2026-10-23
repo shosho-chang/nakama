@@ -64,13 +64,24 @@ body.sho .rt-status-v {
 
 /* ── Toast / empty ──────────────────────────────────────────────────────── */
 body.sho .rt-toast {
+  /* 標記後畫面停在原位（bridge-rental.js），提示要跟著浮在可視範圍頂端才看得到。 */
+  position: sticky;
+  top: var(--sho-s-3);
+  z-index: 5;
   padding: 10px 14px;
   border-radius: var(--sho-r-1);
   margin-bottom: var(--sho-s-4);
   font-size: 13px;
   color: var(--sho-text);
   border: 1px solid color-mix(in oklch, var(--sho-success) 40%, transparent);
-  background: color-mix(in oklch, var(--sho-success) 8%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 10%, var(--sho-bg));
+  animation: rt-toast-out var(--sho-t-slow) var(--sho-ease) 6s forwards;
+}
+@keyframes rt-toast-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
 }
 body.sho .rt-empty {
   padding: var(--sho-s-6) var(--sho-s-5);
@@ -408,10 +419,6 @@ body.sho .rt-row:first-child {
   border-radius: var(--sho-r-2) var(--sho-r-2) 0 0;
 }
 body.sho .rt-row.is-urgent {
-  box-shadow: inset 2px 0 0 var(--sho-accent);
-}
-body.sho .rt-row:target {
-  background: var(--sho-bg-2);
   box-shadow: inset 2px 0 0 var(--sho-accent);
 }
 body.sho .rt-row-title {

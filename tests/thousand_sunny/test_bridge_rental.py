@@ -107,23 +107,76 @@ def test_feedback_post_marks_and_redirects(client, db_path):
     _seed(db_path, [_listing(listing_id="1", title="想看的物件")])
     resp = c.post(
         "/bridge/rental/feedback",
-        data={"key": "591:1", "verdict": "interested", "reason": "地點好"},
+        data={
+            "key": "591:1",
+            "verdict": "interested",
+            "reason": "地點好",
+            "return_to": "sec-match",
+        },
         follow_redirects=False,
     )
     assert resp.status_code == 303
-    assert resp.headers["location"] == "/bridge/rental?saved=1#r-591-1"
-    html = c.get("/bridge/rental?saved=1").text
+    # 回到補位的地方（這裡是原本的區塊），不是被移到「有興趣」的那一筆本身
+    assert resp.headers["location"] == "/bridge/rental?saved=1&k=591%3A1#sec-match"
+    html = c.get(resp.headers["location"]).text
     assert 'id="sec-interested"' in html
     assert "地點好" in html
-    assert "已標記" in html
+    assert "已把「想看的物件」標為有興趣" in html
 
     resp = c.post(
         "/bridge/rental/feedback",
-        data={"key": "591:1", "verdict": "clear"},
+        data={"key": "591:1", "verdict": "clear", "return_to": "sec-interested"},
         follow_redirects=False,
     )
-    assert resp.headers["location"] == "/bridge/rental?saved=0#r-591-1"
-    assert 'id="sec-interested"' not in c.get("/bridge/rental").text
+    assert resp.headers["location"] == "/bridge/rental?saved=0&k=591%3A1#sec-interested"
+    html = c.get(resp.headers["location"]).text
+    assert 'id="sec-interested"' not in html
+    assert "已取消「想看的物件」的標記" in html
+
+
+def test_each_form_returns_to_the_row_that_takes_its_place(client, db_path):
+    c, _ = client
+    _seed(
+        db_path,
+        [
+            _listing(listing_id="1", title="第一筆", price=21000),
+            _listing(listing_id="2", title="第二筆", price=22000),
+        ],
+    )
+    html = c.get("/bridge/rental").text
+    first = html[html.index('id="r-591-1"') : html.index('id="r-591-2"')]
+    second = html[html.index('id="r-591-2"') :]
+    assert '<input type="hidden" name="return_to" value="r-591-2">' in first
+    # 區塊最後一筆 → 回到區塊本身
+    assert '<input type="hidden" name="return_to" value="sec-' in second
+    assert "/static/shosho/bridge-rental.js" in html
+
+
+def test_feedback_with_js_skips_anchor(client, db_path):
+    c, _ = client
+    _seed(db_path, [_listing()])
+    resp = c.post(
+        "/bridge/rental/feedback",
+        data={"key": "591:1", "verdict": "pass", "return_to": "r-591-2", "js": "1"},
+        follow_redirects=False,
+    )
+    assert resp.headers["location"] == "/bridge/rental?saved=1&k=591%3A1"
+
+
+def test_feedback_rejects_odd_return_to(client, db_path):
+    c, _ = client
+    _seed(db_path, [_listing()])
+    resp = c.post(
+        "/bridge/rental/feedback",
+        data={
+            "key": "591:1",
+            "verdict": "pass",
+            "return_to": "x" + chr(13) + chr(10) + "Set-Cookie: a=b",
+        },
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/bridge/rental?saved=1&k=591%3A1"
 
 
 def test_feedback_unknown_verdict_is_ignored(client, db_path):
