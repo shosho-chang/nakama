@@ -701,13 +701,13 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\export_editorial_master_deliverabl
 `title-brainstorm`，接著（同一條線上）跑 `thumbnail-brainstorm`——這是 seal 核准後的自動下一步，不是要
 另外徵詢的新工作，**不要問「要不要現在開始」**（2026-09-04 20260901 蘇予昕 agent 在這裡多問了一次；
 使用者回饋是每一步都問會累，這裡本就不該是決策點）。產生完整節目的三組 title／thumbnail／description
-草稿，這一步不依賴 Highlight winner；與選段線、export 線同時跑，未核准不得進完整節目發布，但不得阻塞
-Highlight mining。
+草稿，這一步不依賴 Highlight winner；與選段線、export 線同時跑，未核准不得進完整節目發布，
+但不得阻塞 Highlight mining。
 作者／新書訪談的完整節目封面，若有可驗證書封，必須使用 N1 的暗色書封中景；詳細參數以
 `thumbnail-brainstorm` 為準。
 
-**選段線**（與 packaging、export 同時開工，不等 packaging）：依 `highlight-cut` skill 完整執行 Step 1 到
-Step 2.4，miner 與盲審都派 subagent，不得從 `--mining-input` 直接跳 `--validate`。Exact routing 是：
+**選段線**（與 packaging、export 同時開工，不等 packaging）：啟用 `highlight-cut` skill，完整執行
+Step 1 到 Step 2.4，miner 與盲審都派 subagent，不得從 `--mining-input` 直接跳 `--validate`。Exact routing 是：
 
 ```text
 E:\nakama\.venv-v2\Scripts\python.exe scripts\run_highlight_cut.py "<episode>" --mining-input
