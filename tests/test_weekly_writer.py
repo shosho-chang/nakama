@@ -1158,3 +1158,82 @@ class TestWarnIfSyncConflictSibling:
         with caplog.at_level("WARNING", logger="nakama.weekly_writer"):
             _warn_if_sync_conflict_sibling(p)
         assert caplog.text == ""
+
+
+class TestCompletionTimestamp:
+    """修修 2026-10-23：「我在 Bridge 把任務 check 掉之後，Obsidian 的 task 不是應該
+    要移到 archive 嗎？」——查到打勾沒記完成時間：歸檔器（shared/task_archiver）的
+    「完成滿 14 天」只能拿建立當天的 dateModified 算，舊任務今天打勾、明早就被收走。
+    兩條 done 路徑（整個任務打勾／每日格子全勾完）都要記 completedDate（TaskNotes
+    plugin 慣例，YYYY-MM-DD）並更新 dateModified。"""
+
+    STALE = "2026-09-10T00:34:34.779Z"
+
+    def _today(self) -> str:
+        return datetime.now(ZoneInfo("Asia/Taipei")).date().isoformat()
+
+    def _modified_is_now(self, fm: dict) -> bool:
+        dt = datetime.fromisoformat(str(fm["dateModified"]).replace("Z", "+00:00"))
+        return abs((datetime.now(dt.tzinfo) - dt).total_seconds()) < 60
+
+    def test_check_stamps_completed_date_and_modified(self, vault):
+        p = _make_task(vault, "t1", {"title": "T", "status": "to-do", "dateModified": self.STALE})
+        set_task_done(vault, "t1", True)
+        fm = _read_fm(p)
+        assert str(fm["completedDate"]) == self._today()
+        assert self._modified_is_now(fm)
+
+    def test_uncheck_clears_completed_date(self, vault):
+        p = _make_task(
+            vault,
+            "t1",
+            {
+                "title": "T",
+                "status": "done",
+                "completedDate": "2026-09-10",
+                "dateModified": self.STALE,
+            },
+        )
+        set_task_done(vault, "t1", False)
+        fm = _read_fm(p)
+        assert "completedDate" not in fm
+        assert self._modified_is_now(fm)
+
+    def test_recheck_of_done_task_keeps_original_completed_date(self, vault):
+        p = _make_task(vault, "t1", {"title": "T", "status": "done", "completedDate": "2026-09-10"})
+        set_task_done(vault, "t1", True)
+        assert str(_read_fm(p)["completedDate"]) == "2026-09-10"
+
+    def test_day_rollup_stamps_completed_date(self, vault):
+        p = _make_task(
+            vault,
+            "t1",
+            {
+                "title": "T",
+                "status": "to-do",
+                "dateModified": self.STALE,
+                "plan": [{"date": "2026-06-01", "pomodoros": 2}],
+            },
+        )
+        set_plan_entry_done(vault, "t1", date(2026, 6, 1), True)
+        fm = _read_fm(p)
+        assert str(fm["completedDate"]) == self._today()
+        assert self._modified_is_now(fm)
+        set_plan_entry_done(vault, "t1", date(2026, 6, 1), False)
+        assert "completedDate" not in _read_fm(p)
+
+    def test_partial_day_tick_does_not_stamp(self, vault):
+        p = _make_task(
+            vault,
+            "t1",
+            {
+                "title": "T",
+                "status": "to-do",
+                "plan": [
+                    {"date": "2026-06-01", "pomodoros": 2},
+                    {"date": "2026-06-02", "pomodoros": 2},
+                ],
+            },
+        )
+        set_plan_entry_done(vault, "t1", date(2026, 6, 1), True)
+        assert "completedDate" not in _read_fm(p)
