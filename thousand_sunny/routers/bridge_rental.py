@@ -16,6 +16,7 @@ import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional
+from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Cookie, Form, Request
@@ -40,7 +41,14 @@ def _shosho_asset_version() -> str:
     """8-char hash of the CSS this page links — busts Cloudflare's /static/* cache."""
     static_dir = Path(__file__).resolve().parent.parent / "static" / "shosho"
     h = hashlib.sha1()
-    for name in ("tokens.css", "bridge.css", "bridge-pages.css", "bridge-rental.css", "theme.js"):
+    for name in (
+        "tokens.css",
+        "bridge.css",
+        "bridge-pages.css",
+        "bridge-rental.css",
+        "bridge-rental.js",
+        "theme.js",
+    ):
         path = static_dir / name
         if path.exists():
             h.update(path.read_bytes())
@@ -146,10 +154,30 @@ def _form_values(criteria: rw.Criteria) -> dict:
     }
 
 
+_RETURN_TO_RE = re.compile(r"^(r|sec)-[A-Za-z0-9-]{1,80}$")
+
+
+def _feedback_msg(
+    board: Optional[rw.Board], saved: Optional[str], key: Optional[str]
+) -> Optional[str]:
+    """標記後的提示寫出是哪一筆——那一筆已經移到別的區塊，畫面上看不到它了。"""
+    if saved not in ("1", "0") or not key or not board:
+        return None
+    item = next((i for i in board.items if i.listing.key == key), None)
+    if item is None:
+        return None
+    title = item.listing.title or item.listing.listing_id
+    if saved == "0":
+        return f"已取消「{title}」的標記"
+    label = rw.VERDICTS.get(item.verdict or "", "")
+    return f"已把「{title}」標為{label}" if label else None
+
+
 def _render(
     request: Request,
     *,
     saved: Optional[str] = None,
+    marked_key: Optional[str] = None,
     criteria_errors: Optional[list[str]] = None,
     submitted: Optional[dict] = None,
     status_code: int = 200,
@@ -169,7 +197,7 @@ def _render(
             "total": len(board.items) if board else 0,
             "last_scan": _fmt_time(board.last_scan_at) if board else "—",
             "sources": board.sources if board else [],
-            "saved_msg": _SAVED_MSGS.get(saved or ""),
+            "saved_msg": _feedback_msg(board, saved, marked_key) or _SAVED_MSGS.get(saved or ""),
             "taipei_districts": rw.TAIPEI_DISTRICTS,
             "form": submitted or _form_values(criteria),
             "criteria_errors": criteria_errors or [],
@@ -184,10 +212,11 @@ async def rental_page(
     request: Request,
     nakama_auth: str | None = Cookie(None),
     saved: str | None = None,
+    k: str | None = None,
 ):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/rental", status_code=302)
-    return _render(request, saved=saved)
+    return _render(request, saved=saved, marked_key=k)
 
 
 @page_router.post("/bridge/rental/criteria", response_class=HTMLResponse)
@@ -223,6 +252,8 @@ async def rental_feedback(
     key: str = Form(...),
     verdict: str = Form(...),
     reason: str = Form(""),
+    return_to: str = Form(""),
+    js: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
@@ -236,4 +267,9 @@ async def rental_feedback(
     else:
         return RedirectResponse("/bridge/rental", status_code=303)
     logger.info("rental feedback %s -> %s", key, verdict)
-    return RedirectResponse(f"/bridge/rental?saved={saved}#{_anchor(key)}", status_code=303)
+    # 回到「補上這筆位置的那一筆」，不是這筆本身——它已經移到有興趣（頁首）或
+    # 不考慮（頁底收合區），錨點指它會把畫面整個拉走（修修 2026-10-23）。
+    # 有 JS（bridge-rental.js 送 js=1）時不加錨點：錨點捲動會晚於 JS 的精確對齊而蓋掉它。
+    anchor = return_to if js != "1" and _RETURN_TO_RE.match(return_to) else ""
+    url = f"/bridge/rental?saved={saved}&k={quote(key, safe='')}"
+    return RedirectResponse(url + (f"#{anchor}" if anchor else ""), status_code=303)
