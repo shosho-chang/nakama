@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · 租屋追蹤</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-rental.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+  {% from "_chassis_nav.html" import chassis_nav %}
+  {{ chassis_nav(nav_active='franky') }}
+
+{% macro row(v) -%}
+<li class="rt-row rt-row--{{ v.tier }}{% if v.urgent %} is-urgent{% endif %}" id="{{ v.anchor }}">
+  <div class="rt-row-main">
+    <h3 class="rt-row-title">
+      <a class="sho-lk" href="{{ v.url }}" target="_blank" rel="noopener noreferrer">{{ v.title }}</a>
+      {% if v.is_new %}<span class="sho-tag sho-tag--accent rt-new">新</span>{% endif %}
+    </h3>
+    <p class="rt-facts">{% for f in v.facts %}<span>{{ f }}</span>{% endfor %}</p>
+    {% if v.chips %}
+    <ul class="rt-chips" aria-label="判斷理由">
+      {% for c in v.chips %}<li class="rt-chip rt-chip--{{ c.tone }}">{{ c.text }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% if v.same_unit %}
+    <p class="rt-hint">可能是同一間：{{ v.same_unit | join('、') }} 也有刊（同區、同租金、坪數相近）</p>
+    {% endif %}
+    {% if v.reason %}<p class="rt-note"><span class="rt-note-k">你的備註</span>{{ v.reason }}</p>{% endif %}
+  </div>
+  <div class="rt-row-price">
+    <p class="rt-price">
+      {% if v.prev_price %}<s class="rt-prev" aria-label="原價">{{ "{:,}".format(v.prev_price) }}</s>{% endif %}
+      <span class="rt-price-n">{{ "{:,}".format(v.price) }}</span><span class="rt-price-u">元/月</span>
+    </p>
+    {% if v.ppp %}
+    <p class="rt-ppp">每坪 {{ "{:,}".format(v.ppp) }}{% if v.vs_pct is not none %}<span class="rt-vs{% if v.vs_pct <= -10 %} is-good{% elif v.vs_pct >= 20 %} is-warn{% endif %}">同區 {{ "%+d" | format(v.vs_pct) }}%</span>{% endif %}</p>
+    {% endif %}
+    <p class="rt-seen">首次看到 {{ v.first_seen }}</p>
+  </div>
+  <form class="rt-fb" method="post" action="/bridge/rental/feedback">
+    <input type="hidden" name="key" value="{{ v.key }}">
+    <label class="rt-fb-label" for="reason-{{ v.anchor }}">原因</label>
+    <input class="rt-fb-reason" id="reason-{{ v.anchor }}" name="reason" type="text" maxlength="500"
+           value="{{ v.reason }}" placeholder="原因（選填）：太遠、太小、價格可以…">
+    <div class="rt-fb-actions">
+      <button class="rt-fb-btn rt-fb-btn--yes{% if v.verdict == 'interested' %} is-on{% endif %}" type="submit"
+              name="verdict" value="interested" aria-pressed="{{ 'true' if v.verdict == 'interested' else 'false' }}">有興趣</button>
+      <button class="rt-fb-btn rt-fb-btn--no{% if v.verdict == 'pass' %} is-on{% endif %}" type="submit"
+              name="verdict" value="pass" aria-pressed="{{ 'true' if v.verdict == 'pass' else 'false' }}">不考慮</button>
+      {% if v.verdict %}<button class="rt-fb-clear" type="submit" name="verdict" value="clear">取消標記</button>{% endif %}
+    </div>
+  </form>
+</li>
+{%- endmacro %}
+
+{% macro section(id, n, title, note, items) -%}
+{% if items %}
+<section class="rt-sec rt-sec--{{ id }}" id="sec-{{ id }}" aria-labelledby="h-{{ id }}">
+  <header class="rt-sec-head">
+    <h2 class="rt-sec-title" id="h-{{ id }}"><span class="sho-kicker-n">{{ n }}</span>{{ title }}<span class="rt-count">{{ items | length }}</span></h2>
+    <p class="rt-sec-note">{{ note }}</p>
+  </header>
+  <ol class="rt-list">{% for v in items %}{{ row(v) }}{% endfor %}</ol>
+</section>
+{% endif %}
+{%- endmacro %}
+
+{% macro fold(id, title, note, items) -%}
+{% if items %}
+<details class="rt-sec rt-sec--fold" id="sec-{{ id }}">
+  <summary class="rt-fold-sum">{{ title }}<span class="rt-count">{{ items | length }}</span><span class="rt-fold-note">{{ note }}</span></summary>
+  <ol class="rt-list">{% for v in items %}{{ row(v) }}{% endfor %}</ol>
+</details>
+{% endif %}
+{%- endmacro %}
+
+  <main class="rt-main">
+    <header class="rt-head">
+      <p class="sho-kicker"><span class="sho-kicker-n">RENT</span>錄音室搬遷</p>
+      <h1 class="rt-title">租屋追蹤</h1>
+      <p class="rt-criteria">
+        <span>{{ criteria.districts | join('・') }}</span>
+        <span>{{ "{:,}".format(criteria.price_min) }}–{{ "{:,}".format(criteria.price_max) }} 元</span>
+        <span>{{ criteria.area_min | int }}–{{ criteria.area_max | int }} 坪</span>
+        <span class="rt-must">捷運 {{ criteria.mrt_max_m }}m 內</span>
+        <span class="rt-must">可營業登記</span>
+      </p>
+      <p class="rt-status" role="status">
+        <span class="rt-status-k">上次掃描</span><span class="rt-status-v">{{ last_scan }}</span>
+        {% for s in sources %}
+          {% if s.ok %}
+          <span class="sho-chip sho-chip--online" title="最後成功 {{ s.last_success_at or '—' }}">{{ s.label }}</span>
+          {% elif s.consecutive_failures %}
+          <span class="sho-chip sho-chip--hold" title="{{ s.last_error or '' }}">{{ s.label }} · 失敗 {{ s.consecutive_failures }} 次</span>
+          {% else %}
+          <span class="sho-chip sho-chip--offline">{{ s.label }} · 未掃描</span>
+          {% endif %}
+        {% endfor %}
+      </p>
+    </header>
+
+    {% if saved_msg %}<div class="rt-toast" role="status">{{ saved_msg }}</div>{% endif %}
+
+    {% if not groups %}
+    <div class="sho-panel rt-empty">
+      <p class="rt-empty-t">還沒有掃描資料</p>
+      <p class="rt-empty-d">Franky 的 <code>rental-watch</code> 排程每天 07:05–23:05 每小時跑一次；第一輪跑完，這裡就會出現物件。</p>
+    </div>
+    {% elif total == 0 %}
+    <div class="sho-panel rt-empty">
+      <p class="rt-empty-t">目前沒有符合條件的物件</p>
+      <p class="rt-empty-d">條件在 <code>config/rental-watch.yaml</code>。有新物件上架時會 Slack 通知你。</p>
+    </div>
+    {% else %}
+    <nav class="rt-summary" aria-label="分區">
+      {% set links = [
+        ('interested', '有興趣', groups.interested),
+        ('urgent', '建議儘快聯繫', groups.urgent),
+        ('match', '符合條件', groups.match),
+        ('check', '待確認', groups.check),
+        ('out', '不符合', groups.out),
+        ('pass', '不考慮', groups['pass']),
+      ] %}
+      {% for id, label, items in links %}{% if items %}
+      <a class="rt-sum rt-sum--{{ id }}" href="#sec-{{ id }}"><span class="rt-sum-n">{{ items | length }}</span><span class="rt-sum-l">{{ label }}</span></a>
+      {% endif %}{% endfor %}
+    </nav>
+
+    {{ section('interested', '★', '有興趣', '你標記的，排最前面', groups.interested) }}
+    {{ section('urgent', '01', '建議儘快聯繫', '符合兩個必要條件，而且搶手（591 昨日瀏覽多）或條件特別好（便宜、離捷運很近、坪數大）', groups.urgent) }}
+    {{ section('match', '02', '符合條件', '捷運 ' ~ criteria.mrt_max_m ~ 'm 內、標示可登記；依理由加分排序', groups.match) }}
+    {{ section('check', '03', '待確認', '捷運距離或能否營業登記沒有資料（信義、好房網沒有這兩項；591 有些沒標）——要問屋主或仲介', groups.check) }}
+    {{ fold('out', '不符合必要條件', '離捷運超過 ' ~ criteria.mrt_max_m ~ 'm，或標示不可登記', groups.out) }}
+    {{ fold('pass', '不考慮', '你標記不考慮的', groups['pass']) }}
+    {% endif %}
+
+    <footer class="rt-foot">
+      <p><b>排序怎麼算</b>：每坪租金比同區中位數便宜 20% 以上 +2、10% 以上 +1、貴 20% 以上 −1；30 坪以上 +1；地下室 +1；離捷運 200m 內 +1。同區中位數是用目前在架的這一批算的，不是市場行情。「搶手」= 591 昨日瀏覽人數落在這批的前 10%（且至少 20 人）。</p>
+      <p>591 列表上的「N 天前」是更新時間、不是刊登時間，所以「首次看到」用的是 Franky 第一次抓到的時間。</p>
+    </footer>
+  </main>
+</body>
+</html>
