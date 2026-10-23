@@ -543,6 +543,7 @@ def test_default_config_file_loads():
     c = rw.load_criteria()
     assert c.districts == ("中正區", "中山區", "大安區", "信義區", "文山區")
     assert (c.price_min, c.price_max, c.area_min, c.area_max) == (15000, 35000, 10, 50)
+    assert c.mrt_max_m == 600
 
 
 # ---------------------------------------------------------------------------

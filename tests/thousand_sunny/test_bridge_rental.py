@@ -99,7 +99,7 @@ def test_renders_tiers_reasons_and_folds(client, db_path):
     assert resp.status_code == 200
     assert html.index("符合的辦公室") < html.index("待確認的地下室") < html.index("太遠的物件")
     assert "可否登記：暫不確定，要問" in html
-    assert "離捷運 900m，超過 500m" in html
+    assert "離捷運 900m，超過 600m" in html
     assert '<details class="rt-sec rt-sec--fold" id="sec-out">' in html
     assert 'href="https://business.591.com.tw/rent/1"' in html
 
