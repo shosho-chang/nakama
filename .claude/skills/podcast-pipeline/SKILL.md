@@ -82,7 +82,7 @@ consumer 已切換；缺少／stale／tampered receipt 一律 fail closed，不�
 | S6 RELEASE | release／ledger／manifest／handoff hash-bound，fresh replay byte-identical | 無普通人工 gate |
 | S7 RESOLVE | project/timeline 建立，字幕 handoff exact-copy | 非字幕 GUI requirement 不算 editorial gate |
 | S7E EDITORIAL MASTER | Intro/Outro 剪入且字幕已上 ST1 並逐句驗證（[§S7E Intro／Outro 字幕上軌](#s7e-introoutro-字幕上軌)）、完整節目人工剪輯、master media/SRT/receipt hash-bound | **Editorial Master approval** |
-| S7X EXPORTS | `final/` 的 MP3 320k、燒字幕 NVENC MP4 與 exports receipt 已驗收；export worker 與 S7P、S8 同時開工（[§全部派 subagent](#editorial-master-確定之後全部派-subagent修修-2026-10-23)） | 無，seal 後自動派 subagent |
+| S7X EXPORTS | `final/` 的純文字 SRT、MP3 320k、燒字幕 NVENC MP4 與 exports receipt 已驗收；export worker 與 S7P、S8 同時開工（[§全部派 subagent](#editorial-master-確定之後全部派-subagent修修-2026-10-23)） | 無，seal 後自動派 subagent |
 | S7P FULL PACKAGING | 完整節目 title／thumbnail／description variants 已產生 | 可非阻塞 review；發布前必須核准 |
 | S8 HIGHLIGHTS | mining、validate、persona review、long shortlist 完成 | **Highlight shortlist review** |
 | S9 LONGFORM | winners materialize；tightening/director/titles/b-roll/SFX/render | finished-cut review |
@@ -657,25 +657,30 @@ seal＋`verify --live` 通過的那一刻，主 session **同一則訊息平行�
 - **Resolve 是單執行緒**：同一時間只能有一個 worker 碰 Resolve。export 跑的時候，其他需要 Resolve
   的工作（`--materialize`、ST1 重建）排在它後面；packaging 與選段不碰 Resolve，不受影響。
 
-### Export worker 的工作說明：MP3 320k ＋ 燒字幕 MP4（修修 2026-10-23）
+### Export worker 的工作說明：純文字 SRT ＋ MP3 320k ＋ 燒字幕 MP4（修修 2026-10-23）
 
 > 「在確定 Editorial Master 之後，幫我直接 export。第一個是音檔，我需要 320 Kbps 的 MP3。第二個是
 > MP4，編碼要 H.264，Encoder 可以用 NVIDIA 的，Subtitle Burn-in 在 Video 裡面。」
+>
+> 「在 export，你也幫我多做一件事情，就是幫我把沒有任何 format 的 SRT 字幕檔匯出。」
 
 worker 執行並回報 receipt 內容；失敗時回報 script 的錯誤原文，不要自己改設定重試別的編碼：
 
 ```powershell
 E:\nakama\.venv-v2\Scripts\python.exe scripts\export_editorial_master_deliverables.py "<episode>"
-# 只重出其中一支：--only mp3｜--only mp4；要 EP 編號檔名：--name "EP129-Manny"
+# 只重出其中一支：--only srt｜--only mp3｜--only mp4；要 EP 編號檔名：--name "EP129-Manny"
 ```
 
-- **順序固定 MP3 先、MP4 後**（修修 2026-10-23：「之後 MP3 可以先」）：MP3 幾分鐘就好、可以先拿去
-  上架；燒字幕 MP4 一個多小時的節目要二十幾分鐘。每完成一支就寫一次 receipt，後面那支失敗不會把先
-  完成的那支弄丟。
+- **順序固定 SRT → MP3 → MP4**（修修 2026-10-23：「之後 MP3 可以先」）：SRT 不碰 Resolve、一秒就好；
+  MP3 幾分鐘就好、可以先拿去上架；燒字幕 MP4 一個多小時的節目要二十幾分鐘。每完成一支就寫一次
+  receipt，後面那支失敗不會把先完成的那支弄丟。
 - 來源＝`EDITORIAL-MASTER.json` 記下的那條 timeline（不是 `master.mp4` 再轉檔：字幕要用 timeline 的
   字幕軌樣式燒，只有 Resolve 做得到）。
-- 輸出 `<episode>/final/<集數資料夾名>.mp3`、`.mp4` 與 `editorial-master-exports.v1.json`（hash、大小、
+- 輸出 `<episode>/final/<集數資料夾名>.srt`、`.mp3`、`.mp4` 與 `editorial-master-exports.v1.json`（hash、大小、
   長度、Editorial Master identity）。EP 編號推不出來（EP127 洪瀞比 EP128 程世嘉晚錄），預設不加。
+- **SRT**：純文字，不帶 `<font>`／`<b>`／`{\an8}` 這類樣式或位置標記，UTF-8 無 BOM、LF、重新編號，
+  時間軸跟 `master.srt` 逐句一致。來源就是 `master.srt`——它是 seal 時從 timeline 字幕軌逐句讀出、
+  並對過 timeline snapshot 的內容，所以不用叫 Resolve 再出一次；`--only srt` 連 Resolve 都不連。
 - **MP4**：`H264_NVIDIA`（NVENC）、timeline 原生解析度／幀率、AAC，`ExportSubtitle`＋`BurnIn`。
   驗收：有影像軌、encoder tag 是 `H.264 NVIDIA`、長度對得上 `master.mp4`（±2 格），而且抽 6 個字幕
   時間點跟 `master.mp4` 比：畫面下緣要不同、上半部要一樣。規格以修修手出的 `EP128-程世嘉.mp4` 為準。
@@ -786,7 +791,7 @@ Editorial Master 開得起來＝定稿是真的。開不起來就**立刻**回�
 ```
 Editorial Master 封存（之後每一條都是 subagent，主 session 只派工與驗收）
  │
- ├─【平行】交付檔 export worker（S7X）—— MP3 320k（先）→ 燒字幕 NVENC MP4（後）；這段期間唯一碰 Resolve 的人
+ ├─【平行】交付檔 export worker（S7X）—— 純文字 SRT → MP3 320k → 燒字幕 NVENC MP4；這段期間唯一碰 Resolve 的人
  │
  ├─【平行】完整節目 packaging（S7P）—— 一路跑到 gate，中間不要停下來問
  │     title-brainstorm --cut-id full → emit_packages

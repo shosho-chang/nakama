@@ -108,6 +108,42 @@ def test_subtitle_midpoints_skip_short_cues(tmp_path):
     assert set(points) <= {11.0, 21.0} and points
 
 
+def test_plain_srt_strips_markup_and_renumbers():
+    src = (
+        "3\n00:00:01,000 --> 00:00:02,000\n"
+        '<font color="#ffffff">{\\an8}大家好</font>  <b>歡迎</b>\n\n'
+        "9\n00:00:03,000 --> 00:00:04,500\n第二句\n第二行\n"
+    )
+    text, removed = ex.plain_srt(src)
+    assert removed == 5
+    assert text == (
+        "1\n00:00:01,000 --> 00:00:02,000\n大家好 歡迎\n\n"
+        "2\n00:00:03,000 --> 00:00:04,500\n第二句\n第二行\n"
+    )
+
+
+def test_plain_srt_rejects_cue_that_becomes_empty():
+    with pytest.raises(SystemExit, match="空的"):
+        ex.plain_srt("1\n00:00:01,000 --> 00:00:02,000\n<i></i>\n")
+
+
+def test_export_srt_keeps_timings_and_writes_utf8_without_bom(tmp_path):
+    master = tmp_path / "master.srt"
+    master.write_bytes(  # BOM ＋ CRLF 的來源；write_text 在 Windows 會把 \r\n 再轉一次
+        (
+            "﻿1\r\n00:00:02,067 --> 00:00:05,067\r\n大家好\r\n\r\n"
+            "2\r\n00:00:05,067 --> 00:00:05,967\r\n我是修修\r\n"
+        ).encode("utf-8")
+    )
+    out, stats = ex.export_srt(master, tmp_path, "ep")
+    raw = out.read_bytes()
+    assert not raw.startswith(b"\xef\xbb\xbf") and b"\r\n" not in raw
+    assert stats == {"cues": 2, "markup_removed": 0}
+    assert raw.decode("utf-8") == (
+        "1\n00:00:02,067 --> 00:00:05,067\n大家好\n\n2\n00:00:05,067 --> 00:00:05,967\n我是修修\n"
+    )
+
+
 class FakeProject:
     def __init__(
         self,

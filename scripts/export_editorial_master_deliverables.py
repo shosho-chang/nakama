@@ -1,4 +1,4 @@
-"""Editorial Master 封存後的兩個交付檔：podcast MP3 與燒字幕 MP4。
+"""Editorial Master 封存後的交付檔：純文字 SRT、podcast MP3 與燒字幕 MP4。
 
 修修 2026-10-23（20260930 Manny）：「在確定 Editorial Master 之後，幫我直接 export。
 第一個是音檔，我需要 320 Kbps 的 MP3。第二個是 MP4，編碼要 H.264，Encoder 可以用
@@ -8,6 +8,8 @@ NVIDIA 的，Subtitle Burn-in 在 Video 裡面。」以前這兩支是他在 Del
 - MP3：320 kbps CBR、48 kHz、stereo，長度＝完整節目
 - MP4：H.264 NVIDIA（NVENC）、timeline 原生解析度／幀率、AAC 音訊、
   Shosho 字幕軌樣式 Burn In
+- SRT（修修同日追加「幫我把沒有任何 format 的 SRT 字幕檔匯出」）：純文字字幕，不帶
+  `<font>`／`<b>`／`{\\an8}` 之類的樣式或位置標記，給 YouTube 等平台上傳用
 
 來源一律是 `editorial-master/v1/EDITORIAL-MASTER.json` 記下的那條 timeline（不是
 集數資料夾名、也不是 `master.mp4` 再轉檔）：字幕要用 timeline 的字幕軌樣式燒，只有
@@ -25,11 +27,12 @@ MP4 另外抽字幕出現的時間點，確認畫面下緣跟 `master.mp4` 有�
 沒開或 SubtitleFormat 沒生效時，render 照樣「成功」但沒有字。
 
 用法：
-    python scripts/export_editorial_master_deliverables.py "<episode>"            # 兩支都出
+    python scripts/export_editorial_master_deliverables.py "<episode>"            # 全部出
     python scripts/export_editorial_master_deliverables.py "<episode>" --only mp3
+    python scripts/export_editorial_master_deliverables.py "<episode>" --only srt  # 不碰 Resolve
     python scripts/export_editorial_master_deliverables.py "<episode>" --name "EP129-Manny"
 
-輸出 `<episode>/final/<name>.mp3`、`<name>.mp4` 與 `editorial-master-exports.v1.json`
+輸出 `<episode>/final/<name>.srt`、`<name>.mp3`、`<name>.mp4` 與 `editorial-master-exports.v1.json`
 （`<name>` 預設＝集數資料夾名；EP 編號推不出來，要用就 `--name` 傳）。
 """
 
@@ -39,6 +42,7 @@ import argparse
 import hashlib
 import json
 import logging
+import re
 import subprocess
 import sys
 import tempfile
@@ -373,14 +377,63 @@ def export_mp3(project, timeline, out_dir: Path, name: str, timeout: int) -> Pat
     return final
 
 
+# ---------------------------------------------------------------- plain SRT
+
+# HTML 樣式標記（<font color=…>、<b>、<i>…）與 ASS/SSA override（{\an8}、{\pos(…)}）
+_SRT_MARKUP = re.compile(r"<[^>]*>|\{\\[^}]*\}")
+
+
+def _srt_cues(text: str) -> list[tuple[str, list[str]]]:
+    cues = []
+    for block in text.replace("\r\n", "\n").strip().split("\n\n"):
+        lines = block.strip("\n").split("\n")
+        if len(lines) < 2 or " --> " not in lines[1]:
+            raise SystemExit(f"master.srt 有一段不是 SRT cue：{block[:60]!r}")
+        cues.append((lines[1].strip(), lines[2:]))
+    return cues
+
+
+def plain_srt(text: str) -> tuple[str, int]:
+    """去掉所有樣式／位置標記、重新編號；回傳 (SRT 文字, 拿掉的標記數)。時間軸一格不動。"""
+    out, removed = [], 0
+    for i, (timing, lines) in enumerate(_srt_cues(text), start=1):
+        clean = []
+        for line in lines:
+            removed += len(_SRT_MARKUP.findall(line))
+            line = " ".join(_SRT_MARKUP.sub("", line).split())
+            if line:
+                clean.append(line)
+        if not clean:
+            raise SystemExit(f"第 {i} 句（{timing}）拿掉標記後是空的")
+        out.append(f"{i}\n{timing}\n" + "\n".join(clean) + "\n")
+    return "\n".join(out), removed
+
+
+def export_srt(master_srt: Path, out_dir: Path, name: str) -> tuple[Path, dict]:
+    """master.srt 就是 Editorial Master timeline 字幕軌的內容（seal 時逐句對過 timeline），
+    所以直接從它出，不必再叫 Resolve render 一次。"""
+    source = master_srt.read_text(encoding="utf-8-sig")
+    text, removed = plain_srt(source)
+    if [t for t, _ in _srt_cues(text)] != [t for t, _ in _srt_cues(source)]:
+        raise SystemExit("SRT 時間軸跟 master.srt 對不上")
+    final = out_dir / f"{name}.srt"
+    final.write_text(text, encoding="utf-8", newline="\n")  # UTF-8 無 BOM
+    leftover = _SRT_MARKUP.findall(final.read_text(encoding="utf-8"))
+    if leftover:
+        raise SystemExit(f"SRT 還有樣式標記：{leftover[:3]}")
+    return final, {"cues": len(_srt_cues(text)), "markup_removed": removed}
+
+
 # ---------------------------------------------------------------- main
 
 
 def main(argv: list[str] | None = None) -> int:
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
-    parser = argparse.ArgumentParser(description="Editorial Master → podcast MP3 + 燒字幕 MP4")
+    parser = argparse.ArgumentParser(
+        description="Editorial Master → 純文字 SRT + podcast MP3 + 燒字幕 MP4"
+    )
     parser.add_argument("episode")
-    parser.add_argument("--only", choices=("mp3", "mp4"))
+    parser.add_argument("--only", choices=("srt", "mp3", "mp4"))
     parser.add_argument("--name", help="輸出檔名（不含副檔名），預設＝集數資料夾名")
     args = parser.parse_args(argv)
 
@@ -401,11 +454,6 @@ def main(argv: list[str] | None = None) -> int:
     name = args.name or episode_dir.name
     out_dir = episode_dir / FINAL_DIR
     out_dir.mkdir(exist_ok=True)
-
-    from build_resolve_project import connect_resolve  # Resolve 依賴延後 import
-
-    resolve = connect_resolve()
-    project, timeline = _open_timeline(resolve, episode_dir, str(tl_info["name"]))
 
     receipt_path = out_dir / RECEIPT_NAME
     outputs: dict[str, dict] = {}
@@ -429,6 +477,33 @@ def main(argv: list[str] | None = None) -> int:
         receipt_path.write_text(
             json.dumps(receipt, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
         )
+
+    # SRT 最先：不碰 Resolve、一秒就好
+    if args.only in (None, "srt"):
+        srt, stats = export_srt(master_srt, out_dir, name)
+        record(
+            "srt",
+            {
+                "path": f"{FINAL_DIR}/{srt.name}",
+                "bytes": srt.stat().st_size,
+                "sha256": sha256_file(srt),
+                "source": "editorial-master/v1/master.srt",
+                "source_sha256": sha256_file(master_srt),
+                "encoding": "utf-8 (no BOM), LF",
+                **stats,
+            },
+        )
+        logger.info(
+            "SRT OK：%s（%d 句，拿掉 %d 個標記）", srt, stats["cues"], stats["markup_removed"]
+        )
+    if args.only == "srt":
+        print(json.dumps({"status": "exported", "outputs": outputs}, ensure_ascii=False, indent=2))
+        return 0
+
+    from build_resolve_project import connect_resolve  # Resolve 依賴延後 import
+
+    resolve = connect_resolve()
+    project, timeline = _open_timeline(resolve, episode_dir, str(tl_info["name"]))
 
     # MP3 先（修修 2026-10-23）：音檔幾分鐘就好、先拿去上架；燒字幕 MP4 要二十幾分鐘
     if args.only in (None, "mp3"):
