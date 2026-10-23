@@ -124,16 +124,39 @@ def _group(board: rw.Board) -> dict[str, list[dict]]:
     return groups
 
 
-@page_router.get("/bridge/rental", response_class=HTMLResponse)
-async def rental_page(
+_SAVED_MSGS = {
+    "1": "已標記",
+    "0": "已取消標記",
+    "criteria": "條件已儲存：頁面已照新條件篩選；放寬條件的新物件要等下一輪掃描（每小時 :05）",
+    "criteria-reset": "已恢復設定檔的預設條件，下一輪掃描套用",
+}
+
+
+def _form_values(criteria: rw.Criteria) -> dict:
+    """表單預填值：目前生效的條件。"""
+    return {
+        "districts": list(criteria.districts),
+        "bonus_districts": list(criteria.bonus_districts),
+        "price_min": criteria.price_min,
+        "price_max": criteria.price_max,
+        "area_min": f"{criteria.area_min:g}",
+        "area_max": f"{criteria.area_max:g}",
+        "mrt_max_m": criteria.mrt_max_m,
+        "exclude_basement": criteria.exclude_basement,
+    }
+
+
+def _render(
     request: Request,
-    nakama_auth: str | None = Cookie(None),
-    saved: str | None = None,
+    *,
+    saved: Optional[str] = None,
+    criteria_errors: Optional[list[str]] = None,
+    submitted: Optional[dict] = None,
+    status_code: int = 200,
 ):
-    if not check_auth(nakama_auth):
-        return RedirectResponse("/login?next=/bridge/rental", status_code=302)
-    criteria = rw.load_criteria()
-    board = rw.load_board(rw.default_db_path(), criteria)
+    db_path = rw.default_db_path()
+    criteria = rw.load_criteria(db_path=db_path)
+    board = rw.load_board(db_path, criteria)
     groups = _group(board) if board else None
     return _templates.TemplateResponse(
         request,
@@ -146,9 +169,53 @@ async def rental_page(
             "total": len(board.items) if board else 0,
             "last_scan": _fmt_time(board.last_scan_at) if board else "—",
             "sources": board.sources if board else [],
-            "saved_msg": {"1": "已標記", "0": "已取消標記"}.get(saved or ""),
+            "saved_msg": _SAVED_MSGS.get(saved or ""),
+            "taipei_districts": rw.TAIPEI_DISTRICTS,
+            "form": submitted or _form_values(criteria),
+            "criteria_errors": criteria_errors or [],
+            "override_active": rw.get_criteria_override(db_path) is not None,
         },
+        status_code=status_code,
     )
+
+
+@page_router.get("/bridge/rental", response_class=HTMLResponse)
+async def rental_page(
+    request: Request,
+    nakama_auth: str | None = Cookie(None),
+    saved: str | None = None,
+):
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/rental", status_code=302)
+    return _render(request, saved=saved)
+
+
+@page_router.post("/bridge/rental/criteria", response_class=HTMLResponse)
+async def rental_criteria(request: Request, nakama_auth: str | None = Cookie(None)):
+    """修修在面板改搜尋條件（存 rental_watch.db，蓋過 config/rental-watch.yaml）。"""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/rental", status_code=302)
+    form = await request.form()
+    if form.get("action") == "reset":
+        rw.save_criteria_override(rw.default_db_path(), None)
+        logger.info("rental criteria reset to config defaults")
+        return RedirectResponse("/bridge/rental?saved=criteria-reset", status_code=303)
+
+    data = {
+        "districts": form.getlist("districts"),
+        "bonus_districts": form.getlist("bonus_districts"),
+        **{
+            k: form.get(k, "")
+            for k in ("price_min", "price_max", "area_min", "area_max", "mrt_max_m")
+        },
+        "exclude_basement": form.get("exclude_basement") == "1",
+    }
+    override, errors = rw.parse_criteria_form(data)
+    if errors:
+        return _render(request, criteria_errors=errors, submitted=data, status_code=422)
+    rw.save_criteria_override(rw.default_db_path(), override)
+    logger.info("rental criteria saved: %s", override)
+    return RedirectResponse("/bridge/rental?saved=criteria", status_code=303)
 
 
 @page_router.post("/bridge/rental/feedback")

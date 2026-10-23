@@ -66,8 +66,26 @@ MAX_ITEMS_PER_SECTION = 20
 # 各站行政區代碼（2026-10-23 從各站頁面實際讀到的對照，不是推測）
 # ---------------------------------------------------------------------------
 
-# 591：五區由 GA filter_search 事件的 section_name 對回（section=5,12,7,3,1）。
-_591_SECTION_IDS = {"中正區": 1, "中山區": 3, "大安區": 5, "信義區": 7, "文山區": 12}
+# 591：列表頁自己的行政區連結 list?region=1&section=<n>&kind=6（「<區>辦公出租」）。
+_591_SECTION_IDS = {
+    "中正區": 1,
+    "大同區": 2,
+    "中山區": 3,
+    "松山區": 4,
+    "大安區": 5,
+    "萬華區": 6,
+    "信義區": 7,
+    "士林區": 8,
+    "北投區": 9,
+    "內湖區": 10,
+    "南港區": 11,
+    "文山區": 12,
+}
+# 591 篩選介面寫「最多可以選擇 5 個」行政區 → 超過就分批查。
+_591_MAX_SECTIONS = 5
+
+# Bridge 條件面板的選項順序（台北 12 區；三站的代碼對照都齊）。
+TAIPEI_DISTRICTS = tuple(_591_SECTION_IDS)
 
 # 信義：列表頁的行政區連結 /rent/list/Taipei-city/<zip>-zip/。
 _SINYI_ZIPS = {
@@ -190,8 +208,11 @@ class RentalWatchResult:
         }
 
 
-def load_criteria(path: Path = DEFAULT_CONFIG_PATH) -> Criteria:
+def load_criteria(path: Path = DEFAULT_CONFIG_PATH, *, db_path: Optional[Path] = None) -> Criteria:
+    """設定檔是預設值；``db_path`` 給了就再疊上修修在 Bridge 面板存的條件。"""
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    if db_path is not None:
+        raw.update(get_criteria_override(db_path) or {})
     districts = tuple(raw.get("districts") or ())
     if not districts:
         raise ValueError(f"{path}: districts 不可為空")
@@ -214,6 +235,87 @@ def load_criteria(path: Path = DEFAULT_CONFIG_PATH) -> Criteria:
             json.dumps(raw, sort_keys=True, ensure_ascii=False).encode("utf-8")
         ).hexdigest()[:12],
     )
+
+
+# ---------------------------------------------------------------------------
+# Bridge 條件面板（存 rental_watch.db settings 表，蓋過設定檔的同名欄位）
+# ---------------------------------------------------------------------------
+
+_OVERRIDE_KEY = "criteria_override"
+
+
+def get_criteria_override(db_path: Path) -> Optional[dict[str, Any]]:
+    if not db_path.exists():
+        return None
+    conn = _connect(db_path)
+    try:
+        row = conn.execute("SELECT value FROM settings WHERE key = ?", (_OVERRIDE_KEY,)).fetchone()
+    finally:
+        conn.close()
+    return json.loads(row["value"]) if row else None
+
+
+def save_criteria_override(db_path: Path, override: Optional[dict[str, Any]]) -> None:
+    """存面板條件；``None`` = 清掉、回到設定檔預設。下一輪掃描就套用（指紋變了 → 重新盤點）。"""
+    conn = _connect(db_path)
+    try:
+        with conn:
+            if override is None:
+                conn.execute("DELETE FROM settings WHERE key = ?", (_OVERRIDE_KEY,))
+            else:
+                conn.execute(
+                    "INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)",
+                    (_OVERRIDE_KEY, json.dumps(override, ensure_ascii=False, sort_keys=True)),
+                )
+    finally:
+        conn.close()
+
+
+def _num(value: Any, label: str, errors: list[str], *, as_int: bool = True) -> Optional[float]:
+    text = str(value or "").replace(",", "").strip()
+    try:
+        return int(text) if as_int else float(text)
+    except ValueError:
+        errors.append(f"{label}要填數字")
+        return None
+
+
+def parse_criteria_form(form: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    """Bridge 表單 → (override, 錯誤訊息)。``form`` 的多選欄位是 list。"""
+    errors: list[str] = []
+    picked = set(form.get("districts") or [])
+    bonus = set(form.get("bonus_districts") or [])
+    districts = [d for d in TAIPEI_DISTRICTS if d in picked]
+    if not districts:
+        errors.append("至少要選一個行政區")
+    if picked - set(TAIPEI_DISTRICTS) or bonus - set(TAIPEI_DISTRICTS):
+        errors.append("行政區只能選台北市 12 區")
+    if bonus - picked:
+        errors.append("加分區要在搜尋的行政區裡")
+
+    price_min = _num(form.get("price_min"), "月租下限", errors)
+    price_max = _num(form.get("price_max"), "月租上限", errors)
+    area_min = _num(form.get("area_min"), "坪數下限", errors, as_int=False)
+    area_max = _num(form.get("area_max"), "坪數上限", errors, as_int=False)
+    mrt = _num(form.get("mrt_max_m"), "捷運距離", errors)
+    if price_min is not None and price_max is not None:
+        if not (1000 <= price_min < price_max <= 500000):
+            errors.append("月租要介於 1,000–500,000，而且下限小於上限")
+    if area_min is not None and area_max is not None:
+        if not (1 <= area_min < area_max <= 1000):
+            errors.append("坪數要介於 1–1,000，而且下限小於上限")
+    if mrt is not None and not (100 <= mrt <= 3000):
+        errors.append("捷運距離要介於 100–3,000 公尺")
+
+    override = {
+        "districts": districts,
+        "bonus_districts": [d for d in TAIPEI_DISTRICTS if d in bonus],
+        "price": {"min": price_min, "max": price_max},
+        "area": {"min": area_min, "max": area_max},
+        "mrt_max_m": mrt,
+        "exclude_basement": bool(form.get("exclude_basement")),
+    }
+    return override, errors
 
 
 def _lookup_codes(districts: Iterable[str], table: dict[str, Any], site: str) -> list[Any]:
@@ -371,34 +473,40 @@ def fetch_591_registration(http: Http, listing_id: str) -> str:
 
 
 def fetch_591(http: Http, criteria: Criteria) -> list[Listing]:
-    sections = ",".join(str(s) for s in _lookup_codes(criteria.districts, _591_SECTION_IDS, "591"))
+    codes = [str(s) for s in _lookup_codes(criteria.districts, _591_SECTION_IDS, "591")]
     out: list[Listing] = []
     for kind, kind_name in _591_KINDS.items():
         if kind_name in _STORE_KINDS and not criteria.wants_stores:
             continue
-        first_row = 0
-        while True:
-            # 591 的價格參數格式是 "15000$_35000$"，$ 不能被 percent-encode
-            # （httpx params 會編成 %24），所以自己組 query string。
-            qs = (
-                f"searchtype=1&type=1&kind={kind}&sort=money_asc&order=money&orderType=asc"
-                f"&firstRow={first_row}&regionid=1&sectionid={sections}"
-                f"&multiPrice={criteria.price_min}$_{criteria.price_max}$"
-                f"&multiArea={int(criteria.area_min)}_{int(criteria.area_max)}"
-            )
-            resp = http.request(
-                "GET", f"{_591_API}?{qs}", headers={"Referer": "https://business.591.com.tw/"}
-            )
-            payload = resp.json()
-            if int(payload.get("status", 0)) != 1:
-                raise RuntimeError(f"591 kind={kind} status={payload.get('status')}")
-            items = (payload.get("data") or {}).get("data") or []
-            out.extend(parse_591_item(i) for i in items)
-            total = int(payload.get("records") or 0)
-            first_row += _591_PAGE_SIZE
-            if not items or first_row >= total:
-                break
+        for chunk in _chunks(codes, _591_MAX_SECTIONS):
+            out.extend(_fetch_591_kind(http, criteria, kind, ",".join(chunk)))
     return out
+
+
+def _fetch_591_kind(http: Http, criteria: Criteria, kind: int, sections: str) -> list[Listing]:
+    out: list[Listing] = []
+    first_row = 0
+    while True:
+        # 591 的價格參數格式是 "15000$_35000$"，$ 不能被 percent-encode
+        # （httpx params 會編成 %24），所以自己組 query string。
+        qs = (
+            f"searchtype=1&type=1&kind={kind}&sort=money_asc&order=money&orderType=asc"
+            f"&firstRow={first_row}&regionid=1&sectionid={sections}"
+            f"&multiPrice={criteria.price_min}$_{criteria.price_max}$"
+            f"&multiArea={int(criteria.area_min)}_{int(criteria.area_max)}"
+        )
+        resp = http.request(
+            "GET", f"{_591_API}?{qs}", headers={"Referer": "https://business.591.com.tw/"}
+        )
+        payload = resp.json()
+        if int(payload.get("status", 0)) != 1:
+            raise RuntimeError(f"591 kind={kind} status={payload.get('status')}")
+        items = (payload.get("data") or {}).get("data") or []
+        out.extend(parse_591_item(i) for i in items)
+        total = int(payload.get("records") or 0)
+        first_row += _591_PAGE_SIZE
+        if not items or first_row >= total:
+            return out
 
 
 # ---------------------------------------------------------------------------
@@ -690,6 +798,10 @@ CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
     value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL
+);
 """
 
 VERDICTS = {"interested": "有興趣", "pass": "不考慮"}
@@ -791,15 +903,18 @@ def load_board(
     finally:
         conn.close()
 
-    active = []
+    active, listings = [], []
     for r in rows:
         h = health.get(r["source"])
         last_ok = h["last_success_at"] if h else None
         if last_ok and r["last_seen"] < last_ok:
             continue
+        it = _row_to_listing(r)
+        # 面板剛收窄條件時，DB 裡還有舊條件抓的物件 → 頁面先照新條件濾掉，不用等下一輪。
+        if not passes(it, criteria):
+            continue
         active.append(r)
-
-    listings = [_row_to_listing(r) for r in active]
+        listings.append(it)
     assessments = assess_all(listings, criteria)
     baseline_at = meta.get("baseline_done")
     items = []
@@ -1111,12 +1226,12 @@ def run_once(
     """掃一輪。``dry_run`` 只抓、不寫 DB、不發 Slack（也不補抓詳細頁）。"""
     from agents.franky.jobs.rental_assess import assess_all, sort_key
 
-    criteria = load_criteria(config_path)
+    db_path = db_path or default_db_path()
+    criteria = load_criteria(config_path, db_path=db_path)
     fetchers = fetchers if fetchers is not None else DEFAULT_FETCHERS
     now_iso = (now or datetime.now(timezone.utc)).isoformat()
     own_http = http is None
     http = http or Http()
-    db_path = db_path or default_db_path()
 
     found: dict[str, Listing] = {}
     source_counts: dict[str, int] = {}

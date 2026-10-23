@@ -174,3 +174,63 @@ def test_requires_auth(client, monkeypatch):
         follow_redirects=False,
     )
     assert resp.status_code == 302
+
+
+_PANEL_FORM = {
+    "districts": ["大安區", "文山區"],
+    "bonus_districts": ["文山區"],
+    "price_min": "20000",
+    "price_max": "40000",
+    "area_min": "10",
+    "area_max": "50",
+    "mrt_max_m": "600",
+    "exclude_basement": "1",
+    "action": "save",
+}
+
+
+def test_criteria_panel_renders_current_values(client):
+    c, _ = client
+    html = c.get("/bridge/rental").text
+    assert 'id="criteria"' in html
+    assert "目前：設定檔預設" in html
+    assert 'name="districts" value="大安區" checked' in html
+    assert 'name="districts" value="內湖區">' in html  # 沒勾
+    assert "恢復設定檔預設" not in html
+
+
+def test_criteria_save_then_reset(client, db_path):
+    c, _ = client
+    resp = c.post("/bridge/rental/criteria", data=_PANEL_FORM, follow_redirects=False)
+    assert resp.status_code == 303
+    assert resp.headers["location"] == "/bridge/rental?saved=criteria"
+    assert rw.get_criteria_override(db_path)["districts"] == ["大安區", "文山區"]
+
+    html = c.get("/bridge/rental?saved=criteria").text
+    assert "目前：面板設定" in html
+    assert "條件已儲存" in html
+    assert 'name="districts" value="中正區">' in html  # 存檔後中正區不勾
+    assert "恢復設定檔預設" in html
+
+    resp = c.post("/bridge/rental/criteria", data={"action": "reset"}, follow_redirects=False)
+    assert resp.headers["location"] == "/bridge/rental?saved=criteria-reset"
+    assert rw.get_criteria_override(db_path) is None
+
+
+def test_criteria_invalid_keeps_input_and_shows_errors(client, db_path):
+    c, _ = client
+    bad = {**_PANEL_FORM, "price_min": "50000", "bonus_districts": ["內湖區"]}
+    resp = c.post("/bridge/rental/criteria", data=bad, follow_redirects=False)
+    assert resp.status_code == 422
+    assert "沒有存檔，請修正" in resp.text
+    assert "加分區要在搜尋的行政區裡" in resp.text
+    assert 'value="50000"' in resp.text  # 保留剛填的值
+    assert '<details class="rt-edit" id="criteria" open>' in resp.text
+    assert rw.get_criteria_override(db_path) is None
+
+
+def test_criteria_requires_auth(client, monkeypatch):
+    c, br = client
+    monkeypatch.setattr(br, "check_auth", lambda cookie: False)
+    resp = c.post("/bridge/rental/criteria", data=_PANEL_FORM, follow_redirects=False)
+    assert resp.status_code == 302

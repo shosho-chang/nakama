@@ -860,3 +860,127 @@ def test_db_from_before_criteria_hash_rebaselines_once(config_path, tmp_path):
         db_path=db, config_path=config_path, fetchers=fetchers, http=FakeHttp([]), now=NOW
     )
     assert r.status == "baseline"
+
+
+# ---------------------------------------------------------------------------
+# Bridge 條件面板（rental_watch.db settings 蓋過設定檔）
+# ---------------------------------------------------------------------------
+
+_GOOD_FORM = {
+    "districts": ["大安區", "內湖區"],
+    "bonus_districts": ["大安區"],
+    "price_min": "20,000",
+    "price_max": "40000",
+    "area_min": "12.5",
+    "area_max": "45",
+    "mrt_max_m": "700",
+    "exclude_basement": True,
+}
+
+
+def test_parse_criteria_form_valid_keeps_canonical_order():
+    override, errors = rw.parse_criteria_form({**_GOOD_FORM, "districts": ["內湖區", "大安區"]})
+    assert errors == []
+    assert override == {
+        "districts": ["大安區", "內湖區"],
+        "bonus_districts": ["大安區"],
+        "price": {"min": 20000, "max": 40000},
+        "area": {"min": 12.5, "max": 45.0},
+        "mrt_max_m": 700,
+        "exclude_basement": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "patch,needle",
+    [
+        ({"districts": []}, "至少要選一個行政區"),
+        ({"districts": ["火星區"]}, "台北市 12 區"),
+        ({"bonus_districts": ["文山區"]}, "加分區要在搜尋的行政區裡"),
+        ({"price_min": "abc"}, "月租下限要填數字"),
+        ({"price_min": "50000"}, "下限小於上限"),
+        ({"area_max": "2000"}, "坪數要介於"),
+        ({"mrt_max_m": "50"}, "捷運距離要介於"),
+    ],
+)
+def test_parse_criteria_form_errors(patch, needle):
+    _, errors = rw.parse_criteria_form({**_GOOD_FORM, **patch})
+    assert any(needle in e for e in errors), errors
+
+
+def test_override_roundtrip_and_merge(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    assert rw.get_criteria_override(db) is None
+    assert not db.exists()  # 讀不建檔
+
+    override, _ = rw.parse_criteria_form(_GOOD_FORM)
+    rw.save_criteria_override(db, override)
+    c = rw.load_criteria(config_path, db_path=db)
+    assert c.districts == ("大安區", "內湖區")
+    assert (c.price_min, c.price_max, c.area_min, c.area_max) == (20000, 40000, 12.5, 45.0)
+    assert (c.mrt_max_m, c.exclude_basement, c.bonus_districts) == (700, True, ("大安區",))
+    # 設定檔的進階規則照樣在
+    assert c.exclude_title_keywords == rw.load_criteria(config_path).exclude_title_keywords
+
+    rw.save_criteria_override(db, None)
+    assert rw.load_criteria(config_path, db_path=db) == rw.load_criteria(config_path)
+
+
+def test_run_once_uses_panel_override_and_rebaselines(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    listings = [_listing(listing_id="1"), _listing(listing_id="2", district="內湖區")]
+    fetchers = {"591": lambda h, c: list(listings)}
+
+    def run():
+        return rw.run_once(
+            slack_bot=bot,
+            db_path=db,
+            config_path=config_path,
+            fetchers=fetchers,
+            http=FakeHttp([]),
+            now=NOW,
+        )
+
+    assert run().seen == 1  # 設定檔沒有內湖區
+    override, _ = rw.parse_criteria_form({**_GOOD_FORM, "price_min": "15000"})
+    rw.save_criteria_override(db, override)
+    bot.reset_mock()
+    r = run()
+    assert (r.status, r.seen) == ("baseline", 2)
+    assert bot.post_plain.call_args.args[0].startswith("🏠 租屋追蹤條件已更新")
+
+
+def test_load_board_hides_listings_outside_narrowed_criteria(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    fetchers = {
+        "591": lambda h, c: [_listing(listing_id="1"), _listing(listing_id="2", price=34000)]
+    }
+    rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=FakeHttp([]), now=NOW)
+    override, _ = rw.parse_criteria_form(
+        {**_GOOD_FORM, "districts": ["大安區"], "price_min": "15000", "price_max": "30000"}
+    )
+    rw.save_criteria_override(db, override)
+    c = rw.load_criteria(config_path, db_path=db)
+    board = rw.load_board(db, c, now=NOW)
+    assert [i.listing.listing_id for i in board.items] == ["1"]
+
+
+def test_fetch_591_chunks_more_than_five_districts(tmp_path):
+    c = rw.load_criteria(_config(tmp_path, "c.yaml", ""))
+    c = rw.Criteria(**{**c.__dict__, "districts": rw.TAIPEI_DISTRICTS})
+
+    def handler(method, url, kwargs):
+        return _Resp(payload={"status": 1, "records": "0", "data": {"data": []}})
+
+    http = FakeHttp([(lambda m, u, k: "bff-business.591" in u, handler)])
+    rw.fetch_591(http, c)
+    office = [u for _, u, _ in http.calls if "kind=6&" in u]
+    sections = [re.search(r"sectionid=([\d,]+)", u).group(1) for u in office]
+    assert sections == ["1,2,3,4,5", "6,7,8,9,10", "11,12"]
+
+
+def test_taipei_districts_have_codes_on_every_site():
+    for d in rw.TAIPEI_DISTRICTS:
+        assert d in rw._591_SECTION_IDS and d in rw._SINYI_ZIPS and d in rw._HOUSEFUN_AREA_IDS
+    assert len(rw.TAIPEI_DISTRICTS) == 12
