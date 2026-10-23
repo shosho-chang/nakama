@@ -2234,3 +2234,58 @@ class TestAllTabUsesLifetimePomodoros:
         assert "全期實際" not in row
         # 1 🍅 this week over the 2 planned for it — NOT the 5 lifetime / 8 estimate
         assert "1 / 2🍅" in row
+
+
+class TestAllTabShowsProject:
+    """修修 2026-10-23：「Bridge 上面的任務列表中，沒有把節目的名稱寫上去，而 Obsidian
+    上面的 task 卻有…要不然我不知道該怎麼在 Bridge 上面 manage」——podcast 樣板每集都
+    開「節目錄製／後製與上架」，列上只剩 stage 名，「全部」分頁按排程狀態分區、沒有戰線
+    標題，幾集的任務就長得一模一樣。今日／整週已有戰線標題，不重複標。"""
+
+    def _pin(self, monkeypatch):
+        import shared.weekly_indexer as wi
+
+        monkeypatch.setattr(wi, "today_taipei", lambda: wi.date(2026, 6, 1))
+
+    def _episode_tasks(self, tmp_path):
+        for guest in ("洪瀞", "程世嘉"):
+            proj = f"【Pod】{guest}"
+            (tmp_path / "TaskNotes" / "Tasks" / f"{proj} - 節目錄製.md").write_text(
+                f"---\ntitle: {proj} - 節目錄製\nstatus: to-do\ncategory: work\n"
+                f"projects:\n- '[[{proj}]]'\n預估🍅: 4\nstage: 節目錄製\n"
+                "plan:\n- {date: 2026-06-03, pomodoros: 2}\n---\n",
+                encoding="utf-8",
+            )
+
+    def _row(self, pane: str, proj: str) -> str:
+        slug = f'data-slug="{proj} - 節目錄製"'
+        return pane.split(slug, 1)[1].split("</summary>", 1)[0]
+
+    def test_all_tab_rows_name_their_project(self, client, tmp_path, monkeypatch):
+        self._pin(monkeypatch)
+        self._episode_tasks(tmp_path)
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        all_pane = body.split('data-pane="all"', 1)[1]
+        for guest in ("洪瀞", "程世嘉"):
+            row = self._row(all_pane, f"【Pod】{guest}")
+            assert '<span class="wk-tname">節目錄製</span>' in row
+            assert f'<span class="wk-tproj" title="【Pod】{guest}">【Pod】{guest}</span>' in row
+
+    def test_grouped_tabs_do_not_repeat_the_project(self, client, tmp_path, monkeypatch):
+        self._pin(monkeypatch)
+        self._episode_tasks(tmp_path)
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        week_pane = body.split('data-pane="week"', 1)[1].split('data-pane="all"', 1)[0]
+        assert "wk-pgroup-name" in week_pane  # the group header carries the name there
+        assert 'class="wk-tproj"' not in self._row(week_pane, "【Pod】洪瀞")
+
+    def test_standalone_task_gets_no_project_label(self, client, tmp_path, monkeypatch):
+        self._pin(monkeypatch)
+        (tmp_path / "TaskNotes" / "Tasks" / "買菜.md").write_text(
+            "---\ntitle: 買菜\nstatus: to-do\ncategory: work\n預估🍅: 1\n---\n",
+            encoding="utf-8",
+        )
+        body = client.get(f"/bridge/weekly?week={WEEK_KEY}").text
+        all_pane = body.split('data-pane="all"', 1)[1]
+        row = all_pane.split('data-slug="買菜"', 1)[1].split("</summary>", 1)[0]
+        assert 'class="wk-tproj"' not in row
