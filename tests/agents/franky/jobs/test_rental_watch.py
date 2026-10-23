@@ -9,6 +9,7 @@ from __future__ import annotations
 import base64
 import json
 import re
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -542,8 +543,10 @@ def test_dry_run_writes_nothing(config_path, tmp_path):
 def test_default_config_file_loads():
     c = rw.load_criteria()
     assert c.districts == ("中正區", "中山區", "大安區", "信義區", "文山區")
-    assert (c.price_min, c.price_max, c.area_min, c.area_max) == (15000, 35000, 10, 50)
+    assert (c.price_min, c.price_max, c.area_min, c.area_max) == (20000, 40000, 10, 50)
     assert c.mrt_max_m == 600
+    assert c.exclude_basement is True
+    assert c.bonus_districts == ("大安區", "文山區")
 
 
 # ---------------------------------------------------------------------------
@@ -668,18 +671,6 @@ def test_assess_scoring_chips_and_urgent(criteria):
     assert (a.price_per_ping, a.vs_median_pct) == (500, -50)
 
 
-def test_basement_gets_permit_warning_chip():
-    kw = dict(medians={}, hot_min_views=20, mrt_max_m=500)
-    base = rw_assess.assess(
-        _listing(is_basement=True, mrt_distance=300, registration="可登記"), **kw
-    )
-    warn = [c for c in base.chips if c.text == rw_assess.BASEMENT_PERMIT_CHIP]
-    assert warn and warn[0].tone == "warn"
-    assert base.tier == rw_assess.TIER_MATCH  # 只是提醒，不改分層
-    above = rw_assess.assess(_listing(mrt_distance=300, registration="可登記"), **kw)
-    assert all(c.text != rw_assess.BASEMENT_PERMIT_CHIP for c in above.chips)
-
-
 def test_assess_hot_makes_match_urgent_but_not_check(criteria):
     hot_match = _listing(mrt_distance=300, registration="可登記", views=40)
     hot_check = _listing(mrt_distance=300, registration="暫不確定", views=40)
@@ -772,3 +763,224 @@ def test_set_feedback_roundtrip(config_path, tmp_path):
 def test_default_db_path_env_override(monkeypatch, tmp_path):
     monkeypatch.setenv("RENTAL_WATCH_DB", str(tmp_path / "x.db"))
     assert rw.default_db_path() == tmp_path / "x.db"
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-23 條件更新：20k–40k、剔除地下室、大安／文山加分
+# ---------------------------------------------------------------------------
+
+
+def _config(tmp_path: Path, name: str, extra: str) -> Path:
+    p = tmp_path / name
+    p.write_text(CONFIG_YAML + extra, encoding="utf-8")
+    return p
+
+
+def test_exclude_basement_filters_and_skips_store_fetching(tmp_path):
+    c = rw.load_criteria(_config(tmp_path, "c.yaml", "exclude_basement: true\n"))
+    assert rw.passes(_listing(is_basement=True, floor="B1/5F"), c) is False
+    assert rw.passes(_listing(), c) is True
+    assert c.wants_stores is False
+
+    def handler(method, url, kwargs):
+        return _Resp(payload={"status": 1, "records": "0", "data": {"data": []}})
+
+    http = FakeHttp([(lambda m, u, k: "bff-business.591" in u, handler)])
+    rw.fetch_591(http, c)
+    kinds = sorted(re.search(r"kind=(\d+)", u).group(1) for _, u, _ in http.calls)
+    assert kinds == ["12", "6"]  # 店面（5）不抓
+
+    sinyi_http = FakeHttp(
+        [(lambda m, u, k: "sinyi" in u, lambda *a: _Resp(text=_sinyi_page(0, [])))]
+    )
+    rw.fetch_sinyi(sinyi_http, c)
+    assert all("store-use" not in u for _, u, _ in sinyi_http.calls)
+
+
+def test_bonus_district_adds_score_and_chip(tmp_path):
+    c = rw.load_criteria(_config(tmp_path, "c.yaml", "bonus_districts: [大安區, 文山區]\n"))
+    daan = _listing(mrt_distance=300, registration="可登記")
+    zhongshan = _listing(listing_id="2", district="中山區", mrt_distance=300, registration="可登記")
+    a = rw_assess.assess_all([daan, zhongshan], c)
+    assert a[daan.key].score == a[zhongshan.key].score + 1
+    assert any(ch.text == "加分區：大安區" for ch in a[daan.key].chips)
+    assert all("加分區" not in ch.text for ch in a[zhongshan.key].chips)
+
+
+def test_config_hash_ignores_comments(tmp_path):
+    a = rw.load_criteria(_config(tmp_path, "a.yaml", ""))
+    b = rw.load_criteria(_config(tmp_path, "b.yaml", "# 只是註解\n"))
+    c = rw.load_criteria(_config(tmp_path, "c.yaml", "exclude_basement: true\n"))
+    assert a.config_hash == b.config_hash != c.config_hash
+
+
+def test_criteria_change_rebaselines_instead_of_flooding(tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    old = _config(tmp_path, "old.yaml", "")
+    new = _config(tmp_path, "new.yaml", "bonus_districts: [大安區]\n")
+    listings = [_listing(listing_id="1")]
+    fetchers = {"591": lambda h, c: list(listings)}
+
+    def run(cfg):
+        return rw.run_once(
+            slack_bot=bot,
+            db_path=db,
+            config_path=cfg,
+            fetchers=fetchers,
+            http=FakeHttp([]),
+            now=NOW,
+        )
+
+    assert run(old).status == "baseline"
+    bot.reset_mock()
+    listings.extend(_listing(listing_id=str(i)) for i in range(2, 30))  # 條件放寬後湧進來的
+    r = run(new)
+    assert r.status == "baseline"
+    (call,) = bot.post_plain.call_args_list
+    assert call.kwargs["context"] == "rental_watch_baseline"
+    assert call.args[0].startswith("🏠 租屋追蹤條件已更新")
+    assert "加分：大安區" in call.args[0]
+
+    bot.reset_mock()
+    assert run(new).status == "ok"  # 條件沒再變 → 回到一般模式
+    bot.post_plain.assert_not_called()
+
+
+def test_db_from_before_criteria_hash_rebaselines_once(config_path, tmp_path):
+    """#1351 部署時的 DB 沒有 criteria_hash → 第一次跑新版本當作條件已更新。"""
+    db = tmp_path / "rw.db"
+    fetchers = {"591": lambda h, c: [_listing()]}
+    rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=FakeHttp([]), now=NOW)
+    conn = sqlite3.connect(db)
+    conn.execute("DELETE FROM meta WHERE key = 'criteria_hash'")
+    conn.commit()
+    conn.close()
+    r = rw.run_once(
+        db_path=db, config_path=config_path, fetchers=fetchers, http=FakeHttp([]), now=NOW
+    )
+    assert r.status == "baseline"
+
+
+# ---------------------------------------------------------------------------
+# Bridge 條件面板（rental_watch.db settings 蓋過設定檔）
+# ---------------------------------------------------------------------------
+
+_GOOD_FORM = {
+    "districts": ["大安區", "內湖區"],
+    "bonus_districts": ["大安區"],
+    "price_min": "20,000",
+    "price_max": "40000",
+    "area_min": "12.5",
+    "area_max": "45",
+    "mrt_max_m": "700",
+    "exclude_basement": True,
+}
+
+
+def test_parse_criteria_form_valid_keeps_canonical_order():
+    override, errors = rw.parse_criteria_form({**_GOOD_FORM, "districts": ["內湖區", "大安區"]})
+    assert errors == []
+    assert override == {
+        "districts": ["大安區", "內湖區"],
+        "bonus_districts": ["大安區"],
+        "price": {"min": 20000, "max": 40000},
+        "area": {"min": 12.5, "max": 45.0},
+        "mrt_max_m": 700,
+        "exclude_basement": True,
+    }
+
+
+@pytest.mark.parametrize(
+    "patch,needle",
+    [
+        ({"districts": []}, "至少要選一個行政區"),
+        ({"districts": ["火星區"]}, "台北市 12 區"),
+        ({"bonus_districts": ["文山區"]}, "加分區要在搜尋的行政區裡"),
+        ({"price_min": "abc"}, "月租下限要填數字"),
+        ({"price_min": "50000"}, "下限小於上限"),
+        ({"area_max": "2000"}, "坪數要介於"),
+        ({"mrt_max_m": "50"}, "捷運距離要介於"),
+    ],
+)
+def test_parse_criteria_form_errors(patch, needle):
+    _, errors = rw.parse_criteria_form({**_GOOD_FORM, **patch})
+    assert any(needle in e for e in errors), errors
+
+
+def test_override_roundtrip_and_merge(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    assert rw.get_criteria_override(db) is None
+    assert not db.exists()  # 讀不建檔
+
+    override, _ = rw.parse_criteria_form(_GOOD_FORM)
+    rw.save_criteria_override(db, override)
+    c = rw.load_criteria(config_path, db_path=db)
+    assert c.districts == ("大安區", "內湖區")
+    assert (c.price_min, c.price_max, c.area_min, c.area_max) == (20000, 40000, 12.5, 45.0)
+    assert (c.mrt_max_m, c.exclude_basement, c.bonus_districts) == (700, True, ("大安區",))
+    # 設定檔的進階規則照樣在
+    assert c.exclude_title_keywords == rw.load_criteria(config_path).exclude_title_keywords
+
+    rw.save_criteria_override(db, None)
+    assert rw.load_criteria(config_path, db_path=db) == rw.load_criteria(config_path)
+
+
+def test_run_once_uses_panel_override_and_rebaselines(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    listings = [_listing(listing_id="1"), _listing(listing_id="2", district="內湖區")]
+    fetchers = {"591": lambda h, c: list(listings)}
+
+    def run():
+        return rw.run_once(
+            slack_bot=bot,
+            db_path=db,
+            config_path=config_path,
+            fetchers=fetchers,
+            http=FakeHttp([]),
+            now=NOW,
+        )
+
+    assert run().seen == 1  # 設定檔沒有內湖區
+    override, _ = rw.parse_criteria_form({**_GOOD_FORM, "price_min": "15000"})
+    rw.save_criteria_override(db, override)
+    bot.reset_mock()
+    r = run()
+    assert (r.status, r.seen) == ("baseline", 2)
+    assert bot.post_plain.call_args.args[0].startswith("🏠 租屋追蹤條件已更新")
+
+
+def test_load_board_hides_listings_outside_narrowed_criteria(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    fetchers = {
+        "591": lambda h, c: [_listing(listing_id="1"), _listing(listing_id="2", price=34000)]
+    }
+    rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=FakeHttp([]), now=NOW)
+    override, _ = rw.parse_criteria_form(
+        {**_GOOD_FORM, "districts": ["大安區"], "price_min": "15000", "price_max": "30000"}
+    )
+    rw.save_criteria_override(db, override)
+    c = rw.load_criteria(config_path, db_path=db)
+    board = rw.load_board(db, c, now=NOW)
+    assert [i.listing.listing_id for i in board.items] == ["1"]
+
+
+def test_fetch_591_chunks_more_than_five_districts(tmp_path):
+    c = rw.load_criteria(_config(tmp_path, "c.yaml", ""))
+    c = rw.Criteria(**{**c.__dict__, "districts": rw.TAIPEI_DISTRICTS})
+
+    def handler(method, url, kwargs):
+        return _Resp(payload={"status": 1, "records": "0", "data": {"data": []}})
+
+    http = FakeHttp([(lambda m, u, k: "bff-business.591" in u, handler)])
+    rw.fetch_591(http, c)
+    office = [u for _, u, _ in http.calls if "kind=6&" in u]
+    sections = [re.search(r"sectionid=([\d,]+)", u).group(1) for u in office]
+    assert sections == ["1,2,3,4,5", "6,7,8,9,10", "11,12"]
+
+
+def test_taipei_districts_have_codes_on_every_site():
+    for d in rw.TAIPEI_DISTRICTS:
+        assert d in rw._591_SECTION_IDS and d in rw._SINYI_ZIPS and d in rw._HOUSEFUN_AREA_IDS
+    assert len(rw.TAIPEI_DISTRICTS) == 12

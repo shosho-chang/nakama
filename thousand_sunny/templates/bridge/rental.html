@@ -89,6 +89,8 @@
         <span>{{ criteria.area_min | int }}–{{ criteria.area_max | int }} 坪</span>
         <span class="rt-must">捷運 {{ criteria.mrt_max_m }}m 內</span>
         <span class="rt-must">可營業登記</span>
+        {% if criteria.exclude_basement %}<span>不含地下室</span>{% endif %}
+        {% if criteria.bonus_districts %}<span>加分：{{ criteria.bonus_districts | join('・') }}</span>{% endif %}
       </p>
       <p class="rt-status" role="status">
         <span class="rt-status-k">上次掃描</span><span class="rt-status-v">{{ last_scan }}</span>
@@ -105,6 +107,67 @@
     </header>
 
     {% if saved_msg %}<div class="rt-toast" role="status">{{ saved_msg }}</div>{% endif %}
+
+    <details class="rt-edit" id="criteria"{% if criteria_errors %} open{% endif %}>
+      <summary class="rt-edit-sum">
+        <span class="rt-edit-title">修改搜尋條件</span>
+        <span class="rt-edit-src">目前：{{ '面板設定' if override_active else '設定檔預設' }}</span>
+      </summary>
+      {% if criteria_errors %}
+      <div class="rt-edit-errors" role="alert">
+        <p>沒有存檔，請修正：</p>
+        <ul>{% for e in criteria_errors %}<li>{{ e }}</li>{% endfor %}</ul>
+      </div>
+      {% endif %}
+      <form class="rt-edit-form" method="post" action="/bridge/rental/criteria">
+        <fieldset class="rt-fs">
+          <legend>搜尋的行政區</legend>
+          <div class="rt-checks">
+            {% for d in taipei_districts %}
+            <label class="rt-check"><input type="checkbox" name="districts" value="{{ d }}"{% if d in form.districts %} checked{% endif %}><span>{{ d }}</span></label>
+            {% endfor %}
+          </div>
+        </fieldset>
+        <fieldset class="rt-fs">
+          <legend>加分區 <span class="rt-fs-hint">排序 +1，要在上面勾選的區裡</span></legend>
+          <div class="rt-checks">
+            {% for d in taipei_districts %}
+            <label class="rt-check"><input type="checkbox" name="bonus_districts" value="{{ d }}"{% if d in form.bonus_districts %} checked{% endif %}><span>{{ d }}</span></label>
+            {% endfor %}
+          </div>
+        </fieldset>
+        <div class="rt-ranges">
+          <fieldset class="rt-fs">
+            <legend>月租（元）</legend>
+            <div class="rt-range">
+              <input class="rt-num" type="number" name="price_min" inputmode="numeric" min="1000" max="500000" step="1000" value="{{ form.price_min }}" aria-label="月租下限" required>
+              <span aria-hidden="true">–</span>
+              <input class="rt-num" type="number" name="price_max" inputmode="numeric" min="1000" max="500000" step="1000" value="{{ form.price_max }}" aria-label="月租上限" required>
+            </div>
+          </fieldset>
+          <fieldset class="rt-fs">
+            <legend>坪數</legend>
+            <div class="rt-range">
+              <input class="rt-num" type="number" name="area_min" inputmode="decimal" min="1" max="1000" step="any" value="{{ form.area_min }}" aria-label="坪數下限" required>
+              <span aria-hidden="true">–</span>
+              <input class="rt-num" type="number" name="area_max" inputmode="decimal" min="1" max="1000" step="any" value="{{ form.area_max }}" aria-label="坪數上限" required>
+            </div>
+          </fieldset>
+          <fieldset class="rt-fs">
+            <legend>捷運（公尺內）</legend>
+            <div class="rt-range">
+              <input class="rt-num" type="number" name="mrt_max_m" inputmode="numeric" min="100" max="3000" step="50" value="{{ form.mrt_max_m }}" aria-label="距最近捷運站公尺數" required>
+            </div>
+          </fieldset>
+        </div>
+        <label class="rt-check rt-check--solo"><input type="checkbox" name="exclude_basement" value="1"{% if form.exclude_basement %} checked{% endif %}><span>剔除地下室</span></label>
+        <p class="rt-edit-note">存檔後頁面立刻照新條件篩選；放寬條件才會出現的新物件，要等下一輪掃描（每天 07:05–23:05 每小時）。條件一改，下一輪會重新盤點，Slack 只送一則摘要。可否營業登記一律是必要條件；排除關鍵字等進階規則在 <code>config/rental-watch.yaml</code>。</p>
+        <div class="rt-edit-actions">
+          <button class="sho-btn" type="submit" name="action" value="save">儲存條件</button>
+          {% if override_active %}<button class="sho-btn--ghost" type="submit" name="action" value="reset" formnovalidate>恢復設定檔預設</button>{% endif %}
+        </div>
+      </form>
+    </details>
 
     {% if not groups %}
     <div class="sho-panel rt-empty">
@@ -140,7 +203,7 @@
     {% endif %}
 
     <footer class="rt-foot">
-      <p><b>排序怎麼算</b>：每坪租金比同區中位數便宜 20% 以上 +2、10% 以上 +1、貴 20% 以上 −1；30 坪以上 +1；地下室 +1；離捷運 200m 內 +1。同區中位數是用目前在架的這一批算的，不是市場行情。「搶手」= 591 昨日瀏覽人數落在這批的前 10%（且至少 20 人）。</p>
+      <p><b>排序怎麼算</b>：每坪租金比同區中位數便宜 20% 以上 +2、10% 以上 +1、貴 20% 以上 −1；30 坪以上 +1；{% if criteria.bonus_districts %}{{ criteria.bonus_districts | join('、') }} +1；{% endif %}{% if not criteria.exclude_basement %}地下室 +1；{% endif %}離捷運 200m 內 +1。同區中位數是用目前在架的這一批算的，不是市場行情。「搶手」= 591 昨日瀏覽人數落在這批的前 10%（且至少 20 人）。</p>
       <p>591 列表上的「N 天前」是更新時間、不是刊登時間，所以「首次看到」用的是 Franky 第一次抓到的時間。</p>
     </footer>
   </main>
