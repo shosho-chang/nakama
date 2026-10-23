@@ -39,6 +39,8 @@ HOT_PERCENTILE = 0.9
 # 「建議儘快聯繫」：符合條件，且（搶手 或 加分 ≥ 這個數）。
 URGENT_MIN_SCORE = 3
 
+BASEMENT_PERMIT_CHIP = "先查使用執照用途：防空避難室／停車空間不能當工作室"
+
 
 @dataclass(frozen=True)
 class Chip:
@@ -121,6 +123,10 @@ def assess(
     elif reg_ok is None:
         label = listing.registration if listing.registration else "沒有資料"
         chips.append(Chip(f"可否登記：{label}，要問", "warn"))
+    if listing.is_basement:
+        # 北市有承租人把「防空避難室」當倉庫被罰 6 萬並勒令停用的訴願案（88.11.11）；
+        # 地下室常見的核准用途是防空避難室／停車空間 → 看屋前先要使用執照。
+        chips.append(Chip(BASEMENT_PERMIT_CHIP, "warn"))
 
     if mrt_ok is False or reg_ok is False:
         tier = TIER_OUT
