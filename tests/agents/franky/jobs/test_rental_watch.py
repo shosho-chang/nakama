@@ -668,6 +668,18 @@ def test_assess_scoring_chips_and_urgent(criteria):
     assert (a.price_per_ping, a.vs_median_pct) == (500, -50)
 
 
+def test_basement_gets_permit_warning_chip():
+    kw = dict(medians={}, hot_min_views=20, mrt_max_m=500)
+    base = rw_assess.assess(
+        _listing(is_basement=True, mrt_distance=300, registration="可登記"), **kw
+    )
+    warn = [c for c in base.chips if c.text == rw_assess.BASEMENT_PERMIT_CHIP]
+    assert warn and warn[0].tone == "warn"
+    assert base.tier == rw_assess.TIER_MATCH  # 只是提醒，不改分層
+    above = rw_assess.assess(_listing(mrt_distance=300, registration="可登記"), **kw)
+    assert all(c.text != rw_assess.BASEMENT_PERMIT_CHIP for c in above.chips)
+
+
 def test_assess_hot_makes_match_urgent_but_not_check(criteria):
     hot_match = _listing(mrt_distance=300, registration="可登記", views=40)
     hot_check = _listing(mrt_distance=300, registration="暫不確定", views=40)
