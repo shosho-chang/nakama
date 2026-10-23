@@ -1,0 +1,522 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Bridge /bridge/rental — 租屋追蹤（Franky rental-watch）
+
+   Dense ops list, not a card grid: one hairline row per listing — title +
+   facts + reason chips on the left, price block, then the feedback form.
+   Orange stays a line/char (≤4%): the urgent rows' 2px left rule, the "新"
+   tag, focus rings. Semantic soft fills via color-mix. All --sho-* tokens.
+   ───────────────────────────────────────────────────────────────────────── */
+
+body.sho .rt-main {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: var(--sho-s-5) var(--sho-s-5) var(--sho-s-8);
+  box-sizing: border-box;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+body.sho .rt-head {
+  padding-bottom: var(--sho-s-4);
+  border-bottom: 1px solid var(--sho-line);
+  margin-bottom: var(--sho-s-4);
+}
+body.sho .rt-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--sho-ink);
+  margin: var(--sho-s-2) 0 var(--sho-s-2);
+  line-height: 1.3;
+}
+body.sho .rt-criteria,
+body.sho .rt-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sho-s-1) var(--sho-s-3);
+  margin: 0;
+  font-family: var(--sho-font-mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--sho-text-2);
+}
+body.sho .rt-criteria {
+  gap: var(--sho-s-1);
+}
+body.sho .rt-criteria span {
+  padding: 2px 8px;
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+}
+body.sho .rt-must {
+  color: var(--sho-text);
+  font-weight: 600;
+  border-color: var(--sho-text-2) !important;
+}
+body.sho .rt-status {
+  margin-top: var(--sho-s-2);
+  color: var(--sho-muted);
+}
+body.sho .rt-status-v {
+  color: var(--sho-text-2);
+  margin-right: var(--sho-s-2);
+}
+
+/* ── Toast / empty ──────────────────────────────────────────────────────── */
+body.sho .rt-toast {
+  padding: 10px 14px;
+  border-radius: var(--sho-r-1);
+  margin-bottom: var(--sho-s-4);
+  font-size: 13px;
+  color: var(--sho-text);
+  border: 1px solid color-mix(in oklch, var(--sho-success) 40%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 8%, transparent);
+}
+body.sho .rt-empty {
+  padding: var(--sho-s-6) var(--sho-s-5);
+}
+body.sho .rt-empty-t {
+  margin: 0 0 var(--sho-s-2);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sho-text);
+}
+body.sho .rt-empty-d {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--sho-text-2);
+}
+body.sho .rt-empty code,
+body.sho .rt-foot code {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+}
+
+/* ── Section jump strip ─────────────────────────────────────────────────── */
+body.sho .rt-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  background: var(--sho-line);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  overflow: hidden;
+  margin-bottom: var(--sho-s-6);
+}
+body.sho .rt-sum {
+  flex: 1 1 120px;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sho-s-2);
+  padding: var(--sho-s-3) var(--sho-s-4);
+  background: var(--sho-bg);
+  color: var(--sho-text-2);
+  text-decoration: none;
+  transition: background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .rt-sum:hover {
+  background: var(--sho-bg-2);
+}
+body.sho .rt-sum:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--sho-accent);
+}
+body.sho .rt-sum-n {
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--sho-ink);
+}
+body.sho .rt-sum-l {
+  font-size: 12.5px;
+}
+body.sho .rt-sum--urgent .rt-sum-l {
+  color: var(--sho-text);
+  font-weight: 600;
+}
+body.sho .rt-sum--urgent .rt-sum-l::before {
+  /* orange as a dot, not as text colour (accent fails AA on body text) */
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  vertical-align: 2px;
+  border-radius: var(--sho-r-pill);
+  background: var(--sho-accent);
+}
+
+/* ── Sections ───────────────────────────────────────────────────────────── */
+body.sho .rt-sec {
+  margin-bottom: var(--sho-s-7);
+}
+body.sho .rt-sec-head {
+  margin-bottom: var(--sho-s-3);
+}
+body.sho .rt-sec-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sho-s-2);
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--sho-ink);
+}
+body.sho .rt-sec--urgent .rt-sec-title .sho-kicker-n {
+  color: var(--sho-accent-2);
+  border-color: var(--sho-accent-line);
+}
+body.sho .rt-count {
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--sho-muted);
+}
+body.sho .rt-sec-note {
+  margin: var(--sho-s-1) 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--sho-muted);
+}
+
+body.sho .rt-sec--fold {
+  border-top: 1px solid var(--sho-line);
+  padding-top: var(--sho-s-3);
+}
+body.sho .rt-fold-sum {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sho-s-2);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sho-text-2);
+  padding: var(--sho-s-2) 0;
+  border-radius: var(--sho-r-1);
+}
+body.sho .rt-fold-sum:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-fold-note {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--sho-muted);
+}
+body.sho .rt-sec--fold[open] .rt-fold-sum {
+  margin-bottom: var(--sho-s-3);
+}
+
+/* ── Rows ───────────────────────────────────────────────────────────────── */
+body.sho .rt-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  background: var(--sho-bg);
+}
+body.sho .rt-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 168px 288px;
+  gap: var(--sho-s-4);
+  align-items: start;
+  padding: var(--sho-s-4);
+  border-top: 1px solid var(--sho-line);
+  scroll-margin-top: var(--sho-s-6);
+}
+body.sho .rt-row:first-child {
+  border-top: 0;
+  border-radius: var(--sho-r-2) var(--sho-r-2) 0 0;
+}
+body.sho .rt-row.is-urgent {
+  box-shadow: inset 2px 0 0 var(--sho-accent);
+}
+body.sho .rt-row:target {
+  background: var(--sho-bg-2);
+  box-shadow: inset 2px 0 0 var(--sho-accent);
+}
+body.sho .rt-row-title {
+  margin: 0 0 var(--sho-s-1);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--sho-text);
+  overflow-wrap: anywhere;
+}
+body.sho .rt-new {
+  margin-left: var(--sho-s-1);
+  vertical-align: 2px;
+  font-size: 10.5px;
+}
+body.sho .rt-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--sho-s-2);
+  margin: 0;
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--sho-text-2);
+}
+body.sho .rt-facts span:not(:last-child)::after {
+  /* separator trails its item so a wrapped line never starts with "·" */
+  content: "·";
+  color: var(--sho-muted);
+  margin-left: var(--sho-s-2);
+}
+
+body.sho .rt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-1);
+  list-style: none;
+  margin: var(--sho-s-2) 0 0;
+  padding: 0;
+}
+body.sho .rt-chip {
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 1px 8px;
+  border-radius: var(--sho-r-1);
+  border: 1px solid var(--sho-line-2);
+  color: var(--sho-text-2);
+}
+body.sho .rt-chip--good {
+  color: var(--sho-text);
+  border-color: color-mix(in oklch, var(--sho-success) 45%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 9%, transparent);
+}
+body.sho .rt-chip--warn {
+  color: var(--sho-text);
+  border-color: color-mix(in oklch, var(--sho-warning) 50%, transparent);
+  background: color-mix(in oklch, var(--sho-warning) 11%, transparent);
+}
+body.sho .rt-chip--bad {
+  color: var(--sho-text);
+  border-color: color-mix(in oklch, var(--sho-error) 45%, transparent);
+  background: color-mix(in oklch, var(--sho-error) 8%, transparent);
+}
+body.sho .rt-chip--info {
+  color: var(--sho-text);
+  border-color: color-mix(in oklch, var(--sho-info) 45%, transparent);
+  background: color-mix(in oklch, var(--sho-info) 9%, transparent);
+}
+body.sho .rt-hint,
+body.sho .rt-note {
+  margin: var(--sho-s-2) 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--sho-muted);
+}
+body.sho .rt-note {
+  color: var(--sho-text-2);
+}
+body.sho .rt-note-k {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--sho-muted);
+  margin-right: var(--sho-s-2);
+}
+
+/* ── Price block ────────────────────────────────────────────────────────── */
+body.sho .rt-row-price {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+body.sho .rt-price {
+  margin: 0;
+  color: var(--sho-ink);
+  white-space: nowrap;
+}
+body.sho .rt-price-n {
+  font-family: var(--sho-font-mono);
+  font-size: 19px;
+  font-weight: 700;
+}
+body.sho .rt-price-u {
+  margin-left: 2px;
+  font-size: 12px;
+  color: var(--sho-muted);
+}
+body.sho .rt-prev {
+  display: block;
+  font-family: var(--sho-font-mono);
+  font-size: 12.5px;
+  color: var(--sho-muted);
+}
+body.sho .rt-ppp,
+body.sho .rt-seen {
+  margin: 2px 0 0;
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  color: var(--sho-text-2);
+}
+body.sho .rt-seen {
+  color: var(--sho-muted);
+}
+body.sho .rt-vs {
+  margin-left: var(--sho-s-2);
+  color: var(--sho-muted);
+}
+body.sho .rt-vs.is-good {
+  color: var(--sho-success);
+  font-weight: 600;
+}
+body.sho .rt-vs.is-warn {
+  color: var(--sho-text);
+}
+
+/* ── Feedback form ──────────────────────────────────────────────────────── */
+body.sho .rt-fb {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-2);
+  margin: 0;
+}
+body.sho .rt-fb-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+body.sho .rt-fb-reason {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  color: var(--sho-text);
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .rt-fb-reason::placeholder {
+  color: var(--sho-muted);
+}
+body.sho .rt-fb-reason:hover {
+  border-color: var(--sho-muted);
+}
+body.sho .rt-fb-reason:focus-visible {
+  outline: none;
+  border-color: var(--sho-accent-line);
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-fb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sho-s-2);
+}
+body.sho .rt-fb-btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  min-height: 34px;
+  cursor: pointer;
+  color: var(--sho-text-2);
+  background: transparent;
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  transition:
+    border-color var(--sho-t-fast) var(--sho-ease),
+    color var(--sho-t-fast) var(--sho-ease),
+    background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .rt-fb-btn:hover {
+  color: var(--sho-text);
+  border-color: var(--sho-text-2);
+}
+body.sho .rt-fb-btn:focus-visible,
+body.sho .rt-fb-clear:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-fb-btn:active {
+  background: var(--sho-bg-3);
+}
+body.sho .rt-fb-btn--yes.is-on {
+  color: var(--sho-bg);
+  background: var(--sho-text);
+  border-color: var(--sho-text);
+}
+body.sho .rt-fb-btn--no.is-on {
+  color: var(--sho-text);
+  background: var(--sho-bg-3);
+  border-color: var(--sho-line-2);
+}
+body.sho .rt-fb-clear {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 2px;
+  cursor: pointer;
+  color: var(--sho-muted);
+  background: none;
+  border: 0;
+  border-radius: var(--sho-r-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+body.sho .rt-fb-clear:hover {
+  color: var(--sho-text);
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+body.sho .rt-foot {
+  margin-top: var(--sho-s-7);
+  padding-top: var(--sho-s-4);
+  border-top: 1px solid var(--sho-line);
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--sho-muted);
+}
+body.sho .rt-foot p {
+  margin: 0 0 var(--sho-s-2);
+  max-width: 78ch;
+}
+body.sho .rt-foot b {
+  color: var(--sho-text-2);
+}
+
+/* ── Narrow screens（從 Slack 點進來多半是手機）───────────────────────── */
+@media (max-width: 900px) {
+  body.sho .rt-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--sho-s-3);
+  }
+  body.sho .rt-fb {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 560px) {
+  body.sho .rt-main {
+    padding: var(--sho-s-4) var(--sho-s-4) var(--sho-s-7);
+  }
+  body.sho .rt-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  body.sho .rt-row-price {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--sho-s-3);
+    text-align: left;
+  }
+  body.sho .rt-prev {
+    display: inline;
+    margin-right: var(--sho-s-1);
+  }
+  body.sho .rt-sum {
+    flex-basis: 45%;
+  }
+}

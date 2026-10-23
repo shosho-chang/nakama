@@ -25,21 +25,25 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import re
 import sqlite3
 import ssl
 import time
 import urllib.parse
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Callable, Iterable, Optional
+from typing import TYPE_CHECKING, Any, Callable, Iterable, Optional
 
 import httpx
 import yaml
 from bs4 import BeautifulSoup
 
 from shared.log import get_logger
+
+if TYPE_CHECKING:
+    from agents.franky.jobs.rental_assess import Assessment
 
 logger = get_logger("nakama.franky.rental_watch")
 
@@ -121,6 +125,7 @@ class Criteria:
     exclude_rooftop: bool = True
     exclude_title_keywords: tuple[str, ...] = ()
     exclude_title_patterns: tuple[re.Pattern[str], ...] = ()
+    mrt_max_m: int = 500
 
 
 @dataclass(frozen=True)
@@ -136,6 +141,10 @@ class Listing:
     is_basement: bool
     is_rooftop: bool
     kind: str  # 辦公 / 住辦 / 店面 / 辦公/住辦
+    mrt_station: str = ""  # 最近捷運站（591 才有）
+    mrt_distance: Optional[int] = None  # 公尺；None = 沒資料
+    registration: str = ""  # 591：「可登記」/ 詳細頁登記欄原文 / 「未標示」；其他站空字串
+    views: Optional[int] = None  # 591「昨日瀏覽」人數
 
     @property
     def key(self) -> str:
@@ -187,6 +196,7 @@ def load_criteria(path: Path = DEFAULT_CONFIG_PATH) -> Criteria:
         exclude_title_patterns=tuple(
             re.compile(p) for p in (raw.get("exclude_title_patterns") or ())
         ),
+        mrt_max_m=int(raw.get("mrt_max_m", 500)),
     )
 
 
@@ -301,6 +311,13 @@ def parse_591_item(item: dict[str, Any]) -> Listing:
     floor_str = str(item.get("floorStr") or "")
     is_basement = (isinstance(floor_num, int) and floor_num < 0) or _floor_is_basement(floor_str)
     title = str(item.get("address_img_title") or item.get("title") or "").strip()
+    surrounding = item.get("surrounding") or {}
+    station, distance = "", None
+    if surrounding.get("type") == "subway_station":
+        station = str(surrounding.get("desc") or "").removeprefix("距").strip()
+        distance = _to_int(surrounding.get("distance"))
+    tags = {str(t.get("name")) for t in (item.get("rentTag") or item.get("tag") or [])}
+    views = item.get("browsenum") if item.get("browsenum_name") == "昨日瀏覽" else None
     return Listing(
         source="591",
         listing_id=str(item["id"]),
@@ -313,7 +330,28 @@ def parse_591_item(item: dict[str, Any]) -> Listing:
         is_basement=is_basement,
         is_rooftop=_floor_is_rooftop(floor_str),
         kind=str(item.get("kind_name") or _591_KINDS.get(item.get("kind"), "")),
+        mrt_station=station,
+        mrt_distance=distance,
+        registration="可登記" if "可登記" in tags else _591_REG_UNMARKED,
+        views=int(views) if isinstance(views, (int, float)) else None,
     )
+
+
+_591_REG_UNMARKED = "未標示"
+_591_DETAIL = "https://business.591.com.tw/rent/{id}"
+# 每輪最多補抓幾筆詳細頁（第一輪會有幾十筆；之後只有新物件）。
+_591_DETAIL_BUDGET = 40
+
+
+def parse_591_registration(html: str) -> str:
+    """591 詳細頁「登記」欄（``span.businessRegistration``）的文字，例如「暫不確定」。"""
+    el = BeautifulSoup(html, "html.parser").select_one(".businessRegistration")
+    return el.get_text(strip=True) if el else ""
+
+
+def fetch_591_registration(http: Http, listing_id: str) -> str:
+    resp = http.request("GET", _591_DETAIL.format(id=listing_id))
+    return parse_591_registration(resp.text) or _591_REG_UNMARKED
 
 
 def fetch_591(http: Http, criteria: Criteria) -> list[Listing]:
@@ -598,10 +636,16 @@ CREATE TABLE IF NOT EXISTS listings (
     url TEXT NOT NULL,
     district TEXT NOT NULL,
     price INTEGER NOT NULL,
+    prev_price INTEGER,
     area REAL,
     floor TEXT NOT NULL,
     is_basement INTEGER NOT NULL,
     kind TEXT NOT NULL,
+    mrt_station TEXT NOT NULL DEFAULT '',
+    mrt_distance INTEGER,
+    registration TEXT NOT NULL DEFAULT '',
+    registration_checked INTEGER NOT NULL DEFAULT 0,
+    views INTEGER,
     first_seen TEXT NOT NULL,
     last_seen TEXT NOT NULL
 );
@@ -609,7 +653,14 @@ CREATE TABLE IF NOT EXISTS source_health (
     source TEXT PRIMARY KEY,
     consecutive_failures INTEGER NOT NULL DEFAULT 0,
     last_error TEXT,
-    alerted INTEGER NOT NULL DEFAULT 0
+    alerted INTEGER NOT NULL DEFAULT 0,
+    last_success_at TEXT
+);
+CREATE TABLE IF NOT EXISTS feedback (
+    key TEXT PRIMARY KEY,
+    verdict TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL
 );
 CREATE TABLE IF NOT EXISTS meta (
     key TEXT PRIMARY KEY,
@@ -617,8 +668,16 @@ CREATE TABLE IF NOT EXISTS meta (
 );
 """
 
+VERDICTS = {"interested": "有興趣", "pass": "不考慮"}
+
+BRIDGE_URL = "https://nakama.shosho.tw/bridge/rental"
+
 
 def default_db_path() -> Path:
+    """runtime data dir 下的 ``rental_watch.db``；``RENTAL_WATCH_DB`` 可覆寫（dev server 用）。"""
+    override = os.environ.get("RENTAL_WATCH_DB", "").strip()
+    if override:
+        return Path(override)
     from shared.config import get_runtime_data_dir
 
     return get_runtime_data_dir() / "rental_watch.db"
@@ -632,6 +691,163 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _row_to_listing(r: sqlite3.Row) -> Listing:
+    return Listing(
+        source=r["source"],
+        listing_id=r["listing_id"],
+        title=r["title"],
+        url=r["url"],
+        district=r["district"],
+        price=r["price"],
+        area=r["area"],
+        floor=r["floor"],
+        is_basement=bool(r["is_basement"]),
+        is_rooftop=False,  # 頂加在寫入前就被 passes() 濾掉了
+        kind=r["kind"],
+        mrt_station=r["mrt_station"],
+        mrt_distance=r["mrt_distance"],
+        registration=r["registration"],
+        views=r["views"],
+    )
+
+
+# ---------------------------------------------------------------------------
+# Bridge 讀寫（/bridge/rental）
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class SourceStatus:
+    source: str
+    label: str
+    ok: bool
+    consecutive_failures: int
+    last_error: Optional[str]
+    last_success_at: Optional[str]
+
+
+@dataclass
+class BoardItem:
+    listing: Listing
+    assessment: "Assessment"
+    first_seen: str
+    is_new: bool  # 起始盤點之後才出現、且 48 小時內
+    prev_price: Optional[int]  # 降價前的價格
+    verdict: Optional[str]  # interested | pass | None
+    reason: str
+
+
+@dataclass
+class Board:
+    items: list[BoardItem]
+    sources: list[SourceStatus]
+    last_scan_at: Optional[str]
+    baseline_at: Optional[str]
+
+
+def load_board(
+    db_path: Path, criteria: Criteria, *, now: Optional[datetime] = None
+) -> Optional[Board]:
+    """Bridge 頁面用：目前在架的物件＋評估＋修修的標記。DB 不存在回 None。
+
+    「在架」= 該物件最後一次被看到的時間 ≥ 該站最後一次成功掃描的時間；
+    之後沒再出現的（已出租或下架）就不顯示。
+    """
+    from agents.franky.jobs.rental_assess import assess_all
+
+    if not db_path.exists():
+        return None
+    now = now or datetime.now(timezone.utc)
+    conn = _connect(db_path)
+    try:
+        health = {r["source"]: r for r in conn.execute("SELECT * FROM source_health")}
+        rows = conn.execute("SELECT * FROM listings").fetchall()
+        fb = {r["key"]: r for r in conn.execute("SELECT * FROM feedback")}
+        meta = {r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM meta")}
+    finally:
+        conn.close()
+
+    active = []
+    for r in rows:
+        h = health.get(r["source"])
+        last_ok = h["last_success_at"] if h else None
+        if last_ok and r["last_seen"] < last_ok:
+            continue
+        active.append(r)
+
+    listings = [_row_to_listing(r) for r in active]
+    assessments = assess_all(listings, criteria)
+    baseline_at = meta.get("baseline_done")
+    items = []
+    for r, it in zip(active, listings):
+        first_seen = r["first_seen"]
+        is_new = bool(
+            baseline_at
+            and first_seen > baseline_at
+            and (now - datetime.fromisoformat(first_seen)).total_seconds() < 48 * 3600
+        )
+        f = fb.get(it.key)
+        items.append(
+            BoardItem(
+                listing=it,
+                assessment=assessments[it.key],
+                first_seen=first_seen,
+                is_new=is_new,
+                prev_price=r["prev_price"],
+                verdict=f["verdict"] if f else None,
+                reason=f["reason"] if f else "",
+            )
+        )
+
+    sources = []
+    for src in DEFAULT_FETCHERS:
+        h = health.get(src)
+        sources.append(
+            SourceStatus(
+                source=src,
+                label=SOURCE_LABELS.get(src, src),
+                ok=bool(h) and h["consecutive_failures"] == 0,
+                consecutive_failures=h["consecutive_failures"] if h else 0,
+                last_error=h["last_error"] if h else None,
+                last_success_at=h["last_success_at"] if h else None,
+            )
+        )
+    return Board(
+        items=items,
+        sources=sources,
+        last_scan_at=meta.get("last_scan_at"),
+        baseline_at=baseline_at,
+    )
+
+
+def set_feedback(
+    db_path: Path,
+    key: str,
+    verdict: Optional[str],
+    reason: str = "",
+    *,
+    now: Optional[datetime] = None,
+) -> None:
+    """修修在 Bridge 標「有興趣 / 不考慮」（verdict=None 清掉標記）。"""
+    if verdict is not None and verdict not in VERDICTS:
+        raise ValueError(f"unknown verdict {verdict!r}")
+    now_iso = (now or datetime.now(timezone.utc)).isoformat()
+    conn = _connect(db_path)
+    try:
+        with conn:
+            if verdict is None:
+                conn.execute("DELETE FROM feedback WHERE key = ?", (key,))
+            else:
+                conn.execute(
+                    "INSERT INTO feedback (key, verdict, reason, updated_at) VALUES (?, ?, ?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET verdict = excluded.verdict, "
+                    "reason = excluded.reason, updated_at = excluded.updated_at",
+                    (key, verdict, reason.strip()[:500], now_iso),
+                )
+    finally:
+        conn.close()
+
+
 # ---------------------------------------------------------------------------
 # Slack formatting
 # ---------------------------------------------------------------------------
@@ -641,20 +857,42 @@ def _esc(text: str) -> str:
     return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace("|", "｜")
 
 
-def format_listing(listing: Listing, *, old_price: Optional[int] = None) -> str:
+def listing_facts(listing: Listing) -> list[str]:
+    """一行事實：區・坪・樓層・捷運・登記・來源。Slack 與 Bridge 共用。"""
     parts = [listing.district]
     if listing.area:
         parts.append(f"{listing.area:g}坪")
     if listing.floor:
         parts.append(listing.floor)
+    if listing.mrt_distance is not None:
+        parts.append(f"{listing.mrt_station or '捷運'} {listing.mrt_distance}m")
+    if listing.registration:
+        parts.append(listing.registration)
+    parts.append(f"{SOURCE_LABELS.get(listing.source, listing.source)} {listing.kind}")
+    return parts
+
+
+def format_listing(
+    listing: Listing,
+    assessment: Optional["Assessment"] = None,
+    *,
+    old_price: Optional[int] = None,
+) -> str:
     if old_price is not None:
-        parts.append(f"~{old_price:,}~ → *{listing.price:,}元*")
+        price = f"~{old_price:,}~ → *{listing.price:,}元*"
     else:
-        parts.append(f"{listing.price:,}元")
+        price = f"{listing.price:,}元"
+    facts = listing_facts(listing)
+    parts = [*facts[:-1], price]
     if listing.area:
         parts.append(f"每坪 {round(listing.price / listing.area):,}")
-    parts.append(f"{SOURCE_LABELS.get(listing.source, listing.source)} {listing.kind}")
-    return f"• <{listing.url}|{_esc(listing.title or listing.listing_id)}> — " + "｜".join(parts)
+    parts.append(facts[-1])
+    line = f"• <{listing.url}|{_esc(listing.title or listing.listing_id)}> — " + "｜".join(parts)
+    if assessment is not None:
+        notes = [c.text for c in assessment.chips if c.tone in ("good", "warn")][:3]
+        if notes:
+            line += "\n    ↳ " + "・".join(notes)
+    return line
 
 
 def _section(header: str, lines: list[str]) -> list[str]:
@@ -665,37 +903,86 @@ def _section(header: str, lines: list[str]) -> list[str]:
     return [header, *shown, *([f"  …另外 {extra} 筆"] if extra > 0 else []), ""]
 
 
-def format_update_message(new: list[Listing], drops: list[PriceDrop]) -> str:
-    basement_new = [it for it in new if it.is_basement]
-    other_new = [it for it in new if not it.is_basement]
+def format_update_message(
+    new: list[Listing],
+    drops: list[PriceDrop],
+    assessments: dict[str, "Assessment"],
+) -> Optional[str]:
+    """新物件與降價 → 一則 DM。確定不符合必要條件的不推；全都不符合就回 None。"""
+    from agents.franky.jobs.rental_assess import TIER_CHECK, TIER_MATCH, TIER_OUT, sort_key
+
+    def keep(it: Listing) -> bool:
+        return assessments[it.key].tier != TIER_OUT
+
+    new = sorted((it for it in new if keep(it)), key=lambda it: sort_key(it, assessments[it.key]))
+    drops = [d for d in drops if keep(d.listing)]
+    if not new and not drops:
+        return None
+
+    urgent = [it for it in new if assessments[it.key].urgent]
+    match = [
+        it
+        for it in new
+        if assessments[it.key].tier == TIER_MATCH and not assessments[it.key].urgent
+    ]
+    check = [it for it in new if assessments[it.key].tier == TIER_CHECK]
     head = f"🏠 租屋追蹤：{len(new)} 筆新物件" + (f"、{len(drops)} 筆降價" if drops else "")
-    if basement_new:
-        head += f"（地下室 {len(basement_new)} 筆）"
+    if urgent:
+        head += f"（{len(urgent)} 筆建議儘快聯繫）"
     lines = [head, ""]
-    lines += _section("🕳️ *地下室・新物件*", [format_listing(it) for it in basement_new])
+    lines += _section(
+        "🔥 *建議儘快聯繫*", [format_listing(it, assessments[it.key]) for it in urgent]
+    )
+    lines += _section(
+        "✅ *符合條件*（捷運近、可登記）",
+        [format_listing(it, assessments[it.key]) for it in match],
+    )
     lines += _section(
         "📉 *降價*",
-        [format_listing(d.listing, old_price=d.old_price) for d in drops],
+        [
+            format_listing(d.listing, assessments[d.listing.key], old_price=d.old_price)
+            for d in drops
+        ],
     )
-    lines += _section("🆕 *新物件*", [format_listing(it) for it in other_new])
+    lines += _section(
+        "❔ *待確認*（捷運距離或可否登記沒有資料）",
+        [format_listing(it, assessments[it.key]) for it in check],
+    )
+    lines.append(f"完整清單、標記有興趣／不考慮：<{BRIDGE_URL}|Bridge 租屋追蹤>")
     return "\n".join(lines).rstrip()
 
 
 def format_baseline_message(
-    listings: list[Listing], source_counts: dict[str, int], criteria: Criteria
+    listings: list[Listing],
+    assessments: dict[str, "Assessment"],
+    source_counts: dict[str, int],
+    criteria: Criteria,
 ) -> str:
+    from agents.franky.jobs.rental_assess import TIER_CHECK, TIER_MATCH, TIER_OUT, sort_key
+
     counts = "、".join(f"{SOURCE_LABELS.get(s, s)} {n}" for s, n in source_counts.items())
-    basements = sorted((it for it in listings if it.is_basement), key=lambda it: it.price)
+    tier_counts = {
+        t: sum(1 for it in listings if assessments[it.key].tier == t)
+        for t in (TIER_MATCH, TIER_CHECK, TIER_OUT)
+    }
+    urgent = sorted(
+        (it for it in listings if assessments[it.key].urgent),
+        key=lambda it: sort_key(it, assessments[it.key]),
+    )
     lines = [
         "🏠 租屋追蹤開始了：之後每小時掃一次，有新物件或降價就通知你。",
         f"條件：{'、'.join(criteria.districts)}｜{criteria.price_min:,}–{criteria.price_max:,} 元｜"
-        f"{criteria.area_min:g}–{criteria.area_max:g} 坪",
-        f"目前符合的共 {len(listings)} 筆（{counts}）。",
+        f"{criteria.area_min:g}–{criteria.area_max:g} 坪｜"
+        f"捷運 {criteria.mrt_max_m}m 內｜可營業登記",
+        f"目前在架 {len(listings)} 筆（{counts}）：符合 {tier_counts[TIER_MATCH]}・"
+        f"待確認 {tier_counts[TIER_CHECK]}・不符合 {tier_counts[TIER_OUT]}",
         "",
     ]
     lines += _section(
-        f"🕳️ *目前所有地下室物件（{len(basements)} 筆）*", [format_listing(it) for it in basements]
+        f"🔥 *建議儘快聯繫（{len(urgent)} 筆）*",
+        [format_listing(it, assessments[it.key]) for it in urgent],
     )
+    lines.append(f"全部清單（排序、理由、標記有興趣／不考慮）：<{BRIDGE_URL}|Bridge 租屋追蹤>")
     return "\n".join(lines).rstrip()
 
 
@@ -716,6 +1003,7 @@ def _update_source_health(
     source: str,
     error: Optional[str],
     slack_bot: Any,
+    now_iso: str,
 ) -> None:
     row = conn.execute(
         "SELECT consecutive_failures, alerted FROM source_health WHERE source = ?", (source,)
@@ -738,12 +1026,44 @@ def _update_source_health(
             )
             alerted = True
     conn.execute(
-        "INSERT INTO source_health (source, consecutive_failures, last_error, alerted) "
-        "VALUES (?, ?, ?, ?) ON CONFLICT(source) DO UPDATE SET "
+        "INSERT INTO source_health (source, consecutive_failures, last_error, alerted, "
+        "last_success_at) VALUES (?, ?, ?, ?, ?) ON CONFLICT(source) DO UPDATE SET "
         "consecutive_failures = excluded.consecutive_failures, "
-        "last_error = excluded.last_error, alerted = excluded.alerted",
-        (source, failures, error, int(alerted)),
+        "last_error = excluded.last_error, alerted = excluded.alerted, "
+        "last_success_at = COALESCE(excluded.last_success_at, source_health.last_success_at)",
+        (source, failures, error, int(alerted), None if error else now_iso),
     )
+
+
+def _enrich_registration(
+    http: Http,
+    listings: list[Listing],
+    existing: dict[str, sqlite3.Row],
+    criteria: Criteria,
+) -> tuple[list[Listing], set[str]]:
+    """591 沒標「可登記」的，補抓詳細頁的「登記」欄（每筆只抓一次，結果存 DB）。
+
+    回傳 (補好的 listings, 這輪新查過的 key)。離捷運太遠的不查（反正不符合）。
+    """
+    from agents.franky.jobs.rental_assess import mrt_status
+
+    budget = _591_DETAIL_BUDGET
+    checked: set[str] = set()
+    out = []
+    for it in listings:
+        if it.source == "591" and it.registration == _591_REG_UNMARKED:
+            row = existing.get(it.key)
+            if row is not None and row["registration_checked"]:
+                it = replace(it, registration=row["registration"])
+            elif budget > 0 and mrt_status(it, criteria.mrt_max_m) is not False:
+                budget -= 1
+                try:
+                    it = replace(it, registration=fetch_591_registration(http, it.listing_id))
+                    checked.add(it.key)
+                except Exception as exc:  # noqa: BLE001 — 下一輪再試
+                    logger.warning("rental_watch 591 detail %s failed: %s", it.listing_id, exc)
+        out.append(it)
+    return out, checked
 
 
 def run_once(
@@ -756,12 +1076,15 @@ def run_once(
     http: Optional[Http] = None,
     now: Optional[datetime] = None,
 ) -> RentalWatchResult:
-    """掃一輪。``dry_run`` 只抓、不寫 DB、不發 Slack。"""
+    """掃一輪。``dry_run`` 只抓、不寫 DB、不發 Slack（也不補抓詳細頁）。"""
+    from agents.franky.jobs.rental_assess import assess_all, sort_key
+
     criteria = load_criteria(config_path)
     fetchers = fetchers if fetchers is not None else DEFAULT_FETCHERS
     now_iso = (now or datetime.now(timezone.utc)).isoformat()
     own_http = http is None
     http = http or Http()
+    db_path = db_path or default_db_path()
 
     found: dict[str, Listing] = {}
     source_counts: dict[str, int] = {}
@@ -777,47 +1100,66 @@ def run_once(
             for it in kept:
                 found.setdefault(it.key, it)  # 同一站的跨類型重複（591 辦公/住辦）只留一筆
             source_counts[source] = len({it.key for it in kept})
+
+        listings = list(found.values())
+        if dry_run:
+            assessments = assess_all(listings, criteria)
+            for it in sorted(listings, key=lambda it: sort_key(it, assessments[it.key])):
+                a = assessments[it.key]
+                logger.info("dry-run [%s] %s", a.tier, format_listing(it, a))
+            basements = sum(1 for it in listings if it.is_basement)
+            return RentalWatchResult(
+                "ok", len(listings), 0, 0, basements, source_counts, source_errors
+            )
+
+        # 網路請求（詳細頁）不放在寫入 transaction 裡，免得卡住 Bridge 的標記寫入。
+        conn = _connect(db_path)
+        try:
+            existing = {r["key"]: r for r in conn.execute("SELECT * FROM listings").fetchall()}
+        finally:
+            conn.close()
+        listings, newly_checked = _enrich_registration(http, listings, existing, criteria)
     finally:
         if own_http:
             http.close()
 
-    listings = list(found.values())
-    if dry_run:
-        basements = sum(1 for it in listings if it.is_basement)
-        for it in sorted(listings, key=lambda it: (not it.is_basement, it.price)):
-            logger.info("dry-run %s", format_listing(it))
-        return RentalWatchResult("ok", len(listings), 0, 0, basements, source_counts, source_errors)
-
-    conn = _connect(db_path or default_db_path())
+    conn = _connect(db_path)
     try:
         with conn:
             for source in fetchers:
-                _update_source_health(conn, source, source_errors.get(source), slack_bot)
-
+                _update_source_health(conn, source, source_errors.get(source), slack_bot, now_iso)
+            conn.execute(
+                "INSERT OR REPLACE INTO meta (key, value) VALUES ('last_scan_at', ?)", (now_iso,)
+            )
             is_baseline = (
                 conn.execute("SELECT value FROM meta WHERE key = 'baseline_done'").fetchone()
                 is None
             )
-            existing = {
-                r["key"]: r["price"]
-                for r in conn.execute("SELECT key, price FROM listings").fetchall()
-            }
             new = [it for it in listings if it.key not in existing]
             drops = [
-                PriceDrop(it, existing[it.key])
+                PriceDrop(it, existing[it.key]["price"])
                 for it in listings
-                if it.key in existing and it.price < existing[it.key]
+                if it.key in existing and it.price < existing[it.key]["price"]
             ]
+            dropped = {d.listing.key: d.old_price for d in drops}
 
             for it in listings:
+                old = existing.get(it.key)
+                prev_price = dropped.get(it.key, old["prev_price"] if old else None)
+                checked = int(it.key in newly_checked or bool(old and old["registration_checked"]))
                 conn.execute(
                     "INSERT INTO listings (key, source, listing_id, title, url, district, price, "
-                    "area, floor, is_basement, kind, first_seen, last_seen) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "prev_price, area, floor, is_basement, kind, mrt_station, mrt_distance, "
+                    "registration, registration_checked, views, first_seen, last_seen) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT(key) DO UPDATE SET title = excluded.title, url = excluded.url, "
-                    "price = excluded.price, area = excluded.area, floor = excluded.floor, "
+                    "price = excluded.price, prev_price = excluded.prev_price, "
+                    "area = excluded.area, floor = excluded.floor, "
                     "is_basement = excluded.is_basement, kind = excluded.kind, "
-                    "last_seen = excluded.last_seen",
+                    "mrt_station = excluded.mrt_station, mrt_distance = excluded.mrt_distance, "
+                    "registration = excluded.registration, "
+                    "registration_checked = excluded.registration_checked, "
+                    "views = excluded.views, last_seen = excluded.last_seen",
                     (
                         it.key,
                         it.source,
@@ -826,10 +1168,16 @@ def run_once(
                         it.url,
                         it.district,
                         it.price,
+                        prev_price,
                         it.area,
                         it.floor,
                         int(it.is_basement),
                         it.kind,
+                        it.mrt_station,
+                        it.mrt_distance,
+                        it.registration,
+                        checked,
+                        it.views,
                         now_iso,
                         now_iso,
                     ),
@@ -845,20 +1193,22 @@ def run_once(
     finally:
         conn.close()
 
+    assessments = assess_all(listings, criteria)
     basement_new = sum(1 for it in new if it.is_basement)
     if is_baseline:
         if source_counts and slack_bot is not None:
             _post(
                 slack_bot,
-                format_baseline_message(listings, source_counts, criteria),
+                format_baseline_message(listings, assessments, source_counts, criteria),
                 "rental_watch_baseline",
             )
         status = "baseline" if source_counts else "error"
         return RentalWatchResult(status, len(listings), 0, 0, 0, source_counts, source_errors)
 
-    if (new or drops) and slack_bot is not None:
-        _post(slack_bot, format_update_message(new, drops), "rental_watch_update")
-    status = "notified" if (new or drops) else ("error" if not source_counts else "ok")
+    message = format_update_message(new, drops, assessments)
+    if message and slack_bot is not None:
+        _post(slack_bot, message, "rental_watch_update")
+    status = "notified" if message else ("error" if not source_counts else "ok")
     logger.info(
         "rental_watch %s seen=%d new=%d drops=%d errors=%s",
         status,
