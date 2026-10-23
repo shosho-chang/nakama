@@ -12,8 +12,26 @@ from shared.project_writer import (
     create_task,
     now_iso_taipei,
     reassign_task_project,
+    strip_project_prefix,
     task_project,
 )
+
+
+@pytest.mark.parametrize(
+    ("text", "project", "expected"),
+    [
+        ("P - 節目錄製", "P", "節目錄製"),
+        ("P－節目錄製", "P", "節目錄製"),  # 修修's hand-typed full-width dash
+        ("P – 節目錄製", "P", "節目錄製"),
+        ("P週報", "P", "P週報"),  # project name not followed by a dash = part of the name
+        ("節目錄製", "P", "節目錄製"),
+        ("P - 節目錄製", None, "P - 節目錄製"),
+        ("P - ", "P", ""),
+    ],
+)
+def test_strip_project_prefix(text, project, expected):
+    assert strip_project_prefix(text, project) == expected
+
 
 SEED = """---
 type: project
@@ -160,6 +178,23 @@ class TestRenameTask:
         fm = self._fm(new_path)
         assert fm["title"] == "t - Filming v2"
         assert fm["projects"] == ["[[t]]"]
+
+    @pytest.mark.parametrize("typed", ["t - Filming v2", "t－Filming v2", "t—Filming v2"])
+    def test_rename_typed_prefix_is_not_doubled(self, vault: Path, typed: str):
+        """修修 2026-10-02: lists show 「t - Filming」 and the rename field starts from
+        that — typing the prefix (any dash) must not give 「t - t - Filming v2」."""
+        from shared.project_writer import rename_task
+
+        create_task(vault_root=vault, project_slug="t", task_name="Filming")
+        new_path, _ = rename_task(vault_root=vault, old_slug="t - Filming", new_title=typed)
+        assert new_path.name == "t - Filming v2.md"
+
+    def test_rename_to_prefix_only_raises(self, vault: Path):
+        from shared.project_writer import rename_task
+
+        create_task(vault_root=vault, project_slug="t", task_name="Filming")
+        with pytest.raises(ProjectWriteError, match="empty"):
+            rename_task(vault_root=vault, old_slug="t - Filming", new_title="t - ")
 
     def test_rename_legacy_filename_prefix_no_frontmatter(self, vault: Path):
         # Pre-v3-H tasks: filename has "{project} - " but projects: is absent — the

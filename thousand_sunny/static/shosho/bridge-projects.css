@@ -79,13 +79,34 @@ body.sho .pj-row-name {
   flex: 1;
   min-width: 0;
 }
-body.sho .pj-row-meta {
-  display: inline-flex;
-  gap: 14px;
+/* ── index: projects as a table ──
+   One grid on the panel; header + every row are subgrids spanning all five
+   tracks, so 類型 / 任務 / 番茄 / 最近活動 line up across rows no matter which
+   cells are empty (a flex row shifts its stats whenever a badge is missing). */
+body.sho .pj-table {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto auto auto;
+  column-gap: 20px;
+}
+body.sho .pj-table > .pj-thead,
+body.sho .pj-table > .pj-row {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  column-gap: normal; /* = the table's gap; .pj-row's own 12px would skew cells off-track */
   align-items: baseline;
+}
+body.sho .pj-thead {
+  padding: 10px 16px 8px;
+  border-bottom: 1px solid var(--sho-line);
+  font-size: 10.5px;
+}
+body.sho .pj-cell {
   font-size: 12px;
   white-space: nowrap;
 }
+body.sho .pj-cell--span2 { grid-column: span 2; }
+body.sho .pj-table .pj-last { justify-self: end; }
 body.sho .pj-stat { font-variant-numeric: tabular-nums; }
 body.sho .pj-frac { color: var(--sho-muted); }
 body.sho .pj-stat--empty,
@@ -139,10 +160,17 @@ body.sho .pj-empty { padding: 18px 16px; font-size: 12.5px; }
 @media (max-width: 640px) {
   body.sho .pj-main { padding: 0 14px 32px; }
   body.sho .pj-head { align-items: stretch; flex-direction: column; }
-  body.sho .pj-new-input { flex: 1; min-width: 0; }
-  body.sho .pj-row,
-  body.sho .pj-task { flex-wrap: wrap; }
-  body.sho .pj-row-meta { width: 100%; justify-content: flex-end; }
+  body.sho .pj-new { flex-wrap: wrap; }
+  body.sho .pj-new-input { flex: 1 1 100%; min-width: 0; }
+  body.sho .pj-new-kind { flex: 1; min-width: 0; }
+  /* Five columns don't fit a phone: drop the header, name on its own line,
+     the cells wrap beneath it with 最近活動 pushed to the right edge. */
+  body.sho .pj-table { display: block; }
+  body.sho .pj-table > .pj-thead { display: none; }
+  body.sho .pj-table > .pj-row { display: flex; flex-wrap: wrap; column-gap: 14px; row-gap: 6px; }
+  body.sho .pj-table .pj-row-name { flex: 1 0 100%; }
+  body.sho .pj-table .pj-cell:empty { display: none; }
+  body.sho .pj-table .pj-last { margin-left: auto; }
 }
 
 
@@ -223,59 +251,10 @@ body.sho .pjd-view.is-on {
 .pjd-pane { display: none; }
 .pjd-pane.is-on { display: block; }
 
-/* ── list view — one flat, ungrouped list (修修 2026-09-11) ── */
-/* The row is a real aligned table (same trick as Weekly's .wk-task, N541
-   「隱形表格」): ONE grid template per row so the 🍅 and date columns line up
-   down the list instead of drifting with each name's length — flex + gap cannot
-   do that (修修 2026-09-10). The tick box is the shared .sho-box from bridge.css. */
-body.sho .pjd-task {
-  display: grid;
-  grid-template-columns:
-    auto               /* ☐ tick box       */
-    minmax(6rem, 1fr)  /* name             */
-    4.5rem             /* 實際 / 預估 🍅    */
-    10.5rem;           /* date / time      */
-  align-items: center;
-  column-gap: 12px;
-  padding: 9px 10px;
-  border-bottom: 1px solid var(--sho-line);
-  transition: background var(--sho-t-fast) var(--sho-ease);
-}
-body.sho .pjd-task:hover { background: var(--sho-bg-2); }
-/* the link spans the three cells to the right of the box, keeping its own grid so
-   the columns stay shared across rows — it is a sibling of the box's form, never
-   its parent (a <button> inside an <a> is invalid and would navigate instead) */
-body.sho .pjd-task-link {
-  display: grid;
-  grid-column: 2 / -1;
-  grid-template-columns: subgrid;
-  align-items: center;
-  color: var(--sho-text); text-decoration: none;
-}
-body.sho .pjd-task-link:focus-visible { outline: none; box-shadow: var(--sho-focus); }
-body.sho .pjd-task-n {
-  min-width: 0; font-size: 14px;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-}
-/* each meta value is its own grid cell so it holds the column even when empty */
-body.sho .pjd-task-pom,
-body.sho .pjd-task-when {
-  font-size: 11.5px; white-space: nowrap;
-  font-variant-numeric: tabular-nums; color: var(--sho-muted);
-}
-body.sho .pjd-task-when.none { color: var(--sho-warning); }
-/* a finished row recedes AS A WHOLE — name and meta both struck + muted, so the
-   date column doesn't stay bright next to a crossed-out task (修修 2026-09-10) */
-body.sho .pjd-task.is-done .pjd-task-n,
-body.sho .pjd-task.is-done .pjd-task-pom,
-body.sho .pjd-task.is-done .pjd-task-when {
-  color: var(--sho-muted); text-decoration: line-through; text-decoration-color: var(--sho-line-2);
-}
-/* 進行中 keeps its accent cue now that the ✓/◐/○ glyph column is gone */
-body.sho .pjd-task.is-now .pjd-task-n::after {
-  content: "進行中"; margin-left: 8px; font-family: var(--sho-font-mono);
-  font-size: 10px; letter-spacing: 0.06em; color: var(--sho-accent);
-}
+/* ── list view — one flat, ungrouped list (修修 2026-09-11) ──
+   Rows are the Weekly 全部 row (_task_row.html + bridge-weekly.css), so the
+   dashboard and this page can never drift apart (修修 2026-10-02). */
+body.sho .pjd-rows { margin-top: 4px; border-bottom: 1px solid var(--sho-line); }
 
 /* ── kanban view ── */
 body.sho .pjd-kan { display: flex; gap: 12px; margin-top: 14px; align-items: flex-start; }

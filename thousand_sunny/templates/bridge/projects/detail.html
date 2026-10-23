@@ -12,6 +12,7 @@
 <link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-weekly.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-projects.css?v={{ asset_version | default('') }}">
 </head>
 <body class="sho bridge-page bridge-page--scroll">
@@ -32,18 +33,10 @@
     </form>
   {% endmacro %}
 
-  {# one task row, shared by the 列表 view's stage groups and its 其他任務 group #}
-  {% macro task_row(t) %}
-    <div class="pjd-task{{ ' is-done' if t.done }}{{ ' is-now' if t.status == 'doing' and not t.done }}"
-         id="task-{{ t.slug | urlencode }}">
-      {{ tick(t) }}
-      <a class="pjd-task-link" href="/bridge/weekly/task/{{ t.slug | urlencode }}">
-        <span class="pjd-task-n">{{ t.name }}</span>
-        <span class="pjd-task-pom">🍅 {{ t.actual }}/{{ t.est }}</span>
-        <span class="pjd-task-when{{ ' none' if not t.when }}">{{ t.when or '未排時間' }}</span>
-      </a>
-    </div>
-  {% endmacro %}
+  {# 列表 view rows = the Weekly 「全部」 row itself (修修 2026-10-02: 當場設定日期，
+     不用再點進去). Its forms post to /bridge/weekly/* with from_project, which
+     redirects back here. #}
+  {% from "_task_row.html" import task_row %}
 
   {% macro card(t) %}
     <div class="pjd-card{{ ' is-done' if t.done }}">
@@ -133,7 +126,9 @@
       {# 修修 2026-09-11：不分組，就是一份乾淨的任務列表。原本每個階段上面有一行
          「① 前期研究」標題，跟任務自己的名字重複，沒有帶來資訊。順序仍照樣板
          （router 的 stage_rank），未完在前、已完成沉底。 #}
-      {% for t in p.tasks %}{{ task_row(t) }}{% endfor %}
+      <div class="pjd-rows">
+        {% for t in row_tasks %}{{ task_row(t, row_view, return_to=p.name, lifetime=True, flag_unscheduled=True, qualified=True) }}{% endfor %}
+      </div>
 
       {% if not p.total_count %}
         <p class="pj-empty sho-mono">這個專案還沒有任務 — 用下面的「加入既有任務」，或到
@@ -236,8 +231,34 @@
   </section>
   </main>
 
+<script src="/static/shosho/bridge-weekly.js?v={{ asset_version | default('') }}"></script>
 <script>
 (function () {
+  // Stay in place across a row action (排入 / ✕ / 打勾 / 改名 / 刪除 all POST→303
+  // back here): remember which rows were open and the scroll position just before
+  // the submit, restore them once on load. Same idea as the Weekly dashboard's v3-B.
+  document.addEventListener('submit', function (e) {
+    if (!e.target.closest || !e.target.closest('.wk-task-d')) return;
+    try {
+      var open = Array.prototype.map.call(
+        document.querySelectorAll('.wk-task-d[open]'),
+        function (d) { return d.getAttribute('data-slug'); });
+      sessionStorage.setItem('pjd-open', JSON.stringify(open));
+      sessionStorage.setItem('pjd-scroll', String(window.scrollY));
+    } catch (_) { /* private mode — the page just reloads at the top */ }
+  }, true);
+  try {
+    var open = JSON.parse(sessionStorage.getItem('pjd-open') || '[]');
+    var scroll = sessionStorage.getItem('pjd-scroll');
+    sessionStorage.removeItem('pjd-open');
+    sessionStorage.removeItem('pjd-scroll');
+    open.forEach(function (slug) {
+      var sel = '.wk-task-d[data-slug="' + (window.CSS && CSS.escape ? CSS.escape(slug) : slug) + '"]';
+      document.querySelectorAll(sel).forEach(function (d) { d.open = true; });
+    });
+    if (scroll) window.scrollTo(0, parseInt(scroll, 10) || 0);
+  } catch (_) { /* private mode */ }
+
   // view switch — same idiom as the Weekly dashboard's 今日/整週/全部 tabs
   document.querySelectorAll('.pjd-view').forEach(function (b) {
     b.addEventListener('click', function () {
