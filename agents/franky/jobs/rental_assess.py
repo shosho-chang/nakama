@@ -15,7 +15,7 @@ Slack 推播（``rental_watch``）與 Bridge 頁面（``/bridge/rental``）共�
 排序用的訊號都是代理指標，標籤上直接寫數字，讓修修自己判斷：
 
 - 每坪租金 vs 同區中位數（目前這批在架物件算的，不是市場行情）
-- 坪數、地下室、離捷運多近
+- 坪數、地下室、離捷運多近、加分區（``Criteria.bonus_districts``）
 - 591「昨日瀏覽」人數（熱度）
 """
 
@@ -38,8 +38,6 @@ HOT_PERCENTILE = 0.9
 
 # 「建議儘快聯繫」：符合條件，且（搶手 或 加分 ≥ 這個數）。
 URGENT_MIN_SCORE = 3
-
-BASEMENT_PERMIT_CHIP = "先查使用執照用途：防空避難室／停車空間不能當工作室"
 
 
 @dataclass(frozen=True)
@@ -107,6 +105,7 @@ def assess(
     medians: dict[str, float],
     hot_min_views: int,
     mrt_max_m: int,
+    bonus_districts: tuple[str, ...] = (),
 ) -> Assessment:
     chips: list[Chip] = []
     score = 0
@@ -123,10 +122,6 @@ def assess(
     elif reg_ok is None:
         label = listing.registration if listing.registration else "沒有資料"
         chips.append(Chip(f"可否登記：{label}，要問", "warn"))
-    if listing.is_basement:
-        # 北市有承租人把「防空避難室」當倉庫被罰 6 萬並勒令停用的訴願案（88.11.11）；
-        # 地下室常見的核准用途是防空避難室／停車空間 → 看屋前先要使用執照。
-        chips.append(Chip(BASEMENT_PERMIT_CHIP, "warn"))
 
     if mrt_ok is False or reg_ok is False:
         tier = TIER_OUT
@@ -151,6 +146,9 @@ def assess(
             score -= 1
             chips.append(Chip(f"每坪比同區貴 {vs_pct}%", "warn"))
 
+    if listing.district in bonus_districts:
+        score += 1
+        chips.append(Chip(f"加分區：{listing.district}", "good"))
     if listing.area and listing.area >= 30:
         score += 1
         chips.append(Chip(f"空間大 {listing.area:g} 坪", "good"))
@@ -182,7 +180,13 @@ def assess_all(listings: list["Listing"], criteria: "Criteria") -> dict[str, Ass
     medians = district_medians(listings)
     hot_min = hot_threshold(listings)
     return {
-        it.key: assess(it, medians=medians, hot_min_views=hot_min, mrt_max_m=criteria.mrt_max_m)
+        it.key: assess(
+            it,
+            medians=medians,
+            hot_min_views=hot_min,
+            mrt_max_m=criteria.mrt_max_m,
+            bonus_districts=criteria.bonus_districts,
+        )
         for it in listings
     }
 

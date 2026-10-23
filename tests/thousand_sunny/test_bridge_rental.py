@@ -86,10 +86,8 @@ def test_renders_tiers_reasons_and_folds(client, db_path):
             _listing(listing_id="1", title="符合的辦公室"),
             _listing(
                 listing_id="2",
-                title="待確認的地下室",
+                title="待確認的辦公室",
                 registration="暫不確定",
-                floor="B1/5F",
-                is_basement=True,
             ),
             _listing(listing_id="3", title="太遠的物件", mrt_distance=900),
         ],
@@ -97,7 +95,7 @@ def test_renders_tiers_reasons_and_folds(client, db_path):
     resp = c.get("/bridge/rental")
     html = resp.text
     assert resp.status_code == 200
-    assert html.index("符合的辦公室") < html.index("待確認的地下室") < html.index("太遠的物件")
+    assert html.index("符合的辦公室") < html.index("待確認的辦公室") < html.index("太遠的物件")
     assert "可否登記：暫不確定，要問" in html
     assert "離捷運 900m，超過 600m" in html
     assert '<details class="rt-sec rt-sec--fold" id="sec-out">' in html

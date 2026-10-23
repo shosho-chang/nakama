@@ -24,6 +24,7 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import os
 import re
@@ -126,6 +127,16 @@ class Criteria:
     exclude_title_keywords: tuple[str, ...] = ()
     exclude_title_patterns: tuple[re.Pattern[str], ...] = ()
     mrt_max_m: int = 500
+    exclude_basement: bool = False
+    bonus_districts: tuple[str, ...] = ()
+    # 條件內容的指紋（忽略 yaml 註解）；條件一改，下一輪改成重新盤點，不把新範圍
+    # 進來的物件當「新物件」一次推幾十筆。
+    config_hash: str = ""
+
+    @property
+    def wants_stores(self) -> bool:
+        """店面類只留地下室、地下室又全剔除 → 店面類一筆都不會留，乾脆不抓。"""
+        return not (self.store_basement_only and self.exclude_basement)
 
 
 @dataclass(frozen=True)
@@ -197,6 +208,11 @@ def load_criteria(path: Path = DEFAULT_CONFIG_PATH) -> Criteria:
             re.compile(p) for p in (raw.get("exclude_title_patterns") or ())
         ),
         mrt_max_m=int(raw.get("mrt_max_m", 500)),
+        exclude_basement=bool(raw.get("exclude_basement", False)),
+        bonus_districts=tuple(raw.get("bonus_districts") or ()),
+        config_hash=hashlib.sha1(
+            json.dumps(raw, sort_keys=True, ensure_ascii=False).encode("utf-8")
+        ).hexdigest()[:12],
     )
 
 
@@ -357,7 +373,9 @@ def fetch_591_registration(http: Http, listing_id: str) -> str:
 def fetch_591(http: Http, criteria: Criteria) -> list[Listing]:
     sections = ",".join(str(s) for s in _lookup_codes(criteria.districts, _591_SECTION_IDS, "591"))
     out: list[Listing] = []
-    for kind in _591_KINDS:
+    for kind, kind_name in _591_KINDS.items():
+        if kind_name in _STORE_KINDS and not criteria.wants_stores:
+            continue
         first_row = 0
         while True:
             # 591 的價格參數格式是 "15000$_35000$"，$ 不能被 percent-encode
@@ -444,6 +462,8 @@ def parse_sinyi_page(html: str, kind: str) -> tuple[int, list[Listing]]:
 def fetch_sinyi(http: Http, criteria: Criteria) -> list[Listing]:
     out: list[Listing] = []
     for use, kind in _SINYI_USES.items():
+        if kind in _STORE_KINDS and not criteria.wants_stores:
+            continue
         seen: set[str] = set()
         for page in range(1, _SINYI_MAX_PAGES + 1):
             resp = http.request("GET", sinyi_list_url(criteria, use, page))
@@ -557,6 +577,8 @@ def fetch_housefun(http: Http, criteria: Criteria) -> list[Listing]:
     _lookup_codes(districts, _HOUSEFUN_AREA_IDS, "好房網")
     out: list[Listing] = []
     for purpose, kind in _HOUSEFUN_PURPOSES.items():
+        if kind in _STORE_KINDS and not criteria.wants_stores:
+            continue
         for group in _chunks(districts, 3):  # 好房網一次最多 3 個行政區
             fields = {
                 "DataUnit": "1",  # 1 = 依地區搜尋；不帶的話地區條件被忽略、回全台
@@ -613,6 +635,8 @@ def passes(listing: Listing, criteria: Criteria) -> bool:
     if listing.area is not None and not (criteria.area_min <= listing.area <= criteria.area_max):
         return False
     if criteria.exclude_rooftop and listing.is_rooftop:
+        return False
+    if criteria.exclude_basement and listing.is_basement:
         return False
     if criteria.store_basement_only and listing.kind in _STORE_KINDS and not listing.is_basement:
         return False
@@ -957,6 +981,8 @@ def format_baseline_message(
     assessments: dict[str, "Assessment"],
     source_counts: dict[str, int],
     criteria: Criteria,
+    *,
+    updated: bool = False,
 ) -> str:
     from agents.franky.jobs.rental_assess import TIER_CHECK, TIER_MATCH, TIER_OUT, sort_key
 
@@ -970,10 +996,16 @@ def format_baseline_message(
         key=lambda it: sort_key(it, assessments[it.key]),
     )
     lines = [
-        "🏠 租屋追蹤開始了：之後每小時掃一次，有新物件或降價就通知你。",
+        (
+            "🏠 租屋追蹤條件已更新，重新盤點：之後照常每小時通知新物件與降價。"
+            if updated
+            else "🏠 租屋追蹤開始了：之後每小時掃一次，有新物件或降價就通知你。"
+        ),
         f"條件：{'、'.join(criteria.districts)}｜{criteria.price_min:,}–{criteria.price_max:,} 元｜"
         f"{criteria.area_min:g}–{criteria.area_max:g} 坪｜"
-        f"捷運 {criteria.mrt_max_m}m 內｜可營業登記",
+        f"捷運 {criteria.mrt_max_m}m 內｜可營業登記"
+        + ("｜不含地下室" if criteria.exclude_basement else "")
+        + (f"｜加分：{'、'.join(criteria.bonus_districts)}" if criteria.bonus_districts else ""),
         f"目前在架 {len(listings)} 筆（{counts}）：符合 {tier_counts[TIER_MATCH]}・"
         f"待確認 {tier_counts[TIER_CHECK]}・不符合 {tier_counts[TIER_OUT]}",
         "",
@@ -1131,10 +1163,11 @@ def run_once(
             conn.execute(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('last_scan_at', ?)", (now_iso,)
             )
-            is_baseline = (
-                conn.execute("SELECT value FROM meta WHERE key = 'baseline_done'").fetchone()
-                is None
+            meta = {r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM meta")}
+            criteria_changed = (
+                "baseline_done" in meta and meta.get("criteria_hash") != criteria.config_hash
             )
+            is_baseline = "baseline_done" not in meta or criteria_changed
             new = [it for it in listings if it.key not in existing]
             drops = [
                 PriceDrop(it, existing[it.key]["price"])
@@ -1185,10 +1218,15 @@ def run_once(
 
             # 第一輪只要有任何一站成功就算完成盤點；全掛的話下一輪再盤點，
             # 免得之後把整批既有物件當成「新物件」洗版。
+            # 條件改了也一樣：重新盤點、更新 criteria_hash。
             if is_baseline and source_counts:
                 conn.execute(
                     "INSERT OR REPLACE INTO meta (key, value) VALUES ('baseline_done', ?)",
                     (now_iso,),
+                )
+                conn.execute(
+                    "INSERT OR REPLACE INTO meta (key, value) VALUES ('criteria_hash', ?)",
+                    (criteria.config_hash,),
                 )
     finally:
         conn.close()
@@ -1199,7 +1237,9 @@ def run_once(
         if source_counts and slack_bot is not None:
             _post(
                 slack_bot,
-                format_baseline_message(listings, assessments, source_counts, criteria),
+                format_baseline_message(
+                    listings, assessments, source_counts, criteria, updated=criteria_changed
+                ),
                 "rental_watch_baseline",
             )
         status = "baseline" if source_counts else "error"

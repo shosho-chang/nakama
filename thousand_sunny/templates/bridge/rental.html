@@ -89,6 +89,8 @@
         <span>{{ criteria.area_min | int }}–{{ criteria.area_max | int }} 坪</span>
         <span class="rt-must">捷運 {{ criteria.mrt_max_m }}m 內</span>
         <span class="rt-must">可營業登記</span>
+        {% if criteria.exclude_basement %}<span>不含地下室</span>{% endif %}
+        {% if criteria.bonus_districts %}<span>加分：{{ criteria.bonus_districts | join('・') }}</span>{% endif %}
       </p>
       <p class="rt-status" role="status">
         <span class="rt-status-k">上次掃描</span><span class="rt-status-v">{{ last_scan }}</span>
@@ -140,7 +142,7 @@
     {% endif %}
 
     <footer class="rt-foot">
-      <p><b>排序怎麼算</b>：每坪租金比同區中位數便宜 20% 以上 +2、10% 以上 +1、貴 20% 以上 −1；30 坪以上 +1；地下室 +1；離捷運 200m 內 +1。同區中位數是用目前在架的這一批算的，不是市場行情。「搶手」= 591 昨日瀏覽人數落在這批的前 10%（且至少 20 人）。</p>
+      <p><b>排序怎麼算</b>：每坪租金比同區中位數便宜 20% 以上 +2、10% 以上 +1、貴 20% 以上 −1；30 坪以上 +1；{% if criteria.bonus_districts %}{{ criteria.bonus_districts | join('、') }} +1；{% endif %}{% if not criteria.exclude_basement %}地下室 +1；{% endif %}離捷運 200m 內 +1。同區中位數是用目前在架的這一批算的，不是市場行情。「搶手」= 591 昨日瀏覽人數落在這批的前 10%（且至少 20 人）。</p>
       <p>591 列表上的「N 天前」是更新時間、不是刊登時間，所以「首次看到」用的是 Franky 第一次抓到的時間。</p>
     </footer>
   </main>
