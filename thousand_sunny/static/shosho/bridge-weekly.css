@@ -153,7 +153,15 @@ body.sho .wk-tname { color: var(--sho-text); overflow: hidden; text-overflow: el
 body.sho .wk-namecell .wk-rename-form { flex: 1 1 auto; min-width: 0; }
 /* always-present date / 🍅 cells — fixed-width tracks keep empty ones holding the column */
 body.sho .wk-cell { display: inline-flex; align-items: center; min-width: 0; overflow: hidden; }
-body.sho .wk-tproj { font-family: var(--sho-font-mono); font-size: 10px; color: var(--sho-muted); letter-spacing: 0.04em; }
+/* 「全部」 tab: the task's project after its name (mirrors .wk-ci-proj on the day cards).
+   The heavy shrink weight makes a long project name ellipsize before the task name
+   does. Hidden while the rename form is open so the input gets the whole cell. */
+body.sho .wk-tproj {
+  flex: 0 1000 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: 11px; color: var(--sho-muted);
+}
+body.sho .wk-task.done .wk-tproj { text-decoration: line-through; }
+body.sho .wk-namecell:has(.wk-rename-form:not([hidden])) .wk-tproj { display: none; }
 body.sho .wk-tnum {
   font-family: var(--sho-font-mono); font-size: 11px;
   color: var(--sho-text-2); font-variant-numeric: tabular-nums; white-space: nowrap;
@@ -742,6 +750,10 @@ body.sho .tk-cal-head .wk-mut { font-family: var(--sho-font-mono); font-size: 11
   body.sho .wk-hero { margin-left: 0; gap: 16px; }
   body.sho .wk-rev-grid { grid-template-columns: 1fr; }
   body.sho .wk-plan-edit { padding-left: 12px; }
+  /* the name column is too narrow to share: project drops to its own line under the
+     task name (after ✎), so a podcast row still says which episode it is. */
+  body.sho .wk-namecell { flex-wrap: wrap; row-gap: 2px; }
+  body.sho .wk-tproj { order: 1; flex: 1 1 100%; }
   body.sho .tk-stats { gap: 20px; }
   body.sho .tk-clock-time { font-size: 52px; }
   body.sho .tk-obsidian { margin-left: 0; }
