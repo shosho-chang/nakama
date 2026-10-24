@@ -984,3 +984,151 @@ def test_taipei_districts_have_codes_on_every_site():
     for d in rw.TAIPEI_DISTRICTS:
         assert d in rw._591_SECTION_IDS and d in rw._SINYI_ZIPS and d in rw._HOUSEFUN_AREA_IDS
     assert len(rw.TAIPEI_DISTRICTS) == 12
+
+
+# ---------------------------------------------------------------------------
+# 同一間、多家仲介刊登（2026-10-24）
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "a,b",
+    [("5F/14F", "5/14"), ("B1/5F", "b1/5"), ("5樓/14樓", "5F/14F")],
+)
+def test_floor_signature_ignores_site_format(a, b):
+    assert rw._floor_sig(a) == rw._floor_sig(b) is not None
+
+
+def test_floor_signature_unknown():
+    assert rw._floor_sig("") is None
+    assert rw._floor_sig("整棟") is None
+
+
+@pytest.mark.parametrize(
+    "patch,same",
+    [
+        ({}, True),
+        ({"source": "sinyi", "floor": "5/12", "area": 19.62}, True),  # 跨站、坪數四捨五入
+        ({"price": 27500}, True),  # 報價差 10%
+        ({"price": 27600}, False),
+        ({"area": 20.5}, False),
+        ({"floor": "6F/12F"}, False),
+        ({"district": "信義區"}, False),
+        ({"floor": ""}, False),  # 樓層不明不合併
+        ({"mrt_station": "信義安和", "mrt_distance": 650}, True),  # 仲介挑的站不同不影響
+    ],
+)
+def test_same_unit_rules(patch, same):
+    a = _listing()
+    b = _listing(listing_id="2", **patch)
+    assert rw.same_unit(a, b) is same
+
+
+def test_unit_groups_are_transitive_and_keep_singletons():
+    a = _listing(listing_id="1", price=25000)
+    b = _listing(listing_id="2", price=27000)
+    c = _listing(listing_id="3", price=29500)  # 跟 a 差 18%，但跟 b 是同一間
+    other = _listing(listing_id="4", floor="9F/12F")
+    groups = rw.unit_groups([a, b, c, other])
+    assert groups[a.key] == groups[b.key] == groups[c.key] == "591:1"
+    assert groups[other.key] == "591:4"
+
+
+def test_load_board_spreads_verdict_to_reposts(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    first = [_listing(listing_id="1")]
+    rw.run_once(
+        db_path=db,
+        config_path=config_path,
+        fetchers={"591": lambda h, c: list(first)},
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    rw.set_feedback(db, "591:1", "pass", "太吵", now=NOW)
+    first.append(_listing(listing_id="2", title="另一家仲介"))
+    rw.run_once(
+        db_path=db,
+        config_path=config_path,
+        fetchers={"591": lambda h, c: list(first)},
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    board = rw.load_board(db, rw.load_criteria(config_path), now=NOW)
+    by_key = {i.listing.key: i for i in board.items}
+    assert by_key["591:2"].verdict == "pass" and by_key["591:2"].reason == "太吵"
+    assert by_key["591:1"].group == by_key["591:2"].group
+
+
+def test_set_feedback_many_keys(tmp_path):
+    db = tmp_path / "rw.db"
+    rw.run_once(db_path=db, fetchers={}, http=FakeHttp([]), now=NOW)
+    rw.set_feedback(db, ["591:1", "591:2"], "interested", now=NOW)
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT count(*) FROM feedback").fetchone()[0] == 2
+    conn.close()
+    rw.set_feedback(db, ["591:1", "591:2"], None)
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT count(*) FROM feedback").fetchone()[0] == 0
+    conn.close()
+
+
+def _good(**kw):
+    return _listing(mrt_station="大安", mrt_distance=300, registration="可登記", **kw)
+
+
+def test_run_once_does_not_notify_reposts_of_known_or_passed_units(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    listings = [_good(listing_id="1"), _good(listing_id="2", floor="9F/12F")]
+    fetchers = {"591": lambda h, c: list(listings)}
+
+    def run():
+        bot.reset_mock()
+        return rw.run_once(
+            slack_bot=bot,
+            db_path=db,
+            config_path=config_path,
+            fetchers=fetchers,
+            http=FakeHttp([]),
+            now=NOW,
+        )
+
+    run()  # 盤點
+    rw.set_feedback(db, "591:2", "pass", now=NOW)
+    listings += [
+        _good(listing_id="3", title="同一間換仲介", price=25500),  # 跟 591:1 同一間（已在架）
+        _good(listing_id="4", title="不考慮那間換仲介", floor="9/12"),  # 跟 591:2 同一間
+    ]
+    r = run()
+    assert r.new == 2
+    bot.post_plain.assert_not_called()
+
+    # 降價：不考慮那間的降價不推
+    listings[1] = _good(listing_id="2", floor="9F/12F", price=23000)
+    run()
+    bot.post_plain.assert_not_called()
+
+
+def test_run_once_merges_new_listings_of_one_unit_into_one_line(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    listings = [_good(listing_id="1", floor="2F/12F")]
+    fetchers = {"591": lambda h, c: list(listings)}
+    rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=FakeHttp([]), now=NOW)
+    listings += [
+        _good(listing_id="5", title="新的一間A"),
+        _good(listing_id="6", title="新的一間B", price=25800),
+        _good(listing_id="7", title="新的一間C", price=26000),
+    ]
+    rw.run_once(
+        slack_bot=bot,
+        db_path=db,
+        config_path=config_path,
+        fetchers=fetchers,
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    text = bot.post_plain.call_args.args[0]
+    assert text.startswith("🏠 租屋追蹤：1 筆新物件")
+    assert "新的一間A" in text and "新的一間B" not in text
+    assert "同一間另有 2 筆仲介刊登" in text

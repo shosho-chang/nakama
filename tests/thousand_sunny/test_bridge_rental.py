@@ -88,8 +88,9 @@ def test_renders_tiers_reasons_and_folds(client, db_path):
                 listing_id="2",
                 title="待確認的辦公室",
                 registration="暫不確定",
+                floor="3F/12F",
             ),
-            _listing(listing_id="3", title="太遠的物件", mrt_distance=900),
+            _listing(listing_id="3", title="太遠的物件", mrt_distance=900, floor="7F/12F"),
         ],
     )
     resp = c.get("/bridge/rental")
@@ -140,7 +141,7 @@ def test_each_form_returns_to_the_row_that_takes_its_place(client, db_path):
         db_path,
         [
             _listing(listing_id="1", title="第一筆", price=21000),
-            _listing(listing_id="2", title="第二筆", price=22000),
+            _listing(listing_id="2", title="第二筆", price=22000, floor="8F/12F"),
         ],
     )
     html = c.get("/bridge/rental").text
@@ -193,18 +194,28 @@ def test_feedback_unknown_verdict_is_ignored(client, db_path):
     assert board.items[0].verdict is None
 
 
-def test_same_unit_hint_across_sites(client, db_path):
-    c, _ = client
+def _seed_same_unit(db_path: Path) -> None:
+    """591 兩家仲介＋信義各刊一次同一間（坪數四捨五入、報價略不同），外加另一間。"""
     rw.run_once(
         db_path=db_path,
         fetchers={
-            "591": lambda h, c: [_listing(listing_id="1", area=32.0, price=30000)],
+            "591": lambda h, c: [
+                _listing(listing_id="1", title="仲介甲刊的", area=32.0, price=30000),
+                _listing(
+                    listing_id="2", title="仲介乙刊的", area=32.0, price=31000, mrt_distance=450
+                ),
+                _listing(
+                    listing_id="9", title="樓上另一間", area=32.0, price=30000, floor="9F/12F"
+                ),
+            ],
             "sinyi": lambda h, c: [
                 _listing(
                     source="sinyi",
                     listing_id="C1",
+                    title="信義刊的",
                     area=31.62,
                     price=30000,
+                    floor="5/12",
                     url="https://www.sinyi.com.tw/rent/houseno/C1",
                 )
             ],
@@ -212,7 +223,44 @@ def test_same_unit_hint_across_sites(client, db_path):
         http=object(),
         now=NOW,
     )
-    assert "可能是同一間：信義 也有刊" in c.get("/bridge/rental").text
+
+
+def test_same_unit_listings_render_as_one_row(client, db_path):
+    c, _ = client
+    _seed_same_unit(db_path)
+    html = c.get("/bridge/rental").text
+    assert html.count('class="rt-row ') == 2  # 同一間 + 樓上另一間
+    assert "同一間還有 2 筆刊登" in html
+    start = html.index('<details class="rt-dups">')
+    dups = html[start : html.index("</details>", start)]
+    assert "仲介乙刊的" in dups and "信義刊的" in dups and "樓上另一間" not in dups
+    assert "31,000元" in dups and "大安 450m" in dups
+    assert 'href="https://www.sinyi.com.tw/rent/houseno/C1"' in dups
+
+
+def test_pass_on_one_listing_marks_the_whole_unit(client, db_path):
+    c, _ = client
+    _seed_same_unit(db_path)
+    resp = c.post(
+        "/bridge/rental/feedback",
+        data={"key": "591:1", "verdict": "pass", "reason": "格局不好", "js": "1"},
+        follow_redirects=False,
+    )
+    html = c.get(resp.headers["location"]).text
+    assert "已把「仲介甲刊的」與同一間另 2 筆刊登標為不考慮" in html
+    board = rw.load_board(db_path, rw.load_criteria(), now=NOW)
+    verdicts = {i.listing.key: i.verdict for i in board.items}
+    assert verdicts == {"591:1": "pass", "591:2": "pass", "sinyi:C1": "pass", "591:9": None}
+    passed = html[html.index('id="sec-pass"') :]
+    assert "仲介甲刊的" in passed and "格局不好" in passed
+
+    resp = c.post(
+        "/bridge/rental/feedback",
+        data={"key": "591:1", "verdict": "clear", "js": "1"},
+        follow_redirects=False,
+    )
+    board = rw.load_board(db_path, rw.load_criteria(), now=NOW)
+    assert all(i.verdict is None for i in board.items)
 
 
 def test_requires_auth(client, monkeypatch):
