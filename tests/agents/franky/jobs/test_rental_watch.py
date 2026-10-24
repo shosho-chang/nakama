@@ -1132,3 +1132,101 @@ def test_run_once_merges_new_listings_of_one_unit_into_one_line(config_path, tmp
     assert text.startswith("🏠 租屋追蹤：1 筆新物件")
     assert "新的一間A" in text and "新的一間B" not in text
     assert "同一間另有 2 筆仲介刊登" in text
+
+
+# ---------------------------------------------------------------------------
+# 照片（2026-10-24：Bridge 縮圖＋燈箱）
+# ---------------------------------------------------------------------------
+
+_591_IMG = "https://img2.591.com.tw/house/2026/10/15/179204842530985606.jpg"
+
+
+def test_parse_591_item_photos_strip_size_suffix_and_dedupe():
+    it = rw.parse_591_item(
+        _591_item(
+            1,
+            cover=_591_IMG + "!400x300.jpg",
+            photoList=[
+                _591_IMG + "!510x400.jpg",
+                _591_IMG.replace("img2", "img2") + "!510x400.jpg",  # 重複
+                "https://img1.591.com.tw/house/2026/10/15/2.jpg!510x400.jpg",
+                "http://img1.591.com.tw/house/insecure.jpg",  # 非 https 不收
+            ],
+        )
+    )
+    assert it.photos == (_591_IMG, "https://img1.591.com.tw/house/2026/10/15/2.jpg")
+
+
+def test_parse_591_item_falls_back_to_cover_or_nothing():
+    it = rw.parse_591_item(_591_item(1, cover=_591_IMG + "!400x300.jpg"))
+    assert it.photos == (_591_IMG,)
+    assert rw.parse_591_item(_591_item(2)).photos == ()
+
+
+def test_parse_sinyi_and_housefun_cover_photo():
+    sinyi = _sinyi_item("C1", "邊間辦公", "31.62", "5/6", "台北市大安區和平東路三段", "30,000")
+    sinyi = sinyi.replace(
+        '<div class="item_box',
+        '<img src="https://res.sinyi.com.tw/rent/C1/smallimg/A.JPG"><div class="item_box',
+        1,
+    )
+    _, (s_it,) = rw.parse_sinyi_page(_sinyi_page(1, [sinyi]), "辦公")
+    assert s_it.photos == ("https://res.sinyi.com.tw/rent/C1/smallimg/A.JPG",)
+
+    hf_src = "https://pic.hfcdn.com/res/DrawImage/ShowPic/150/110/HFRENT07/Z999/a/b.jpg?t=1"
+    hf = _hf_article("1", "辦公", "台北市中山區農安街", "3 / 7", "22,000", "24.11")
+    hf = hf.replace('<div class="Data">', f'<div class="Data"><img src="{hf_src}">', 1)
+    (h_it,) = rw.parse_housefun_html(hf, "辦公")
+    assert h_it.photos == (hf_src,)
+
+
+@pytest.mark.parametrize(
+    "url,thumb,large",
+    [
+        (_591_IMG, _591_IMG + "!400x300.jpg", _591_IMG + "!1000x750.jpg"),
+        (
+            "https://res.sinyi.com.tw/rent/C1/smallimg/A.JPG",
+            "https://res.sinyi.com.tw/rent/C1/smallimg/A.JPG",
+            "https://res.sinyi.com.tw/rent/C1/bigimg/A.JPG",
+        ),
+        (
+            "https://pic.hfcdn.com/res/DrawImage/ShowPic/150/110/HFRENT07/a.jpg?t=1",
+            "https://pic.hfcdn.com/res/DrawImage/ShowPic/400/300/HFRENT07/a.jpg?t=1",
+            "https://pic.hfcdn.com/res/DrawImage/ShowPic/1000/750/HFRENT07/a.jpg?t=1",
+        ),
+        ("https://example.com/a.jpg", "https://example.com/a.jpg", "https://example.com/a.jpg"),
+    ],
+)
+def test_photo_url_sizes(url, thumb, large):
+    assert rw.photo_url(url, "thumb") == thumb
+    assert rw.photo_url(url, "large") == large
+
+
+def test_photos_roundtrip_and_old_db_gets_column(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    # 加照片欄位之前的 DB
+    conn = sqlite3.connect(db)
+    conn.executescript(rw._SCHEMA.replace("    photos TEXT NOT NULL DEFAULT '[]',\n", ""))
+    conn.execute(
+        "INSERT INTO listings (key, source, listing_id, title, url, district, price, floor, "
+        "is_basement, kind, first_seen, last_seen) VALUES "
+        "('591:9', '591', '9', '舊的', 'u', '大安區', 25000, '5F/12F', 0, '辦公', "
+        "'2026-10-01T00:00:00+00:00', '2026-10-01T00:00:00+00:00')"
+    )
+    conn.commit()
+    assert "photos" not in {r[1] for r in conn.execute("PRAGMA table_info(listings)")}
+    conn.close()
+
+    listings = [_listing(listing_id="1", photos=(_591_IMG,))]
+    rw.run_once(
+        db_path=db,
+        config_path=config_path,
+        fetchers={"591": lambda h, c: list(listings)},
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    board = rw.load_board(db, rw.load_criteria(config_path), now=NOW)
+    assert {i.listing.key: i.listing.photos for i in board.items}["591:1"] == (_591_IMG,)
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT photos FROM listings WHERE key = '591:9'").fetchone() == ("[]",)
+    conn.close()

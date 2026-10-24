@@ -82,6 +82,8 @@ def _dup_view(item: rw.BoardItem) -> dict:
 def _view(item: rw.BoardItem, dups: list[rw.BoardItem]) -> dict:
     it, a = item.listing, item.assessment
     vs = a.vs_median_pct
+    # 代表那筆沒照片（或只有信義／好房網的一張封面）→ 用同一間照片最多的那筆。
+    photos = max([it.photos, *(d.listing.photos for d in dups)], key=len)
     return {
         "key": it.key,
         "anchor": _anchor(it.key),
@@ -101,6 +103,8 @@ def _view(item: rw.BoardItem, dups: list[rw.BoardItem]) -> dict:
         "reason": item.reason,
         "first_seen": _fmt_time(item.first_seen),
         "dups": [_dup_view(d) for d in dups],
+        "thumb": rw.photo_url(photos[0], "thumb") if photos else None,
+        "gallery": [rw.photo_url(u, "large") for u in photos],
     }
 
 

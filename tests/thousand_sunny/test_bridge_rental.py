@@ -335,3 +335,36 @@ def test_criteria_requires_auth(client, monkeypatch):
     monkeypatch.setattr(br, "check_auth", lambda cookie: False)
     resp = c.post("/bridge/rental/criteria", data=_PANEL_FORM, follow_redirects=False)
     assert resp.status_code == 302
+
+
+def test_row_shows_thumbnail_and_gallery_from_best_posting(client, db_path):
+    c, _ = client
+    big = "https://img2.591.com.tw/house/1.jpg"
+    rw.run_once(
+        db_path=db_path,
+        fetchers={
+            "591": lambda h, c: [
+                # 代表那筆（排序最前）沒照片，同一間另一家仲介有兩張 → 用那兩張
+                _listing(listing_id="1", title="沒照片的", price=24000),
+                _listing(
+                    listing_id="2",
+                    title="有照片的",
+                    price=25000,
+                    photos=(big, "https://img2.591.com.tw/house/2.jpg"),
+                ),
+                _listing(listing_id="3", title="另一間", floor="9F/12F"),
+            ]
+        },
+        http=object(),
+        now=NOW,
+    )
+    html = c.get("/bridge/rental").text
+    row = html[html.index('id="r-591-1"') :]
+    row = row[: row.index("</li>")]
+    assert f'src="{big}!400x300.jpg"' in row
+    assert 'referrerpolicy="no-referrer"' in row and 'loading="lazy"' in row
+    assert f"{big}!1000x750.jpg" in row  # 燈箱大圖在 data-gallery
+    assert "2 張" in row
+    other = html[html.index('id="r-591-3"') :]
+    assert "沒有照片" in other[: other.index("</li>")]
+    assert 'id="rt-gallery"' in html

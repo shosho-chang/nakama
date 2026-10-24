@@ -174,6 +174,9 @@ class Listing:
     mrt_distance: Optional[int] = None  # 公尺；None = 沒資料
     registration: str = ""  # 591：「可登記」/ 詳細頁登記欄原文 / 「未標示」；其他站空字串
     views: Optional[int] = None  # 591「昨日瀏覽」人數
+    # 照片網址（各站原始尺寸；顯示時用 photo_url() 換成縮圖／大圖）。
+    # 591 列表 API 就有整組照片；信義、好房網列表頁只有封面一張。
+    photos: tuple[str, ...] = ()
 
     @property
     def key(self) -> str:
@@ -424,6 +427,37 @@ _591_API = "https://bff-business.591.com.tw/v2/web/business/list"
 _591_PAGE_SIZE = 30
 
 
+_MAX_PHOTOS = 20
+
+
+def _clean_photos(urls: Iterable[Any]) -> tuple[str, ...]:
+    """只留 https 網址、去重；591 去掉「!510x400.jpg」尺寸尾巴（顯示時再加）。"""
+    out: list[str] = []
+    for u in urls:
+        if not isinstance(u, str) or not u.startswith("https://"):
+            continue
+        if ".591.com.tw/" in u:
+            u = u.split("!", 1)[0]
+        if u not in out:
+            out.append(u)
+    return tuple(out[:_MAX_PHOTOS])
+
+
+# 縮圖給列表（CSS 顯示約 160×120，2 倍密度）、大圖給燈箱。三站 CDN 都能直接改尺寸。
+_PHOTO_SIZES = {"thumb": (400, 300), "large": (1000, 750)}
+
+
+def photo_url(url: str, size: str) -> str:
+    w, h = _PHOTO_SIZES[size]
+    if ".591.com.tw/" in url:
+        return f"{url}!{w}x{h}.jpg"
+    if "res.sinyi.com.tw/" in url:  # 只有兩種：smallimg 350×262、bigimg 1024×768
+        return re.sub(r"/(small|big)img/", "/smallimg/" if size == "thumb" else "/bigimg/", url)
+    if "pic.hfcdn.com/" in url:  # ShowPic/寬/高 → 等比縮放進這個框
+        return re.sub(r"/ShowPic/\d+/\d+/", f"/ShowPic/{w}/{h}/", url)
+    return url
+
+
 def parse_591_item(item: dict[str, Any]) -> Listing:
     floor_num = item.get("floor")
     floor_str = str(item.get("floorStr") or "")
@@ -436,6 +470,7 @@ def parse_591_item(item: dict[str, Any]) -> Listing:
         distance = _to_int(surrounding.get("distance"))
     tags = {str(t.get("name")) for t in (item.get("rentTag") or item.get("tag") or [])}
     views = item.get("browsenum") if item.get("browsenum_name") == "昨日瀏覽" else None
+    photos = item.get("photoList") or [item.get("cover")]
     return Listing(
         source="591",
         listing_id=str(item["id"]),
@@ -452,6 +487,7 @@ def parse_591_item(item: dict[str, Any]) -> Listing:
         mrt_distance=distance,
         registration="可登記" if "可登記" in tags else _591_REG_UNMARKED,
         views=int(views) if isinstance(views, (int, float)) else None,
+        photos=_clean_photos(photos),
     )
 
 
@@ -548,6 +584,7 @@ def parse_sinyi_page(html: str, kind: str) -> tuple[int, list[Listing]]:
         addr_el = item.select_one(".num-text")
         address = addr_el.get_text(strip=True) if addr_el else ""
         price_el = item.select_one(".price_new .num")
+        img = item.select_one("img[src]")
         floor_str = floor or ""
         listings.append(
             Listing(
@@ -562,6 +599,7 @@ def parse_sinyi_page(html: str, kind: str) -> tuple[int, list[Listing]]:
                 is_basement=_floor_is_basement(floor_str),
                 is_rooftop=_floor_is_rooftop(floor_str),
                 kind=kind,
+                photos=_clean_photos([img["src"]] if img else []),
             )
         )
     return total or 0, listings
@@ -645,6 +683,7 @@ def parse_housefun_html(html: str, kind: str) -> list[Listing]:
         rid = m.group(1)
         addr_el = art.select_one("address.addr")
         address = addr_el.get_text(strip=True) if addr_el else ""
+        img = art.select_one("img[src]")
         pattern_el = art.select_one(".pattern")
         floor = (pattern_el.get_text(strip=True) if pattern_el else "").removeprefix("樓層：")
         floor = re.sub(r"\s*/\s*", "/", floor)
@@ -671,6 +710,7 @@ def parse_housefun_html(html: str, kind: str) -> list[Listing]:
                 is_basement=_floor_is_basement(floor),
                 is_rooftop=_floor_is_rooftop(floor),
                 kind=kind,
+                photos=_clean_photos([img["src"]] if img else []),
             )
         )
     return out
@@ -834,6 +874,7 @@ CREATE TABLE IF NOT EXISTS listings (
     registration TEXT NOT NULL DEFAULT '',
     registration_checked INTEGER NOT NULL DEFAULT 0,
     views INTEGER,
+    photos TEXT NOT NULL DEFAULT '[]',
     first_seen TEXT NOT NULL,
     last_seen TEXT NOT NULL
 );
@@ -880,6 +921,10 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     conn = sqlite3.connect(str(db_path), timeout=30)
     conn.row_factory = sqlite3.Row
     conn.executescript(_SCHEMA)
+    # 欄位是後來加的：舊 DB 補上（CREATE TABLE IF NOT EXISTS 不會改既有的表）。
+    cols = {r["name"] for r in conn.execute("PRAGMA table_info(listings)")}
+    if "photos" not in cols:
+        conn.execute("ALTER TABLE listings ADD COLUMN photos TEXT NOT NULL DEFAULT '[]'")
     return conn
 
 
@@ -900,6 +945,7 @@ def _row_to_listing(r: sqlite3.Row) -> Listing:
         mrt_distance=r["mrt_distance"],
         registration=r["registration"],
         views=r["views"],
+        photos=tuple(json.loads(r["photos"] or "[]")),
     )
 
 
@@ -1399,8 +1445,8 @@ def run_once(
                 conn.execute(
                     "INSERT INTO listings (key, source, listing_id, title, url, district, price, "
                     "prev_price, area, floor, is_basement, kind, mrt_station, mrt_distance, "
-                    "registration, registration_checked, views, first_seen, last_seen) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "registration, registration_checked, views, photos, first_seen, last_seen) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT(key) DO UPDATE SET title = excluded.title, url = excluded.url, "
                     "price = excluded.price, prev_price = excluded.prev_price, "
                     "area = excluded.area, floor = excluded.floor, "
@@ -1408,7 +1454,8 @@ def run_once(
                     "mrt_station = excluded.mrt_station, mrt_distance = excluded.mrt_distance, "
                     "registration = excluded.registration, "
                     "registration_checked = excluded.registration_checked, "
-                    "views = excluded.views, last_seen = excluded.last_seen",
+                    "views = excluded.views, photos = excluded.photos, "
+                    "last_seen = excluded.last_seen",
                     (
                         it.key,
                         it.source,
@@ -1427,6 +1474,7 @@ def run_once(
                         it.registration,
                         checked,
                         it.views,
+                        json.dumps(list(it.photos)),
                         now_iso,
                         now_iso,
                     ),

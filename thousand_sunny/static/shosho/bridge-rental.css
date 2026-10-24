@@ -407,7 +407,7 @@ body.sho .rt-list {
 }
 body.sho .rt-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 168px 288px;
+  grid-template-columns: 160px minmax(0, 1fr) 168px 288px;
   gap: var(--sho-s-4);
   align-items: start;
   padding: var(--sho-s-4);
@@ -686,6 +686,167 @@ body.sho .rt-fb-clear:hover {
   color: var(--sho-text);
 }
 
+/* ── Thumbnail ──────────────────────────────────────────────────────────── */
+body.sho .rt-thumb {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: var(--sho-r-1);
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line);
+}
+body.sho a.rt-thumb {
+  cursor: zoom-in;
+}
+body.sho .rt-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--sho-t-fast) var(--sho-ease);
+}
+body.sho a.rt-thumb:hover img {
+  transform: scale(1.03);
+}
+body.sho a.rt-thumb:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-thumb-n {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 1px 6px;
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #fff;
+  background: rgb(0 0 0 / 0.62);
+  border-radius: var(--sho-r-1);
+}
+body.sho .rt-thumb--none {
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--sho-muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  body.sho .rt-thumb img {
+    transition: none;
+  }
+  body.sho a.rt-thumb:hover img {
+    transform: none;
+  }
+}
+
+/* ── Photo lightbox ─────────────────────────────────────────────────────── */
+body.sho .rt-gallery {
+  width: min(1040px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  color: var(--sho-text);
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-2);
+}
+body.sho .rt-gallery::backdrop {
+  background: rgb(0 0 0 / 0.78);
+}
+body.sho .rt-gallery[open] {
+  display: flex;
+  flex-direction: column;
+}
+body.sho .rt-gallery-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sho-s-3);
+  padding: var(--sho-s-2) var(--sho-s-2) var(--sho-s-2) var(--sho-s-4);
+  border-bottom: 1px solid var(--sho-line);
+}
+body.sho .rt-gallery-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.sho .rt-gallery-count {
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--sho-muted);
+}
+body.sho .rt-gallery-src {
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+body.sho .rt-gallery-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--sho-text-2);
+  background: transparent;
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+}
+body.sho .rt-gallery-btn:hover {
+  color: var(--sho-text);
+  border-color: var(--sho-text-2);
+}
+body.sho .rt-gallery-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-gallery-btn[hidden] {
+  display: none;
+}
+body.sho .rt-gallery-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  background: #000;
+}
+body.sho .rt-gallery-img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100dvh - 32px - 54px);
+  object-fit: contain;
+}
+body.sho .rt-gallery-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 64px;
+  font-size: 28px;
+  color: #fff;
+  background: rgb(0 0 0 / 0.45);
+  border-color: transparent;
+}
+body.sho .rt-gallery-nav:hover {
+  color: #fff;
+  background: rgb(0 0 0 / 0.7);
+  border-color: transparent;
+}
+body.sho .rt-gallery-nav[data-act="prev"] {
+  left: var(--sho-s-2);
+}
+body.sho .rt-gallery-nav[data-act="next"] {
+  right: var(--sho-s-2);
+}
+
 /* ── Footer ─────────────────────────────────────────────────────────────── */
 body.sho .rt-foot {
   margin-top: var(--sho-s-7);
@@ -706,7 +867,7 @@ body.sho .rt-foot b {
 /* ── Narrow screens（從 Slack 點進來多半是手機）───────────────────────── */
 @media (max-width: 900px) {
   body.sho .rt-row {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: 120px minmax(0, 1fr) auto;
     gap: var(--sho-s-3);
   }
   body.sho .rt-fb {
@@ -719,6 +880,13 @@ body.sho .rt-foot b {
   }
   body.sho .rt-row {
     grid-template-columns: minmax(0, 1fr);
+  }
+  /* 手機一欄：照片放最上面、寬一點但壓矮，免得一筆佔滿整個畫面 */
+  body.sho .rt-thumb {
+    aspect-ratio: 16 / 9;
+  }
+  body.sho .rt-thumb--none {
+    display: none;
   }
   body.sho .rt-row-price {
     display: flex;
