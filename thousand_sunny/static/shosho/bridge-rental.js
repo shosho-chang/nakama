@@ -51,3 +51,80 @@
   // 會被暫停，重新載入時切去別的分頁就不會校正。
   window.addEventListener("load", () => setTimeout(restore, 0));
 })();
+
+/* 照片燈箱（修修 2026-10-24：不用點進原網頁就能看空間）。
+ * 縮圖本身是原網頁連結；這裡攔下點擊改開 <dialog>。←／→ 換張、Esc 關閉（dialog 原生）。
+ */
+(() => {
+  const dlg = document.getElementById("rt-gallery");
+  if (!dlg || typeof dlg.showModal !== "function") return; // 不支援就照原本開原網頁
+  const img = dlg.querySelector(".rt-gallery-img");
+  const title = dlg.querySelector(".rt-gallery-title");
+  const count = dlg.querySelector(".rt-gallery-count");
+  const src = dlg.querySelector(".rt-gallery-src");
+  const navs = dlg.querySelectorAll(".rt-gallery-nav");
+  let photos = [];
+  let i = 0;
+  let opener = null;
+
+  const show = (n) => {
+    i = (n + photos.length) % photos.length;
+    img.src = photos[i];
+    img.alt = `${title.textContent}，第 ${i + 1} 張照片`;
+    count.textContent = `${i + 1} / ${photos.length}`;
+    // 預先載下一張，換張時不閃
+    if (photos.length > 1) new Image().src = photos[(i + 1) % photos.length];
+  };
+
+  document.addEventListener("click", (event) => {
+    const a = event.target instanceof Element && event.target.closest("a.rt-thumb");
+    if (!a || event.ctrlKey || event.metaKey || event.shiftKey) return; // 修飾鍵 → 照常開新分頁
+    try {
+      photos = JSON.parse(a.dataset.gallery || "[]");
+    } catch (_) {
+      return;
+    }
+    if (!photos.length) return;
+    event.preventDefault();
+    opener = a;
+    title.textContent = a.dataset.title || "";
+    src.href = a.href;
+    navs.forEach((b) => (b.hidden = photos.length < 2));
+    show(0);
+    dlg.showModal();
+  });
+
+  dlg.addEventListener("click", (event) => {
+    const act = event.target instanceof Element && event.target.closest("[data-act]");
+    if (act) {
+      const what = act.dataset.act;
+      if (what === "close") dlg.close();
+      else show(i + (what === "next" ? 1 : -1));
+    } else if (event.target === dlg) {
+      dlg.close(); // 點背景關閉
+    }
+  });
+
+  dlg.addEventListener("keydown", (event) => {
+    if (photos.length < 2) return;
+    if (event.key === "ArrowRight") show(i + 1);
+    else if (event.key === "ArrowLeft") show(i - 1);
+    else return;
+    event.preventDefault();
+  });
+
+  // 手機：左右滑換張
+  let touchX = null;
+  img.addEventListener("touchstart", (e) => (touchX = e.touches[0].clientX), { passive: true });
+  img.addEventListener("touchend", (e) => {
+    if (touchX === null || photos.length < 2) return;
+    const dx = e.changedTouches[0].clientX - touchX;
+    touchX = null;
+    if (Math.abs(dx) > 40) show(i + (dx < 0 ? 1 : -1));
+  });
+
+  dlg.addEventListener("close", () => {
+    img.removeAttribute("src");
+    if (opener) opener.focus();
+  });
+})();
