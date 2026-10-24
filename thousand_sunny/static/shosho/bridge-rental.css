@@ -488,14 +488,48 @@ body.sho .rt-chip--info {
   border-color: color-mix(in oklch, var(--sho-info) 45%, transparent);
   background: color-mix(in oklch, var(--sho-info) 9%, transparent);
 }
-body.sho .rt-hint,
+/* 同一間、多家仲介刊登：收在代表那筆底下 */
+body.sho .rt-dups {
+  margin: var(--sho-s-2) 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--sho-text-2);
+}
+body.sho .rt-dups summary {
+  cursor: pointer;
+  width: fit-content;
+  border-radius: var(--sho-r-1);
+}
+body.sho .rt-dups summary:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-dups-why {
+  color: var(--sho-muted);
+}
+body.sho .rt-dups ul {
+  list-style: none;
+  margin: var(--sho-s-1) 0 0;
+  padding: 0 0 0 var(--sho-s-3);
+  border-left: 1px solid var(--sho-line);
+}
+body.sho .rt-dups li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--sho-s-2);
+  padding: 2px 0;
+  overflow-wrap: anywhere;
+}
+body.sho .rt-dups-facts {
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--sho-muted);
+}
 body.sho .rt-note {
   margin: var(--sho-s-2) 0 0;
   font-size: 12.5px;
   line-height: 1.6;
-  color: var(--sho-muted);
-}
-body.sho .rt-note {
   color: var(--sho-text-2);
 }
 body.sho .rt-note-k {

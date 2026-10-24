@@ -68,24 +68,18 @@ def _fmt_time(iso: Optional[str]) -> str:
     return datetime.fromisoformat(iso).astimezone(_TAIPEI).strftime("%m/%d %H:%M")
 
 
-def _same_unit_hints(items: list[rw.BoardItem]) -> dict[str, list[str]]:
-    """不同網站刊同一間：同區、同租金、坪數差 ≤ 0.5 → 互相標「可能同一間」。
-
-    只是提示（各站坪數四捨五入不同，例如 591 寫 32 坪、信義寫 31.62 坪），不合併資料。
-    """
-    hints: dict[str, list[str]] = {}
-    for a in items:
-        for b in items:
-            la, lb = a.listing, b.listing
-            if la.source == lb.source or la.district != lb.district or la.price != lb.price:
-                continue
-            if la.area is None or lb.area is None or abs(la.area - lb.area) > 0.5:
-                continue
-            hints.setdefault(la.key, []).append(rw.SOURCE_LABELS.get(lb.source, lb.source))
-    return {k: sorted(set(v)) for k, v in hints.items()}
+def _dup_view(item: rw.BoardItem) -> dict:
+    """同一間的其他刊登：只列跟代表那筆會不同的（來源、租金、捷運、登記）。"""
+    it = item.listing
+    facts = [f"{rw.SOURCE_LABELS.get(it.source, it.source)}", f"{it.price:,}元"]
+    if it.mrt_distance is not None:
+        facts.append(f"{it.mrt_station or '捷運'} {it.mrt_distance}m")
+    if it.registration:
+        facts.append(it.registration)
+    return {"title": it.title or it.listing_id, "url": it.url, "facts": facts}
 
 
-def _view(item: rw.BoardItem, hints: dict[str, list[str]]) -> dict:
+def _view(item: rw.BoardItem, dups: list[rw.BoardItem]) -> dict:
     it, a = item.listing, item.assessment
     vs = a.vs_median_pct
     return {
@@ -106,13 +100,16 @@ def _view(item: rw.BoardItem, hints: dict[str, list[str]]) -> dict:
         "verdict": item.verdict,
         "reason": item.reason,
         "first_seen": _fmt_time(item.first_seen),
-        "same_unit": hints.get(it.key, []),
+        "dups": [_dup_view(d) for d in dups],
     }
 
 
 def _group(board: rw.Board) -> dict[str, list[dict]]:
-    hints = _same_unit_hints(board.items)
     ordered = sorted(board.items, key=lambda i: sort_key(i.listing, i.assessment))
+    # 同一間、多家仲介刊登 → 只顯示排序最前的那筆，其他收在它底下；標記一次套用整群。
+    members: dict[str, list[rw.BoardItem]] = {}
+    for item in ordered:
+        members.setdefault(item.group or item.listing.key, []).append(item)
     groups: dict[str, list[dict]] = {
         "interested": [],
         "urgent": [],
@@ -121,8 +118,12 @@ def _group(board: rw.Board) -> dict[str, list[dict]]:
         TIER_OUT: [],
         "pass": [],
     }
-    for item in ordered:
-        v = _view(item, hints)
+    for item, *dups in members.values():
+        v = _view(item, dups)
+        # 舊物件換一家仲介再刊不算「新」；首次看到取整群最早的。
+        unit = [item, *dups]
+        v["is_new"] = all(i.is_new for i in unit)
+        v["first_seen"] = _fmt_time(min(i.first_seen for i in unit))
         if item.verdict in ("interested", "pass"):
             groups[item.verdict].append(v)
         elif item.assessment.urgent:
@@ -167,10 +168,20 @@ def _feedback_msg(
     if item is None:
         return None
     title = item.listing.title or item.listing.listing_id
+    n = len(_unit_keys(board, key)) - 1
+    what = f"「{title}」" + (f"與同一間另 {n} 筆刊登" if n else "")
     if saved == "0":
-        return f"已取消「{title}」的標記"
+        return f"已取消{what}的標記"
     label = rw.VERDICTS.get(item.verdict or "", "")
-    return f"已把「{title}」標為{label}" if label else None
+    return f"已把{what}標為{label}" if label else None
+
+
+def _unit_keys(board: Optional[rw.Board], key: str) -> list[str]:
+    """這筆與同一間其他刊登的 key（伺服器端重算，不信表單）。"""
+    item = next((i for i in board.items if i.listing.key == key), None) if board else None
+    if item is None or not item.group:
+        return [key]
+    return [i.listing.key for i in board.items if i.group == item.group]
 
 
 def _render(
@@ -258,15 +269,17 @@ async def rental_feedback(
 ):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/rental", status_code=302)
-    if verdict == "clear":
-        rw.set_feedback(rw.default_db_path(), key, None)
-        saved = "0"
-    elif verdict in rw.VERDICTS:
-        rw.set_feedback(rw.default_db_path(), key, verdict, reason)
-        saved = "1"
-    else:
+    if verdict != "clear" and verdict not in rw.VERDICTS:
         return RedirectResponse("/bridge/rental", status_code=303)
-    logger.info("rental feedback %s -> %s", key, verdict)
+    db_path = rw.default_db_path()
+    keys = _unit_keys(rw.load_board(db_path, rw.load_criteria(db_path=db_path)), key)
+    if verdict == "clear":
+        rw.set_feedback(db_path, keys, None)
+        saved = "0"
+    else:
+        rw.set_feedback(db_path, keys, verdict, reason)
+        saved = "1"
+    logger.info("rental feedback %s -> %s", keys, verdict)
     # 回到「補上這筆位置的那一筆」，不是這筆本身——它已經移到有興趣（頁首）或
     # 不考慮（頁底收合區），錨點指它會把畫面整個拉走（修修 2026-10-23）。
     # 有 JS（bridge-rental.js 送 js=1）時不加錨點：錨點捲動會晚於 JS 的精確對齊而蓋掉它。

@@ -756,6 +756,62 @@ def passes(listing: Listing, criteria: Criteria) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# 同一間、多家仲介刊登（修修 2026-10-24：591 一間會列好幾筆，要一次標不考慮）
+# ---------------------------------------------------------------------------
+
+# 各站坪數四捨五入不同（591 寫 32、信義寫 31.62）；仲介報價也會差一點（37,600 / 37,692）。
+_SAME_UNIT_AREA_TOL = 0.4
+_SAME_UNIT_PRICE_TOL = 0.10
+
+
+def _floor_sig(floor: str) -> Optional[str]:
+    """「5F/14F」「5/14」都變成「5/14」；三站寫法不同，只比數字。看不出樓層回 None。"""
+    nums = re.findall(r"B?\d+", (floor or "").upper())
+    return "/".join(nums) if len(nums) >= 2 else None
+
+
+def same_unit(a: Listing, b: Listing) -> bool:
+    """同區、同樓層／總樓層、坪數差 ≤ 0.4、租金差 ≤ 10% → 視為同一間。
+
+    捷運站與距離不比：仲介各自挑最近的站（同一間有人寫中山國小 280m、有人寫 357m）。
+    """
+    if a.district != b.district:
+        return False
+    fa = _floor_sig(a.floor)
+    if fa is None or fa != _floor_sig(b.floor):
+        return False
+    if a.area is None or b.area is None or abs(a.area - b.area) > _SAME_UNIT_AREA_TOL:
+        return False
+    return abs(a.price - b.price) <= _SAME_UNIT_PRICE_TOL * min(a.price, b.price)
+
+
+def unit_groups(listings: Iterable[Listing]) -> dict[str, str]:
+    """key → 同一間的群組 id（群組內最小的 key）；沒有重複的物件自成一群。"""
+    items = list(listings)
+    parent = {it.key: it.key for it in items}
+
+    def root(k: str) -> str:
+        while parent[k] != k:
+            parent[k] = parent[parent[k]]
+            k = parent[k]
+        return k
+
+    buckets: dict[tuple[str, Optional[str]], list[Listing]] = {}
+    for it in items:
+        sig = _floor_sig(it.floor)
+        if sig is not None:
+            buckets.setdefault((it.district, sig), []).append(it)
+    for bucket in buckets.values():
+        for i, a in enumerate(bucket):
+            for b in bucket[i + 1 :]:
+                if same_unit(a, b):
+                    ra, rb = root(a.key), root(b.key)
+                    if ra != rb:
+                        parent[max(ra, rb)] = min(ra, rb)
+    return {k: root(k) for k in parent}
+
+
+# ---------------------------------------------------------------------------
 # State
 # ---------------------------------------------------------------------------
 
@@ -869,8 +925,9 @@ class BoardItem:
     first_seen: str
     is_new: bool  # 起始盤點之後才出現、且 48 小時內
     prev_price: Optional[int]  # 降價前的價格
-    verdict: Optional[str]  # interested | pass | None
+    verdict: Optional[str]  # interested | pass | None（同一間的其他刊登標過也算）
     reason: str
+    group: str = ""  # unit_groups() 的群組 id：同一間、不同仲介的刊登共用
 
 
 @dataclass
@@ -916,6 +973,14 @@ def load_board(
         active.append(r)
         listings.append(it)
     assessments = assess_all(listings, criteria)
+    groups = unit_groups(listings)
+    # 同一間只要有一筆被標過，整群都套用（最後標的那次為準）→ 新仲介再刊一次也自動歸位。
+    group_fb: dict[str, sqlite3.Row] = {}
+    for it in listings:
+        f = fb.get(it.key)
+        g = groups[it.key]
+        if f and (g not in group_fb or f["updated_at"] > group_fb[g]["updated_at"]):
+            group_fb[g] = f
     baseline_at = meta.get("baseline_done")
     items = []
     for r, it in zip(active, listings):
@@ -925,7 +990,7 @@ def load_board(
             and first_seen > baseline_at
             and (now - datetime.fromisoformat(first_seen)).total_seconds() < 48 * 3600
         )
-        f = fb.get(it.key)
+        f = group_fb.get(groups[it.key])
         items.append(
             BoardItem(
                 listing=it,
@@ -935,6 +1000,7 @@ def load_board(
                 prev_price=r["prev_price"],
                 verdict=f["verdict"] if f else None,
                 reason=f["reason"] if f else "",
+                group=groups[it.key],
             )
         )
 
@@ -961,28 +1027,34 @@ def load_board(
 
 def set_feedback(
     db_path: Path,
-    key: str,
+    key: str | Iterable[str],
     verdict: Optional[str],
     reason: str = "",
     *,
     now: Optional[datetime] = None,
 ) -> None:
-    """修修在 Bridge 標「有興趣 / 不考慮」（verdict=None 清掉標記）。"""
+    """修修在 Bridge 標「有興趣 / 不考慮」（verdict=None 清掉標記）。
+
+    ``key`` 可以是同一間的所有刊登 key：整群一起標、一起清。
+    """
     if verdict is not None and verdict not in VERDICTS:
         raise ValueError(f"unknown verdict {verdict!r}")
+    keys = [key] if isinstance(key, str) else list(key)
     now_iso = (now or datetime.now(timezone.utc)).isoformat()
     conn = _connect(db_path)
     try:
         with conn:
-            if verdict is None:
-                conn.execute("DELETE FROM feedback WHERE key = ?", (key,))
-            else:
-                conn.execute(
-                    "INSERT INTO feedback (key, verdict, reason, updated_at) VALUES (?, ?, ?, ?) "
-                    "ON CONFLICT(key) DO UPDATE SET verdict = excluded.verdict, "
-                    "reason = excluded.reason, updated_at = excluded.updated_at",
-                    (key, verdict, reason.strip()[:500], now_iso),
-                )
+            for k in keys:
+                if verdict is None:
+                    conn.execute("DELETE FROM feedback WHERE key = ?", (k,))
+                else:
+                    conn.execute(
+                        "INSERT INTO feedback (key, verdict, reason, updated_at) "
+                        "VALUES (?, ?, ?, ?) "
+                        "ON CONFLICT(key) DO UPDATE SET verdict = excluded.verdict, "
+                        "reason = excluded.reason, updated_at = excluded.updated_at",
+                        (k, verdict, reason.strip()[:500], now_iso),
+                    )
     finally:
         conn.close()
 
@@ -1016,6 +1088,7 @@ def format_listing(
     assessment: Optional["Assessment"] = None,
     *,
     old_price: Optional[int] = None,
+    also: int = 0,
 ) -> str:
     if old_price is not None:
         price = f"~{old_price:,}~ → *{listing.price:,}元*"
@@ -1027,11 +1100,31 @@ def format_listing(
         parts.append(f"每坪 {round(listing.price / listing.area):,}")
     parts.append(facts[-1])
     line = f"• <{listing.url}|{_esc(listing.title or listing.listing_id)}> — " + "｜".join(parts)
+    if also:
+        line += f"（同一間另有 {also} 筆仲介刊登）"
     if assessment is not None:
         notes = [c.text for c in assessment.chips if c.tone in ("good", "warn")][:3]
         if notes:
             line += "\n    ↳ " + "・".join(notes)
     return line
+
+
+def one_per_unit(
+    listings: Iterable[Listing],
+    assessments: dict[str, "Assessment"],
+    groups: dict[str, str],
+) -> tuple[list[Listing], dict[str, int]]:
+    """同一間只留排序最前的那筆；回傳（留下的、key → 同一間另外幾筆）。"""
+    from agents.franky.jobs.rental_assess import sort_key
+
+    best: dict[str, Listing] = {}
+    size: dict[str, int] = {}
+    for it in sorted(listings, key=lambda it: sort_key(it, assessments[it.key])):
+        g = groups.get(it.key, it.key)
+        best.setdefault(g, it)
+        size[g] = size.get(g, 0) + 1
+    kept = list(best.values())
+    return kept, {it.key: size[groups.get(it.key, it.key)] - 1 for it in kept}
 
 
 def _section(header: str, lines: list[str]) -> list[str]:
@@ -1046,8 +1139,13 @@ def format_update_message(
     new: list[Listing],
     drops: list[PriceDrop],
     assessments: dict[str, "Assessment"],
+    *,
+    also: Optional[dict[str, int]] = None,
 ) -> Optional[str]:
-    """新物件與降價 → 一則 DM。確定不符合必要條件的不推；全都不符合就回 None。"""
+    """新物件與降價 → 一則 DM。確定不符合必要條件的不推；全都不符合就回 None。
+
+    ``also``：key → 同一間另外幾筆刊登（呼叫端已用 ``one_per_unit`` 去重）。
+    """
     from agents.franky.jobs.rental_assess import TIER_CHECK, TIER_MATCH, TIER_OUT, sort_key
 
     def keep(it: Listing) -> bool:
@@ -1069,13 +1167,13 @@ def format_update_message(
     if urgent:
         head += f"（{len(urgent)} 筆建議儘快聯繫）"
     lines = [head, ""]
-    lines += _section(
-        "🔥 *建議儘快聯繫*", [format_listing(it, assessments[it.key]) for it in urgent]
-    )
-    lines += _section(
-        "✅ *符合條件*（捷運近、可登記）",
-        [format_listing(it, assessments[it.key]) for it in match],
-    )
+    also = also or {}
+
+    def fmt(it: Listing) -> str:
+        return format_listing(it, assessments[it.key], also=also.get(it.key, 0))
+
+    lines += _section("🔥 *建議儘快聯繫*", [fmt(it) for it in urgent])
+    lines += _section("✅ *符合條件*（捷運近、可登記）", [fmt(it) for it in match])
     lines += _section(
         "📉 *降價*",
         [
@@ -1083,10 +1181,7 @@ def format_update_message(
             for d in drops
         ],
     )
-    lines += _section(
-        "❔ *待確認*（捷運距離或可否登記沒有資料）",
-        [format_listing(it, assessments[it.key]) for it in check],
-    )
+    lines += _section("❔ *待確認*（捷運距離或可否登記沒有資料）", [fmt(it) for it in check])
     lines.append(f"完整清單、標記有興趣／不考慮：<{BRIDGE_URL}|Bridge 租屋追蹤>")
     return "\n".join(lines).rstrip()
 
@@ -1099,17 +1194,18 @@ def format_baseline_message(
     *,
     updated: bool = False,
 ) -> str:
-    from agents.franky.jobs.rental_assess import TIER_CHECK, TIER_MATCH, TIER_OUT, sort_key
+    from agents.franky.jobs.rental_assess import TIER_CHECK, TIER_MATCH, TIER_OUT
 
     counts = "、".join(f"{SOURCE_LABELS.get(s, s)} {n}" for s, n in source_counts.items())
     tier_counts = {
         t: sum(1 for it in listings if assessments[it.key].tier == t)
         for t in (TIER_MATCH, TIER_CHECK, TIER_OUT)
     }
-    urgent = sorted(
-        (it for it in listings if assessments[it.key].urgent),
-        key=lambda it: sort_key(it, assessments[it.key]),
+    groups = unit_groups(listings)
+    urgent, also = one_per_unit(
+        (it for it in listings if assessments[it.key].urgent), assessments, groups
     )
+    units = len(set(groups.values()))
     lines = [
         (
             "🏠 租屋追蹤條件已更新，重新盤點：之後照常每小時通知新物件與降價。"
@@ -1121,13 +1217,15 @@ def format_baseline_message(
         f"捷運 {criteria.mrt_max_m}m 內｜可營業登記"
         + ("｜不含地下室" if criteria.exclude_basement else "")
         + (f"｜加分：{'、'.join(criteria.bonus_districts)}" if criteria.bonus_districts else ""),
-        f"目前在架 {len(listings)} 筆（{counts}）：符合 {tier_counts[TIER_MATCH]}・"
+        f"目前在架 {len(listings)} 筆（{counts}"
+        + (f"；同一間多家仲介刊的合併後約 {units} 間" if units < len(listings) else "")
+        + f"）：符合 {tier_counts[TIER_MATCH]}・"
         f"待確認 {tier_counts[TIER_CHECK]}・不符合 {tier_counts[TIER_OUT]}",
         "",
     ]
     lines += _section(
-        f"🔥 *建議儘快聯繫（{len(urgent)} 筆）*",
-        [format_listing(it, assessments[it.key]) for it in urgent],
+        f"🔥 *建議儘快聯繫（{len(urgent)} 間）*",
+        [format_listing(it, assessments[it.key], also=also[it.key]) for it in urgent],
     )
     lines.append(f"全部清單（排序、理由、標記有興趣／不考慮）：<{BRIDGE_URL}|Bridge 租屋追蹤>")
     return "\n".join(lines).rstrip()
@@ -1279,6 +1377,9 @@ def run_once(
                 "INSERT OR REPLACE INTO meta (key, value) VALUES ('last_scan_at', ?)", (now_iso,)
             )
             meta = {r["key"]: r["value"] for r in conn.execute("SELECT key, value FROM meta")}
+            feedback = {
+                r["key"]: r["verdict"] for r in conn.execute("SELECT key, verdict FROM feedback")
+            }
             criteria_changed = (
                 "baseline_done" in meta and meta.get("criteria_hash") != criteria.config_hash
             )
@@ -1360,7 +1461,14 @@ def run_once(
         status = "baseline" if source_counts else "error"
         return RentalWatchResult(status, len(listings), 0, 0, 0, source_counts, source_errors)
 
-    message = format_update_message(new, drops, assessments)
+    # 同一間換一家仲介再刊：之前就在架的不算新物件；整群標過不考慮的不推（含降價）。
+    groups = unit_groups(listings)
+    known = {groups[it.key] for it in listings if it.key in existing}
+    passed = {groups[it.key] for it in listings if feedback.get(it.key) == "pass"}
+    fresh = [it for it in new if groups[it.key] not in known | passed]
+    notify_new, also = one_per_unit(fresh, assessments, groups)
+    notify_drops = [d for d in drops if groups[d.listing.key] not in passed]
+    message = format_update_message(notify_new, notify_drops, assessments, also=also)
     if message and slack_bot is not None:
         _post(slack_bot, message, "rental_watch_update")
     status = "notified" if message else ("error" if not source_counts else "ok")

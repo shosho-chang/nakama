@@ -29,8 +29,15 @@
       {% for c in v.chips %}<li class="rt-chip rt-chip--{{ c.tone }}">{{ c.text }}</li>{% endfor %}
     </ul>
     {% endif %}
-    {% if v.same_unit %}
-    <p class="rt-hint">可能是同一間：{{ v.same_unit | join('、') }} 也有刊（同區、同租金、坪數相近）</p>
+    {% if v.dups %}
+    <details class="rt-dups">
+      <summary>同一間還有 {{ v.dups | length }} 筆刊登<span class="rt-dups-why">（同區、同樓層、坪數與租金相近；標記會一起套用）</span></summary>
+      <ul>
+        {% for d in v.dups %}
+        <li><a class="sho-lk" href="{{ d.url }}" target="_blank" rel="noopener noreferrer">{{ d.title }}</a><span class="rt-dups-facts">{{ d.facts | join(' · ') }}</span></li>
+        {% endfor %}
+      </ul>
+    </details>
     {% endif %}
     {% if v.reason %}<p class="rt-note"><span class="rt-note-k">你的備註</span>{{ v.reason }}</p>{% endif %}
   </div>
