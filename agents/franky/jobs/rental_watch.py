@@ -147,6 +147,8 @@ class Criteria:
     mrt_max_m: int = 500
     exclude_basement: bool = False
     bonus_districts: tuple[str, ...] = ()
+    # 每坪比同區中位數貴超過這個 % 就不列；None = 不限。
+    max_over_median_pct: Optional[int] = None
     # 條件內容的指紋（忽略 yaml 註解）；條件一改，下一輪改成重新盤點，不把新範圍
     # 進來的物件當「新物件」一次推幾十筆。
     config_hash: str = ""
@@ -177,10 +179,22 @@ class Listing:
     # 照片網址（各站原始尺寸；顯示時用 photo_url() 換成縮圖／大圖）。
     # 591 列表 API 就有整組照片；信義、好房網列表頁只有封面一張。
     photos: tuple[str, ...] = ()
+    # 詳細頁敘述有沒有寫租金含不含稅（TAX_*）；detail_checked = 詳細頁看過了。
+    tax: str = ""
+    detail_checked: bool = False
 
     @property
     def key(self) -> str:
         return f"{self.source}:{self.listing_id}"
+
+    @property
+    def cost(self) -> int:
+        """每月實際要付的錢：標示未稅的，把代扣稅費加回去（見 monthly_cost）。"""
+        return monthly_cost(self.price, self.tax)
+
+    @property
+    def tax_added(self) -> bool:
+        return self.cost != self.price
 
 
 @dataclass
@@ -234,6 +248,9 @@ def load_criteria(path: Path = DEFAULT_CONFIG_PATH, *, db_path: Optional[Path] =
         mrt_max_m=int(raw.get("mrt_max_m", 500)),
         exclude_basement=bool(raw.get("exclude_basement", False)),
         bonus_districts=tuple(raw.get("bonus_districts") or ()),
+        max_over_median_pct=(
+            int(raw["max_over_median_pct"]) if raw.get("max_over_median_pct") is not None else None
+        ),
         config_hash=hashlib.sha1(
             json.dumps(raw, sort_keys=True, ensure_ascii=False).encode("utf-8")
         ).hexdigest()[:12],
@@ -301,6 +318,11 @@ def parse_criteria_form(form: dict[str, Any]) -> tuple[dict[str, Any], list[str]
     area_min = _num(form.get("area_min"), "坪數下限", errors, as_int=False)
     area_max = _num(form.get("area_max"), "坪數上限", errors, as_int=False)
     mrt = _num(form.get("mrt_max_m"), "捷運距離", errors)
+    over = None
+    if str(form.get("max_over_median_pct") or "").strip():
+        over = _num(form.get("max_over_median_pct"), "比同區行情貴幾 %", errors)
+        if over is not None and not (0 <= over <= 200):
+            errors.append("比同區行情貴幾 % 要介於 0–200（不限就留空）")
     if price_min is not None and price_max is not None:
         if not (1000 <= price_min < price_max <= 500000):
             errors.append("月租要介於 1,000–500,000，而且下限小於上限")
@@ -317,6 +339,7 @@ def parse_criteria_form(form: dict[str, Any]) -> tuple[dict[str, Any], list[str]
         "area": {"min": area_min, "max": area_max},
         "mrt_max_m": mrt,
         "exclude_basement": bool(form.get("exclude_basement")),
+        "max_over_median_pct": over,
     }
     return override, errors
 
@@ -387,6 +410,81 @@ class Http:
 
     def close(self) -> None:
         self._client.close()
+
+
+# ---------------------------------------------------------------------------
+# 租金含不含稅（修修 2026-10-25：很多標的是未稅，要看敘述、自行把稅加上去）
+# ---------------------------------------------------------------------------
+
+TAX_INCLUDED = "included"  # 敘述寫含稅
+TAX_EXCLUDED = "excluded"  # 不含租賃稅（與二代健保）→ 加 10% + 2.11%
+TAX_NHI_ONLY = "nhi"  # 含稅、但不含二代健保 → 只加 2.11%
+TAX_VAT = "vat"  # 「未稅＋5%」：房東是公司、開發票加 5% 營業稅（不用代扣）
+
+# 公司向個人房東承租：付租金時代扣所得稅 10%（每次扣繳稅額 ≤ 2,000 免扣）、
+# 二代健保補充保費 2.11%（單次給付 ≥ 20,000 才扣）。房東要實拿標示金額
+# → 合約租金 = 標示 ÷ (1 − 扣掉的比例)。
+_WITHHOLD_RATE = 0.10
+_NHI_RATE = 0.0211
+_DEDUCTION_FLOOR = 20_000
+_VAT_RATE = 0.05
+
+_TAX_WORD = r"(?:租賃稅|所得稅|稅金|稅款|稅)"
+_TAX_EXCLUDED_RES = (
+    re.compile(r"(?:不含|未含|不包含|未包含)[^。，,；;\n]{0,10}" + _TAX_WORD),
+    re.compile(r"未稅|稅外|外加稅|另加稅|[+＋]\s*稅"),
+    re.compile(
+        _TAX_WORD + r"[^。，,；;\n]{0,6}(?:另計|另付|外加|自付|自行負擔|由承租|由房客|由租客)"
+    ),
+)
+_TAX_INCLUDED_RE = re.compile(
+    r"(?<![不未])(?:含|包含|已含|內含)\s*" + _TAX_WORD + r"|稅(?:金|款)?內含"
+)
+_VAT_RES = (
+    re.compile(r"(?:未稅|不含稅|稅外)\s*[(（]?\s*[+＋]\s*5\s*[%％]"),  # 未稅+5%
+    re.compile(r"(?:[+＋]|另加|外加|加收)\s*5\s*[%％]\s*(?:營業)?稅"),  # 另加5%營業稅
+    re.compile(r"營業稅[^。，,；;\n]{0,4}(?:另計|外加|另加|自付|由承租)"),
+    re.compile(r"(?:另加|外加|加收)[^。，,；;\n]{0,4}營業稅"),
+)
+_NHI_EXCLUDED_RE = re.compile(r"(?:不含|未含|不包含)[^。，,；;\n]{0,10}(?:二代健保|健保|補充保費)")
+
+
+def parse_tax(text: str) -> str:
+    """從標題＋敘述判斷租金含不含稅；沒寫回 ""。
+
+    「未稅＋5%」→ 房東是公司開發票、加營業稅（不是代扣），先判斷。
+    「不含稅」優先於「含稅」（有些寫「含稅…」其實是別的費用，或前後矛盾時寧可算貴）。
+    「含稅、不含二代健保」→ 只加補充保費。
+    """
+    text = text or ""
+    if any(r.search(text) for r in _VAT_RES):
+        return TAX_VAT
+    if any(r.search(text) for r in _TAX_EXCLUDED_RES):
+        return TAX_EXCLUDED
+    if _TAX_INCLUDED_RE.search(text):
+        return TAX_NHI_ONLY if _NHI_EXCLUDED_RE.search(text) else TAX_INCLUDED
+    return ""
+
+
+def monthly_cost(price: int, tax: str) -> int:
+    if tax == TAX_VAT:
+        return round(price * (1 + _VAT_RATE))
+    if tax == TAX_EXCLUDED:
+        rate = _WITHHOLD_RATE + _NHI_RATE
+    elif tax == TAX_NHI_ONLY:
+        rate = _NHI_RATE
+    else:
+        return price
+    gross = round(price / (1 - rate))
+    return gross if gross > _DEDUCTION_FLOOR else price
+
+
+TAX_LABELS = {
+    TAX_INCLUDED: "標示含稅",
+    TAX_EXCLUDED: "標示未稅：已加 10% 所得稅＋2.11% 二代健保",
+    TAX_NHI_ONLY: "標示含稅、不含二代健保：已加 2.11%",
+    TAX_VAT: "標示未稅＋5%：已加 5% 營業稅（房東開發票）",
+}
 
 
 # ---------------------------------------------------------------------------
@@ -497,15 +595,30 @@ _591_DETAIL = "https://business.591.com.tw/rent/{id}"
 _591_DETAIL_BUDGET = 40
 
 
+# 詳細頁的敘述區塊（看含不含稅）。
+_DETAIL_TEXT_SELECTORS = {
+    "591": (".house-condition-content", ".article"),
+    "sinyi": ("ul.features-description", ".main-content-content"),
+    "housefun": ("#divDes",),
+}
+
+
+def parse_detail_text(source: str, html: str) -> str:
+    soup = BeautifulSoup(html, "html.parser")
+    parts = []
+    for sel in _DETAIL_TEXT_SELECTORS.get(source, ()):
+        parts += [el.get_text(" ", strip=True) for el in soup.select(sel)]
+    return "\n".join(parts)
+
+
 def parse_591_registration(html: str) -> str:
     """591 詳細頁「登記」欄（``span.businessRegistration``）的文字，例如「暫不確定」。"""
     el = BeautifulSoup(html, "html.parser").select_one(".businessRegistration")
     return el.get_text(strip=True) if el else ""
 
 
-def fetch_591_registration(http: Http, listing_id: str) -> str:
-    resp = http.request("GET", _591_DETAIL.format(id=listing_id))
-    return parse_591_registration(resp.text) or _591_REG_UNMARKED
+def _detail_url(it: Listing) -> str:
+    return _591_DETAIL.format(id=it.listing_id) if it.source == "591" else it.url
 
 
 def fetch_591(http: Http, criteria: Criteria) -> list[Listing]:
@@ -778,7 +891,7 @@ def passes(listing: Listing, criteria: Criteria) -> bool:
     """三站共用的最終把關（站方的篩選不一定齊：好房網沒有坪數條件、信義混類型）。"""
     if listing.district not in criteria.districts:
         return False
-    if not (criteria.price_min <= listing.price <= criteria.price_max):
+    if not (criteria.price_min <= listing.cost <= criteria.price_max):
         return False
     if listing.area is not None and not (criteria.area_min <= listing.area <= criteria.area_max):
         return False
@@ -822,7 +935,7 @@ def same_unit(a: Listing, b: Listing) -> bool:
         return False
     if a.area is None or b.area is None or abs(a.area - b.area) > _SAME_UNIT_AREA_TOL:
         return False
-    return abs(a.price - b.price) <= _SAME_UNIT_PRICE_TOL * min(a.price, b.price)
+    return abs(a.cost - b.cost) <= _SAME_UNIT_PRICE_TOL * min(a.cost, b.cost)
 
 
 def unit_groups(listings: Iterable[Listing]) -> dict[str, str]:
@@ -875,6 +988,8 @@ CREATE TABLE IF NOT EXISTS listings (
     registration_checked INTEGER NOT NULL DEFAULT 0,
     views INTEGER,
     photos TEXT NOT NULL DEFAULT '[]',
+    tax TEXT NOT NULL DEFAULT '',
+    detail_checked INTEGER NOT NULL DEFAULT 0,
     first_seen TEXT NOT NULL,
     last_seen TEXT NOT NULL
 );
@@ -916,6 +1031,13 @@ def default_db_path() -> Path:
     return get_runtime_data_dir() / "rental_watch.db"
 
 
+_ADDED_COLUMNS = (
+    ("photos", "TEXT NOT NULL DEFAULT '[]'"),
+    ("tax", "TEXT NOT NULL DEFAULT ''"),
+    ("detail_checked", "INTEGER NOT NULL DEFAULT 0"),
+)
+
+
 def _connect(db_path: Path) -> sqlite3.Connection:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path), timeout=30)
@@ -923,8 +1045,9 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     conn.executescript(_SCHEMA)
     # 欄位是後來加的：舊 DB 補上（CREATE TABLE IF NOT EXISTS 不會改既有的表）。
     cols = {r["name"] for r in conn.execute("PRAGMA table_info(listings)")}
-    if "photos" not in cols:
-        conn.execute("ALTER TABLE listings ADD COLUMN photos TEXT NOT NULL DEFAULT '[]'")
+    for name, ddl in _ADDED_COLUMNS:
+        if name not in cols:
+            conn.execute(f"ALTER TABLE listings ADD COLUMN {name} {ddl}")
     return conn
 
 
@@ -946,6 +1069,8 @@ def _row_to_listing(r: sqlite3.Row) -> Listing:
         registration=r["registration"],
         views=r["views"],
         photos=tuple(json.loads(r["photos"] or "[]")),
+        tax=r["tax"],
+        detail_checked=bool(r["detail_checked"]),
     )
 
 
@@ -984,6 +1109,12 @@ class Board:
     baseline_at: Optional[str]
 
 
+def over_market(assessment: "Assessment", criteria: Criteria) -> bool:
+    """每坪比同區中位數貴超過 ``criteria.max_over_median_pct``（算不出來的不算）。"""
+    limit, pct = criteria.max_over_median_pct, assessment.vs_median_pct
+    return limit is not None and pct is not None and pct > limit
+
+
 def load_board(
     db_path: Path, criteria: Criteria, *, now: Optional[datetime] = None
 ) -> Optional[Board]:
@@ -1020,6 +1151,16 @@ def load_board(
         listings.append(it)
     assessments = assess_all(listings, criteria)
     groups = unit_groups(listings)
+    # 比同區行情貴太多的不列（中位數要用整批算，所以在評估之後才濾）。
+    # 修修標過「有興趣」的照列，免得標了的東西突然不見。
+    interested = {groups[k] for k, f in fb.items() if k in groups and f["verdict"] == "interested"}
+    keep = [
+        i
+        for i, it in enumerate(listings)
+        if groups[it.key] in interested or not over_market(assessments[it.key], criteria)
+    ]
+    active = [active[i] for i in keep]
+    listings = [listings[i] for i in keep]
     # 同一間只要有一筆被標過，整群都套用（最後標的那次為準）→ 新仲介再刊一次也自動歸位。
     group_fb: dict[str, sqlite3.Row] = {}
     for it in listings:
@@ -1137,13 +1278,16 @@ def format_listing(
     also: int = 0,
 ) -> str:
     if old_price is not None:
-        price = f"~{old_price:,}~ → *{listing.price:,}元*"
+        old = monthly_cost(old_price, listing.tax)
+        price = f"~{old:,}~ → *{listing.cost:,}元*"
     else:
-        price = f"{listing.price:,}元"
+        price = f"{listing.cost:,}元"
+    if listing.tax_added:
+        price += f"（自行計算稅金；標示 {listing.price:,} 未稅）"
     facts = listing_facts(listing)
     parts = [*facts[:-1], price]
     if listing.area:
-        parts.append(f"每坪 {round(listing.price / listing.area):,}")
+        parts.append(f"每坪 {round(listing.cost / listing.area):,}")
     parts.append(facts[-1])
     line = f"• <{listing.url}|{_esc(listing.title or listing.listing_id)}> — " + "｜".join(parts)
     if also:
@@ -1326,35 +1470,63 @@ def _update_source_health(
     )
 
 
-def _enrich_registration(
+def _detail_budget() -> int:
+    """每輪最多抓幾筆詳細頁。上線第一次要補 300 筆左右，可用環境變數一次補完。"""
+    try:
+        return int(os.environ.get("RENTAL_WATCH_DETAIL_BUDGET", "") or _591_DETAIL_BUDGET)
+    except ValueError:
+        return _591_DETAIL_BUDGET
+
+
+def _enrich_details(
     http: Http,
     listings: list[Listing],
     existing: dict[str, sqlite3.Row],
     criteria: Criteria,
 ) -> tuple[list[Listing], set[str]]:
-    """591 沒標「可登記」的，補抓詳細頁的「登記」欄（每筆只抓一次，結果存 DB）。
+    """補抓詳細頁（每筆只抓一次，結果存 DB）：
 
-    回傳 (補好的 listings, 這輪新查過的 key)。離捷運太遠的不查（反正不符合）。
+    - 敘述裡租金含不含稅（三站都看，標題也算）
+    - 591 沒標「可登記」的，順便讀「登記」欄
+
+    回傳 (補好的 listings, 這輪新查過登記欄的 key)。離捷運太遠的不查（反正不符合）。
     """
     from agents.franky.jobs.rental_assess import mrt_status
 
-    budget = _591_DETAIL_BUDGET
-    checked: set[str] = set()
+    budget = _detail_budget()
+    reg_checked: set[str] = set()
     out = []
     for it in listings:
-        if it.source == "591" and it.registration == _591_REG_UNMARKED:
-            row = existing.get(it.key)
-            if row is not None and row["registration_checked"]:
-                it = replace(it, registration=row["registration"])
-            elif budget > 0 and mrt_status(it, criteria.mrt_max_m) is not False:
-                budget -= 1
-                try:
-                    it = replace(it, registration=fetch_591_registration(http, it.listing_id))
-                    checked.add(it.key)
-                except Exception as exc:  # noqa: BLE001 — 下一輪再試
-                    logger.warning("rental_watch 591 detail %s failed: %s", it.listing_id, exc)
+        row = existing.get(it.key)
+        if row is not None and row["detail_checked"]:
+            it = replace(it, tax=row["tax"] or parse_tax(it.title), detail_checked=True)
+        needs_reg = it.source == "591" and it.registration == _591_REG_UNMARKED
+        if needs_reg and row is not None and row["registration_checked"]:
+            it = replace(it, registration=row["registration"])
+            needs_reg = False
+        if it.detail_checked and not needs_reg:
+            out.append(it)
+            continue
+        if budget <= 0 or mrt_status(it, criteria.mrt_max_m) is False:
+            out.append(replace(it, tax=it.tax or parse_tax(it.title)))
+            continue
+        budget -= 1
+        try:
+            html = http.request("GET", _detail_url(it)).text
+        except Exception as exc:  # noqa: BLE001 — 下一輪再試
+            logger.warning("rental_watch %s detail failed: %s", it.key, exc)
+            out.append(replace(it, tax=it.tax or parse_tax(it.title)))
+            continue
+        it = replace(
+            it,
+            tax=parse_tax(it.title + "\n" + parse_detail_text(it.source, html)),
+            detail_checked=True,
+        )
+        if needs_reg:
+            it = replace(it, registration=parse_591_registration(html) or _591_REG_UNMARKED)
+            reg_checked.add(it.key)
         out.append(it)
-    return out, checked
+    return out, reg_checked
 
 
 def run_once(
@@ -1409,7 +1581,7 @@ def run_once(
             existing = {r["key"]: r for r in conn.execute("SELECT * FROM listings").fetchall()}
         finally:
             conn.close()
-        listings, newly_checked = _enrich_registration(http, listings, existing, criteria)
+        listings, newly_checked = _enrich_details(http, listings, existing, criteria)
     finally:
         if own_http:
             http.close()
@@ -1445,8 +1617,9 @@ def run_once(
                 conn.execute(
                     "INSERT INTO listings (key, source, listing_id, title, url, district, price, "
                     "prev_price, area, floor, is_basement, kind, mrt_station, mrt_distance, "
-                    "registration, registration_checked, views, photos, first_seen, last_seen) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+                    "registration, registration_checked, views, photos, tax, detail_checked, "
+                    "first_seen, last_seen) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
                     "ON CONFLICT(key) DO UPDATE SET title = excluded.title, url = excluded.url, "
                     "price = excluded.price, prev_price = excluded.prev_price, "
                     "area = excluded.area, floor = excluded.floor, "
@@ -1455,6 +1628,7 @@ def run_once(
                     "registration = excluded.registration, "
                     "registration_checked = excluded.registration_checked, "
                     "views = excluded.views, photos = excluded.photos, "
+                    "tax = excluded.tax, detail_checked = excluded.detail_checked, "
                     "last_seen = excluded.last_seen",
                     (
                         it.key,
@@ -1475,6 +1649,8 @@ def run_once(
                         checked,
                         it.views,
                         json.dumps(list(it.photos)),
+                        it.tax,
+                        int(it.detail_checked),
                         now_iso,
                         now_iso,
                     ),
@@ -1495,7 +1671,17 @@ def run_once(
     finally:
         conn.close()
 
+    # 抓列表時用標示租金篩；讀完敘述、加回稅費後實付超過上限的，存著（免得每輪重抓詳細頁）
+    # 但不算進通知與盤點。
+    listings = [it for it in listings if passes(it, criteria)]
+    new = [it for it in new if passes(it, criteria)]
+    drops = [d for d in drops if passes(d.listing, criteria)]
     assessments = assess_all(listings, criteria)
+    # 比同區行情貴太多的也不通知、不算進盤點（中位數仍用整批算）。
+    priced_ok = {it.key for it in listings if not over_market(assessments[it.key], criteria)}
+    listings = [it for it in listings if it.key in priced_ok]
+    new = [it for it in new if it.key in priced_ok]
+    drops = [d for d in drops if d.listing.key in priced_ok]
     basement_new = sum(1 for it in new if it.is_basement)
     if is_baseline:
         if source_counts and slack_bot is not None:

@@ -566,6 +566,20 @@ body.sho .rt-prev {
   font-size: 12.5px;
   color: var(--sho-muted);
 }
+/* 標示未稅：金額已加回稅費，上面標「自行計算稅金」、下面寫標示的原價 */
+body.sho .rt-tax-calc {
+  margin: 0 0 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--sho-text-2);
+}
+body.sho .rt-tax-note {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--sho-muted);
+}
 body.sho .rt-ppp,
 body.sho .rt-seen {
   margin: 2px 0 0;
@@ -887,6 +901,10 @@ body.sho .rt-foot b {
   }
   body.sho .rt-thumb--none {
     display: none;
+  }
+  body.sho .rt-tax-calc,
+  body.sho .rt-tax-note {
+    flex-basis: 100%;
   }
   body.sho .rt-row-price {
     display: flex;

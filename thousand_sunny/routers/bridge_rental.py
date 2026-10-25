@@ -71,7 +71,8 @@ def _fmt_time(iso: Optional[str]) -> str:
 def _dup_view(item: rw.BoardItem) -> dict:
     """同一間的其他刊登：只列跟代表那筆會不同的（來源、租金、捷運、登記）。"""
     it = item.listing
-    facts = [f"{rw.SOURCE_LABELS.get(it.source, it.source)}", f"{it.price:,}元"]
+    price = f"{it.cost:,}元" + ("（自行計算稅金）" if it.tax_added else "")
+    facts = [f"{rw.SOURCE_LABELS.get(it.source, it.source)}", price]
     if it.mrt_distance is not None:
         facts.append(f"{it.mrt_station or '捷運'} {it.mrt_distance}m")
     if it.registration:
@@ -90,8 +91,15 @@ def _view(item: rw.BoardItem, dups: list[rw.BoardItem]) -> dict:
         "title": it.title or it.listing_id,
         "url": it.url,
         "facts": rw.listing_facts(it),
-        "price": it.price,
-        "prev_price": item.prev_price if item.prev_price and item.prev_price > it.price else None,
+        "price": it.cost,  # 標示未稅的已加回稅費
+        "listed_price": it.price,
+        "tax_added": it.tax_added,
+        "tax_note": rw.TAX_LABELS.get(it.tax) or ("沒寫含不含稅" if it.detail_checked else None),
+        "prev_price": (
+            rw.monthly_cost(item.prev_price, it.tax)
+            if item.prev_price and item.prev_price > it.price
+            else None
+        ),
         "ppp": a.price_per_ping,
         "vs_pct": vs,
         "chips": a.chips,
@@ -156,6 +164,9 @@ def _form_values(criteria: rw.Criteria) -> dict:
         "area_max": f"{criteria.area_max:g}",
         "mrt_max_m": criteria.mrt_max_m,
         "exclude_basement": criteria.exclude_basement,
+        "max_over_median_pct": (
+            "" if criteria.max_over_median_pct is None else criteria.max_over_median_pct
+        ),
     }
 
 
@@ -250,7 +261,14 @@ async def rental_criteria(request: Request, nakama_auth: str | None = Cookie(Non
         "bonus_districts": form.getlist("bonus_districts"),
         **{
             k: form.get(k, "")
-            for k in ("price_min", "price_max", "area_min", "area_max", "mrt_max_m")
+            for k in (
+                "price_min",
+                "price_max",
+                "area_min",
+                "area_max",
+                "mrt_max_m",
+                "max_over_median_pct",
+            )
         },
         "exclude_basement": form.get("exclude_basement") == "1",
     }
