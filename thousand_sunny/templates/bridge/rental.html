@@ -118,6 +118,7 @@
         <span class="rt-must">可營業登記</span>
         {% if criteria.exclude_basement %}<span>不含地下室</span>{% endif %}
         {% if criteria.bonus_districts %}<span>加分：{{ criteria.bonus_districts | join('・') }}</span>{% endif %}
+        {% if criteria.max_over_median_pct is not none %}<span>比同區行情貴 {{ criteria.max_over_median_pct }}% 以上不列</span>{% endif %}
       </p>
       <p class="rt-status" role="status">
         <span class="rt-status-k">上次掃描</span><span class="rt-status-v">{{ last_scan }}</span>
@@ -186,6 +187,12 @@
               <input class="rt-num" type="number" name="mrt_max_m" inputmode="numeric" min="100" max="3000" step="50" value="{{ form.mrt_max_m }}" aria-label="距最近捷運站公尺數" required>
             </div>
           </fieldset>
+          <fieldset class="rt-fs">
+            <legend>比同區行情貴超過（%）不列</legend>
+            <div class="rt-range">
+              <input class="rt-num" type="number" name="max_over_median_pct" inputmode="numeric" min="0" max="200" step="1" value="{{ form.max_over_median_pct }}" aria-label="每坪比同區中位數貴超過幾 % 就不列，留空不限" placeholder="不限">
+            </div>
+          </fieldset>
         </div>
         <label class="rt-check rt-check--solo"><input type="checkbox" name="exclude_basement" value="1"{% if form.exclude_basement %} checked{% endif %}><span>剔除地下室</span></label>
         <p class="rt-edit-note">存檔後頁面立刻照新條件篩選；放寬條件才會出現的新物件，要等下一輪掃描（每天 07:05–23:05 每小時）。條件一改，下一輪會重新盤點，Slack 只送一則摘要。可否營業登記一律是必要條件；排除關鍵字等進階規則在 <code>config/rental-watch.yaml</code>。</p>
@@ -230,7 +237,7 @@
     {% endif %}
 
     <footer class="rt-foot">
-      <p><b>排序怎麼算</b>：每坪租金比同區中位數便宜 20% 以上 +2、10% 以上 +1、貴 20% 以上 −1；30 坪以上 +1；{% if criteria.bonus_districts %}{{ criteria.bonus_districts | join('、') }} +1；{% endif %}{% if not criteria.exclude_basement %}地下室 +1；{% endif %}離捷運 200m 內 +1。同區中位數是用目前在架的這一批算的，不是市場行情。「搶手」= 591 昨日瀏覽人數落在這批的前 10%（且至少 20 人）。</p>
+      <p><b>排序怎麼算</b>：每坪租金比同區中位數便宜 20% 以上 +2、10% 以上 +1、貴 20% 以上 −1；30 坪以上 +1；{% if criteria.bonus_districts %}{{ criteria.bonus_districts | join('、') }} +1；{% endif %}{% if not criteria.exclude_basement %}地下室 +1；{% endif %}離捷運 200m 內 +1。同區中位數是用目前在架的這一批算的，不是市場行情。{% if criteria.max_over_median_pct is not none %}每坪比同區中位數貴超過 {{ criteria.max_over_median_pct }}% 的不列、不推（你標過有興趣的照列）；同區不到 3 筆或沒坪數的算不出來，照列。{% endif %}「搶手」= 591 昨日瀏覽人數落在這批的前 10%（且至少 20 人）。</p>
       <p><b>租金含不含稅</b>：Franky 會讀每筆的敘述。寫「未稅」的，以公司承租、房東是個人計算：要代扣 10% 所得稅＋2.11% 二代健保，房東才能實拿標示金額，所以實付 = 標示 ÷ 0.8789（30,000 → 34,134），金額上方標「自行計算稅金」。寫「未稅＋5%」的是房東開發票，加 5% 營業稅。沒寫的照標示金額。條件篩選、每坪比價、排序都用換算後的金額。</p>
       <p>591 列表上的「N 天前」是更新時間、不是刊登時間，所以「首次看到」用的是 Franky 第一次抓到的時間。</p>
     </footer>

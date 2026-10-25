@@ -164,6 +164,9 @@ def _form_values(criteria: rw.Criteria) -> dict:
         "area_max": f"{criteria.area_max:g}",
         "mrt_max_m": criteria.mrt_max_m,
         "exclude_basement": criteria.exclude_basement,
+        "max_over_median_pct": (
+            "" if criteria.max_over_median_pct is None else criteria.max_over_median_pct
+        ),
     }
 
 
@@ -258,7 +261,14 @@ async def rental_criteria(request: Request, nakama_auth: str | None = Cookie(Non
         "bonus_districts": form.getlist("bonus_districts"),
         **{
             k: form.get(k, "")
-            for k in ("price_min", "price_max", "area_min", "area_max", "mrt_max_m")
+            for k in (
+                "price_min",
+                "price_max",
+                "area_min",
+                "area_max",
+                "mrt_max_m",
+                "max_over_median_pct",
+            )
         },
         "exclude_basement": form.get("exclude_basement") == "1",
     }

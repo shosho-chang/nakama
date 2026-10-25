@@ -393,3 +393,19 @@ def test_untaxed_price_is_grossed_up_and_labelled(client, db_path, monkeypatch):
     second = html[html.index('id="r-591-2"') :]
     second = second[: second.index("</form>")]
     assert "自行計算稅金" not in second and "標示含稅" in second
+
+
+def test_criteria_panel_over_median_field_roundtrip(client, db_path):
+    c, _ = client
+    html = c.get("/bridge/rental").text
+    assert 'name="max_over_median_pct"' in html and 'value="10"' in html
+    assert "比同區行情貴 10% 以上不列" in html
+    resp = c.post(
+        "/bridge/rental/criteria",
+        data={**_PANEL_FORM, "max_over_median_pct": ""},
+        follow_redirects=False,
+    )
+    assert resp.status_code == 303
+    assert rw.get_criteria_override(db_path)["max_over_median_pct"] is None
+    html = c.get("/bridge/rental").text
+    assert "以上不列" not in html

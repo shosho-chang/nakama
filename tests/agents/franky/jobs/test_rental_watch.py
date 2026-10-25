@@ -544,7 +544,8 @@ def test_dry_run_writes_nothing(config_path, tmp_path):
 def test_default_config_file_loads():
     c = rw.load_criteria()
     assert c.districts == ("中正區", "中山區", "大安區", "信義區", "文山區")
-    assert (c.price_min, c.price_max, c.area_min, c.area_max) == (20000, 40000, 10, 50)
+    assert (c.price_min, c.price_max, c.area_min, c.area_max) == (20000, 45000, 10, 50)
+    assert c.max_over_median_pct == 10
     assert c.mrt_max_m == 600
     assert c.exclude_basement is True
     assert c.bonus_districts == ("大安區", "文山區")
@@ -889,6 +890,7 @@ def test_parse_criteria_form_valid_keeps_canonical_order():
         "area": {"min": 12.5, "max": 45.0},
         "mrt_max_m": 700,
         "exclude_basement": True,
+        "max_over_median_pct": None,
     }
 
 
@@ -1388,3 +1390,106 @@ def test_over_budget_after_tax_is_stored_but_not_notified(config_path, tmp_path)
     assert [
         i.listing.key for i in rw.load_board(db, rw.load_criteria(config_path), now=NOW).items
     ] == ["591:1"]
+
+
+# ---------------------------------------------------------------------------
+# 比同區行情貴太多的不列（2026-10-25）
+# ---------------------------------------------------------------------------
+
+
+def _market_listings():
+    # 大安區每坪：1,000 / 1,050 / 1,100（中位數 1,050）＋ 1,200（+14%）＋ 1,150（+10%）
+    return [
+        _listing(listing_id="1", floor="1F/12F", price=20000, area=20.0),
+        _listing(listing_id="2", floor="2F/12F", price=21000, area=20.0),
+        _listing(listing_id="3", floor="3F/12F", price=22000, area=20.0),
+        _listing(listing_id="4", floor="4F/12F", price=24000, area=20.0),
+        _listing(listing_id="5", floor="6F/12F", price=23000, area=20.0),
+    ]
+
+
+def test_parse_criteria_form_over_median_pct():
+    override, errors = rw.parse_criteria_form({**_GOOD_FORM, "max_over_median_pct": "15"})
+    assert errors == [] and override["max_over_median_pct"] == 15
+    _, errors = rw.parse_criteria_form({**_GOOD_FORM, "max_over_median_pct": "-5"})
+    assert any("比同區行情" in e for e in errors)
+
+
+def test_over_market_listings_are_hidden_but_interested_kept(config_path, tmp_path):
+    cfg = _config(tmp_path, "c.yaml", "max_over_median_pct: 10\n")
+    db = tmp_path / "rw.db"
+    listings = _market_listings()
+    rw.run_once(
+        db_path=db,
+        config_path=cfg,
+        fetchers={"591": lambda h, c: list(listings)},
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    board = rw.load_board(db, rw.load_criteria(cfg), now=NOW)
+    # 中位數 1,100（五筆：1000/1050/1100/1150/1200）；+9%（1,200 → +9%）照列
+    pcts = {i.listing.listing_id: i.assessment.vs_median_pct for i in board.items}
+    assert set(pcts) == {"1", "2", "3", "4", "5"}
+
+    listings.append(_listing(listing_id="6", floor="8F/12F", price=27000, area=20.0))  # +23%
+    rw.run_once(
+        db_path=db,
+        config_path=cfg,
+        fetchers={"591": lambda h, c: list(listings)},
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    board = rw.load_board(db, rw.load_criteria(cfg), now=NOW)
+    assert "6" not in {i.listing.listing_id for i in board.items}
+
+    rw.set_feedback(db, "591:6", "interested", now=NOW)
+    board = rw.load_board(db, rw.load_criteria(cfg), now=NOW)
+    assert "6" in {i.listing.listing_id for i in board.items}
+
+
+def test_over_market_new_listing_is_not_notified(config_path, tmp_path):
+    cfg = _config(tmp_path, "c.yaml", "max_over_median_pct: 10\n")
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    listings = [
+        _listing(
+            listing_id=str(i),
+            floor=f"{i}F/12F",
+            price=20000 + i * 500,
+            area=20.0,
+            mrt_distance=300,
+            registration="可登記",
+        )
+        for i in range(1, 6)
+    ]
+    fetchers = {"591": lambda h, c: list(listings)}
+    rw.run_once(db_path=db, config_path=cfg, fetchers=fetchers, http=FakeHttp([]), now=NOW)
+    listings.append(
+        _listing(
+            listing_id="9",
+            floor="9F/12F",
+            price=30000,
+            area=20.0,
+            mrt_distance=300,
+            registration="可登記",
+        )
+    )
+    r = rw.run_once(
+        slack_bot=bot, db_path=db, config_path=cfg, fetchers=fetchers, http=FakeHttp([]), now=NOW
+    )
+    assert r.new == 0
+    bot.post_plain.assert_not_called()
+
+
+def test_no_limit_keeps_everything(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    listings = [*_market_listings(), _listing(listing_id="6", floor="8F/12F", price=27000)]
+    rw.run_once(
+        db_path=db,
+        config_path=config_path,
+        fetchers={"591": lambda h, c: listings},
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    board = rw.load_board(db, rw.load_criteria(config_path), now=NOW)
+    assert len(board.items) == 6

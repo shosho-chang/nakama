@@ -147,6 +147,8 @@ class Criteria:
     mrt_max_m: int = 500
     exclude_basement: bool = False
     bonus_districts: tuple[str, ...] = ()
+    # 每坪比同區中位數貴超過這個 % 就不列；None = 不限。
+    max_over_median_pct: Optional[int] = None
     # 條件內容的指紋（忽略 yaml 註解）；條件一改，下一輪改成重新盤點，不把新範圍
     # 進來的物件當「新物件」一次推幾十筆。
     config_hash: str = ""
@@ -246,6 +248,9 @@ def load_criteria(path: Path = DEFAULT_CONFIG_PATH, *, db_path: Optional[Path] =
         mrt_max_m=int(raw.get("mrt_max_m", 500)),
         exclude_basement=bool(raw.get("exclude_basement", False)),
         bonus_districts=tuple(raw.get("bonus_districts") or ()),
+        max_over_median_pct=(
+            int(raw["max_over_median_pct"]) if raw.get("max_over_median_pct") is not None else None
+        ),
         config_hash=hashlib.sha1(
             json.dumps(raw, sort_keys=True, ensure_ascii=False).encode("utf-8")
         ).hexdigest()[:12],
@@ -313,6 +318,11 @@ def parse_criteria_form(form: dict[str, Any]) -> tuple[dict[str, Any], list[str]
     area_min = _num(form.get("area_min"), "坪數下限", errors, as_int=False)
     area_max = _num(form.get("area_max"), "坪數上限", errors, as_int=False)
     mrt = _num(form.get("mrt_max_m"), "捷運距離", errors)
+    over = None
+    if str(form.get("max_over_median_pct") or "").strip():
+        over = _num(form.get("max_over_median_pct"), "比同區行情貴幾 %", errors)
+        if over is not None and not (0 <= over <= 200):
+            errors.append("比同區行情貴幾 % 要介於 0–200（不限就留空）")
     if price_min is not None and price_max is not None:
         if not (1000 <= price_min < price_max <= 500000):
             errors.append("月租要介於 1,000–500,000，而且下限小於上限")
@@ -329,6 +339,7 @@ def parse_criteria_form(form: dict[str, Any]) -> tuple[dict[str, Any], list[str]
         "area": {"min": area_min, "max": area_max},
         "mrt_max_m": mrt,
         "exclude_basement": bool(form.get("exclude_basement")),
+        "max_over_median_pct": over,
     }
     return override, errors
 
@@ -1098,6 +1109,12 @@ class Board:
     baseline_at: Optional[str]
 
 
+def over_market(assessment: "Assessment", criteria: Criteria) -> bool:
+    """每坪比同區中位數貴超過 ``criteria.max_over_median_pct``（算不出來的不算）。"""
+    limit, pct = criteria.max_over_median_pct, assessment.vs_median_pct
+    return limit is not None and pct is not None and pct > limit
+
+
 def load_board(
     db_path: Path, criteria: Criteria, *, now: Optional[datetime] = None
 ) -> Optional[Board]:
@@ -1134,6 +1151,16 @@ def load_board(
         listings.append(it)
     assessments = assess_all(listings, criteria)
     groups = unit_groups(listings)
+    # 比同區行情貴太多的不列（中位數要用整批算，所以在評估之後才濾）。
+    # 修修標過「有興趣」的照列，免得標了的東西突然不見。
+    interested = {groups[k] for k, f in fb.items() if k in groups and f["verdict"] == "interested"}
+    keep = [
+        i
+        for i, it in enumerate(listings)
+        if groups[it.key] in interested or not over_market(assessments[it.key], criteria)
+    ]
+    active = [active[i] for i in keep]
+    listings = [listings[i] for i in keep]
     # 同一間只要有一筆被標過，整群都套用（最後標的那次為準）→ 新仲介再刊一次也自動歸位。
     group_fb: dict[str, sqlite3.Row] = {}
     for it in listings:
@@ -1650,6 +1677,11 @@ def run_once(
     new = [it for it in new if passes(it, criteria)]
     drops = [d for d in drops if passes(d.listing, criteria)]
     assessments = assess_all(listings, criteria)
+    # 比同區行情貴太多的也不通知、不算進盤點（中位數仍用整批算）。
+    priced_ok = {it.key for it in listings if not over_market(assessments[it.key], criteria)}
+    listings = [it for it in listings if it.key in priced_ok]
+    new = [it for it in new if it.key in priced_ok]
+    drops = [d for d in drops if d.listing.key in priced_ok]
     basement_new = sum(1 for it in new if it.is_basement)
     if is_baseline:
         if source_counts and slack_bot is not None:
