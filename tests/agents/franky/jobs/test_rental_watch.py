@@ -10,6 +10,7 @@ import base64
 import json
 import re
 import sqlite3
+from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -1230,3 +1231,160 @@ def test_photos_roundtrip_and_old_db_gets_column(config_path, tmp_path):
     conn = sqlite3.connect(db)
     assert conn.execute("SELECT photos FROM listings WHERE key = '591:9'").fetchone() == ("[]",)
     conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 租金含不含稅（2026-10-25）：讀敘述、未稅的自行加回稅費
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # 實際在 591／好房網敘述看到的寫法
+        ("公用廁所+自有廁所,獨立冷氣 租金未稅 歡迎來電", rw.TAX_EXCLUDED),
+        ("六人小型辦公室。租金為26000（未稅）", rw.TAX_EXCLUDED),
+        ("刊登廣告之租金(未稅)~開放式空間", rw.TAX_EXCLUDED),
+        ("租金價格不含稅 中山站雙捷運辦公室", rw.TAX_EXCLUDED),
+        ("可商登，稅外 獨立洗手間", rw.TAX_EXCLUDED),
+        ("租金不含租賃稅與二代健保費", rw.TAX_EXCLUDED),
+        ("租金為未稅價格，亦不含管理費", rw.TAX_EXCLUDED),
+        ("稅金由承租人負擔", rw.TAX_EXCLUDED),
+        ("獨立冷氣,租金未稅+5% 此為分割物件", rw.TAX_VAT),
+        ("租金另加5%營業稅", rw.TAX_VAT),
+        ("選擇一 租金28,000含稅價", rw.TAX_INCLUDED),
+        ("NT$25,000–35,000（含稅）", rw.TAX_INCLUDED),
+        ("【備註】廣告坪數為權狀坪數、租金為含稅金額", rw.TAX_INCLUDED),
+        ("西門站小型辦公室,租金含稅!", rw.TAX_INCLUDED),
+        ("租金含稅，不含二代健保", rw.TAX_NHI_ONLY),
+        # 跟租金無關的「稅」
+        ("萬隆捷運站方正辦公室可登記可報稅", ""),
+        ("成交行情分析｜稅費試算｜房貸規劃", ""),
+        ("可報營業稅", ""),
+        ("含管理費、不含水電", ""),
+        ("", ""),
+    ],
+)
+def test_parse_tax(text, expected):
+    assert rw.parse_tax(text) == expected
+
+
+@pytest.mark.parametrize(
+    "price,tax,cost",
+    [
+        (30000, rw.TAX_EXCLUDED, 34134),  # 30,000 ÷ (1 − 10% − 2.11%)
+        (30000, rw.TAX_NHI_ONLY, 30647),  # ÷ (1 − 2.11%)
+        (30000, rw.TAX_VAT, 31500),  # × 1.05
+        (30000, rw.TAX_INCLUDED, 30000),
+        (30000, "", 30000),
+        (17000, rw.TAX_EXCLUDED, 17000),  # 換算後 ≤ 20,000：免代扣、免補充保費
+        (18000, rw.TAX_EXCLUDED, 20480),
+    ],
+)
+def test_monthly_cost(price, tax, cost):
+    assert rw.monthly_cost(price, tax) == cost
+
+
+def test_cost_drives_filter_and_price_per_ping(criteria):
+    it = _listing(price=31000, area=20.0, tax=rw.TAX_EXCLUDED)
+    assert (it.cost, it.tax_added) == (35271, True)
+    assert rw.passes(it, criteria) is False  # 上限 35,000：實付超過就不符合
+    assert rw.passes(replace(it, tax=""), criteria) is True
+    assert rw_assess.price_per_ping(replace(it, price=30000)) == 34134 / 20.0
+
+
+def test_detail_page_tax_is_read_once_for_every_site(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    pages = {
+        "/rent/1": '<div class="house-condition-content">方正 租金未稅 歡迎來電</div>',
+        "sinyi.com.tw/rent/houseno/C1": '<ul class="features-description"><li>租金含稅</li></ul>',
+        "housefun.com.tw/rent/house/7/": '<div id="divDes">租金未稅+5%</div>',
+    }
+    http = FakeHttp(
+        [
+            (lambda m, u, k, frag=frag: frag in u, lambda *a, html=html: _Resp(text=html))
+            for frag, html in pages.items()
+        ]
+    )
+    listings = [
+        _listing(listing_id="1", registration="可登記", mrt_distance=200),
+        _listing(
+            source="sinyi",
+            listing_id="C1",
+            floor="3/12",
+            url="https://www.sinyi.com.tw/rent/houseno/C1",
+        ),
+        _listing(
+            source="housefun",
+            listing_id="7",
+            floor="8/12",
+            price=20000,
+            url="https://rent.housefun.com.tw/rent/house/7/",
+        ),
+    ]
+    fetchers = {
+        "591": lambda h, c: [listings[0]],
+        "sinyi": lambda h, c: [listings[1]],
+        "housefun": lambda h, c: [listings[2]],
+    }
+    for _ in range(2):
+        rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=http, now=NOW)
+
+    assert len(http.calls) == 3  # 每筆只抓一次
+    board = rw.load_board(db, rw.load_criteria(config_path), now=NOW)
+    by_key = {i.listing.key: i.listing for i in board.items}
+    assert by_key["591:1"].tax == rw.TAX_EXCLUDED and by_key["591:1"].cost == 28445
+    assert by_key["sinyi:C1"].tax == rw.TAX_INCLUDED and by_key["sinyi:C1"].cost == 25000
+    assert by_key["housefun:7"].tax == rw.TAX_VAT and by_key["housefun:7"].cost == 21000
+    assert all(i.detail_checked for i in by_key.values())
+
+
+def test_title_tax_is_used_when_detail_not_fetched(config_path, tmp_path, monkeypatch):
+    monkeypatch.setenv("RENTAL_WATCH_DETAIL_BUDGET", "0")
+    db = tmp_path / "rw.db"
+    it = _listing(title="大安站辦公室 租金未稅", mrt_distance=200, registration="可登記")
+    rw.run_once(
+        db_path=db,
+        config_path=config_path,
+        fetchers={"591": lambda h, c: [it]},
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    (item,) = rw.load_board(db, rw.load_criteria(config_path), now=NOW).items
+    assert (item.listing.tax, item.listing.detail_checked) == (rw.TAX_EXCLUDED, False)
+
+
+def test_slack_line_shows_cost_and_label():
+    it = _listing(price=30000, area=20.0, tax=rw.TAX_EXCLUDED)
+    line = rw.format_listing(it)
+    assert "34,134元（自行計算稅金；標示 30,000 未稅）" in line
+    assert "每坪 1,707" in line
+
+
+def test_over_budget_after_tax_is_stored_but_not_notified(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    page = '<div class="house-condition-content">租金未稅</div>'
+    http = FakeHttp([(lambda m, u, k: "/rent/" in u, lambda *a: _Resp(text=page))])
+    listings = [_listing(listing_id="1", mrt_distance=200, registration="可登記")]
+    fetchers = {"591": lambda h, c: list(listings)}
+    rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=http, now=NOW)
+    # 標示 33,000 未稅 → 實付 37,547，超過上限 35,000
+    listings.append(
+        _listing(
+            listing_id="2", price=33000, floor="9F/12F", mrt_distance=200, registration="可登記"
+        )
+    )
+    r = rw.run_once(
+        slack_bot=bot, db_path=db, config_path=config_path, fetchers=fetchers, http=http, now=NOW
+    )
+    bot.post_plain.assert_not_called()
+    assert r.new == 0
+    conn = sqlite3.connect(db)
+    assert conn.execute(
+        "SELECT tax, detail_checked FROM listings WHERE key = '591:2'"
+    ).fetchone() == ("excluded", 1)
+    conn.close()
+    assert [
+        i.listing.key for i in rw.load_board(db, rw.load_criteria(config_path), now=NOW).items
+    ] == ["591:1"]

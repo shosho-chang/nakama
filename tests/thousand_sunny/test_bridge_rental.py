@@ -368,3 +368,28 @@ def test_row_shows_thumbnail_and_gallery_from_best_posting(client, db_path):
     other = html[html.index('id="r-591-3"') :]
     assert "沒有照片" in other[: other.index("</li>")]
     assert 'id="rt-gallery"' in html
+
+
+def test_untaxed_price_is_grossed_up_and_labelled(client, db_path, monkeypatch):
+    c, _ = client
+    monkeypatch.setenv("RENTAL_WATCH_DETAIL_BUDGET", "0")
+    rw.run_once(
+        db_path=db_path,
+        fetchers={
+            "591": lambda h, c: [
+                _listing(listing_id="1", title="未稅的 租金未稅", price=30000),
+                _listing(listing_id="2", title="含稅的 租金含稅", floor="9F/12F"),
+            ]
+        },
+        http=object(),
+        now=NOW,
+    )
+    html = c.get("/bridge/rental").text
+    first = html[html.index('id="r-591-1"') :]
+    first = first[: first.index("</form>")]
+    assert '<p class="rt-tax-calc">自行計算稅金</p>' in first
+    assert '<span class="rt-price-n">34,134</span>' in first
+    assert "標示 30,000・標示未稅：已加 10% 所得稅＋2.11% 二代健保" in first
+    second = html[html.index('id="r-591-2"') :]
+    second = second[: second.index("</form>")]
+    assert "自行計算稅金" not in second and "標示含稅" in second

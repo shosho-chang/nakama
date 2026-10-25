@@ -53,10 +53,16 @@
     {% if v.reason %}<p class="rt-note"><span class="rt-note-k">你的備註</span>{{ v.reason }}</p>{% endif %}
   </div>
   <div class="rt-row-price">
+    {% if v.tax_added %}<p class="rt-tax-calc">自行計算稅金</p>{% endif %}
     <p class="rt-price">
       {% if v.prev_price %}<s class="rt-prev" aria-label="原價">{{ "{:,}".format(v.prev_price) }}</s>{% endif %}
       <span class="rt-price-n">{{ "{:,}".format(v.price) }}</span><span class="rt-price-u">元/月</span>
     </p>
+    {% if v.tax_added %}
+    <p class="rt-tax-note">標示 {{ "{:,}".format(v.listed_price) }}・{{ v.tax_note }}</p>
+    {% elif v.tax_note %}
+    <p class="rt-tax-note">{{ v.tax_note }}</p>
+    {% endif %}
     {% if v.ppp %}
     <p class="rt-ppp">每坪 {{ "{:,}".format(v.ppp) }}{% if v.vs_pct is not none %}<span class="rt-vs{% if v.vs_pct <= -10 %} is-good{% elif v.vs_pct >= 20 %} is-warn{% endif %}">同區 {{ "%+d" | format(v.vs_pct) }}%</span>{% endif %}</p>
     {% endif %}
@@ -225,6 +231,7 @@
 
     <footer class="rt-foot">
       <p><b>排序怎麼算</b>：每坪租金比同區中位數便宜 20% 以上 +2、10% 以上 +1、貴 20% 以上 −1；30 坪以上 +1；{% if criteria.bonus_districts %}{{ criteria.bonus_districts | join('、') }} +1；{% endif %}{% if not criteria.exclude_basement %}地下室 +1；{% endif %}離捷運 200m 內 +1。同區中位數是用目前在架的這一批算的，不是市場行情。「搶手」= 591 昨日瀏覽人數落在這批的前 10%（且至少 20 人）。</p>
+      <p><b>租金含不含稅</b>：Franky 會讀每筆的敘述。寫「未稅」的，以公司承租、房東是個人計算：要代扣 10% 所得稅＋2.11% 二代健保，房東才能實拿標示金額，所以實付 = 標示 ÷ 0.8789（30,000 → 34,134），金額上方標「自行計算稅金」。寫「未稅＋5%」的是房東開發票，加 5% 營業稅。沒寫的照標示金額。條件篩選、每坪比價、排序都用換算後的金額。</p>
       <p>591 列表上的「N 天前」是更新時間、不是刊登時間，所以「首次看到」用的是 Franky 第一次抓到的時間。</p>
     </footer>
   </main>

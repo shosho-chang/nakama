@@ -76,9 +76,9 @@ def mrt_status(listing: "Listing", mrt_max_m: int) -> Optional[bool]:
 
 
 def price_per_ping(listing: "Listing") -> Optional[float]:
-    if not listing.area or listing.area <= 0 or listing.price <= 0:
+    if not listing.area or listing.area <= 0 or listing.cost <= 0:
         return None
-    return listing.price / listing.area
+    return listing.cost / listing.area  # 未稅的已加回稅費（Listing.cost）
 
 
 def district_medians(listings: Iterable["Listing"]) -> dict[str, float]:
