@@ -35,6 +35,10 @@ def guest_name(episode_id: str) -> str:
     return name
 
 
+def _squash_space(value: str) -> str:
+    return re.sub(r"\s+", "", value)
+
+
 def interviews_root(vault_path: Path | None = None) -> Path:
     root = (vault_path or get_vault_path()).joinpath(*INTERVIEWS_SUBPATH)
     if not root.is_dir():
@@ -46,8 +50,13 @@ def interview_dir(episode_id: str, vault_path: Path | None = None) -> Path:
     """找出這一集的 interview 專案資料夾。找不到或找到多個都 fail loud。"""
     guest = guest_name(episode_id)
     root = interviews_root(vault_path)
+    # 英文名在兩邊的空白不一致：episode `20261021 Kelly Tsai`、Vault `2026-10-19-KellyTsai`
+    # （採集階段建資料夾時拿掉了空白）。比對時兩邊都去掉空白，`-` 邊界照舊保留。
+    suffix = "-" + _squash_space(guest)
     matches = [
-        path for path in sorted(root.iterdir()) if path.is_dir() and path.name.endswith(f"-{guest}")
+        path
+        for path in sorted(root.iterdir())
+        if path.is_dir() and _squash_space(path.name).endswith(suffix)
     ]
     if not matches:
         raise VaultInterviewError(
