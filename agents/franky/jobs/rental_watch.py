@@ -149,6 +149,9 @@ class Criteria:
     bonus_districts: tuple[str, ...] = ()
     # 每坪比同區中位數貴超過這個 % 就不列；None = 不限。
     max_over_median_pct: Optional[int] = None
+    # 離家距離：家附近捷運站名、從那站到各站要搭幾分鐘（config/rental-commute.yaml）。
+    commute_home: str = ""
+    commute_minutes: tuple[tuple[str, int], ...] = ()
     # 條件內容的指紋（忽略 yaml 註解）；條件一改，下一輪改成重新盤點，不把新範圍
     # 進來的物件當「新物件」一次推幾十筆。
     config_hash: str = ""
@@ -225,6 +228,20 @@ class RentalWatchResult:
         }
 
 
+COMMUTE_FILE_NAME = "rental-commute.yaml"
+
+
+def _load_commute(path: Path) -> dict[str, Any]:
+    """scripts/build_rental_commute.py 產的表；沒有這個檔就不算離家距離。"""
+    if not path.exists():
+        return {}
+    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
+    return {
+        "commute_home": str((data.get("home") or {}).get("name") or ""),
+        "commute_minutes": tuple((str(k), int(v)) for k, v in (data.get("minutes") or {}).items()),
+    }
+
+
 def load_criteria(path: Path = DEFAULT_CONFIG_PATH, *, db_path: Optional[Path] = None) -> Criteria:
     """設定檔是預設值；``db_path`` 給了就再疊上修修在 Bridge 面板存的條件。"""
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -251,6 +268,7 @@ def load_criteria(path: Path = DEFAULT_CONFIG_PATH, *, db_path: Optional[Path] =
         max_over_median_pct=(
             int(raw["max_over_median_pct"]) if raw.get("max_over_median_pct") is not None else None
         ),
+        **_load_commute(path.parent / COMMUTE_FILE_NAME),
         config_hash=hashlib.sha1(
             json.dumps(raw, sort_keys=True, ensure_ascii=False).encode("utf-8")
         ).hexdigest()[:12],

@@ -52,6 +52,18 @@
   window.addEventListener("load", () => setTimeout(restore, 0));
 })();
 
+/* 頁首「修改條件」：打開收合的條件面板再捲過去（只有錨點的話 <details> 不會自己展開）。 */
+document.addEventListener("click", (event) => {
+  const link = event.target instanceof Element && event.target.closest("[data-open]");
+  if (!link) return;
+  const panel = document.getElementById(link.dataset.open);
+  if (!(panel instanceof HTMLDetailsElement)) return;
+  event.preventDefault();
+  panel.open = true;
+  panel.scrollIntoView({ block: "start" });
+  panel.querySelector("summary")?.focus({ preventScroll: true });
+});
+
 /* 照片燈箱（修修 2026-10-24：不用點進原網頁就能看空間）。
  * 縮圖本身是原網頁連結；這裡攔下點擊改開 <dialog>。←／→ 換張、Esc 關閉（dialog 原生）。
  */

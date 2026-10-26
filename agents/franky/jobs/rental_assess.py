@@ -39,6 +39,36 @@ HOT_PERCENTILE = 0.9
 # 「建議儘快聯繫」：符合條件，且（搶手 或 加分 ≥ 這個數）。
 URGENT_MIN_SCORE = 3
 
+# 離家距離（修修 2026-10-26：家在萬芳醫院站附近，科技大樓、遠企一帶最好）。
+# 門到站 = 搭捷運到家附近那站的時間（官網最小旅行時間，含等車）＋從物件走到最近捷運站。
+COMMUTE_NEAR_MIN = 15  # 以內 +2
+COMMUTE_OK_MIN = 25  # 以內 +1
+COMMUTE_FAR_MIN = 40  # 超過 −1
+_WALK_M_PER_MIN = 80
+
+
+def station_name(raw: str, known: Iterable[str] = ()) -> str:
+    """591 的站名寫法不一：「麟光站」「忠孝敦化捷運站」→ 官方站名。
+
+    官方站名本身就有「站」字的（台北車站）原樣保留：``known`` 裡有就不剝。
+    """
+    name = (raw or "").strip()
+    if name in known:
+        return name
+    for suffix in ("捷運站", "站"):
+        if name.endswith(suffix) and len(name) > len(suffix):
+            return name[: -len(suffix)]
+    return name
+
+
+def commute_minutes(listing: "Listing", ride: dict[str, int]) -> Optional[tuple[int, int]]:
+    """(搭捷運分鐘, 走路分鐘)；不知道最近哪一站、或那站不在表上 → None。"""
+    minutes = ride.get(station_name(listing.mrt_station, ride))
+    if minutes is None:
+        return None
+    walk = round(listing.mrt_distance / _WALK_M_PER_MIN) if listing.mrt_distance else 0
+    return minutes, walk
+
 
 @dataclass(frozen=True)
 class Chip:
@@ -106,6 +136,8 @@ def assess(
     hot_min_views: int,
     mrt_max_m: int,
     bonus_districts: tuple[str, ...] = (),
+    commute: Optional[dict[str, int]] = None,
+    home: str = "",
 ) -> Assessment:
     chips: list[Chip] = []
     score = 0
@@ -159,6 +191,27 @@ def assess(
         score += 1
         chips.append(Chip(f"離{listing.mrt_station or '捷運'}只有 {listing.mrt_distance}m", "good"))
 
+    trip = commute_minutes(listing, commute) if commute else None
+    if trip is not None:
+        ride, walk = trip
+        total = ride + walk
+        text = (
+            f"離家約 {total} 分：{station_name(listing.mrt_station, commute)}→{home} 搭 {ride} 分"
+        )
+        if walk:
+            text += f"＋走 {walk} 分"
+        if total <= COMMUTE_NEAR_MIN:
+            score += 2
+            chips.append(Chip(text, "good"))
+        elif total <= COMMUTE_OK_MIN:
+            score += 1
+            chips.append(Chip(text, "good"))
+        elif total > COMMUTE_FAR_MIN:
+            score -= 1
+            chips.append(Chip(text, "warn"))
+        else:
+            chips.append(Chip(text, "info"))
+
     hot = listing.views is not None and listing.views >= hot_min_views
     if hot:
         chips.append(Chip(f"搶手：昨天 {listing.views} 人看過", "good"))
@@ -179,6 +232,7 @@ def assess_all(listings: list["Listing"], criteria: "Criteria") -> dict[str, Ass
     """以這一批在架物件當比較基準，評估每一筆。回傳 key → Assessment。"""
     medians = district_medians(listings)
     hot_min = hot_threshold(listings)
+    commute = dict(criteria.commute_minutes)
     return {
         it.key: assess(
             it,
@@ -186,6 +240,8 @@ def assess_all(listings: list["Listing"], criteria: "Criteria") -> dict[str, Ass
             hot_min_views=hot_min,
             mrt_max_m=criteria.mrt_max_m,
             bonus_districts=criteria.bonus_districts,
+            commute=commute,
+            home=criteria.commute_home,
         )
         for it in listings
     }
