@@ -1493,3 +1493,73 @@ def test_no_limit_keeps_everything(config_path, tmp_path):
     )
     board = rw.load_board(db, rw.load_criteria(config_path), now=NOW)
     assert len(board.items) == 6
+
+
+# ---------------------------------------------------------------------------
+# 離家距離（2026-10-26：家在萬芳醫院站附近）
+# ---------------------------------------------------------------------------
+
+_COMMUTE_YAML = """
+home: {code: BR04, name: 萬芳醫院}
+minutes: {萬芳醫院: 0, 科技大樓: 9, 忠孝復興: 12, 台北車站: 22, 劍潭: 35, 淡水: 60}
+"""
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("麟光站", "麟光"),
+        ("忠孝敦化捷運站", "忠孝敦化"),
+        ("台北車站", "台北車站"),
+        ("大安", "大安"),
+    ],
+)
+def test_station_name(raw, expected):
+    assert rw_assess.station_name(raw, {"台北車站": 22}) == expected
+
+
+def test_load_criteria_reads_commute_table_next_to_config(tmp_path):
+    cfg = _config(tmp_path, "rental-watch.yaml", "")
+    assert rw.load_criteria(cfg).commute_minutes == ()
+    (tmp_path / "rental-commute.yaml").write_text(_COMMUTE_YAML, encoding="utf-8")
+    c = rw.load_criteria(cfg)
+    assert c.commute_home == "萬芳醫院"
+    assert dict(c.commute_minutes)["科技大樓"] == 9
+
+
+@pytest.mark.parametrize(
+    "station,distance,points,tone,text",
+    [
+        ("科技大樓站", 240, 2, "good", "離家約 12 分：科技大樓→萬芳醫院 搭 9 分＋走 3 分"),
+        ("忠孝復興", 400, 1, "good", "離家約 17 分：忠孝復興→萬芳醫院 搭 12 分＋走 5 分"),
+        ("台北車站", 300, 0, "info", "離家約 26 分：台北車站→萬芳醫院 搭 22 分＋走 4 分"),
+        ("淡水", 80, -1, "warn", "離家約 61 分：淡水→萬芳醫院 搭 60 分＋走 1 分"),
+    ],
+)
+def test_commute_score_and_chip(tmp_path, station, distance, points, tone, text):
+    cfg = _config(tmp_path, "rental-watch.yaml", "")
+    (tmp_path / "rental-commute.yaml").write_text(_COMMUTE_YAML, encoding="utf-8")
+    c = rw.load_criteria(cfg)
+    it = _listing(mrt_station=station, mrt_distance=distance, registration="可登記")
+    base = rw_assess.assess_all([replace(it, mrt_station="")], c)[it.key]
+    a = rw_assess.assess_all([it], c)[it.key]
+    assert a.score - base.score == points
+    chip = next(ch for ch in a.chips if ch.text.startswith("離家"))
+    assert (chip.text, chip.tone) == (text, tone)
+
+
+def test_unknown_station_gets_no_commute_chip(tmp_path):
+    cfg = _config(tmp_path, "rental-watch.yaml", "")
+    (tmp_path / "rental-commute.yaml").write_text(_COMMUTE_YAML, encoding="utf-8")
+    c = rw.load_criteria(cfg)
+    for it in (_listing(mrt_station="迪化街"), _listing(source="sinyi", mrt_station="")):
+        a = rw_assess.assess_all([it], c)[it.key]
+        assert not any(ch.text.startswith("離家") for ch in a.chips)
+
+
+def test_repo_commute_table_is_present_and_sane():
+    c = rw.load_criteria()
+    ride = dict(c.commute_minutes)
+    assert c.commute_home == "萬芳醫院" and ride["萬芳醫院"] == 0
+    # 文湖線往北：越遠越久
+    assert ride["麟光"] < ride["六張犁"] < ride["科技大樓"] < ride["大安"] < ride["忠孝復興"]

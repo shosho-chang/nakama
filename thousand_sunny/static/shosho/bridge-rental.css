@@ -48,6 +48,10 @@ body.sho .rt-criteria span {
   border: 1px solid var(--sho-line-2);
   border-radius: var(--sho-r-1);
 }
+body.sho .rt-criteria .rt-criteria-edit {
+  margin-left: var(--sho-s-1);
+  font-size: 12.5px;
+}
 body.sho .rt-must {
   color: var(--sho-text);
   font-weight: 600;

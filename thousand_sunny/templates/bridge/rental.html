@@ -119,6 +119,8 @@
         {% if criteria.exclude_basement %}<span>不含地下室</span>{% endif %}
         {% if criteria.bonus_districts %}<span>加分：{{ criteria.bonus_districts | join('・') }}</span>{% endif %}
         {% if criteria.max_over_median_pct is not none %}<span>比同區行情貴 {{ criteria.max_over_median_pct }}% 以上不列</span>{% endif %}
+        {% if criteria.commute_home %}<span>離家近加分：{{ criteria.commute_home }}站</span>{% endif %}
+        <a class="rt-criteria-edit sho-lk" href="#criteria" data-open="criteria">修改條件</a>
       </p>
       <p class="rt-status" role="status">
         <span class="rt-status-k">上次掃描</span><span class="rt-status-v">{{ last_scan }}</span>
@@ -237,7 +239,7 @@
     {% endif %}
 
     <footer class="rt-foot">
-      <p><b>排序怎麼算</b>：每坪租金比同區中位數便宜 20% 以上 +2、10% 以上 +1、貴 20% 以上 −1；30 坪以上 +1；{% if criteria.bonus_districts %}{{ criteria.bonus_districts | join('、') }} +1；{% endif %}{% if not criteria.exclude_basement %}地下室 +1；{% endif %}離捷運 200m 內 +1。同區中位數是用目前在架的這一批算的，不是市場行情。{% if criteria.max_over_median_pct is not none %}每坪比同區中位數貴超過 {{ criteria.max_over_median_pct }}% 的不列、不推（你標過有興趣的照列）；同區不到 3 筆或沒坪數的算不出來，照列。{% endif %}「搶手」= 591 昨日瀏覽人數落在這批的前 10%（且至少 20 人）。</p>
+      <p><b>排序怎麼算</b>：每坪租金比同區中位數便宜 20% 以上 +2、10% 以上 +1、貴 20% 以上 −1；30 坪以上 +1；{% if criteria.bonus_districts %}{{ criteria.bonus_districts | join('、') }} +1；{% endif %}{% if not criteria.exclude_basement %}地下室 +1；{% endif %}離捷運 200m 內 +1；{% if criteria.commute_home %}離家（{{ criteria.commute_home }}站）門到站 15 分內 +2、25 分內 +1、超過 40 分 −1（＝搭捷運的時間，取自臺北捷運官網「最小旅行時間」、含等車，再加從物件走到最近捷運站，以每分鐘 80 公尺算；信義、好房網沒有最近捷運站資料，不計）{% endif %}。同區中位數是用目前在架的這一批算的，不是市場行情。{% if criteria.max_over_median_pct is not none %}每坪比同區中位數貴超過 {{ criteria.max_over_median_pct }}% 的不列、不推（你標過有興趣的照列）；同區不到 3 筆或沒坪數的算不出來，照列。{% endif %}「搶手」= 591 昨日瀏覽人數落在這批的前 10%（且至少 20 人）。</p>
       <p><b>租金含不含稅</b>：Franky 會讀每筆的敘述。寫「未稅」的，以公司承租、房東是個人計算：要代扣 10% 所得稅＋2.11% 二代健保，房東才能實拿標示金額，所以實付 = 標示 ÷ 0.8789（30,000 → 34,134），金額上方標「自行計算稅金」。寫「未稅＋5%」的是房東開發票，加 5% 營業稅。沒寫的照標示金額。條件篩選、每坪比價、排序都用換算後的金額。</p>
       <p>591 列表上的「N 天前」是更新時間、不是刊登時間，所以「首次看到」用的是 Franky 第一次抓到的時間。</p>
     </footer>
