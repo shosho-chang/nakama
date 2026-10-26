@@ -137,7 +137,8 @@ Memo 是 agent-owned：直接呼叫 bundled runner，使用 exact `normalized.wa
 
 ```text
 podcast_subtitle_v2_evidence.py run-memo-bundled
-  -> [zero-duration only: repair-memo-srt]
+  -> [zero-duration only: repair-memo-srt | tail overrun only: repair-memo-srt-tail
+      | both: repair-memo-srt-chain]
   -> prepare-recognition (bind exact execution receipt + raw/repaired lineage)
   -> two independent recognition audits + agent-quorum receipt
   -> accept-recognition
@@ -158,6 +159,9 @@ Zero-duration cue 必須依 production runbook 執行 `repair-memo-srt` conditio
 `memo-srt-zero-duration-repair-v1` receipt 三者路徑不同，並把成對的 `--raw-source-export`＋
 `--repair-receipt` lineage 傳入 prepare/accept recognition 與 prepare/accept cues。Negative duration、
 overlap 或沒有 exact adjacent positive anchor 是 catastrophic failure，不得用猜測 timestamp 修補。
+同一份 export 同時有 zero-duration cue 與最後一句超出音檔（2026-10-22 周慕姿）時走 runbook §1.3 的
+`repair-memo-srt-chain`（`memo-srt-zero-duration-then-tail-repair-v1`），不要重跑 Memo：`--max-context 0`
+下輸出逐 byte deterministic，`--prompt` 也不起作用。
 
 必須驗證：
 

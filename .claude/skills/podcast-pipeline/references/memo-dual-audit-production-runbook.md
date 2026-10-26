@@ -155,8 +155,43 @@ $repairLineageArgs = @(
 ```
 
 It fails closed (catastrophic, stop) when the final cue starts beyond the audio, when the overrun exceeds
-2000 ms, or when any earlier cue is malformed. It does not combine with the zero-duration repair; an SRT that
-needs both is new evidence—stop and diagnose.
+2000 ms, or when any earlier cue is malformed (including a zero-duration cue — that SRT needs §1.3).
+
+### 1.3 Conditional chain: zero-duration cue **and** final-cue overrun
+
+20261009 周慕姿 needed both on one export (cue 3514 zero duration inside a repetition burst; final cue 50 ms
+past the audio). `repair-memo-srt-tail` refuses the raw export because of the zero cue, and the zero-duration
+repair does not know the audio length. Do not re-run Memo hoping it goes away: with `--max-context 0` the
+runner is byte-deterministic (a second run with a different prompt produced the identical SRT and stdout).
+Run the chain, which applies exactly the two existing repairs in order and seals both receipts inside contract
+`memo-srt-zero-duration-then-tail-repair-v1` (bound to the normalized audio hash and duration):
+
+```powershell
+$memoIntermediate = Join-Path $episode "subtitle-v2\memo-recognition.zero-repaired.srt"
+$memoRepaired = Join-Path $episode "subtitle-v2\memo-recognition.chain-repaired.srt"
+$repairReceipt = Join-Path $episode "subtitle-v2\memo-recognition.chain-repair.v1.json"
+E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_subtitle_v2_evidence.py repair-memo-srt-chain `
+  --source-export $memoRaw `
+  --normalized-audio (Join-Path $episode "normalized.wav") `
+  --normalized-manifest (Join-Path $episode "normalized-handoff.v1.json") `
+  --intermediate-output $memoIntermediate `
+  --output $memoRepaired `
+  --receipt-output $repairReceipt
+
+$memo = $memoRepaired
+$repairLineageArgs = @(
+  "--raw-source-export", $memoRaw,
+  "--repair-receipt", $repairReceipt
+)
+```
+
+It refuses an export that needs only one of the two repairs (use §1.1 or §1.2 instead). Verification replays
+both steps from the raw bytes, so the intermediate file is an audit artifact, not a lineage input.
+
+> **`--prompt` is inert under `--max-context 0`.** whisper.cpp counts the initial prompt as previous-text
+> context, and `--max-context 0` keeps zero of it — 20261009 周慕姿 got byte-identical output from two different
+> prompts. Proper nouns are therefore corrected by the S4 text audits, not by Memo. The prompt stays in the
+> receipt for provenance; do not spend effort tuning it.
 
 ### 2. Prepare recognition evidence
 
@@ -293,7 +328,7 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_subtitle_v2_evidence.py st
 ```
 
 The final `status` must print `"ready":true`. This command sequence is ordered:
-`run-memo-bundled → [zero-duration only: repair-memo-srt] → prepare-recognition → accept-recognition →`
+`run-memo-bundled → [conditional: repair-memo-srt | repair-memo-srt-tail | repair-memo-srt-chain] → prepare-recognition → accept-recognition →`
 `prepare-cues → accept-cues → status`.
 
 The release runner later requires recognition evidence and acceptance to contain the identical typed

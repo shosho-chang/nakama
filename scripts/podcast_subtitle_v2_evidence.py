@@ -49,6 +49,10 @@ from agents.brook.podcast_subtitles.memo_bundled_runner import (  # noqa: E402
     load_verified_memo_bundled_runner_execution,
 )
 from agents.brook.podcast_subtitles.memo_projection import parse_srt  # noqa: E402
+from agents.brook.podcast_subtitles.memo_srt_chained_repair import (  # noqa: E402
+    load_verified_memo_srt_chained_repair,
+    repair_memo_srt_zero_duration_then_tail_bytes,
+)
 from agents.brook.podcast_subtitles.memo_srt_repair import (  # noqa: E402
     load_verified_memo_srt_repair,
     repair_memo_srt_bytes,
@@ -416,6 +420,22 @@ def _source_repair_lineage(
         )
         raw_hash = tail_receipt.raw_source_sha256
         raw_size = tail_receipt.raw_source_size_bytes
+    elif contract == "memo-srt-zero-duration-then-tail-repair-v1":
+        # 20261009 周慕姿：同一份 export 同時有零長度 cue 與結尾超出，兩段修補串成
+        # 一張收據；和截齊修補一樣要綁同一份 normalized audio 的 hash 與長度。
+        if expected_normalized_audio_hash is None or expected_normalized_audio_duration_ms is None:
+            raise ValueError(
+                "Memo chained repair verification requires the normalized audio identity"
+            )
+        chained_receipt = load_verified_memo_srt_chained_repair(
+            raw_source=raw_source,
+            repaired_source=source_export,
+            receipt_path=receipt_path,
+            expected_normalized_audio_sha256=expected_normalized_audio_hash,
+            expected_normalized_audio_duration_ms=expected_normalized_audio_duration_ms,
+        )
+        raw_hash = chained_receipt.raw_source_sha256
+        raw_size = chained_receipt.raw_source_size_bytes
     elif contract == "memo-bundled-runner-vad-gap-repair-v1":
         loaded_receipt = _load_canonical_model(receipt_path, MemoVadGapRepairReceiptV1)
         assert isinstance(loaded_receipt, MemoVadGapRepairReceiptV1)
@@ -482,6 +502,31 @@ def _repair_memo_srt_tail(args: argparse.Namespace) -> int:
         normalized_audio_sha256=verified.receipt.normalized.sha256,
         normalized_audio_duration_ms=verified.receipt.normalized_duration_ms,
     )
+    _write_new(output, repaired)
+    _write_new(receipt_output, canonical_json_bytes(receipt))
+    return 0
+
+
+def _repair_memo_srt_chain(args: argparse.Namespace) -> int:
+    source = Path(args.source_export)
+    intermediate_output = Path(args.intermediate_output)
+    output = Path(args.output)
+    receipt_output = Path(args.receipt_output)
+    destinations = (intermediate_output, output, receipt_output)
+    if len({path.resolve() for path in (source, *destinations)}) != 4:
+        raise ValueError("repair-memo-srt-chain source and outputs must be distinct paths")
+    if any(path.exists() for path in destinations):
+        raise FileExistsError("repair-memo-srt-chain outputs must not already exist")
+    audio = Path(args.normalized_audio)
+    verified = VerifiedNormalizedAudioHandoffAdapter(Path(args.normalized_manifest)).normalize(
+        NormalizeRequest(source_audio=audio, expected_source_hash=hash_file(audio))
+    )
+    intermediate, repaired, receipt = repair_memo_srt_zero_duration_then_tail_bytes(
+        source.read_bytes(),
+        normalized_audio_sha256=verified.receipt.normalized.sha256,
+        normalized_audio_duration_ms=verified.receipt.normalized_duration_ms,
+    )
+    _write_new(intermediate_output, intermediate)
     _write_new(output, repaired)
     _write_new(receipt_output, canonical_json_bytes(receipt))
     return 0
@@ -947,6 +992,14 @@ def _parser() -> argparse.ArgumentParser:
     tail.add_argument("--output", required=True)
     tail.add_argument("--receipt-output", required=True)
     tail.set_defaults(handler=_repair_memo_srt_tail)
+    chain = commands.add_parser("repair-memo-srt-chain")
+    chain.add_argument("--source-export", required=True)
+    chain.add_argument("--normalized-audio", required=True)
+    chain.add_argument("--normalized-manifest", required=True)
+    chain.add_argument("--intermediate-output", required=True)
+    chain.add_argument("--output", required=True)
+    chain.add_argument("--receipt-output", required=True)
+    chain.set_defaults(handler=_repair_memo_srt_chain)
     bundled = commands.add_parser("run-memo-bundled")
     bundled.add_argument("--memo-runner", required=True)
     bundled.add_argument("--memo-model", required=True)
