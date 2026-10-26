@@ -263,3 +263,168 @@ def test_sealed_episode_passes_the_guard(tmp_path, monkeypatch):
     monkeypatch.setenv("PODCAST_EPISODES_ROOT", str(tmp_path))
 
     packaging._require_editorial_master(root.name)  # 不該 raise
+
+
+# ---------------------------------------------------------------------------
+# 6. 完整版的上傳檔：<集數名>.mp4 ＋ <集數名>.srt（修修 2026-10-26）
+# ---------------------------------------------------------------------------
+
+
+class _Item:
+    def __init__(self, end: int):
+        self._end = end
+
+    def GetEnd(self):  # noqa: N802 - Resolve API casing
+        return self._end
+
+
+class _Timeline:
+    def __init__(self, name: str, end: int = 9000):
+        self._name = name
+        self._end = end
+        self.subtitle_enabled = {1: False}
+
+    def GetName(self):  # noqa: N802
+        return self._name
+
+    def GetSetting(self, key):  # noqa: N802
+        return {
+            "timelineResolutionWidth": "1920",
+            "timelineResolutionHeight": "1080",
+            "timelineFrameRate": "30",
+        }[key]
+
+    def GetStartFrame(self):  # noqa: N802
+        return 0
+
+    def GetEndFrame(self):  # noqa: N802
+        return self._end
+
+    def GetItemListInTrack(self, kind, index):  # noqa: N802
+        return [_Item(self._end)]
+
+    def GetTrackCount(self, kind):  # noqa: N802
+        return len(self.subtitle_enabled) if kind == "subtitle" else 0
+
+    def SetTrackEnable(self, kind, index, enabled):  # noqa: N802
+        self.subtitle_enabled[index] = enabled
+        return True
+
+    def GetIsTrackEnabled(self, kind, index):  # noqa: N802
+        return self.subtitle_enabled[index]
+
+
+class _Project:
+    """只實作 export_cut 會碰到的方法；render 就是把 CustomName.mp4 寫出來。"""
+
+    def __init__(self, *timelines: _Timeline):
+        self._timelines = timelines
+        self.settings: dict | None = None
+        self.jobs = 0
+
+    def GetTimelineCount(self):  # noqa: N802
+        return len(self._timelines)
+
+    def GetTimelineByIndex(self, index):  # noqa: N802
+        return self._timelines[index - 1]
+
+    def SetCurrentTimeline(self, timeline):  # noqa: N802
+        return True
+
+    def SetCurrentRenderFormatAndCodec(self, fmt, codec):  # noqa: N802
+        return True
+
+    def SetRenderSettings(self, settings):  # noqa: N802
+        self.settings = dict(settings)
+        return True
+
+    def AddRenderJob(self):  # noqa: N802
+        self.jobs += 1
+        return "job-1"
+
+    def StartRendering(self, jids, isInteractiveMode=False):  # noqa: N802, N803
+        out = Path(self.settings["TargetDir"]) / f"{self.settings['CustomName']}.mp4"
+        out.write_bytes(b"rendered")
+        return True
+
+    def IsRenderingInProgress(self):  # noqa: N802
+        return False
+
+    def GetRenderJobStatus(self, jid):  # noqa: N802
+        return {"JobStatus": "Complete"}
+
+    def DeleteRenderJob(self, jid):  # noqa: N802
+        return True
+
+
+class _Resolve:
+    def OpenPage(self, page):  # noqa: N802
+        return True
+
+
+# CRLF＋BOM＋全形標點：逐位元組複本才會一模一樣，任何「讀進來再寫出去」都會走樣
+MASTER_SRT = "\ufeff1\r\n00:00:00,000 --> 00:00:02,000\r\n大家好，我是修修。\r\n\r\n".encode(
+    "utf-8"
+)
+
+
+def _sealed_with_srt(tmp_path: Path, episode: str = "20261021 Kelly Tsai") -> Path:
+    root = _sealed(tmp_path, episode)
+    (root / "editorial-master" / "v1" / "master.srt").write_bytes(MASTER_SRT)
+    return root
+
+
+def test_full_cut_upload_pair_is_named_after_the_episode(tmp_path, monkeypatch):
+    module = _load_publish_prep()
+    monkeypatch.setattr(module, "_probe", lambda path: (6146.9, path.stat().st_size))
+    root = _sealed_with_srt(tmp_path)
+    timeline = _Timeline(TIMELINE["name"])
+    project = _Project(timeline)
+
+    info = module.export_cut(_Resolve(), project, root, module.full_cut(root))
+
+    exports = root / "highlights" / "exports"
+    media = exports / "20261021 Kelly Tsai.mp4"
+    srt = exports / "20261021 Kelly Tsai.srt"
+    assert project.settings["CustomName"] == root.name
+    assert project.settings["TargetDir"] == str(exports)
+    # 燒 Shosho YT 字幕仍然是長片預設
+    assert project.settings["ExportSubtitle"] is True
+    assert project.settings["SubtitleFormat"] == "BurnIn"
+    assert timeline.subtitle_enabled == {1: True}
+    assert media.is_file()
+    assert srt.read_bytes() == MASTER_SRT
+    assert info["cut_id"] == "full"
+    assert info["file"] == str(media)
+    assert info["cc_srt"] == str(srt)
+    assert not (exports / "full.mp4").exists()
+    assert not list(exports.glob("*.tmp"))
+
+
+def test_full_cut_without_master_srt_stops_before_rendering(tmp_path, monkeypatch):
+    """完整版 render 一次一兩個小時——跑完才發現沒字幕可上傳是白工。"""
+    module = _load_publish_prep()
+    root = _sealed(tmp_path, "20261021 Kelly Tsai")
+    project = _Project(_Timeline(TIMELINE["name"]))
+
+    with pytest.raises(SystemExit) as excinfo:
+        module.export_cut(_Resolve(), project, root, module.full_cut(root))
+
+    assert "master.srt" in str(excinfo.value)
+    assert project.jobs == 0
+
+
+def test_highlight_long_cut_keeps_the_cut_id_name(tmp_path, monkeypatch):
+    module = _load_publish_prep()
+    monkeypatch.setattr(module, "_probe", lambda path: (600.0, path.stat().st_size))
+    root = _sealed_with_srt(tmp_path)
+    cut = {"id": "punch-L01", "format": "long", "rank": 1, "title": "x"}
+    project = _Project(_Timeline(module.timeline_label(cut)))
+
+    info = module.export_cut(_Resolve(), project, root, cut)
+
+    exports = root / "highlights" / "exports"
+    assert project.settings["CustomName"] == "punch-L01"
+    assert info["file"] == str(exports / "punch-L01.mp4")
+    assert info["cc_srt"] is None  # 精華的 CC 仍是 tight SRT，這裡沒有就是 None
+    assert not (exports / f"{root.name}.srt").exists()
