@@ -996,6 +996,40 @@ def test_compose_rejects_absurd_title_max_width(client, vault_with_cutouts):
     assert _compose(client, title_max_width="4000").status_code == 422
 
 
+def test_compose_saves_title_font_px(client, vault_with_cutouts):
+    """大字字級是獨立旋鈕（修修 2026-10-27：「我想要像 Cutout 一樣，可以用上下滾動來調大小」）。
+
+    以前只有 title_max_width，而 composition 只縮不放：字級上限寫死 100px。短大字
+    （「越可靠／越累」）在 580 寬底下本來就放得下，滾輪撐寬框、字不會變大；
+    往下滾又碰不到 300 的下限，兩個方向都沒反應。
+    """
+    assert _compose(client, title_font_px="148").status_code == 303
+    assert _saved_req(vault_with_cutouts)["title_font_px"] == 148
+    board = client.get("/bridge/packaging/20260723-xieboran")
+    assert 'name="title_font_px"' in board.text
+    assert 'value="148"' in board.text
+
+
+def test_compose_defaults_title_font_px_to_the_old_ceiling(client, vault_with_cutouts):
+    """沒調過字級＝100px，跟舊規則一致，已存的封面不會因此變樣。"""
+    _compose(client)
+    assert _saved_req(vault_with_cutouts)["title_font_px"] == 100
+
+
+@pytest.mark.parametrize("value", ["40", "400"])
+def test_compose_rejects_absurd_title_font_px(client, vault_with_cutouts, value):
+    assert _compose(client, title_font_px=value).status_code == 422
+
+
+def test_board_wheel_on_text_layer_drives_font_size(client, vault_with_cutouts):
+    """滾輪停在大字上改的是字級，不再只是寬度框——寬度框跟著撐開才不會把字縮回去。"""
+    board = client.get("/bridge/packaging/20260723-xieboran").text
+    assert "title_font_px" in board
+    wheel = board[board.index('addEventListener("wheel"') :]
+    text_branch = wheel[: wheel.index('person.dataset.role === "book"')]
+    assert "title_font_px" in text_branch
+
+
 def test_geometry_inputs_cannot_reject_a_dragged_value(client, vault_with_cutouts):
     """拖出來的兩位小數不可以被瀏覽器擋下來。
 

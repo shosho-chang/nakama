@@ -315,6 +315,10 @@
               <input class="sho-input" id="tw-{{ cut.cut_id }}" name="title_max_width"
                      type="number" step="10" min="300" max="1000"
                      value="{{ req.title_max_width if req else 580 }}">
+              {#-- 字級本身只靠滾輪調（跟人物大小同一套操作），不另開格子讓他打數字。
+                   修修 2026-10-27：「我想要像 Cutout 一樣，可以用上下滾動來調大小」。 --#}
+              <input type="hidden" name="title_font_px"
+                     value="{{ req.title_font_px if req else 100 }}">
             </div>
             <div class="field">
               <label class="field-label" for="gc-{{ cut.cut_id }}">來賓抬頭</label>
@@ -1208,6 +1212,7 @@
     for (let i = 1; i <= 3; i += 1) setValue(`big_text_${i}`, recipe?.big_text?.[i - 1] ?? "");
     setValue("highlight_text", recipe?.highlight_text ?? "");
     setValue("title_max_width", recipe?.title_max_width ?? 580);
+    setValue("title_font_px", recipe?.title_font_px ?? 100);
     setValue("guest_credit", recipe?.guest_credit ?? "");
     setValue("book_cover", recipe?.book_cover ?? "");
     setValue("book_cover_opacity", recipe?.book_cover_opacity ?? 0.42);
@@ -1443,20 +1448,47 @@
     fitStageTitle(stage);
   }
 
-  // 跟 composition 同一條規則：行寬超出 title_max_width 就整塊縮字（不換行）。
-  // 少了這段預覽會騙人——修修 2026-08-15 的 7 字大字在 gate 上是 100px，
-  // 實際出圖是 82px，他以為字被裁掉，其實是縮完之後兩端跑到臉底下。
+  // 跟 composition 同一條規則：字級＝title_font_px，行寬超出 title_max_width
+  // 就整塊縮字（不換行）。少了這段預覽會騙人——修修 2026-08-15 的 7 字大字在
+  // gate 上是 100px，實際出圖是 82px，他以為字被裁掉，其實是縮完之後兩端跑到臉底下。
+  function titleFontPx(form) {
+    return parseInt(form.querySelector('[name="title_font_px"]')?.value, 10) || 100;
+  }
+
   function fitStageTitle(stage) {
     const form = stage.closest("form");
     const box = stage.querySelector(".st-title");
     const maxW = parseInt(form.querySelector('[name="title_max_width"]')?.value, 10) || 580;
+    const base = titleFontPx(form);
     stage.querySelector(".st-text").style.width = maxW + "px";
-    box.style.fontSize = "100px";
+    box.style.fontSize = base + "px";
     const w = box.scrollWidth;
-    const size = w > maxW ? Math.floor((100 * maxW) / w) : 100;
-    if (size < 100) box.style.fontSize = size + "px";
+    const size = w > maxW ? Math.floor((base * maxW) / w) : base;
+    if (size < base) box.style.fontSize = size + "px";
     const label = form.querySelector(".pkg-fontsize");
-    if (label) label.textContent = `（字級 ${size}px${size < 100 ? "，已自動縮小" : ""}）`;
+    if (label) label.textContent = `（字級 ${size}px${size < base ? "，已自動縮小" : ""}）`;
+    return size;
+  }
+
+  // 滾輪調大字＝調字級，從「畫面上現在的字級」起跳，不是從存的上限起跳：
+  // 被寬度縮過的長大字（上限 100、實際 82）往上滾一格應該是 84，不是跳到 102。
+  // 字變寬就把寬度框一起撐開（最寬 1000），否則滾上去馬上又被縮回原樣，
+  // 看起來跟沒反應一樣——這正是只有寬度旋鈕時的毛病。
+  const TITLE_FONT_MIN = 60, TITLE_FONT_MAX = 200, TITLE_WIDTH_MAX = 1000;
+  function wheelStageTitle(stage, deltaY) {
+    const form = stage.closest("form");
+    const fontField = form.querySelector('input[name="title_font_px"]');
+    const widthField = form.querySelector('input[name="title_max_width"]');
+    if (!fontField || !widthField) return;
+    const shown = fitStageTitle(stage);
+    const next = Math.min(TITLE_FONT_MAX, Math.max(TITLE_FONT_MIN, shown + (deltaY < 0 ? 2 : -2)));
+    fontField.value = next;
+    const box = stage.querySelector(".st-title");
+    box.style.fontSize = next + "px";
+    const natural = box.scrollWidth;
+    const maxW = parseInt(widthField.value, 10) || 580;
+    if (natural > maxW) widthField.value = Math.min(TITLE_WIDTH_MAX, Math.ceil(natural / 10) * 10);
+    fitStageTitle(stage);
   }
 
   // 換臉時預覽跟著換（radio 的 value 是 vault 相對路徑，取檔名即可）
@@ -1638,12 +1670,9 @@
     e.preventDefault();
     const stage = person.closest(".pkg-stage");
     if (person.dataset.role === "text") {
-      const field = stage.closest("form").querySelector('input[name="title_max_width"]');
-      if (field) {
-        const current = parseInt(field.value, 10) || 580;
-        field.value = Math.min(1000, Math.max(300, current + (e.deltaY < 0 ? 8 : -8)));
-        fitStageTitle(stage);
-      }
+      // 以前這裡改的是 title_max_width：只縮不放的規則下，短大字怎麼滾都不會變
+      // （修修 2026-10-27）。現在改字級 title_font_px，寬度框跟著撐開。
+      wheelStageTitle(stage, e.deltaY);
       return;
     }
     if (person.dataset.role === "book") {
