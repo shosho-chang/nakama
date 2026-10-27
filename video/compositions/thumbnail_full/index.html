@@ -197,6 +197,7 @@
         "host_y_pct":            { "type": "number", "default": 0 },
         "guest_y_pct":           { "type": "number", "default": 0 },
         "title_max_width":       { "type": "number", "default": 580 },
+        "title_font_px":         { "type": "number", "default": 100 },
         "text_center_pct":       { "type": "number", "default": 50 },
         "text_top_pct":          { "type": "number", "default": 44 },
         "palette":               { "type": "object", "default": {} }
@@ -306,10 +307,12 @@
         }
         titleEl.append(div);
       }
-      // 行寬超出即整塊縮字（不換行）
+      // 字級＝title_font_px；行寬超出即整塊縮字（不換行）
+      const basePx = vars.title_font_px || 100;
+      titleEl.style.fontSize = basePx + "px";
       requestAnimationFrame(() => {
         const w = titleEl.scrollWidth;
-        if (w > maxW) titleEl.style.fontSize = Math.floor(100 * maxW / w) + "px";
+        if (w > maxW) titleEl.style.fontSize = Math.floor(basePx * maxW / w) + "px";
         fitHighlightPadding();
       });
 

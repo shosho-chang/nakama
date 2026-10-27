@@ -1043,6 +1043,7 @@ def test_attach_full_program_recipe_keeps_book_cover_and_marks_delivered_png(mon
                         "guest_x_pct": -21.08,
                         "guest_y_pct": -0.12,
                         "title_max_width": 580,
+                        "title_font_px": 132,
                         "text_center_pct": 48.5,
                         "text_top_pct": 44,
                         "book_cover_opacity": 0.38,
@@ -1085,6 +1086,7 @@ def test_attach_full_program_recipe_keeps_book_cover_and_marks_delivered_png(mon
         assert recipe.book_cover_height_pct == 94
         assert (recipe.book_cover_x_pct, recipe.book_cover_y_pct) == (55.5, 48)
         assert (recipe.text_center_pct, recipe.text_top_pct) == (48.5, 44)
+        assert recipe.title_font_px == 132
         # 這份配方就是這張圖的配方：已出圖，watcher 不該再接手
         assert recipe.rendered_png == package.thumbnail_png
         assert recipe.geometry is not None and not recipe.geometry_manual
@@ -1127,6 +1129,7 @@ def test_render_request_rerenders_textonly_after_highlight_padding_converges(mon
                             "big_text": ["真的讀進去", "才是你的"],
                             "highlight_text": "讀進去",
                             "guest_credit": "作者",
+                            "title_font_px": 148,
                             "requested_at": "2026-10-09T10:00:00+00:00",
                             "rendered_png": None,
                         },
@@ -1154,6 +1157,7 @@ def test_render_request_rerenders_textonly_after_highlight_padding_converges(mon
     monkeypatch.setattr(render_request, "_measure_highlight", lambda png: next(gaps))
 
     renders: list[tuple[str, list]] = []
+    font_px: set = set()
 
     def fake_run(command):
         joined = " ".join(command)
@@ -1162,6 +1166,7 @@ def test_render_request_rerenders_textonly_after_highlight_padding_converges(mon
             dest = Path(command[command.index("--out") + 1])
             dest.write_bytes(b"png")
             renders.append((dest.name, spec["variables"]["highlight_pad"]))
+            font_px.add(spec["variables"]["title_font_px"])
             return SimpleNamespace(returncode=0, stderr="", stdout="")
         if "occlusion_check.py" in joined:
             return SimpleNamespace(returncode=0, stderr="", stdout="左遮 0px² 右遮 0px²\nPASS\n")
@@ -1190,6 +1195,8 @@ def test_render_request_rerenders_textonly_after_highlight_padding_converges(mon
     final_textonly = [pad for name, pad in renders if name == "_textonly-req-full.png"][-1]
     assert final_full, "橘框收斂應該改過 padding（否則這個測試沒測到東西）"
     assert final_textonly == final_full
+    # gate 上用滾輪調的字級，成品與 text-only 對照圖都要照用
+    assert font_px == {148}
 
 
 @pytest.mark.parametrize("failure", ["missing-sidecar", "png-tamper", "asset-path-drift"])

@@ -395,9 +395,12 @@ class RenderRequestV1(BaseModel):
     big_text: list[str] = Field(default_factory=list, max_length=3)
     highlight_text: str = ""
     # 大字的寬度預算（px @1280 畫布）。composition 是「整塊縮字不換行」：
-    # fontSize = 100 * title_max_width / 實際行寬。所以這個值就是字級的旋鈕——
-    # 調大字更大但更容易被臉蓋到，調小反之（修修 2026-08-15 要能自己選）。
+    # 行寬超出就 fontSize = title_font_px * title_max_width / 實際行寬。
     title_max_width: int = Field(default=580, ge=300, le=1000)
+    # 大字字級（px @1280 畫布），只縮不放的那個上限。以前寫死 100px，寬度是唯一
+    # 旋鈕：短大字本來就放得下，撐寬框字也不會變大（修修 2026-10-27：「我想要像
+    # Cutout 一樣，可以用上下滾動來調大小」）。預設 100 ＝舊規則，舊配方出圖不變。
+    title_font_px: int = Field(default=100, ge=60, le=200)
     # 來賓抬頭（「泛科學知識長 鄭國威」）。以前只活在桌機端的 spec 檔裡，靠 glob
     # 上一份 spec 撈——2026-08-15 把中間產物搬進 _work/ 就撈不到，整行從封面消失。
     # 收進配方後 gate 看得到也改得動，不再靠檔案系統的巧合。
