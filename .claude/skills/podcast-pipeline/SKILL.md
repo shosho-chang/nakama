@@ -640,6 +640,30 @@ for b in text.strip().split('\n\n'):
 且只掃 SRT 的文字行、不要連 timestamp 行的逗號（`00:00:00,000`）一起算進去）。列舉用的「、」
 （「國中、高中、大學」）不算違規；其餘任何標點都是清理沒跑到，seal 前先處理，不要留到封存後才發現。
 
+### 定稿後立刻出完整版上傳檔＋上傳字幕（修修 2026-10-26 裁決）
+
+> 「我希望上傳檔以及上傳的字幕，都是在定稿之後就會直接做出來。」
+
+Editorial Master `verify --live` 通過後，**同一輪就跑**完整版 render，不等 packaging、不等選段、
+不問：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\publish_prep.py "<episode>" --cut full
+```
+
+產出兩個檔，**檔名＝episode 資料夾名＝Resolve project 名**（例：`20261021 Kelly Tsai`），不是 `full`：
+
+- `<episode>\highlights\exports\<episode>.mp4`——上傳用影片，Shosho YT 字幕樣式燒進畫面
+- `<episode>\highlights\exports\<episode>.srt`——上傳用 CC，與 `master.srt` byte-identical
+
+並登錄 draft Release（YouTube target draft）。這一步碰 Resolve：與 `--materialize`、ST1 重建等
+序列執行，不可並行。
+
+⚠️ **`editorial-master/v1/master.mp4` 不是上傳檔**——它是無燒字幕的乾淨母帶，所有衍生（精華／短片／
+carousel）的唯一 media/timebase，檔名是 ADR-064 封存契約的一部分，**不可改名**。修修若在播放器看到
+「不是 Shosho YT 樣式的字幕」，那是播放器自動載入了同名 sidecar `master.srt`，不是燒進去的
+（2026-10-26 20261021 Kelly Tsai 實查：畫面無字幕）。
+
 Editorial Master receipt 驗證成功後，**立刻**對 `cut_id=full` 啟動 `title-brainstorm` 與
 `thumbnail-brainstorm`——這是 seal 核准後的自動下一步，不是要另外徵詢的新工作，**不要問「要不要現在
 開始」**（2026-09-04 20260901 蘇予昕 agent 在這裡多問了一次；使用者回饋是每一步都問會累，這裡本就不
@@ -727,6 +751,9 @@ Editorial Master 開得起來＝定稿是真的。開不起來就**立刻**回�
 ```
 Editorial Master 封存
  │
+ ├─ [序列·Resolve] publish_prep.py --cut full —— 定稿後立刻出，不等任何人
+ │     ⇒ highlights\exports\<episode>.mp4（Shosho YT 字幕燒入）＋ <episode>.srt（上傳 CC）
+ │
  ├─【平行】完整節目 packaging（S7P）—— 一路跑到 gate，中間不要停下來問
  │     title-brainstorm --cut-id full → emit_packages
  │     cutout 抽格（麥克風能量取窗 → blendshape → vision 複驗）→ face_measure --write
@@ -762,7 +789,7 @@ Editorial Master 封存
  ▼
 ■ 他說第二次「定稿」＝ 出成品
  │
- ├─ [序列] publish_prep.py --cut <每一支>（Resolve render → 登錄 draft Release）
+ ├─ [序列] publish_prep.py --cut <每一支精華>（Resolve render → 登錄 draft Release；完整版已在封存時出過）
  ├─【平行】長片 packaging：title-brainstorm ×3（短片不做封面）
  │  [序列] emit_packages ×3
  ├─ [序列] thumbnail-brainstorm ×3（封面）

@@ -20,6 +20,10 @@ Release（draft），等文案（packaging 交接檔）、等排程、等修修�
 `<cut_id>_clean.mp4` 乾淨版供重燒）。CC 字幕直接用
 `highlights/srt/<cut_id>_tight_r*.srt` 最新版（已平移 0 起點）。
 
+完整版（`--cut full`）例外：落點是 `exports/<集數資料夾名>.mp4`，旁邊放同名的
+上傳字幕 `<集數資料夾名>.srt`＝Editorial Master `master.srt` 的逐位元組複本。
+檔名規則的唯一來源是 `shared/export_paths.py`。
+
 執行環境同 longform-cut skill：Resolve Studio 開著、`py -3.10`。
 """
 
@@ -29,6 +33,7 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -43,6 +48,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from run_highlight_cut import FORMAT_LABEL  # noqa: E402
 
 from agents.brook.script_video.editorial_master import (  # noqa: E402
+    CANONICAL_ARTIFACTS,
+    VERSION_RELATIVE,
     editorial_master_timeline,
 )
 from agents.usopp.publish_timeline import (  # noqa: E402
@@ -51,10 +58,16 @@ from agents.usopp.publish_timeline import (  # noqa: E402
     resolve_target,
     verify_duration,
 )
+from shared.export_paths import (  # noqa: E402
+    EXPORTS_DIR,
+    FULL_CUT_ID,
+    export_media_path,
+    export_stem,
+    export_subtitle_path,
+)
 
 logger = logging.getLogger("publish_prep")
 
-EXPORTS_DIR = "highlights/exports"
 # 短片燒錄字幕樣式：QC preview 用 540 寬 FontSize 14——全解析 1080 寬等比 ×2。
 # 樣式盡量貼近 Resolve 直式模板（修修 UAT 後可調）。
 SHORT_SUB_STYLE = "FontName=Microsoft JhengHei,FontSize=28,Outline=2,MarginV=84"
@@ -62,7 +75,6 @@ RENDER_TIMEOUT_SEC = 3600  # 長片全解析 render 上限（12 分鐘片 + 排�
 # 完整版是 60–100 分鐘，固定 3600 秒比素材本身還短——等於要求 render 穩定跑在
 # 1.7× realtime 以上才不逾時。改成照素材長度給倍率，並保留原本的下限。
 RENDER_TIMEOUT_RATIO = 3.0
-FULL_CUT_ID = "full"
 
 
 def render_timeout_sec(duration_sec: float) -> int:
@@ -395,21 +407,46 @@ def _probe(path: Path) -> tuple[float, int]:
     return dur, path.stat().st_size
 
 
+def _master_srt(episode_dir: Path) -> Path:
+    """完整版的上傳字幕來源：Editorial Master 封存的 `master.srt`。"""
+    return Path(episode_dir) / VERSION_RELATIVE / CANONICAL_ARTIFACTS["subtitles"]
+
+
+def _copy_upload_srt(source: Path, target: Path) -> Path:
+    """逐位元組複製，先寫暫存檔再 replace——不留半份字幕給上傳端撿。"""
+    temporary = target.with_name(target.name + f".{os.getpid()}.tmp")
+    shutil.copyfile(source, temporary)
+    os.replace(temporary, target)
+    return target
+
+
 def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
-    """單支 cut：render → （短片燒字幕）→ exports/<cut_id>.mp4。"""
+    """單支 cut：render → （短片燒字幕）→ exports/<stem>.mp4（stem 見 shared/export_paths）。"""
+    cid = cut["id"]
+    is_full = cid == FULL_CUT_ID
+    master_srt = _master_srt(episode_dir) if is_full else None
+    if master_srt is not None and not master_srt.is_file():
+        # render 前就擋：完整版 render 一次一兩個小時，跑完才發現沒字幕可上傳是白工。
+        raise SystemExit(f"完整版缺上傳字幕來源 {master_srt}——Editorial Master 封存不完整，先修")
     timeline, label, plan_id = _pick_timeline(project, episode_dir, cut)
     project.SetCurrentTimeline(timeline)
     out_dir = episode_dir / EXPORTS_DIR
     out_dir.mkdir(parents=True, exist_ok=True)
-    cid = cut["id"]
+    stem = export_stem(episode_dir, cid)
+    upload_srt: Path | None = None
 
     if cut["format"] == "long":
         # 長片發布預設：DRT 攜帶 Shosho YT 樣式，Resolve 明確燒進成品。
         n = _set_subtitle_tracks(resolve, timeline, True)
         logger.info("%s: 長片——啟用 %d 條 Shosho YT 字幕軌並 Burn In", cid, n)
         final = _render_master(
-            project, timeline, out_dir, cid, burn_subtitles=True, end_at_main_picture=True
+            project, timeline, out_dir, stem, burn_subtitles=True, end_at_main_picture=True
         )
+        if master_srt is not None:
+            # 完整版上傳的是「<集數名>.mp4＋<集數名>.srt」這一對；字幕就是封存的
+            # master.srt，不重抽、不改寫（CC 跟 Editorial Master 必須是同一份）。
+            upload_srt = _copy_upload_srt(master_srt, export_subtitle_path(episode_dir, cid))
+            logger.info("%s: 上傳字幕 %s ← %s", cid, upload_srt.name, master_srt)
     elif _covers_full_transcript(episode_dir, cid):
         # mode B（ADR-067）：字卡逐子句承接**全部**逐字稿，字卡就是文字層。
         # 再燒一層字幕＝同一句話在畫面上出現兩次。sidecar SRT 仍然出，
@@ -421,15 +458,13 @@ def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
         if srt is None:
             raise SystemExit(f"{cid} 沒有 tight SRT——沒有字卡承接就必須燒字幕（Q4b）")
         clean = _render_master(project, timeline, out_dir, f"{cid}_clean", end_at_main_picture=True)
-        final = out_dir / f"{cid}.mp4"
-        import shutil
-
+        final = export_media_path(episode_dir, cid)
         shutil.copy(srt, out_dir / f"{cid}.srt")
         logger.info("%s: 短片——ffmpeg 燒字幕（%s）", cid, srt.name)
         _burn_short_subs(clean, out_dir / f"{cid}.srt", final)
 
     dur, size = _probe(final)
-    srt_path = _latest_tight_srt(episode_dir, cid)
+    srt_path = upload_srt if is_full else _latest_tight_srt(episode_dir, cid)
     return {
         "cut_id": cid,
         "format": cut["format"],
