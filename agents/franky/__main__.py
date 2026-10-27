@@ -10,6 +10,7 @@ Usage:
     python -m agents.franky gsc-daily    # ADR-008 Phase 2a-min: daily 7-day GSC pull → state.db
     python -m agents.franky synthesis    # ADR-023 §7 S3: weekly synthesis → proposal inbox
     python -m agents.franky retrospective  # ADR-023 §7 S4: monthly retrospective
+    python -m agents.franky rental-watch   # 2026-10-23: 租屋物件追蹤 → Slack DM
 
 The default (no-subcommand) path preserves existing cron behavior until Slice 3 flips
 the default to the new digest. See ADR-007 §11 for the module layout plan.
@@ -42,6 +43,7 @@ _JOB_NAME_SYNTHESIS = "franky-news-synthesis"
 _JOB_NAME_RETROSPECTIVE = "franky-news-retrospective"
 _JOB_NAME_CAL_RECONCILE = "franky-calendar-reconcile"
 _JOB_NAME_TASK_ARCHIVE = "franky-task-archive"
+_JOB_NAME_RENTAL_WATCH = "franky-rental-watch"
 
 
 def _cmd_health(_args: argparse.Namespace) -> int:
@@ -286,6 +288,31 @@ def _cmd_task_archive(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_rental_watch(args: argparse.Namespace) -> int:
+    """修修 2026-10-23 — 錄音室搬遷找物件：每小時掃三站，新物件／降價 DM。
+    Heartbeat: 非 crash 即成功（單一站抓不到會在 run_once 內累計、連 3 次才 DM）。"""
+    from agents.franky.jobs.rental_watch import run_once
+
+    dry_run = getattr(args, "dry_run", False)
+    no_publish = getattr(args, "no_publish", False)
+    slack_bot = None
+    if not dry_run and not no_publish:
+        from agents.franky.slack_bot import FrankySlackBot
+
+        slack_bot = FrankySlackBot.from_env()
+    try:
+        result = run_once(dry_run=dry_run, slack_bot=slack_bot)
+    except Exception as exc:
+        if not dry_run:
+            record_failure(_JOB_NAME_RENTAL_WATCH, f"{type(exc).__name__}: {exc}"[:200])
+        raise
+
+    print(json.dumps(result.to_summary_dict(), ensure_ascii=False, indent=2))
+    if not dry_run:
+        record_success(_JOB_NAME_RENTAL_WATCH)
+    return 0
+
+
 def _cmd_synthesis(args: argparse.Namespace) -> int:
     """ADR-023 §7 S3 — weekly synthesis → two-stage proposal inbox."""
     from agents.franky.news_synthesis import _re_scan_and_promote_page, run_synthesis
@@ -406,6 +433,20 @@ def _build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="搬檔但不發 Slack 摘要（dev use）。",
     )
+    rental = sub.add_parser(
+        "rental-watch",
+        help="2026-10-23: 租屋物件追蹤 — 591／信義／好房網新物件與降價 → Slack DM",
+    )
+    rental.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="只抓資料印出 — 不寫 DB、不發 Slack。",
+    )
+    rental.add_argument(
+        "--no-publish",
+        action="store_true",
+        help="寫 DB 但不發 Slack（dev use）。",
+    )
     synthesis = sub.add_parser(
         "synthesis",
         help="ADR-023 §7 S3: weekly synthesis → two-stage proposal inbox (週日 22:00)",
@@ -468,6 +509,7 @@ def main(argv: list[str] | None = None) -> int:
         "gsc-daily": _cmd_gsc_daily,
         "calendar-reconcile": _cmd_calendar_reconcile,
         "task-archive": _cmd_task_archive,
+        "rental-watch": _cmd_rental_watch,
         "synthesis": _cmd_synthesis,
         "retrospective": _cmd_retrospective,
     }

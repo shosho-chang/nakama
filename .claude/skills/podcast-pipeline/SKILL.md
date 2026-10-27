@@ -138,7 +138,8 @@ Memo 是 agent-owned：直接呼叫 bundled runner，使用 exact `normalized.wa
 
 ```text
 podcast_subtitle_v2_evidence.py run-memo-bundled
-  -> [zero-duration only: repair-memo-srt]
+  -> [zero-duration only: repair-memo-srt | tail overrun only: repair-memo-srt-tail
+      | both: repair-memo-srt-chain]
   -> prepare-recognition (bind exact execution receipt + raw/repaired lineage)
   -> two independent recognition audits + agent-quorum receipt
   -> accept-recognition
@@ -159,6 +160,9 @@ Zero-duration cue 必須依 production runbook 執行 `repair-memo-srt` conditio
 `memo-srt-zero-duration-repair-v1` receipt 三者路徑不同，並把成對的 `--raw-source-export`＋
 `--repair-receipt` lineage 傳入 prepare/accept recognition 與 prepare/accept cues。Negative duration、
 overlap 或沒有 exact adjacent positive anchor 是 catastrophic failure，不得用猜測 timestamp 修補。
+同一份 export 同時有 zero-duration cue 與最後一句超出音檔（2026-10-22 周慕姿）時走 runbook §1.3 的
+`repair-memo-srt-chain`（`memo-srt-zero-duration-then-tail-repair-v1`），不要重跑 Memo：`--max-context 0`
+下輸出逐 byte deterministic，`--prompt` 也不起作用。
 
 必須驗證：
 
@@ -702,6 +706,35 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\export_editorial_master_deliverabl
 
 那一次的一支壞檔（只有音訊）改名成 `final/_bad-audio-only-20261023.mp4` 留著，沒有覆蓋。
 
+### 定稿後立刻出完整版上傳檔＋上傳字幕（修修 2026-10-26 裁決）
+
+> 「我希望上傳檔以及上傳的字幕，都是在定稿之後就會直接做出來。」
+
+Editorial Master `verify --live` 通過後，**同一輪就跑**完整版 render，不等 packaging、不等選段、
+不問：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\publish_prep.py "<episode>" --cut full
+```
+
+產出兩個檔，**檔名＝episode 資料夾名＝Resolve project 名**（例：`20261021 Kelly Tsai`），不是 `full`：
+
+- `<episode>\highlights\exports\<episode>.mp4`——上傳用影片，Shosho YT 字幕樣式燒進畫面
+- `<episode>\highlights\exports\<episode>.srt`——上傳用 CC，與 `master.srt` byte-identical
+
+並登錄 draft Release（YouTube target draft）。這一步碰 Resolve：與 `--materialize`、ST1 重建等
+序列執行，不可並行。
+
+⚠️ **`editorial-master/v1/master.mp4` 不是上傳檔**——它是無燒字幕的乾淨母帶，所有衍生（精華／短片／
+carousel）的唯一 media/timebase，檔名是 ADR-064 封存契約的一部分，**不可改名**。修修若在播放器看到
+「不是 Shosho YT 樣式的字幕」，那是播放器自動載入了同名 sidecar `master.srt`，不是燒進去的
+（2026-10-26 20261021 Kelly Tsai 實查：畫面無字幕）。
+
+> ⚠️ **與上面「Export worker」重疊，待修修裁決**：這節（`publish_prep.py --cut full`，2026-10-26，
+> 落點 `highlights/exports/`、會登錄 draft Release）跟 export worker（2026-10-23，落點 `final/`，
+> NVENC＋MP3）都會 render 一次燒字幕完整版、都出 `master.srt` 的複本。兩條是在不同 session 定的，
+> 合併時兩邊都保留；裁決前兩個都照跑，但都碰 Resolve，必須序列執行。
+
 **packaging 線**：Editorial Master receipt 驗證成功後，**立刻**派 subagent 對 `cut_id=full` 跑
 `title-brainstorm`，接著（同一條線上）跑 `thumbnail-brainstorm`——這是 seal 核准後的自動下一步，不是要
 另外徵詢的新工作，**不要問「要不要現在開始」**（2026-09-04 20260901 蘇予昕 agent 在這裡多問了一次；
@@ -793,6 +826,9 @@ Editorial Master 封存（之後每一條都是 subagent，主 session 只派工
  │
  ├─【平行】交付檔 export worker（S7X）—— 純文字 SRT → MP3 320k → 燒字幕 NVENC MP4；這段期間唯一碰 Resolve 的人
  │
+ ├─ [序列·Resolve] publish_prep.py --cut full —— 定稿後立刻出，不等任何人
+ │     ⇒ highlights\exports\<episode>.mp4（Shosho YT 字幕燒入）＋ <episode>.srt（上傳 CC）
+ │
  ├─【平行】完整節目 packaging（S7P）—— 一路跑到 gate，中間不要停下來問
  │     title-brainstorm --cut-id full → emit_packages
  │     cutout 抽格（麥克風能量取窗 → blendshape → vision 複驗）→ face_measure --write
@@ -828,7 +864,7 @@ Editorial Master 封存（之後每一條都是 subagent，主 session 只派工
  ▼
 ■ 他說第二次「定稿」＝ 出成品
  │
- ├─ [序列] publish_prep.py --cut <每一支>（Resolve render → 登錄 draft Release）
+ ├─ [序列] publish_prep.py --cut <每一支精華>（Resolve render → 登錄 draft Release；完整版已在封存時出過）
  ├─【平行】長片 packaging：title-brainstorm ×3（短片不做封面）
  │  [序列] emit_packages ×3
  ├─ [序列] thumbnail-brainstorm ×3（封面）

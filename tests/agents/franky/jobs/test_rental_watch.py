@@ -1,0 +1,1565 @@
+"""Tests for agents/franky/jobs/rental_watch.py — 租屋物件追蹤 cron。
+
+Fixtures 是照 2026-10-23 三站實際回應的結構手寫的（資料內容虛構，不含真實
+房東姓名電話）。
+"""
+
+from __future__ import annotations
+
+import base64
+import json
+import re
+import sqlite3
+from dataclasses import replace
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Any
+from unittest.mock import MagicMock
+
+import pytest
+
+from agents.franky.jobs import rental_assess as rw_assess
+from agents.franky.jobs import rental_watch as rw
+
+NOW = datetime(2026, 10, 23, 1, 0, tzinfo=timezone.utc)
+
+CONFIG_YAML = """
+districts: [中正區, 中山區, 大安區, 信義區, 文山區]
+price: {min: 15000, max: 35000}
+area: {min: 10, max: 50}
+store_basement_only: true
+exclude_rooftop: true
+exclude_title_keywords: [免費會議室, 商務中心]
+exclude_title_patterns: ['\\d+\\s*[~～\\-－至]\\s*\\d+\\s*人']
+"""
+
+
+@pytest.fixture
+def config_path(tmp_path: Path) -> Path:
+    p = tmp_path / "rental-watch.yaml"
+    p.write_text(CONFIG_YAML, encoding="utf-8")
+    return p
+
+
+@pytest.fixture
+def criteria(config_path: Path) -> rw.Criteria:
+    return rw.load_criteria(config_path)
+
+
+def _listing(**overrides: Any) -> rw.Listing:
+    base = dict(
+        source="591",
+        listing_id="1",
+        title="大安捷運旁辦公室",
+        url="https://business.591.com.tw/rent/1",
+        district="大安區",
+        price=25000,
+        area=20.0,
+        floor="5F/12F",
+        is_basement=False,
+        is_rooftop=False,
+        kind="辦公",
+    )
+    base.update(overrides)
+    return rw.Listing(**base)
+
+
+# ---------------------------------------------------------------------------
+# Fake HTTP
+# ---------------------------------------------------------------------------
+
+
+class _Resp:
+    def __init__(self, *, text: str = "", payload: Any = None) -> None:
+        self.text = text
+        self._payload = payload
+
+    def json(self) -> Any:
+        return self._payload
+
+
+class FakeHttp:
+    """依 URL 回應的假 Http；``routes`` 是 (predicate, handler) 清單。"""
+
+    def __init__(self, routes: list) -> None:
+        self.routes = routes
+        self.calls: list[tuple[str, str, dict]] = []
+
+    def request(self, method: str, url: str, **kwargs: Any) -> _Resp:
+        self.calls.append((method, url, kwargs))
+        for match, handler in self.routes:
+            if match(method, url, kwargs):
+                return handler(method, url, kwargs)
+        raise AssertionError(f"unexpected request {method} {url}")
+
+    def close(self) -> None:
+        pass
+
+
+# ---------------------------------------------------------------------------
+# 591
+# ---------------------------------------------------------------------------
+
+
+def _591_item(i: int, **overrides: Any) -> dict[str, Any]:
+    item = {
+        "id": 22000000 + i,
+        "kind": 6,
+        "kind_name": "辦公",
+        "address_img_title": f"測試辦公室{i}",
+        "price": "25,000",
+        "area": 20.5,
+        "floor": 5,
+        "floorStr": "5F/12F",
+        "section_name": "大安區",
+    }
+    item.update(overrides)
+    return item
+
+
+def test_parse_591_item_basement_from_negative_floor():
+    it = rw.parse_591_item(_591_item(1, floor=-1, floorStr="B1/7F", price="24,000"))
+    assert it.is_basement is True
+    assert it.price == 24000
+    assert it.floor == "B1/7F"
+    assert it.url == "https://business.591.com.tw/rent/22000001"
+    assert it.key == "591:22000001"
+
+
+def test_parse_591_item_rooftop():
+    it = rw.parse_591_item(_591_item(2, floor=100, floorStr="頂樓加蓋/7F"))
+    assert it.is_rooftop is True
+    assert it.is_basement is False
+
+
+def test_fetch_591_paginates_each_kind_and_keeps_dollar_signs(criteria):
+    def handler(method, url, kwargs):
+        kind = int(re.search(r"kind=(\d+)", url).group(1))
+        first = int(re.search(r"firstRow=(\d+)", url).group(1))
+        total = 35 if kind == 6 else 0
+        n = max(0, min(30, total - first))
+        items = [_591_item(first + i) for i in range(n)]
+        return _Resp(payload={"status": 1, "records": str(total), "data": {"data": items}})
+
+    http = FakeHttp([(lambda m, u, k: "bff-business.591" in u, handler)])
+    out = rw.fetch_591(http, criteria)
+
+    assert len(out) == 35
+    urls = [u for _, u, _ in http.calls]
+    # kind 6 兩頁 + kind 12 / 5 各一頁
+    assert len(urls) == 4
+    assert "multiPrice=15000$_35000$" in urls[0]
+    assert "sectionid=1,3,5,7,12" in urls[0]
+    assert "multiArea=10_50" in urls[0]
+
+
+def test_fetch_591_bad_status_raises(criteria):
+    http = FakeHttp([(lambda m, u, k: True, lambda *a: _Resp(payload={"status": 0}))])
+    with pytest.raises(RuntimeError):
+        rw.fetch_591(http, criteria)
+
+
+# ---------------------------------------------------------------------------
+# 信義
+# ---------------------------------------------------------------------------
+
+
+def _sinyi_item(hid: str, title: str, area: str, floor: str, address: str, price: str) -> str:
+    return f"""
+<div id="search_result_{hid}" class="search_result_item">
+  <a href="houseno/{hid}" target="_blank">
+    <div class="item_box item_box_right">
+      <div class="item_titlebox"><span class="item_title">{title}</span></div>
+      <div class="item_detailbox"><div class="detail_left left">
+        <div class="detail_line1"><span><!-- 台北市士林區天母北路 --></span></div>
+        <div class="detail_line2">
+          <span><span class="num num-1">成屋</span></span>
+          <span><span class="num">{area}</span>坪</span>
+          <span><span class="num">{floor}</span>樓</span>
+          <span><span class='num'>1廳1衛</span></span>
+        </div>
+        <div class="detail_line2"><span class="num-ss">
+          <span class="num num-text">{address}</span>
+        </span></div>
+      </div>
+      <div class="detail_right right"><div class="detail_price">
+        <div class="price_new"><span class="num">{price}</span>元/月</div>
+      </div></div></div>
+    </div>
+  </a>
+</div>"""
+
+
+def _sinyi_page(total: int, items: list[str]) -> str:
+    return f"""<html><body>
+<div id="search_result_count" class="left">共有 <div class="num">{total}</div>間房屋</div>
+<div id="search_result_list" class="ddhouse">{"".join(items)}</div></body></html>"""
+
+
+def test_sinyi_list_url(criteria):
+    assert rw.sinyi_list_url(criteria, "office-use") == (
+        "https://www.sinyi.com.tw/rent/list/Taipei-city/100-104-106-110-116-zip/office-use/"
+        "15000-35000-price/10-50-area/index.html"
+    )
+    assert rw.sinyi_list_url(criteria, "store-use", 2).endswith("/10-50-area/2.html")
+
+
+def test_parse_sinyi_page():
+    html = _sinyi_page(
+        2,
+        [
+            _sinyi_item(
+                "C1", "和平東路邊間辦公", "31.62", "5/6", "台北市大安區和平東路三段", "30,000"
+            ),
+            _sinyi_item("C2", "地下室大空間", "40.00", "B1/7", "台北市中山區長春路", "28,000"),
+        ],
+    )
+    total, items = rw.parse_sinyi_page(html, "辦公")
+    assert total == 2
+    a, b = items
+    assert (a.listing_id, a.title, a.area, a.floor, a.district, a.price) == (
+        "C1",
+        "和平東路邊間辦公",
+        31.62,
+        "5/6",
+        "大安區",
+        30000,
+    )
+    assert a.url == "https://www.sinyi.com.tw/rent/houseno/C1"
+    assert a.is_basement is False
+    assert b.is_basement is True
+
+
+def test_fetch_sinyi_follows_pages_until_total(criteria):
+    page1 = _sinyi_page(
+        3, [_sinyi_item(f"C{i}", f"物件{i}", "20", "3/5", "台北市中正區", "20,000") for i in (1, 2)]
+    )
+    page2 = _sinyi_page(3, [_sinyi_item("C3", "物件3", "20", "3/5", "台北市中正區", "20,000")])
+    empty = _sinyi_page(0, [])
+
+    def handler(method, url, kwargs):
+        if "office-use" in url:
+            return _Resp(text=page1 if url.endswith("index.html") else page2)
+        return _Resp(text=empty)
+
+    http = FakeHttp([(lambda m, u, k: "sinyi.com.tw" in u, handler)])
+    out = rw.fetch_sinyi(http, criteria)
+    assert [it.listing_id for it in out] == ["C1", "C2", "C3"]
+    assert all(it.kind == "辦公" for it in out)
+
+
+# ---------------------------------------------------------------------------
+# 好房網
+# ---------------------------------------------------------------------------
+
+
+def _hf_b64(s: str) -> str:
+    return base64.b64encode(s.encode("utf-8")).decode("ascii")
+
+
+def _hf_article(rid: str, title: str, addr: str, floor: str, price: str, area: str) -> str:
+    return f"""<article class="DataList both"><div class="Data">
+  <h3 class="title"><a href="/rent/house/{rid}/" title="{title}">{title}</a></h3>
+  <address class="addr">{addr}</address>
+  <span class="sectionList">
+    <span class="level">0房(室)1廳1衛</span><span class="pattern">樓層：{floor}</span>
+  </span>
+</div><div class="info"><ul>
+  <li class="InfoList">
+    <span class="title">租金：</span><span class="infos num">{price} 元/月</span>
+  </li>
+  <li class="InfoList"><span class="title">坪數：</span><span class="infos">{area} 坪</span></li>
+  <li class="InfoList num"><span class="title">更新：</span><span class="infos">1小時前</span></li>
+</ul></div></article>"""
+
+
+def test_housefun_request_body_is_not_double_encoded():
+    body = rw.housefun_request_body({"PriceL": "15000", "PurposeID": "6"}).decode("utf-8")
+    assert body.startswith("RequestPackage=")
+    pkg = json.loads(body.removeprefix("RequestPackage="))
+    # "15000" → base64 "MTUwMDA=" → percent-encode "MTUwMDA%3D"（不是 %253D）
+    assert pkg["Data"]["PriceL"] == "MTUwMDA%3D"
+    assert pkg["Data"]["PurposeID"] == "Ng%3D%3D"
+    assert pkg["Data"]["CityId"] == ""
+    assert set(pkg["Data"]) == set(rw._HOUSEFUN_FIELDS)
+    assert base64.b64decode(pkg["Method"].replace("%3D", "=")).decode() == "INQUIRE"
+
+
+def test_housefun_decode_response_error():
+    with pytest.raises(RuntimeError, match="無效"):
+        rw.housefun_decode_response({"Status": _hf_b64("-1"), "StatusMessage": _hf_b64("無效")})
+
+
+def test_parse_housefun_html_basement_floor_range():
+    html = _hf_article(
+        "1968859", "獨立出入口可辦可倉", "台北市中山區農安街", "-1~1 / 7", "22,000", "24.11"
+    )
+    (it,) = rw.parse_housefun_html(html, "店面")
+    assert it.listing_id == "1968859"
+    assert it.district == "中山區"
+    assert it.floor == "-1~1/7"
+    assert it.is_basement is True
+    assert (it.price, it.area) == (22000, 24.11)
+    assert it.url == "https://rent.housefun.com.tw/rent/house/1968859/"
+
+
+def test_fetch_housefun_groups_districts_and_paginates(criteria):
+    seen_packages: list[dict] = []
+
+    def handler(method, url, kwargs):
+        pkg = json.loads(kwargs["content"].decode().removeprefix("RequestPackage="))
+        seen_packages.append(pkg["Data"])
+        page = base64.b64decode(urllib_unquote(pkg["Data"]["PMPage"])).decode()
+        purpose = base64.b64decode(urllib_unquote(pkg["Data"]["PurposeID"])).decode()
+        html = _hf_article(f"{purpose}{page}", "辦公", "台北市大安區", "3 / 5", "20,000", "20")
+        return _Resp(
+            payload={
+                "Status": _hf_b64("1"),
+                "Data": {"SearchContent": _hf_b64(html), "PageCount": _hf_b64(f"{page}/2")},
+            }
+        )
+
+    http = FakeHttp([(lambda m, u, k: "search.ashx" in u, handler)])
+    out = rw.fetch_housefun(http, criteria)
+
+    # 2 用途 × 2 地區群組（3 + 2 區）× 2 頁
+    assert len(seen_packages) == 8
+    first = seen_packages[0]
+    assert base64.b64decode(urllib_unquote(first["DataUnit"])).decode() == "1"
+    assert first["AreaId3"]  # 第一組帶滿 3 區
+    assert not seen_packages[2]["AreaId3"]  # 第二組只有信義、文山
+    assert len(out) == 8
+
+
+def urllib_unquote(s: str) -> str:
+    from urllib.parse import unquote
+
+    return unquote(s)
+
+
+# ---------------------------------------------------------------------------
+# Filtering
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "overrides,expected",
+    [
+        ({}, True),
+        ({"district": "內湖區"}, False),
+        ({"price": 36000}, False),
+        ({"price": 15000}, True),
+        ({"area": 4.0}, False),
+        ({"area": None}, True),
+        ({"is_rooftop": True}, False),
+        ({"kind": "店面"}, False),
+        ({"kind": "店面", "is_basement": True}, True),
+        ({"title": "台北車站5~7人辦公室"}, False),
+        ({"title": "全新裝潢4-6人獨立辦公"}, False),
+        ({"title": "含免費會議室"}, False),
+    ],
+)
+def test_passes(criteria, overrides, expected):
+    assert rw.passes(_listing(**overrides), criteria) is expected
+
+
+def test_load_criteria_rejects_empty_districts(tmp_path):
+    p = tmp_path / "c.yaml"
+    p.write_text(
+        "districts: []\nprice: {min: 1, max: 2}\narea: {min: 1, max: 2}\n", encoding="utf-8"
+    )
+    with pytest.raises(ValueError):
+        rw.load_criteria(p)
+
+
+def test_unknown_district_raises(criteria):
+    bad = rw.Criteria(**{**criteria.__dict__, "districts": ("火星區",)})
+    with pytest.raises(ValueError, match="火星區"):
+        rw.sinyi_list_url(bad, "office-use")
+
+
+# ---------------------------------------------------------------------------
+# Formatting
+# ---------------------------------------------------------------------------
+
+
+def test_format_listing_escapes_link_text():
+    it = _listing(title="A&B <大空間> | 近捷運")
+    line = rw.format_listing(it)
+    assert "<https://business.591.com.tw/rent/1|A&amp;B &lt;大空間&gt; ｜ 近捷運>" in line
+    assert "每坪 1,250" in line
+
+
+def test_update_message_tiers_and_skips_out(criteria):
+    urgent = _listing(
+        listing_id="u",
+        title="捷運旁便宜大空間",
+        area=35.0,
+        price=20000,
+        mrt_station="大安",
+        mrt_distance=150,
+        registration="可登記",
+    )
+    match = _listing(listing_id="m", mrt_distance=400, registration="可登記")
+    check = _listing(listing_id="c", source="sinyi", title="信義物件")
+    out = _listing(listing_id="o", title="太遠的", mrt_distance=900, registration="可登記")
+    peers = [_listing(listing_id=f"p{i}", price=30000) for i in range(3)]  # 讓大安區有中位數
+    drop = _listing(listing_id="d", price=22000, mrt_distance=300, registration="可登記")
+    a = rw_assess.assess_all([urgent, match, check, out, drop, *peers], criteria)
+
+    msg = rw.format_update_message([urgent, match, check, out], [rw.PriceDrop(drop, 25000)], a)
+    assert msg.index("🔥") < msg.index("✅") < msg.index("📉") < msg.index("❔")
+    assert "太遠的" not in msg
+    assert "~25,000~ → *22,000元*" in msg
+    assert msg.startswith("🏠 租屋追蹤：3 筆新物件、1 筆降價（1 筆建議儘快聯繫）")
+    assert rw.BRIDGE_URL in msg
+
+
+def test_update_message_none_when_everything_is_out(criteria):
+    out = _listing(mrt_distance=900, registration="可登記")
+    a = rw_assess.assess_all([out], criteria)
+    assert rw.format_update_message([out], [], a) is None
+
+
+def test_update_message_caps_sections(criteria):
+    new = [_listing(listing_id=str(i)) for i in range(rw.MAX_ITEMS_PER_SECTION + 3)]
+    a = rw_assess.assess_all(new, criteria)
+    assert "另外 3 筆" in rw.format_update_message(new, [], a)
+
+
+# ---------------------------------------------------------------------------
+# run_once
+# ---------------------------------------------------------------------------
+
+
+def _run(config_path, db_path, fetchers, slack_bot):
+    return rw.run_once(
+        slack_bot=slack_bot,
+        db_path=db_path,
+        config_path=config_path,
+        fetchers=fetchers,
+        http=FakeHttp([]),
+        now=NOW,
+    )
+
+
+def test_run_once_baseline_then_new_and_price_drop(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    current = [
+        _listing(listing_id="1"),
+        _listing(listing_id="2", is_basement=True, floor="B1/5F", title="地下室A"),
+        _listing(listing_id="3", district="內湖區"),  # 被條件濾掉
+    ]
+    fetchers = {"591": lambda http, c: list(current)}
+
+    r1 = _run(config_path, db, fetchers, bot)
+    assert r1.status == "baseline"
+    assert r1.seen == 2
+    (call,) = bot.post_plain.call_args_list
+    assert call.kwargs["context"] == "rental_watch_baseline"
+    assert "目前在架 2 筆" in call.args[0]
+    assert rw.BRIDGE_URL in call.args[0]
+
+    bot.reset_mock()
+    r2 = _run(config_path, db, fetchers, bot)
+    assert (r2.status, r2.new, r2.price_drops) == ("ok", 0, 0)
+    bot.post_plain.assert_not_called()
+
+    current[0] = _listing(listing_id="1", price=22000)
+    current.append(_listing(listing_id="4", is_basement=True, floor="B1/4F", title="地下室B"))
+    r3 = _run(config_path, db, fetchers, bot)
+    assert (r3.status, r3.new, r3.price_drops, r3.basement_new) == ("notified", 1, 1, 1)
+    (call,) = bot.post_plain.call_args_list
+    assert call.kwargs["context"] == "rental_watch_update"
+    assert "地下室B" in call.args[0]
+    assert "~25,000~ → *22,000元*" in call.args[0]
+
+    # 價格再降一次才會再通知；持平不通知
+    bot.reset_mock()
+    _run(config_path, db, fetchers, bot)
+    bot.post_plain.assert_not_called()
+
+
+def test_run_once_baseline_waits_until_a_source_succeeds(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+
+    def broken(http, c):
+        raise RuntimeError("503")
+
+    r1 = _run(config_path, db, {"591": broken}, bot)
+    assert r1.status == "error"
+    assert r1.source_errors == {"591": "RuntimeError: 503"}
+    bot.post_plain.assert_not_called()
+
+    r2 = _run(config_path, db, {"591": lambda http, c: [_listing()]}, bot)
+    assert r2.status == "baseline"  # 不會把既有物件當成新物件洗版
+
+
+def test_source_failure_alert_after_threshold_then_recovery(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    ok = lambda http, c: [_listing()]  # noqa: E731
+
+    def broken(http, c):
+        raise RuntimeError("upstream connect error")
+
+    _run(config_path, db, {"591": ok, "sinyi": ok}, bot)  # baseline
+    bot.reset_mock()
+
+    for _ in range(rw.SOURCE_FAILURE_ALERT_THRESHOLD - 1):
+        _run(config_path, db, {"591": ok, "sinyi": broken}, bot)
+    bot.post_plain.assert_not_called()
+
+    _run(config_path, db, {"591": ok, "sinyi": broken}, bot)
+    (call,) = bot.post_plain.call_args_list
+    assert "信義 已連續 3 次抓取失敗" in call.args[0]
+
+    bot.reset_mock()
+    _run(config_path, db, {"591": ok, "sinyi": broken}, bot)  # 已警告過，不重複
+    bot.post_plain.assert_not_called()
+
+    _run(config_path, db, {"591": ok, "sinyi": ok}, bot)
+    (call,) = bot.post_plain.call_args_list
+    assert "信義 恢復正常" in call.args[0]
+
+
+def test_dry_run_writes_nothing(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    r = rw.run_once(
+        dry_run=True,
+        slack_bot=bot,
+        db_path=db,
+        config_path=config_path,
+        fetchers={"591": lambda http, c: [_listing(is_basement=True)]},
+        http=FakeHttp([]),
+    )
+    assert (r.status, r.seen, r.basement_new) == ("ok", 1, 1)
+    assert not db.exists()
+    bot.post_plain.assert_not_called()
+
+
+def test_default_config_file_loads():
+    c = rw.load_criteria()
+    assert c.districts == ("中正區", "中山區", "大安區", "信義區", "文山區")
+    assert (c.price_min, c.price_max, c.area_min, c.area_max) == (20000, 45000, 10, 50)
+    assert c.max_over_median_pct == 10
+    assert c.mrt_max_m == 600
+    assert c.exclude_basement is True
+    assert c.bonus_districts == ("大安區", "文山區")
+
+
+# ---------------------------------------------------------------------------
+# 捷運 / 登記 / 熱度（2026-10-23 修修：捷運要近、要能營業登記）
+# ---------------------------------------------------------------------------
+
+
+def test_parse_591_item_mrt_registration_views():
+    it = rw.parse_591_item(
+        _591_item(
+            7,
+            surrounding={"type": "subway_station", "desc": "距古亭", "distance": "189公尺"},
+            rentTag=[{"id": 2, "name": "近捷運"}, {"id": 3, "name": "可登記"}],
+            browsenum=31,
+            browsenum_name="昨日瀏覽",
+        )
+    )
+    assert (it.mrt_station, it.mrt_distance) == ("古亭", 189)
+    assert it.registration == "可登記"
+    assert it.views == 31
+
+
+def test_parse_591_item_bus_stop_is_not_mrt_and_untagged_registration():
+    it = rw.parse_591_item(
+        _591_item(8, surrounding={"type": "bus_station", "desc": "距公車站", "distance": "50公尺"})
+    )
+    assert it.mrt_distance is None
+    assert it.registration == "未標示"
+    assert it.views is None
+
+
+def test_parse_591_registration_from_detail_html():
+    html = (
+        '<div class="label-item"><span class="label-name right">登記</span>'
+        '<span class="businessRegistration label-value right">'
+        '<span class="length-limit">不可工商登記</span></span></div>'
+    )
+    assert rw.parse_591_registration(html) == "不可工商登記"
+    assert rw.parse_591_registration("<html></html>") == ""
+
+
+def test_registration_detail_fetched_once_and_cached(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    detail_html = '<span class="businessRegistration"><span>暫不確定</span></span>'
+    item = _listing(listing_id="9", registration="未標示", mrt_distance=200)
+    far = _listing(listing_id="10", registration="未標示", mrt_distance=900)
+    http = FakeHttp([(lambda m, u, k: "/rent/9" in u, lambda *a: _Resp(text=detail_html))])
+    fetchers = {"591": lambda h, c: [item, far]}
+
+    for _ in range(2):
+        rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=http, now=NOW)
+
+    assert [u for _, u, _ in http.calls] == ["https://business.591.com.tw/rent/9"]  # 遠的不查
+    board = rw.load_board(db, rw.load_criteria(config_path), now=NOW)
+    regs = {i.listing.listing_id: i.listing.registration for i in board.items}
+    assert regs == {"9": "暫不確定", "10": "未標示"}
+
+
+def test_registration_detail_failure_retries_next_run(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    item = _listing(listing_id="9", registration="未標示", mrt_distance=200)
+    calls = {"n": 0}
+
+    def detail(*a):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            raise RuntimeError("503")
+        return _Resp(text='<span class="businessRegistration">可登記</span>')
+
+    http = FakeHttp([(lambda m, u, k: "/rent/9" in u, detail)])
+    fetchers = {"591": lambda h, c: [item]}
+    rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=http, now=NOW)
+    rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=http, now=NOW)
+    board = rw.load_board(db, rw.load_criteria(config_path), now=NOW)
+    assert board.items[0].listing.registration == "可登記"
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [("可登記", True), ("不可工商登記", False), ("暫不確定", None), ("未標示", None), ("", None)],
+)
+def test_registration_status(text, expected):
+    assert rw_assess.registration_status(text) is expected
+
+
+@pytest.mark.parametrize(
+    "overrides,tier",
+    [
+        ({"mrt_distance": 300, "registration": "可登記"}, rw_assess.TIER_MATCH),
+        ({"mrt_distance": 500, "registration": "可登記"}, rw_assess.TIER_MATCH),
+        ({"mrt_distance": 501, "registration": "可登記"}, rw_assess.TIER_OUT),
+        ({"mrt_distance": 300, "registration": "不可工商登記"}, rw_assess.TIER_OUT),
+        ({"mrt_distance": 300, "registration": "暫不確定"}, rw_assess.TIER_CHECK),
+        ({"mrt_distance": None, "registration": "可登記"}, rw_assess.TIER_CHECK),
+        ({"source": "sinyi"}, rw_assess.TIER_CHECK),
+    ],
+)
+def test_assess_tiers(criteria, overrides, tier):
+    a = rw_assess.assess(
+        _listing(**overrides), medians={}, hot_min_views=20, mrt_max_m=criteria.mrt_max_m
+    )
+    assert a.tier == tier
+
+
+def test_assess_scoring_chips_and_urgent(criteria):
+    it = _listing(
+        area=40.0,
+        price=20000,  # 500/坪
+        is_basement=True,
+        mrt_station="古亭",
+        mrt_distance=150,
+        registration="可登記",
+    )
+    a = rw_assess.assess(it, medians={"大安區": 1000.0}, hot_min_views=20, mrt_max_m=500)
+    texts = [c.text for c in a.chips]
+    assert "每坪比同區便宜 50%" in texts
+    assert "空間大 40 坪" in texts
+    assert "地下室" in texts
+    assert "離古亭只有 150m" in texts
+    assert a.score == 5
+    assert a.urgent is True
+    assert (a.price_per_ping, a.vs_median_pct) == (500, -50)
+
+
+def test_assess_hot_makes_match_urgent_but_not_check(criteria):
+    hot_match = _listing(mrt_distance=300, registration="可登記", views=40)
+    hot_check = _listing(mrt_distance=300, registration="暫不確定", views=40)
+    kw = dict(medians={}, hot_min_views=20, mrt_max_m=500)
+    assert rw_assess.assess(hot_match, **kw).urgent is True
+    assert rw_assess.assess(hot_check, **kw).urgent is False
+    assert any(c.text == "搶手：昨天 40 人看過" for c in rw_assess.assess(hot_check, **kw).chips)
+
+
+def test_district_median_needs_three_samples():
+    two = [_listing(listing_id=str(i)) for i in range(2)]
+    assert rw_assess.district_medians(two) == {}
+    three = [_listing(listing_id=str(i), price=p) for i, p in enumerate((20000, 25000, 30000))]
+    assert rw_assess.district_medians(three) == {"大安區": 1250.0}
+
+
+def test_hot_threshold_uses_p90_with_floor():
+    low = [_listing(listing_id=str(i), views=v) for i, v in enumerate(range(10))]
+    assert rw_assess.hot_threshold(low) == rw_assess.HOT_MIN_VIEWS
+    high = [_listing(listing_id=str(i), views=v) for i, v in enumerate(range(0, 100, 10))]
+    assert rw_assess.hot_threshold(high) == 90
+
+
+# ---------------------------------------------------------------------------
+# Bridge board / feedback
+# ---------------------------------------------------------------------------
+
+
+def test_load_board_missing_db_returns_none(tmp_path, criteria):
+    assert rw.load_board(tmp_path / "nope.db", criteria) is None
+
+
+def test_load_board_hides_delisted_and_flags_new(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    current = [_listing(listing_id="1"), _listing(listing_id="2")]
+    fetchers = {"591": lambda h, c: list(current)}
+    t0 = datetime(2026, 10, 23, 1, 0, tzinfo=timezone.utc)
+    t1 = datetime(2026, 10, 23, 2, 0, tzinfo=timezone.utc)
+    rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=FakeHttp([]), now=t0)
+
+    current[:] = [_listing(listing_id="1"), _listing(listing_id="3")]  # 2 下架、3 新上架
+    rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=FakeHttp([]), now=t1)
+
+    board = rw.load_board(db, rw.load_criteria(config_path), now=t1)
+    by_id = {i.listing.listing_id: i for i in board.items}
+    assert set(by_id) == {"1", "3"}
+    assert by_id["3"].is_new is True
+    assert by_id["1"].is_new is False
+    assert board.last_scan_at == t1.isoformat()
+    status = {src.source: src for src in board.sources}
+    assert status["591"].ok and status["591"].last_success_at == t1.isoformat()
+    assert status["sinyi"].ok is False  # 這個測試沒跑信義 → 頁面顯示「未掃描」
+
+
+def test_load_board_keeps_listings_of_failed_source(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    ok = {"591": lambda h, c: [_listing(listing_id="1")]}
+
+    def broken(h, c):
+        raise RuntimeError("503")
+
+    t0 = datetime(2026, 10, 23, 1, 0, tzinfo=timezone.utc)
+    t1 = datetime(2026, 10, 23, 2, 0, tzinfo=timezone.utc)
+    rw.run_once(db_path=db, config_path=config_path, fetchers=ok, http=FakeHttp([]), now=t0)
+    rw.run_once(
+        db_path=db, config_path=config_path, fetchers={"591": broken}, http=FakeHttp([]), now=t1
+    )
+    board = rw.load_board(db, rw.load_criteria(config_path), now=t1)
+    assert [i.listing.listing_id for i in board.items] == ["1"]  # 抓不到 ≠ 下架
+    assert {src.source: src for src in board.sources}["591"].ok is False
+
+
+def test_set_feedback_roundtrip(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    fetchers = {"591": lambda h, c: [_listing(listing_id="1")]}
+    rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=FakeHttp([]), now=NOW)
+
+    rw.set_feedback(db, "591:1", "interested", "  地點好  ")
+    item = rw.load_board(db, rw.load_criteria(config_path), now=NOW).items[0]
+    assert (item.verdict, item.reason) == ("interested", "地點好")
+
+    rw.set_feedback(db, "591:1", None)
+    item = rw.load_board(db, rw.load_criteria(config_path), now=NOW).items[0]
+    assert item.verdict is None
+
+    with pytest.raises(ValueError):
+        rw.set_feedback(db, "591:1", "maybe")
+
+
+def test_default_db_path_env_override(monkeypatch, tmp_path):
+    monkeypatch.setenv("RENTAL_WATCH_DB", str(tmp_path / "x.db"))
+    assert rw.default_db_path() == tmp_path / "x.db"
+
+
+# ---------------------------------------------------------------------------
+# 2026-10-23 條件更新：20k–40k、剔除地下室、大安／文山加分
+# ---------------------------------------------------------------------------
+
+
+def _config(tmp_path: Path, name: str, extra: str) -> Path:
+    p = tmp_path / name
+    p.write_text(CONFIG_YAML + extra, encoding="utf-8")
+    return p
+
+
+def test_exclude_basement_filters_and_skips_store_fetching(tmp_path):
+    c = rw.load_criteria(_config(tmp_path, "c.yaml", "exclude_basement: true\n"))
+    assert rw.passes(_listing(is_basement=True, floor="B1/5F"), c) is False
+    assert rw.passes(_listing(), c) is True
+    assert c.wants_stores is False
+
+    def handler(method, url, kwargs):
+        return _Resp(payload={"status": 1, "records": "0", "data": {"data": []}})
+
+    http = FakeHttp([(lambda m, u, k: "bff-business.591" in u, handler)])
+    rw.fetch_591(http, c)
+    kinds = sorted(re.search(r"kind=(\d+)", u).group(1) for _, u, _ in http.calls)
+    assert kinds == ["12", "6"]  # 店面（5）不抓
+
+    sinyi_http = FakeHttp(
+        [(lambda m, u, k: "sinyi" in u, lambda *a: _Resp(text=_sinyi_page(0, [])))]
+    )
+    rw.fetch_sinyi(sinyi_http, c)
+    assert all("store-use" not in u for _, u, _ in sinyi_http.calls)
+
+
+def test_bonus_district_adds_score_and_chip(tmp_path):
+    c = rw.load_criteria(_config(tmp_path, "c.yaml", "bonus_districts: [大安區, 文山區]\n"))
+    daan = _listing(mrt_distance=300, registration="可登記")
+    zhongshan = _listing(listing_id="2", district="中山區", mrt_distance=300, registration="可登記")
+    a = rw_assess.assess_all([daan, zhongshan], c)
+    assert a[daan.key].score == a[zhongshan.key].score + 1
+    assert any(ch.text == "加分區：大安區" for ch in a[daan.key].chips)
+    assert all("加分區" not in ch.text for ch in a[zhongshan.key].chips)
+
+
+def test_config_hash_ignores_comments(tmp_path):
+    a = rw.load_criteria(_config(tmp_path, "a.yaml", ""))
+    b = rw.load_criteria(_config(tmp_path, "b.yaml", "# 只是註解\n"))
+    c = rw.load_criteria(_config(tmp_path, "c.yaml", "exclude_basement: true\n"))
+    assert a.config_hash == b.config_hash != c.config_hash
+
+
+def test_criteria_change_rebaselines_instead_of_flooding(tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    old = _config(tmp_path, "old.yaml", "")
+    new = _config(tmp_path, "new.yaml", "bonus_districts: [大安區]\n")
+    listings = [_listing(listing_id="1")]
+    fetchers = {"591": lambda h, c: list(listings)}
+
+    def run(cfg):
+        return rw.run_once(
+            slack_bot=bot,
+            db_path=db,
+            config_path=cfg,
+            fetchers=fetchers,
+            http=FakeHttp([]),
+            now=NOW,
+        )
+
+    assert run(old).status == "baseline"
+    bot.reset_mock()
+    listings.extend(_listing(listing_id=str(i)) for i in range(2, 30))  # 條件放寬後湧進來的
+    r = run(new)
+    assert r.status == "baseline"
+    (call,) = bot.post_plain.call_args_list
+    assert call.kwargs["context"] == "rental_watch_baseline"
+    assert call.args[0].startswith("🏠 租屋追蹤條件已更新")
+    assert "加分：大安區" in call.args[0]
+
+    bot.reset_mock()
+    assert run(new).status == "ok"  # 條件沒再變 → 回到一般模式
+    bot.post_plain.assert_not_called()
+
+
+def test_db_from_before_criteria_hash_rebaselines_once(config_path, tmp_path):
+    """#1351 部署時的 DB 沒有 criteria_hash → 第一次跑新版本當作條件已更新。"""
+    db = tmp_path / "rw.db"
+    fetchers = {"591": lambda h, c: [_listing()]}
+    rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=FakeHttp([]), now=NOW)
+    conn = sqlite3.connect(db)
+    conn.execute("DELETE FROM meta WHERE key = 'criteria_hash'")
+    conn.commit()
+    conn.close()
+    r = rw.run_once(
+        db_path=db, config_path=config_path, fetchers=fetchers, http=FakeHttp([]), now=NOW
+    )
+    assert r.status == "baseline"
+
+
+# ---------------------------------------------------------------------------
+# Bridge 條件面板（rental_watch.db settings 蓋過設定檔）
+# ---------------------------------------------------------------------------
+
+_GOOD_FORM = {
+    "districts": ["大安區", "內湖區"],
+    "bonus_districts": ["大安區"],
+    "price_min": "20,000",
+    "price_max": "40000",
+    "area_min": "12.5",
+    "area_max": "45",
+    "mrt_max_m": "700",
+    "exclude_basement": True,
+}
+
+
+def test_parse_criteria_form_valid_keeps_canonical_order():
+    override, errors = rw.parse_criteria_form({**_GOOD_FORM, "districts": ["內湖區", "大安區"]})
+    assert errors == []
+    assert override == {
+        "districts": ["大安區", "內湖區"],
+        "bonus_districts": ["大安區"],
+        "price": {"min": 20000, "max": 40000},
+        "area": {"min": 12.5, "max": 45.0},
+        "mrt_max_m": 700,
+        "exclude_basement": True,
+        "max_over_median_pct": None,
+    }
+
+
+@pytest.mark.parametrize(
+    "patch,needle",
+    [
+        ({"districts": []}, "至少要選一個行政區"),
+        ({"districts": ["火星區"]}, "台北市 12 區"),
+        ({"bonus_districts": ["文山區"]}, "加分區要在搜尋的行政區裡"),
+        ({"price_min": "abc"}, "月租下限要填數字"),
+        ({"price_min": "50000"}, "下限小於上限"),
+        ({"area_max": "2000"}, "坪數要介於"),
+        ({"mrt_max_m": "50"}, "捷運距離要介於"),
+    ],
+)
+def test_parse_criteria_form_errors(patch, needle):
+    _, errors = rw.parse_criteria_form({**_GOOD_FORM, **patch})
+    assert any(needle in e for e in errors), errors
+
+
+def test_override_roundtrip_and_merge(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    assert rw.get_criteria_override(db) is None
+    assert not db.exists()  # 讀不建檔
+
+    override, _ = rw.parse_criteria_form(_GOOD_FORM)
+    rw.save_criteria_override(db, override)
+    c = rw.load_criteria(config_path, db_path=db)
+    assert c.districts == ("大安區", "內湖區")
+    assert (c.price_min, c.price_max, c.area_min, c.area_max) == (20000, 40000, 12.5, 45.0)
+    assert (c.mrt_max_m, c.exclude_basement, c.bonus_districts) == (700, True, ("大安區",))
+    # 設定檔的進階規則照樣在
+    assert c.exclude_title_keywords == rw.load_criteria(config_path).exclude_title_keywords
+
+    rw.save_criteria_override(db, None)
+    assert rw.load_criteria(config_path, db_path=db) == rw.load_criteria(config_path)
+
+
+def test_run_once_uses_panel_override_and_rebaselines(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    listings = [_listing(listing_id="1"), _listing(listing_id="2", district="內湖區")]
+    fetchers = {"591": lambda h, c: list(listings)}
+
+    def run():
+        return rw.run_once(
+            slack_bot=bot,
+            db_path=db,
+            config_path=config_path,
+            fetchers=fetchers,
+            http=FakeHttp([]),
+            now=NOW,
+        )
+
+    assert run().seen == 1  # 設定檔沒有內湖區
+    override, _ = rw.parse_criteria_form({**_GOOD_FORM, "price_min": "15000"})
+    rw.save_criteria_override(db, override)
+    bot.reset_mock()
+    r = run()
+    assert (r.status, r.seen) == ("baseline", 2)
+    assert bot.post_plain.call_args.args[0].startswith("🏠 租屋追蹤條件已更新")
+
+
+def test_load_board_hides_listings_outside_narrowed_criteria(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    fetchers = {
+        "591": lambda h, c: [_listing(listing_id="1"), _listing(listing_id="2", price=34000)]
+    }
+    rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=FakeHttp([]), now=NOW)
+    override, _ = rw.parse_criteria_form(
+        {**_GOOD_FORM, "districts": ["大安區"], "price_min": "15000", "price_max": "30000"}
+    )
+    rw.save_criteria_override(db, override)
+    c = rw.load_criteria(config_path, db_path=db)
+    board = rw.load_board(db, c, now=NOW)
+    assert [i.listing.listing_id for i in board.items] == ["1"]
+
+
+def test_fetch_591_chunks_more_than_five_districts(tmp_path):
+    c = rw.load_criteria(_config(tmp_path, "c.yaml", ""))
+    c = rw.Criteria(**{**c.__dict__, "districts": rw.TAIPEI_DISTRICTS})
+
+    def handler(method, url, kwargs):
+        return _Resp(payload={"status": 1, "records": "0", "data": {"data": []}})
+
+    http = FakeHttp([(lambda m, u, k: "bff-business.591" in u, handler)])
+    rw.fetch_591(http, c)
+    office = [u for _, u, _ in http.calls if "kind=6&" in u]
+    sections = [re.search(r"sectionid=([\d,]+)", u).group(1) for u in office]
+    assert sections == ["1,2,3,4,5", "6,7,8,9,10", "11,12"]
+
+
+def test_taipei_districts_have_codes_on_every_site():
+    for d in rw.TAIPEI_DISTRICTS:
+        assert d in rw._591_SECTION_IDS and d in rw._SINYI_ZIPS and d in rw._HOUSEFUN_AREA_IDS
+    assert len(rw.TAIPEI_DISTRICTS) == 12
+
+
+# ---------------------------------------------------------------------------
+# 同一間、多家仲介刊登（2026-10-24）
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "a,b",
+    [("5F/14F", "5/14"), ("B1/5F", "b1/5"), ("5樓/14樓", "5F/14F")],
+)
+def test_floor_signature_ignores_site_format(a, b):
+    assert rw._floor_sig(a) == rw._floor_sig(b) is not None
+
+
+def test_floor_signature_unknown():
+    assert rw._floor_sig("") is None
+    assert rw._floor_sig("整棟") is None
+
+
+@pytest.mark.parametrize(
+    "patch,same",
+    [
+        ({}, True),
+        ({"source": "sinyi", "floor": "5/12", "area": 19.62}, True),  # 跨站、坪數四捨五入
+        ({"price": 27500}, True),  # 報價差 10%
+        ({"price": 27600}, False),
+        ({"area": 20.5}, False),
+        ({"floor": "6F/12F"}, False),
+        ({"district": "信義區"}, False),
+        ({"floor": ""}, False),  # 樓層不明不合併
+        ({"mrt_station": "信義安和", "mrt_distance": 650}, True),  # 仲介挑的站不同不影響
+    ],
+)
+def test_same_unit_rules(patch, same):
+    a = _listing()
+    b = _listing(listing_id="2", **patch)
+    assert rw.same_unit(a, b) is same
+
+
+def test_unit_groups_are_transitive_and_keep_singletons():
+    a = _listing(listing_id="1", price=25000)
+    b = _listing(listing_id="2", price=27000)
+    c = _listing(listing_id="3", price=29500)  # 跟 a 差 18%，但跟 b 是同一間
+    other = _listing(listing_id="4", floor="9F/12F")
+    groups = rw.unit_groups([a, b, c, other])
+    assert groups[a.key] == groups[b.key] == groups[c.key] == "591:1"
+    assert groups[other.key] == "591:4"
+
+
+def test_load_board_spreads_verdict_to_reposts(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    first = [_listing(listing_id="1")]
+    rw.run_once(
+        db_path=db,
+        config_path=config_path,
+        fetchers={"591": lambda h, c: list(first)},
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    rw.set_feedback(db, "591:1", "pass", "太吵", now=NOW)
+    first.append(_listing(listing_id="2", title="另一家仲介"))
+    rw.run_once(
+        db_path=db,
+        config_path=config_path,
+        fetchers={"591": lambda h, c: list(first)},
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    board = rw.load_board(db, rw.load_criteria(config_path), now=NOW)
+    by_key = {i.listing.key: i for i in board.items}
+    assert by_key["591:2"].verdict == "pass" and by_key["591:2"].reason == "太吵"
+    assert by_key["591:1"].group == by_key["591:2"].group
+
+
+def test_set_feedback_many_keys(tmp_path):
+    db = tmp_path / "rw.db"
+    rw.run_once(db_path=db, fetchers={}, http=FakeHttp([]), now=NOW)
+    rw.set_feedback(db, ["591:1", "591:2"], "interested", now=NOW)
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT count(*) FROM feedback").fetchone()[0] == 2
+    conn.close()
+    rw.set_feedback(db, ["591:1", "591:2"], None)
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT count(*) FROM feedback").fetchone()[0] == 0
+    conn.close()
+
+
+def _good(**kw):
+    return _listing(mrt_station="大安", mrt_distance=300, registration="可登記", **kw)
+
+
+def test_run_once_does_not_notify_reposts_of_known_or_passed_units(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    listings = [_good(listing_id="1"), _good(listing_id="2", floor="9F/12F")]
+    fetchers = {"591": lambda h, c: list(listings)}
+
+    def run():
+        bot.reset_mock()
+        return rw.run_once(
+            slack_bot=bot,
+            db_path=db,
+            config_path=config_path,
+            fetchers=fetchers,
+            http=FakeHttp([]),
+            now=NOW,
+        )
+
+    run()  # 盤點
+    rw.set_feedback(db, "591:2", "pass", now=NOW)
+    listings += [
+        _good(listing_id="3", title="同一間換仲介", price=25500),  # 跟 591:1 同一間（已在架）
+        _good(listing_id="4", title="不考慮那間換仲介", floor="9/12"),  # 跟 591:2 同一間
+    ]
+    r = run()
+    assert r.new == 2
+    bot.post_plain.assert_not_called()
+
+    # 降價：不考慮那間的降價不推
+    listings[1] = _good(listing_id="2", floor="9F/12F", price=23000)
+    run()
+    bot.post_plain.assert_not_called()
+
+
+def test_run_once_merges_new_listings_of_one_unit_into_one_line(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    listings = [_good(listing_id="1", floor="2F/12F")]
+    fetchers = {"591": lambda h, c: list(listings)}
+    rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=FakeHttp([]), now=NOW)
+    listings += [
+        _good(listing_id="5", title="新的一間A"),
+        _good(listing_id="6", title="新的一間B", price=25800),
+        _good(listing_id="7", title="新的一間C", price=26000),
+    ]
+    rw.run_once(
+        slack_bot=bot,
+        db_path=db,
+        config_path=config_path,
+        fetchers=fetchers,
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    text = bot.post_plain.call_args.args[0]
+    assert text.startswith("🏠 租屋追蹤：1 筆新物件")
+    assert "新的一間A" in text and "新的一間B" not in text
+    assert "同一間另有 2 筆仲介刊登" in text
+
+
+# ---------------------------------------------------------------------------
+# 照片（2026-10-24：Bridge 縮圖＋燈箱）
+# ---------------------------------------------------------------------------
+
+_591_IMG = "https://img2.591.com.tw/house/2026/10/15/179204842530985606.jpg"
+
+
+def test_parse_591_item_photos_strip_size_suffix_and_dedupe():
+    it = rw.parse_591_item(
+        _591_item(
+            1,
+            cover=_591_IMG + "!400x300.jpg",
+            photoList=[
+                _591_IMG + "!510x400.jpg",
+                _591_IMG.replace("img2", "img2") + "!510x400.jpg",  # 重複
+                "https://img1.591.com.tw/house/2026/10/15/2.jpg!510x400.jpg",
+                "http://img1.591.com.tw/house/insecure.jpg",  # 非 https 不收
+            ],
+        )
+    )
+    assert it.photos == (_591_IMG, "https://img1.591.com.tw/house/2026/10/15/2.jpg")
+
+
+def test_parse_591_item_falls_back_to_cover_or_nothing():
+    it = rw.parse_591_item(_591_item(1, cover=_591_IMG + "!400x300.jpg"))
+    assert it.photos == (_591_IMG,)
+    assert rw.parse_591_item(_591_item(2)).photos == ()
+
+
+def test_parse_sinyi_and_housefun_cover_photo():
+    sinyi = _sinyi_item("C1", "邊間辦公", "31.62", "5/6", "台北市大安區和平東路三段", "30,000")
+    sinyi = sinyi.replace(
+        '<div class="item_box',
+        '<img src="https://res.sinyi.com.tw/rent/C1/smallimg/A.JPG"><div class="item_box',
+        1,
+    )
+    _, (s_it,) = rw.parse_sinyi_page(_sinyi_page(1, [sinyi]), "辦公")
+    assert s_it.photos == ("https://res.sinyi.com.tw/rent/C1/smallimg/A.JPG",)
+
+    hf_src = "https://pic.hfcdn.com/res/DrawImage/ShowPic/150/110/HFRENT07/Z999/a/b.jpg?t=1"
+    hf = _hf_article("1", "辦公", "台北市中山區農安街", "3 / 7", "22,000", "24.11")
+    hf = hf.replace('<div class="Data">', f'<div class="Data"><img src="{hf_src}">', 1)
+    (h_it,) = rw.parse_housefun_html(hf, "辦公")
+    assert h_it.photos == (hf_src,)
+
+
+@pytest.mark.parametrize(
+    "url,thumb,large",
+    [
+        (_591_IMG, _591_IMG + "!400x300.jpg", _591_IMG + "!1000x750.jpg"),
+        (
+            "https://res.sinyi.com.tw/rent/C1/smallimg/A.JPG",
+            "https://res.sinyi.com.tw/rent/C1/smallimg/A.JPG",
+            "https://res.sinyi.com.tw/rent/C1/bigimg/A.JPG",
+        ),
+        (
+            "https://pic.hfcdn.com/res/DrawImage/ShowPic/150/110/HFRENT07/a.jpg?t=1",
+            "https://pic.hfcdn.com/res/DrawImage/ShowPic/400/300/HFRENT07/a.jpg?t=1",
+            "https://pic.hfcdn.com/res/DrawImage/ShowPic/1000/750/HFRENT07/a.jpg?t=1",
+        ),
+        ("https://example.com/a.jpg", "https://example.com/a.jpg", "https://example.com/a.jpg"),
+    ],
+)
+def test_photo_url_sizes(url, thumb, large):
+    assert rw.photo_url(url, "thumb") == thumb
+    assert rw.photo_url(url, "large") == large
+
+
+def test_photos_roundtrip_and_old_db_gets_column(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    # 加照片欄位之前的 DB
+    conn = sqlite3.connect(db)
+    conn.executescript(rw._SCHEMA.replace("    photos TEXT NOT NULL DEFAULT '[]',\n", ""))
+    conn.execute(
+        "INSERT INTO listings (key, source, listing_id, title, url, district, price, floor, "
+        "is_basement, kind, first_seen, last_seen) VALUES "
+        "('591:9', '591', '9', '舊的', 'u', '大安區', 25000, '5F/12F', 0, '辦公', "
+        "'2026-10-01T00:00:00+00:00', '2026-10-01T00:00:00+00:00')"
+    )
+    conn.commit()
+    assert "photos" not in {r[1] for r in conn.execute("PRAGMA table_info(listings)")}
+    conn.close()
+
+    listings = [_listing(listing_id="1", photos=(_591_IMG,))]
+    rw.run_once(
+        db_path=db,
+        config_path=config_path,
+        fetchers={"591": lambda h, c: list(listings)},
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    board = rw.load_board(db, rw.load_criteria(config_path), now=NOW)
+    assert {i.listing.key: i.listing.photos for i in board.items}["591:1"] == (_591_IMG,)
+    conn = sqlite3.connect(db)
+    assert conn.execute("SELECT photos FROM listings WHERE key = '591:9'").fetchone() == ("[]",)
+    conn.close()
+
+
+# ---------------------------------------------------------------------------
+# 租金含不含稅（2026-10-25）：讀敘述、未稅的自行加回稅費
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text,expected",
+    [
+        # 實際在 591／好房網敘述看到的寫法
+        ("公用廁所+自有廁所,獨立冷氣 租金未稅 歡迎來電", rw.TAX_EXCLUDED),
+        ("六人小型辦公室。租金為26000（未稅）", rw.TAX_EXCLUDED),
+        ("刊登廣告之租金(未稅)~開放式空間", rw.TAX_EXCLUDED),
+        ("租金價格不含稅 中山站雙捷運辦公室", rw.TAX_EXCLUDED),
+        ("可商登，稅外 獨立洗手間", rw.TAX_EXCLUDED),
+        ("租金不含租賃稅與二代健保費", rw.TAX_EXCLUDED),
+        ("租金為未稅價格，亦不含管理費", rw.TAX_EXCLUDED),
+        ("稅金由承租人負擔", rw.TAX_EXCLUDED),
+        ("獨立冷氣,租金未稅+5% 此為分割物件", rw.TAX_VAT),
+        ("租金另加5%營業稅", rw.TAX_VAT),
+        ("選擇一 租金28,000含稅價", rw.TAX_INCLUDED),
+        ("NT$25,000–35,000（含稅）", rw.TAX_INCLUDED),
+        ("【備註】廣告坪數為權狀坪數、租金為含稅金額", rw.TAX_INCLUDED),
+        ("西門站小型辦公室,租金含稅!", rw.TAX_INCLUDED),
+        ("租金含稅，不含二代健保", rw.TAX_NHI_ONLY),
+        # 跟租金無關的「稅」
+        ("萬隆捷運站方正辦公室可登記可報稅", ""),
+        ("成交行情分析｜稅費試算｜房貸規劃", ""),
+        ("可報營業稅", ""),
+        ("含管理費、不含水電", ""),
+        ("", ""),
+    ],
+)
+def test_parse_tax(text, expected):
+    assert rw.parse_tax(text) == expected
+
+
+@pytest.mark.parametrize(
+    "price,tax,cost",
+    [
+        (30000, rw.TAX_EXCLUDED, 34134),  # 30,000 ÷ (1 − 10% − 2.11%)
+        (30000, rw.TAX_NHI_ONLY, 30647),  # ÷ (1 − 2.11%)
+        (30000, rw.TAX_VAT, 31500),  # × 1.05
+        (30000, rw.TAX_INCLUDED, 30000),
+        (30000, "", 30000),
+        (17000, rw.TAX_EXCLUDED, 17000),  # 換算後 ≤ 20,000：免代扣、免補充保費
+        (18000, rw.TAX_EXCLUDED, 20480),
+    ],
+)
+def test_monthly_cost(price, tax, cost):
+    assert rw.monthly_cost(price, tax) == cost
+
+
+def test_cost_drives_filter_and_price_per_ping(criteria):
+    it = _listing(price=31000, area=20.0, tax=rw.TAX_EXCLUDED)
+    assert (it.cost, it.tax_added) == (35271, True)
+    assert rw.passes(it, criteria) is False  # 上限 35,000：實付超過就不符合
+    assert rw.passes(replace(it, tax=""), criteria) is True
+    assert rw_assess.price_per_ping(replace(it, price=30000)) == 34134 / 20.0
+
+
+def test_detail_page_tax_is_read_once_for_every_site(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    pages = {
+        "/rent/1": '<div class="house-condition-content">方正 租金未稅 歡迎來電</div>',
+        "sinyi.com.tw/rent/houseno/C1": '<ul class="features-description"><li>租金含稅</li></ul>',
+        "housefun.com.tw/rent/house/7/": '<div id="divDes">租金未稅+5%</div>',
+    }
+    http = FakeHttp(
+        [
+            (lambda m, u, k, frag=frag: frag in u, lambda *a, html=html: _Resp(text=html))
+            for frag, html in pages.items()
+        ]
+    )
+    listings = [
+        _listing(listing_id="1", registration="可登記", mrt_distance=200),
+        _listing(
+            source="sinyi",
+            listing_id="C1",
+            floor="3/12",
+            url="https://www.sinyi.com.tw/rent/houseno/C1",
+        ),
+        _listing(
+            source="housefun",
+            listing_id="7",
+            floor="8/12",
+            price=20000,
+            url="https://rent.housefun.com.tw/rent/house/7/",
+        ),
+    ]
+    fetchers = {
+        "591": lambda h, c: [listings[0]],
+        "sinyi": lambda h, c: [listings[1]],
+        "housefun": lambda h, c: [listings[2]],
+    }
+    for _ in range(2):
+        rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=http, now=NOW)
+
+    assert len(http.calls) == 3  # 每筆只抓一次
+    board = rw.load_board(db, rw.load_criteria(config_path), now=NOW)
+    by_key = {i.listing.key: i.listing for i in board.items}
+    assert by_key["591:1"].tax == rw.TAX_EXCLUDED and by_key["591:1"].cost == 28445
+    assert by_key["sinyi:C1"].tax == rw.TAX_INCLUDED and by_key["sinyi:C1"].cost == 25000
+    assert by_key["housefun:7"].tax == rw.TAX_VAT and by_key["housefun:7"].cost == 21000
+    assert all(i.detail_checked for i in by_key.values())
+
+
+def test_title_tax_is_used_when_detail_not_fetched(config_path, tmp_path, monkeypatch):
+    monkeypatch.setenv("RENTAL_WATCH_DETAIL_BUDGET", "0")
+    db = tmp_path / "rw.db"
+    it = _listing(title="大安站辦公室 租金未稅", mrt_distance=200, registration="可登記")
+    rw.run_once(
+        db_path=db,
+        config_path=config_path,
+        fetchers={"591": lambda h, c: [it]},
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    (item,) = rw.load_board(db, rw.load_criteria(config_path), now=NOW).items
+    assert (item.listing.tax, item.listing.detail_checked) == (rw.TAX_EXCLUDED, False)
+
+
+def test_slack_line_shows_cost_and_label():
+    it = _listing(price=30000, area=20.0, tax=rw.TAX_EXCLUDED)
+    line = rw.format_listing(it)
+    assert "34,134元（自行計算稅金；標示 30,000 未稅）" in line
+    assert "每坪 1,707" in line
+
+
+def test_over_budget_after_tax_is_stored_but_not_notified(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    page = '<div class="house-condition-content">租金未稅</div>'
+    http = FakeHttp([(lambda m, u, k: "/rent/" in u, lambda *a: _Resp(text=page))])
+    listings = [_listing(listing_id="1", mrt_distance=200, registration="可登記")]
+    fetchers = {"591": lambda h, c: list(listings)}
+    rw.run_once(db_path=db, config_path=config_path, fetchers=fetchers, http=http, now=NOW)
+    # 標示 33,000 未稅 → 實付 37,547，超過上限 35,000
+    listings.append(
+        _listing(
+            listing_id="2", price=33000, floor="9F/12F", mrt_distance=200, registration="可登記"
+        )
+    )
+    r = rw.run_once(
+        slack_bot=bot, db_path=db, config_path=config_path, fetchers=fetchers, http=http, now=NOW
+    )
+    bot.post_plain.assert_not_called()
+    assert r.new == 0
+    conn = sqlite3.connect(db)
+    assert conn.execute(
+        "SELECT tax, detail_checked FROM listings WHERE key = '591:2'"
+    ).fetchone() == ("excluded", 1)
+    conn.close()
+    assert [
+        i.listing.key for i in rw.load_board(db, rw.load_criteria(config_path), now=NOW).items
+    ] == ["591:1"]
+
+
+# ---------------------------------------------------------------------------
+# 比同區行情貴太多的不列（2026-10-25）
+# ---------------------------------------------------------------------------
+
+
+def _market_listings():
+    # 大安區每坪：1,000 / 1,050 / 1,100（中位數 1,050）＋ 1,200（+14%）＋ 1,150（+10%）
+    return [
+        _listing(listing_id="1", floor="1F/12F", price=20000, area=20.0),
+        _listing(listing_id="2", floor="2F/12F", price=21000, area=20.0),
+        _listing(listing_id="3", floor="3F/12F", price=22000, area=20.0),
+        _listing(listing_id="4", floor="4F/12F", price=24000, area=20.0),
+        _listing(listing_id="5", floor="6F/12F", price=23000, area=20.0),
+    ]
+
+
+def test_parse_criteria_form_over_median_pct():
+    override, errors = rw.parse_criteria_form({**_GOOD_FORM, "max_over_median_pct": "15"})
+    assert errors == [] and override["max_over_median_pct"] == 15
+    _, errors = rw.parse_criteria_form({**_GOOD_FORM, "max_over_median_pct": "-5"})
+    assert any("比同區行情" in e for e in errors)
+
+
+def test_over_market_listings_are_hidden_but_interested_kept(config_path, tmp_path):
+    cfg = _config(tmp_path, "c.yaml", "max_over_median_pct: 10\n")
+    db = tmp_path / "rw.db"
+    listings = _market_listings()
+    rw.run_once(
+        db_path=db,
+        config_path=cfg,
+        fetchers={"591": lambda h, c: list(listings)},
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    board = rw.load_board(db, rw.load_criteria(cfg), now=NOW)
+    # 中位數 1,100（五筆：1000/1050/1100/1150/1200）；+9%（1,200 → +9%）照列
+    pcts = {i.listing.listing_id: i.assessment.vs_median_pct for i in board.items}
+    assert set(pcts) == {"1", "2", "3", "4", "5"}
+
+    listings.append(_listing(listing_id="6", floor="8F/12F", price=27000, area=20.0))  # +23%
+    rw.run_once(
+        db_path=db,
+        config_path=cfg,
+        fetchers={"591": lambda h, c: list(listings)},
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    board = rw.load_board(db, rw.load_criteria(cfg), now=NOW)
+    assert "6" not in {i.listing.listing_id for i in board.items}
+
+    rw.set_feedback(db, "591:6", "interested", now=NOW)
+    board = rw.load_board(db, rw.load_criteria(cfg), now=NOW)
+    assert "6" in {i.listing.listing_id for i in board.items}
+
+
+def test_over_market_new_listing_is_not_notified(config_path, tmp_path):
+    cfg = _config(tmp_path, "c.yaml", "max_over_median_pct: 10\n")
+    db = tmp_path / "rw.db"
+    bot = MagicMock()
+    listings = [
+        _listing(
+            listing_id=str(i),
+            floor=f"{i}F/12F",
+            price=20000 + i * 500,
+            area=20.0,
+            mrt_distance=300,
+            registration="可登記",
+        )
+        for i in range(1, 6)
+    ]
+    fetchers = {"591": lambda h, c: list(listings)}
+    rw.run_once(db_path=db, config_path=cfg, fetchers=fetchers, http=FakeHttp([]), now=NOW)
+    listings.append(
+        _listing(
+            listing_id="9",
+            floor="9F/12F",
+            price=30000,
+            area=20.0,
+            mrt_distance=300,
+            registration="可登記",
+        )
+    )
+    r = rw.run_once(
+        slack_bot=bot, db_path=db, config_path=cfg, fetchers=fetchers, http=FakeHttp([]), now=NOW
+    )
+    assert r.new == 0
+    bot.post_plain.assert_not_called()
+
+
+def test_no_limit_keeps_everything(config_path, tmp_path):
+    db = tmp_path / "rw.db"
+    listings = [*_market_listings(), _listing(listing_id="6", floor="8F/12F", price=27000)]
+    rw.run_once(
+        db_path=db,
+        config_path=config_path,
+        fetchers={"591": lambda h, c: listings},
+        http=FakeHttp([]),
+        now=NOW,
+    )
+    board = rw.load_board(db, rw.load_criteria(config_path), now=NOW)
+    assert len(board.items) == 6
+
+
+# ---------------------------------------------------------------------------
+# 離家距離（2026-10-26：家在萬芳醫院站附近）
+# ---------------------------------------------------------------------------
+
+_COMMUTE_YAML = """
+home: {code: BR04, name: 萬芳醫院}
+minutes: {萬芳醫院: 0, 科技大樓: 9, 忠孝復興: 12, 台北車站: 22, 劍潭: 35, 淡水: 60}
+"""
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("麟光站", "麟光"),
+        ("忠孝敦化捷運站", "忠孝敦化"),
+        ("台北車站", "台北車站"),
+        ("大安", "大安"),
+    ],
+)
+def test_station_name(raw, expected):
+    assert rw_assess.station_name(raw, {"台北車站": 22}) == expected
+
+
+def test_load_criteria_reads_commute_table_next_to_config(tmp_path):
+    cfg = _config(tmp_path, "rental-watch.yaml", "")
+    assert rw.load_criteria(cfg).commute_minutes == ()
+    (tmp_path / "rental-commute.yaml").write_text(_COMMUTE_YAML, encoding="utf-8")
+    c = rw.load_criteria(cfg)
+    assert c.commute_home == "萬芳醫院"
+    assert dict(c.commute_minutes)["科技大樓"] == 9
+
+
+@pytest.mark.parametrize(
+    "station,distance,points,tone,text",
+    [
+        ("科技大樓站", 240, 2, "good", "離家約 12 分：科技大樓→萬芳醫院 搭 9 分＋走 3 分"),
+        ("忠孝復興", 400, 1, "good", "離家約 17 分：忠孝復興→萬芳醫院 搭 12 分＋走 5 分"),
+        ("台北車站", 300, 0, "info", "離家約 26 分：台北車站→萬芳醫院 搭 22 分＋走 4 分"),
+        ("淡水", 80, -1, "warn", "離家約 61 分：淡水→萬芳醫院 搭 60 分＋走 1 分"),
+    ],
+)
+def test_commute_score_and_chip(tmp_path, station, distance, points, tone, text):
+    cfg = _config(tmp_path, "rental-watch.yaml", "")
+    (tmp_path / "rental-commute.yaml").write_text(_COMMUTE_YAML, encoding="utf-8")
+    c = rw.load_criteria(cfg)
+    it = _listing(mrt_station=station, mrt_distance=distance, registration="可登記")
+    base = rw_assess.assess_all([replace(it, mrt_station="")], c)[it.key]
+    a = rw_assess.assess_all([it], c)[it.key]
+    assert a.score - base.score == points
+    chip = next(ch for ch in a.chips if ch.text.startswith("離家"))
+    assert (chip.text, chip.tone) == (text, tone)
+
+
+def test_unknown_station_gets_no_commute_chip(tmp_path):
+    cfg = _config(tmp_path, "rental-watch.yaml", "")
+    (tmp_path / "rental-commute.yaml").write_text(_COMMUTE_YAML, encoding="utf-8")
+    c = rw.load_criteria(cfg)
+    for it in (_listing(mrt_station="迪化街"), _listing(source="sinyi", mrt_station="")):
+        a = rw_assess.assess_all([it], c)[it.key]
+        assert not any(ch.text.startswith("離家") for ch in a.chips)
+
+
+def test_repo_commute_table_is_present_and_sane():
+    c = rw.load_criteria()
+    ride = dict(c.commute_minutes)
+    assert c.commute_home == "萬芳醫院" and ride["萬芳醫院"] == 0
+    # 文湖線往北：越遠越久
+    assert ride["麟光"] < ride["六張犁"] < ride["科技大樓"] < ride["大安"] < ride["忠孝復興"]

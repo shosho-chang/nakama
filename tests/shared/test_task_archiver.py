@@ -188,3 +188,21 @@ def test_find_integrity_issues_clean_vault_reports_nothing(tmp_path):
     report = find_integrity_issues(tmp_path)
     assert report.stale_duplicates == []
     assert report.sync_conflicts == []
+
+
+def test_completed_date_counts_as_completion_time(tmp_path):
+    """修修 2026-10-23：建立很久、最近才打勾的任務，dateModified 停在建立日——
+    Bridge 打勾寫的 completedDate 才是完成時間，14 天要從這天起算。"""
+    _write_task(
+        tmp_path,
+        "舊任務剛打勾",
+        [
+            "title: 舊任務剛打勾",
+            "status: done",
+            "dateModified: '2026-06-01T00:00:00Z'",
+            "completedDate: 2026-07-25",  # 4 天前（TaskNotes 慣例：無引號日期）
+        ],
+    )
+    report = archive_done_tasks(tmp_path, now=NOW)
+    assert report.moved == []
+    assert report.kept_recent == ["舊任務剛打勾.md"]

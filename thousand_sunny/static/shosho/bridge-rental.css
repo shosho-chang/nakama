@@ -1,0 +1,927 @@
+/* ─────────────────────────────────────────────────────────────────────────
+   Bridge /bridge/rental — 租屋追蹤（Franky rental-watch）
+
+   Dense ops list, not a card grid: one hairline row per listing — title +
+   facts + reason chips on the left, price block, then the feedback form.
+   Orange stays a line/char (≤4%): the urgent rows' 2px left rule, the "新"
+   tag, focus rings. Semantic soft fills via color-mix. All --sho-* tokens.
+   ───────────────────────────────────────────────────────────────────────── */
+
+body.sho .rt-main {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: var(--sho-s-5) var(--sho-s-5) var(--sho-s-8);
+  box-sizing: border-box;
+}
+
+/* ── Header ─────────────────────────────────────────────────────────────── */
+body.sho .rt-head {
+  padding-bottom: var(--sho-s-4);
+  border-bottom: 1px solid var(--sho-line);
+  margin-bottom: var(--sho-s-4);
+}
+body.sho .rt-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--sho-ink);
+  margin: var(--sho-s-2) 0 var(--sho-s-2);
+  line-height: 1.3;
+}
+body.sho .rt-criteria,
+body.sho .rt-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sho-s-1) var(--sho-s-3);
+  margin: 0;
+  font-family: var(--sho-font-mono);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--sho-text-2);
+}
+body.sho .rt-criteria {
+  gap: var(--sho-s-1);
+}
+body.sho .rt-criteria span {
+  padding: 2px 8px;
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+}
+body.sho .rt-criteria .rt-criteria-edit {
+  margin-left: var(--sho-s-1);
+  font-size: 12.5px;
+}
+body.sho .rt-must {
+  color: var(--sho-text);
+  font-weight: 600;
+  border-color: var(--sho-text-2) !important;
+}
+body.sho .rt-status {
+  margin-top: var(--sho-s-2);
+  color: var(--sho-muted);
+}
+body.sho .rt-status-v {
+  color: var(--sho-text-2);
+  margin-right: var(--sho-s-2);
+}
+
+/* ── Toast / empty ──────────────────────────────────────────────────────── */
+body.sho .rt-toast {
+  /* 標記後畫面停在原位（bridge-rental.js），提示要跟著浮在可視範圍頂端才看得到。 */
+  position: sticky;
+  top: var(--sho-s-3);
+  z-index: 5;
+  padding: 10px 14px;
+  border-radius: var(--sho-r-1);
+  margin-bottom: var(--sho-s-4);
+  font-size: 13px;
+  color: var(--sho-text);
+  border: 1px solid color-mix(in oklch, var(--sho-success) 40%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 10%, var(--sho-bg));
+  animation: rt-toast-out var(--sho-t-slow) var(--sho-ease) 6s forwards;
+}
+@keyframes rt-toast-out {
+  to {
+    opacity: 0;
+    visibility: hidden;
+  }
+}
+body.sho .rt-empty {
+  padding: var(--sho-s-6) var(--sho-s-5);
+}
+body.sho .rt-empty-t {
+  margin: 0 0 var(--sho-s-2);
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--sho-text);
+}
+body.sho .rt-empty-d {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.7;
+  color: var(--sho-text-2);
+}
+body.sho .rt-empty code,
+body.sho .rt-foot code {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+}
+
+/* ── Criteria editor（Bridge 直接改搜尋條件）───────────────────────────── */
+body.sho .rt-edit {
+  margin-bottom: var(--sho-s-5);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  background: var(--sho-bg);
+}
+body.sho .rt-edit-sum {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sho-s-3);
+  padding: var(--sho-s-3) var(--sho-s-4);
+  cursor: pointer;
+  border-radius: var(--sho-r-2);
+}
+body.sho .rt-edit-sum:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-edit-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sho-text);
+}
+body.sho .rt-edit-src {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  color: var(--sho-muted);
+}
+body.sho .rt-edit[open] .rt-edit-sum {
+  border-bottom: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2) var(--sho-r-2) 0 0;
+}
+body.sho .rt-edit-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-4);
+  padding: var(--sho-s-4);
+}
+body.sho .rt-edit-errors {
+  margin: var(--sho-s-4) var(--sho-s-4) 0;
+  padding: var(--sho-s-3) var(--sho-s-4);
+  border-radius: var(--sho-r-1);
+  font-size: 13px;
+  color: var(--sho-text);
+  border: 1px solid color-mix(in oklch, var(--sho-error) 45%, transparent);
+  background: color-mix(in oklch, var(--sho-error) 8%, transparent);
+}
+body.sho .rt-edit-errors p,
+body.sho .rt-edit-errors ul {
+  margin: 0;
+}
+body.sho .rt-edit-errors ul {
+  padding-left: 1.2em;
+  line-height: 1.7;
+}
+body.sho .rt-fs {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  min-width: 0;
+}
+body.sho .rt-fs legend {
+  padding: 0;
+  margin-bottom: var(--sho-s-2);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sho-text-2);
+}
+body.sho .rt-fs-hint {
+  margin-left: var(--sho-s-2);
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--sho-muted);
+}
+body.sho .rt-checks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-2);
+}
+body.sho .rt-check {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sho-s-2);
+  min-height: 34px;
+  padding: 0 var(--sho-s-3);
+  font-size: 13px;
+  color: var(--sho-text-2);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  cursor: pointer;
+  transition:
+    border-color var(--sho-t-fast) var(--sho-ease),
+    color var(--sho-t-fast) var(--sho-ease),
+    background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .rt-check:hover {
+  border-color: var(--sho-text-2);
+  color: var(--sho-text);
+}
+body.sho .rt-check input {
+  margin: 0;
+  width: 14px;
+  height: 14px;
+  accent-color: var(--sho-text);
+}
+body.sho .rt-check:has(input:checked) {
+  color: var(--sho-text);
+  border-color: var(--sho-text);
+  background: var(--sho-bg-2);
+  font-weight: 600;
+}
+body.sho .rt-check:has(input:focus-visible) {
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-check input:focus-visible {
+  outline: none;
+}
+body.sho .rt-check--solo {
+  align-self: flex-start;
+}
+body.sho .rt-ranges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-4) var(--sho-s-6);
+}
+body.sho .rt-range {
+  display: flex;
+  align-items: center;
+  gap: var(--sho-s-2);
+  color: var(--sho-muted);
+}
+body.sho .rt-num {
+  width: 104px;
+  box-sizing: border-box;
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 13px;
+  padding: 7px 10px;
+  color: var(--sho-text);
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+}
+body.sho .rt-num:hover {
+  border-color: var(--sho-muted);
+}
+body.sho .rt-num:focus-visible {
+  outline: none;
+  border-color: var(--sho-accent-line);
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-num:invalid {
+  border-color: color-mix(in oklch, var(--sho-error) 60%, transparent);
+}
+body.sho .rt-edit-note {
+  margin: 0;
+  max-width: 78ch;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--sho-muted);
+}
+body.sho .rt-edit-note code {
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+}
+body.sho .rt-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-2);
+}
+
+/* ── Section jump strip ─────────────────────────────────────────────────── */
+body.sho .rt-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  background: var(--sho-line);
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  overflow: hidden;
+  margin-bottom: var(--sho-s-6);
+}
+body.sho .rt-sum {
+  flex: 1 1 120px;
+  display: flex;
+  align-items: baseline;
+  gap: var(--sho-s-2);
+  padding: var(--sho-s-3) var(--sho-s-4);
+  background: var(--sho-bg);
+  color: var(--sho-text-2);
+  text-decoration: none;
+  transition: background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .rt-sum:hover {
+  background: var(--sho-bg-2);
+}
+body.sho .rt-sum:focus-visible {
+  outline: none;
+  box-shadow: inset 0 0 0 2px var(--sho-accent);
+}
+body.sho .rt-sum-n {
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--sho-ink);
+}
+body.sho .rt-sum-l {
+  font-size: 12.5px;
+}
+body.sho .rt-sum--urgent .rt-sum-l {
+  color: var(--sho-text);
+  font-weight: 600;
+}
+body.sho .rt-sum--urgent .rt-sum-l::before {
+  /* orange as a dot, not as text colour (accent fails AA on body text) */
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: 6px;
+  vertical-align: 2px;
+  border-radius: var(--sho-r-pill);
+  background: var(--sho-accent);
+}
+
+/* ── Sections ───────────────────────────────────────────────────────────── */
+body.sho .rt-sec {
+  margin-bottom: var(--sho-s-7);
+}
+body.sho .rt-sec-head {
+  margin-bottom: var(--sho-s-3);
+}
+body.sho .rt-sec-title {
+  display: flex;
+  align-items: center;
+  gap: var(--sho-s-2);
+  margin: 0;
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--sho-ink);
+}
+body.sho .rt-sec--urgent .rt-sec-title .sho-kicker-n {
+  color: var(--sho-accent-2);
+  border-color: var(--sho-accent-line);
+}
+body.sho .rt-count {
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  font-weight: 500;
+  color: var(--sho-muted);
+}
+body.sho .rt-sec-note {
+  margin: var(--sho-s-1) 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--sho-muted);
+}
+
+body.sho .rt-sec--fold {
+  border-top: 1px solid var(--sho-line);
+  padding-top: var(--sho-s-3);
+}
+body.sho .rt-fold-sum {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sho-s-2);
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--sho-text-2);
+  padding: var(--sho-s-2) 0;
+  border-radius: var(--sho-r-1);
+}
+body.sho .rt-fold-sum:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-fold-note {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--sho-muted);
+}
+body.sho .rt-sec--fold[open] .rt-fold-sum {
+  margin-bottom: var(--sho-s-3);
+}
+
+/* ── Rows ───────────────────────────────────────────────────────────────── */
+body.sho .rt-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--sho-line);
+  border-radius: var(--sho-r-2);
+  background: var(--sho-bg);
+}
+body.sho .rt-row {
+  display: grid;
+  grid-template-columns: 160px minmax(0, 1fr) 168px 288px;
+  gap: var(--sho-s-4);
+  align-items: start;
+  padding: var(--sho-s-4);
+  border-top: 1px solid var(--sho-line);
+  scroll-margin-top: var(--sho-s-6);
+}
+body.sho .rt-row:first-child {
+  border-top: 0;
+  border-radius: var(--sho-r-2) var(--sho-r-2) 0 0;
+}
+body.sho .rt-row.is-urgent {
+  box-shadow: inset 2px 0 0 var(--sho-accent);
+}
+body.sho .rt-row-title {
+  margin: 0 0 var(--sho-s-1);
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--sho-text);
+  overflow-wrap: anywhere;
+}
+body.sho .rt-new {
+  margin-left: var(--sho-s-1);
+  vertical-align: 2px;
+  font-size: 10.5px;
+}
+body.sho .rt-facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--sho-s-2);
+  margin: 0;
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12.5px;
+  line-height: 1.7;
+  color: var(--sho-text-2);
+}
+body.sho .rt-facts span:not(:last-child)::after {
+  /* separator trails its item so a wrapped line never starts with "·" */
+  content: "·";
+  color: var(--sho-muted);
+  margin-left: var(--sho-s-2);
+}
+
+body.sho .rt-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sho-s-1);
+  list-style: none;
+  margin: var(--sho-s-2) 0 0;
+  padding: 0;
+}
+body.sho .rt-chip {
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 1px 8px;
+  border-radius: var(--sho-r-1);
+  border: 1px solid var(--sho-line-2);
+  color: var(--sho-text-2);
+}
+body.sho .rt-chip--good {
+  color: var(--sho-text);
+  border-color: color-mix(in oklch, var(--sho-success) 45%, transparent);
+  background: color-mix(in oklch, var(--sho-success) 9%, transparent);
+}
+body.sho .rt-chip--warn {
+  color: var(--sho-text);
+  border-color: color-mix(in oklch, var(--sho-warning) 50%, transparent);
+  background: color-mix(in oklch, var(--sho-warning) 11%, transparent);
+}
+body.sho .rt-chip--bad {
+  color: var(--sho-text);
+  border-color: color-mix(in oklch, var(--sho-error) 45%, transparent);
+  background: color-mix(in oklch, var(--sho-error) 8%, transparent);
+}
+body.sho .rt-chip--info {
+  color: var(--sho-text);
+  border-color: color-mix(in oklch, var(--sho-info) 45%, transparent);
+  background: color-mix(in oklch, var(--sho-info) 9%, transparent);
+}
+/* 同一間、多家仲介刊登：收在代表那筆底下 */
+body.sho .rt-dups {
+  margin: var(--sho-s-2) 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--sho-text-2);
+}
+body.sho .rt-dups summary {
+  cursor: pointer;
+  width: fit-content;
+  border-radius: var(--sho-r-1);
+}
+body.sho .rt-dups summary:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-dups-why {
+  color: var(--sho-muted);
+}
+body.sho .rt-dups ul {
+  list-style: none;
+  margin: var(--sho-s-1) 0 0;
+  padding: 0 0 0 var(--sho-s-3);
+  border-left: 1px solid var(--sho-line);
+}
+body.sho .rt-dups li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0 var(--sho-s-2);
+  padding: 2px 0;
+  overflow-wrap: anywhere;
+}
+body.sho .rt-dups-facts {
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--sho-muted);
+}
+body.sho .rt-note {
+  margin: var(--sho-s-2) 0 0;
+  font-size: 12.5px;
+  line-height: 1.6;
+  color: var(--sho-text-2);
+}
+body.sho .rt-note-k {
+  font-family: var(--sho-font-mono);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  color: var(--sho-muted);
+  margin-right: var(--sho-s-2);
+}
+
+/* ── Price block ────────────────────────────────────────────────────────── */
+body.sho .rt-row-price {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+body.sho .rt-price {
+  margin: 0;
+  color: var(--sho-ink);
+  white-space: nowrap;
+}
+body.sho .rt-price-n {
+  font-family: var(--sho-font-mono);
+  font-size: 19px;
+  font-weight: 700;
+}
+body.sho .rt-price-u {
+  margin-left: 2px;
+  font-size: 12px;
+  color: var(--sho-muted);
+}
+body.sho .rt-prev {
+  display: block;
+  font-family: var(--sho-font-mono);
+  font-size: 12.5px;
+  color: var(--sho-muted);
+}
+/* 標示未稅：金額已加回稅費，上面標「自行計算稅金」、下面寫標示的原價 */
+body.sho .rt-tax-calc {
+  margin: 0 0 2px;
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--sho-text-2);
+}
+body.sho .rt-tax-note {
+  margin: 2px 0 0;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--sho-muted);
+}
+body.sho .rt-ppp,
+body.sho .rt-seen {
+  margin: 2px 0 0;
+  font-family: var(--sho-font-mono);
+  font-size: 12px;
+  color: var(--sho-text-2);
+}
+body.sho .rt-seen {
+  color: var(--sho-muted);
+}
+body.sho .rt-vs {
+  margin-left: var(--sho-s-2);
+  color: var(--sho-muted);
+}
+body.sho .rt-vs.is-good {
+  color: var(--sho-success);
+  font-weight: 600;
+}
+body.sho .rt-vs.is-warn {
+  color: var(--sho-text);
+}
+
+/* ── Feedback form ──────────────────────────────────────────────────────── */
+body.sho .rt-fb {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sho-s-2);
+  margin: 0;
+}
+body.sho .rt-fb-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+body.sho .rt-fb-reason {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  color: var(--sho-text);
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .rt-fb-reason::placeholder {
+  color: var(--sho-muted);
+}
+body.sho .rt-fb-reason:hover {
+  border-color: var(--sho-muted);
+}
+body.sho .rt-fb-reason:focus-visible {
+  outline: none;
+  border-color: var(--sho-accent-line);
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-fb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sho-s-2);
+}
+body.sho .rt-fb-btn {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 6px 14px;
+  min-height: 34px;
+  cursor: pointer;
+  color: var(--sho-text-2);
+  background: transparent;
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+  transition:
+    border-color var(--sho-t-fast) var(--sho-ease),
+    color var(--sho-t-fast) var(--sho-ease),
+    background var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .rt-fb-btn:hover {
+  color: var(--sho-text);
+  border-color: var(--sho-text-2);
+}
+body.sho .rt-fb-btn:focus-visible,
+body.sho .rt-fb-clear:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-fb-btn:active {
+  background: var(--sho-bg-3);
+}
+body.sho .rt-fb-btn--yes.is-on {
+  color: var(--sho-bg);
+  background: var(--sho-text);
+  border-color: var(--sho-text);
+}
+body.sho .rt-fb-btn--no.is-on {
+  color: var(--sho-text);
+  background: var(--sho-bg-3);
+  border-color: var(--sho-line-2);
+}
+body.sho .rt-fb-clear {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 2px;
+  cursor: pointer;
+  color: var(--sho-muted);
+  background: none;
+  border: 0;
+  border-radius: var(--sho-r-1);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+body.sho .rt-fb-clear:hover {
+  color: var(--sho-text);
+}
+
+/* ── Thumbnail ──────────────────────────────────────────────────────────── */
+body.sho .rt-thumb {
+  position: relative;
+  display: block;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: var(--sho-r-1);
+  background: var(--sho-bg-2);
+  border: 1px solid var(--sho-line);
+}
+body.sho a.rt-thumb {
+  cursor: zoom-in;
+}
+body.sho .rt-thumb img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform var(--sho-t-fast) var(--sho-ease);
+}
+body.sho a.rt-thumb:hover img {
+  transform: scale(1.03);
+}
+body.sho a.rt-thumb:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-thumb-n {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  padding: 1px 6px;
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 11px;
+  line-height: 1.6;
+  color: #fff;
+  background: rgb(0 0 0 / 0.62);
+  border-radius: var(--sho-r-1);
+}
+body.sho .rt-thumb--none {
+  display: grid;
+  place-items: center;
+  font-size: 12px;
+  color: var(--sho-muted);
+}
+@media (prefers-reduced-motion: reduce) {
+  body.sho .rt-thumb img {
+    transition: none;
+  }
+  body.sho a.rt-thumb:hover img {
+    transform: none;
+  }
+}
+
+/* ── Photo lightbox ─────────────────────────────────────────────────────── */
+body.sho .rt-gallery {
+  width: min(1040px, calc(100vw - 32px));
+  max-height: calc(100dvh - 32px);
+  padding: 0;
+  color: var(--sho-text);
+  background: var(--sho-bg);
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-2);
+}
+body.sho .rt-gallery::backdrop {
+  background: rgb(0 0 0 / 0.78);
+}
+body.sho .rt-gallery[open] {
+  display: flex;
+  flex-direction: column;
+}
+body.sho .rt-gallery-head {
+  display: flex;
+  align-items: center;
+  gap: var(--sho-s-3);
+  padding: var(--sho-s-2) var(--sho-s-2) var(--sho-s-2) var(--sho-s-4);
+  border-bottom: 1px solid var(--sho-line);
+}
+body.sho .rt-gallery-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+body.sho .rt-gallery-count {
+  font-family: var(--sho-font-mono);
+  font-variant-numeric: tabular-nums;
+  font-size: 12px;
+  color: var(--sho-muted);
+}
+body.sho .rt-gallery-src {
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+body.sho .rt-gallery-btn {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  font: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--sho-text-2);
+  background: transparent;
+  border: 1px solid var(--sho-line-2);
+  border-radius: var(--sho-r-1);
+}
+body.sho .rt-gallery-btn:hover {
+  color: var(--sho-text);
+  border-color: var(--sho-text-2);
+}
+body.sho .rt-gallery-btn:focus-visible {
+  outline: none;
+  box-shadow: var(--sho-focus);
+}
+body.sho .rt-gallery-btn[hidden] {
+  display: none;
+}
+body.sho .rt-gallery-stage {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  background: #000;
+}
+body.sho .rt-gallery-img {
+  display: block;
+  max-width: 100%;
+  max-height: calc(100dvh - 32px - 54px);
+  object-fit: contain;
+}
+body.sho .rt-gallery-nav {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 44px;
+  height: 64px;
+  font-size: 28px;
+  color: #fff;
+  background: rgb(0 0 0 / 0.45);
+  border-color: transparent;
+}
+body.sho .rt-gallery-nav:hover {
+  color: #fff;
+  background: rgb(0 0 0 / 0.7);
+  border-color: transparent;
+}
+body.sho .rt-gallery-nav[data-act="prev"] {
+  left: var(--sho-s-2);
+}
+body.sho .rt-gallery-nav[data-act="next"] {
+  right: var(--sho-s-2);
+}
+
+/* ── Footer ─────────────────────────────────────────────────────────────── */
+body.sho .rt-foot {
+  margin-top: var(--sho-s-7);
+  padding-top: var(--sho-s-4);
+  border-top: 1px solid var(--sho-line);
+  font-size: 12.5px;
+  line-height: 1.75;
+  color: var(--sho-muted);
+}
+body.sho .rt-foot p {
+  margin: 0 0 var(--sho-s-2);
+  max-width: 78ch;
+}
+body.sho .rt-foot b {
+  color: var(--sho-text-2);
+}
+
+/* ── Narrow screens（從 Slack 點進來多半是手機）───────────────────────── */
+@media (max-width: 900px) {
+  body.sho .rt-row {
+    grid-template-columns: 120px minmax(0, 1fr) auto;
+    gap: var(--sho-s-3);
+  }
+  body.sho .rt-fb {
+    grid-column: 1 / -1;
+  }
+}
+@media (max-width: 560px) {
+  body.sho .rt-main {
+    padding: var(--sho-s-4) var(--sho-s-4) var(--sho-s-7);
+  }
+  body.sho .rt-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  /* 手機一欄：照片放最上面、寬一點但壓矮，免得一筆佔滿整個畫面 */
+  body.sho .rt-thumb {
+    aspect-ratio: 16 / 9;
+  }
+  body.sho .rt-thumb--none {
+    display: none;
+  }
+  body.sho .rt-tax-calc,
+  body.sho .rt-tax-note {
+    flex-basis: 100%;
+  }
+  body.sho .rt-row-price {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0 var(--sho-s-3);
+    text-align: left;
+  }
+  body.sho .rt-prev {
+    display: inline;
+    margin-right: var(--sho-s-1);
+  }
+  body.sho .rt-sum {
+    flex-basis: 45%;
+  }
+}

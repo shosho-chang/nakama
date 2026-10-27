@@ -21,11 +21,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.stdout.reconfigure(encoding="utf-8")
 
 from shared.config import get_db_path  # noqa: E402
+from shared.export_paths import FULL_CUT_ID, export_media_path, is_exported  # noqa: E402
 from shared.highlight_shortlist import winners_path  # noqa: E402
 
 OK, PENDING, BAD = "✅", "⬜", "❌"
-#: 完整版。它是 Editorial Master 那條 timeline 本身，不是挑出來的精華段落。
-FULL_CUT_ID = "full"
 
 
 def _load(path: Path) -> dict | None:
@@ -91,6 +90,14 @@ def _releases(episode_id: str) -> dict[str, list[str]]:
     return out
 
 
+def _full_export_hint(episode_dir: Path) -> str:
+    media = export_media_path(episode_dir, FULL_CUT_ID)
+    return (
+        f"[序列·Resolve] 完整版上傳檔：publish_prep --cut {FULL_CUT_ID}"
+        f" → {media.name} + {media.with_suffix('.srt').name}"
+    )
+
+
 def report(episode_dir: Path) -> int:
     hl = episode_dir / "highlights"
     episode_id = episode_dir.name
@@ -109,7 +116,10 @@ def report(episode_dir: Path) -> int:
         print("        然後 [序列] run_highlight_cut.py --merge-miners")
         # 完整版跟 miners 沒有先後關係——它的 timeline 封存當下就定了。這裡不提的話，
         # 剛封存完跑這支的人會以為現在只能等 miners，白白把一條可以同時開的線擱著。
-        print("【平行】完整版：title-brainstorm → thumbnail-brainstorm → publish_prep --cut full")
+        # 上傳檔＋上傳字幕封存後立刻出，不等 packaging（修修 2026-10-26）。
+        if not is_exported(episode_dir, FULL_CUT_ID):
+            print(_full_export_hint(episode_dir))
+        print("【平行】完整版 packaging：title-brainstorm → thumbnail-brainstorm")
         return 0
     print(f"{OK} 候選開採　" + "、".join(f"{k} {v} 支" for k, v in sorted(counts.items())))
 
@@ -161,7 +171,7 @@ def report(episode_dir: Path) -> int:
             cut = by_cut.get(cut_id) or {}
             titles = len(cut.get("titles") or [])
             packages = len(cut.get("packages") or [])
-            exported = (hl / "exports" / f"{cut_id}.mp4").is_file()
+            exported = is_exported(episode_dir, cut_id)
             targets = rel.get(cut_id) or []
             need_cover = fmt == "long"  # 短片不做封面（修修 2026-09-10 裁定）
             # 長片 Top 5、短片 1 條（title-brainstorm 的長短分流，D4/D13）。
@@ -177,7 +187,10 @@ def report(episode_dir: Path) -> int:
                 ("／".join(targets) if targets else "未登錄"),
             ]
             print(f"  {cut_id:14s} {'  '.join(bits)}")
-            if not exported:
+            if not exported and cut_id == FULL_CUT_ID:
+                # 封存後第一件事，排在所有派工最前面（不等選段、不等 packaging）。
+                dispatch.insert(0, _full_export_hint(episode_dir))
+            elif not exported:
                 dispatch.append(f"[序列] publish_prep.py <ep> --cut {cut_id}（Resolve，單執行緒）")
             if titles < want_titles:
                 dispatch.append(

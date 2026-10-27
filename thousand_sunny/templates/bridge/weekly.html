@@ -422,7 +422,7 @@
                     <span class="wk-tsection-label">{{ label }}</span>
                     <span class="wk-tsection-n">{{ tasks | length }}</span>
                   </div>
-                  {% for t in tasks %}{{ task_row(t, view, lifetime=True) }}{% endfor %}
+                  {% for t in tasks %}{{ task_row(t, view, lifetime=True, show_project=True) }}{% endfor %}
                 </section>
               {% endif %}
             {% endfor %}
