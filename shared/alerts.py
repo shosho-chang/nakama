@@ -28,6 +28,9 @@ Usage:
 
     # info → log only
     alert("info", "deploy", "thousand-sunny restarted")
+
+    # condition cleared → one recovery DM (only if that key is firing) + lift suppression
+    resolve("backup", "R2 upload recovered", dedupe_key="backup-r2-fail")
 """
 
 from __future__ import annotations
@@ -94,6 +97,30 @@ def alert(
     raise ValueError(f"unknown severity: {severity!r}")
 
 
+def resolve(category: str, message: str, *, dedupe_key: str) -> bool:
+    """Close a firing `dedupe_key`: DM one recovery note and lift its suppression.
+
+    No-op unless the key is currently `firing`, so callers may invoke this on
+    every success without spamming. Lifting the suppression matters: otherwise
+    a fresh outage inside the old window would be swallowed by the dedupe.
+    Returns True when a recovery DM was sent.
+    """
+    conn = _get_conn()
+    row = conn.execute(
+        "SELECT state FROM alert_state WHERE dedup_key = ?", (dedupe_key,)
+    ).fetchone()
+    if row is None or row["state"] != "firing":
+        return False
+    conn.execute(
+        "UPDATE alert_state SET state = 'resolved', suppress_until = ? WHERE dedup_key = ?",
+        (datetime.now(timezone.utc).isoformat(), dedupe_key),
+    )
+    conn.commit()
+    logger.info(message, extra={"category": category, "dedupe_key": dedupe_key})
+    _send_slack(category, message, icon=":white_check_mark:")
+    return True
+
+
 # ---- dedupe via alert_state table -------------------------------------------
 
 
@@ -136,14 +163,14 @@ def _record_fired(dedupe_key: str, category: str, message: str, dedupe_minutes: 
 # ---- Slack DM via reused Franky bot -----------------------------------------
 
 
-def _send_slack(category: str, message: str) -> None:
+def _send_slack(category: str, message: str, *, icon: str = ":rotating_light:") -> None:
     """Send the alert via the shared Franky slack_bot. Failure is logged, not raised."""
     # Lazy import — keeps `shared.alerts` consumable from cron contexts that
     # haven't loaded slack_sdk yet.
     from agents.franky.slack_bot import FrankySlackBot
 
     bot = FrankySlackBot.from_env()
-    bot.post_plain(f":rotating_light: *[{category}]* {message}", context=f"alert/{category}")
+    bot.post_plain(f"{icon} *[{category}]* {message}", context=f"alert/{category}")
 
 
 # ---- vault archive (Phase 4 incident postmortem auto-archive) ---------------
