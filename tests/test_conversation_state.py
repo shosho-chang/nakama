@@ -97,6 +97,50 @@ def test_timeout_evicts_stale_conversation():
     assert store.active_count() == 0
 
 
+def test_timeout_keeps_conversation_awaiting_answer():
+    """2026-10-15: Nami asked a question, 修修 answered 24h19m later — the
+    thread must still be there, while ordinary idle threads still expire."""
+    store = _store(timeout_seconds=0)
+    store.start(
+        thread_ts="asked",
+        channel="D1",
+        user_id="U1",
+        agent_name="nami",
+        flow_name="nami_agent",
+        state={"sdk": True, "session_id": "s1", "pending_tool_use_id": "toolu_1"},
+    )
+    store.start(
+        thread_ts="answered",
+        channel="D1",
+        user_id="U1",
+        agent_name="nami",
+        flow_name="nami_agent",
+        state={"sdk": True, "session_id": "s2", "pending_tool_use_id": None},
+    )
+    time.sleep(0.01)
+    assert store.get("answered") is None
+    conv = store.get("asked")
+    assert conv is not None and conv.state["pending_tool_use_id"] == "toolu_1"
+    # DM 沒帶 thread_ts 時走這條找回對話（gateway/bot.py）
+    latest = store.get_latest_for_user_and_agent("U1", "nami")
+    assert latest is not None and latest.thread_ts == "asked"
+
+
+def test_pending_conversation_expires_after_pending_timeout():
+    store = ConversationStore(timeout_seconds=0, pending_timeout_seconds=0, db_path=":memory:")
+    store.start(
+        thread_ts="asked",
+        channel="D1",
+        user_id="U1",
+        agent_name="nami",
+        flow_name="nami_agent",
+        state={"pending_tool_use_id": "toolu_1"},
+    )
+    time.sleep(0.01)
+    assert store.get("asked") is None
+    assert store.active_count() == 0
+
+
 def test_multiple_threads_isolated():
     store = _store()
     store.start(thread_ts="a", channel="C", user_id="U", agent_name="nami", flow_name="f1")
