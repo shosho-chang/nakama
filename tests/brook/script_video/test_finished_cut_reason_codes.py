@@ -169,3 +169,32 @@ def test_each_collapsed_family_is_actually_used(family: str) -> None:
     raised = set().union(*_reason_code_literals().values())
 
     assert family in raised
+
+
+def test_no_acceptance_rejection_is_silent() -> None:
+    """收件端的每一個退件都要說出理由，一個裸的 `return None` 都不准留。
+
+    `reason_code` 回答「是哪一類事情不對」，這條守的是另一半：「到底哪裡不對」。
+    2026-09-17：一個 `intentional_aroll` 事件的 `placement_cue_ids` 多填了四個 id，
+    `_events_for_acceptance` 就靜靜 `return None`，run 變成 `needs_review`、
+    `reason_code: null`，沒有任何訊息；而且退件之後 `retry_failed_dispatch` 與
+    `request_correction` 都拒絕受理，整條 revision 只能重開。
+
+    這個檔案 900 行附近早就有一段註解在罵同一件事，但當時只修了觸發的那一個點。
+    所以這裡用結構判準擋整個函式，而不是再補一個個案。
+    """
+    source = (_MODULE_ROOT / "_engine.py").read_text(encoding="utf-8")
+    tree = ast.parse(source)
+    function = next(
+        node
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name == "_events_for_acceptance"
+    )
+    silent = [
+        node.lineno
+        for node in ast.walk(function)
+        if isinstance(node, ast.Return)
+        and isinstance(node.value, ast.Constant)
+        and node.value.value is None
+    ]
+    assert not silent, f"這些行還在無聲退件，改用 _reject('理由')：{silent}"

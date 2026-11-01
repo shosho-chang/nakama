@@ -355,6 +355,10 @@ def test_explicit_recovery_can_redispatch_one_rejected_pre_release_correction(
     rejected = _production(tmp_path, _CorrectionWorker(keep_anchor=False))
     rejected_view = rejected.advance(COMMAND_ID)
     assert rejected_view.status == "needs_review"
+    # 退件必須說出理由。以前這裡是裸的 `return None`，畫面上只有 needs_review 三個字，
+    # 而觸發它的分支有三十幾個——2026-09-17 修修就是這樣卡了一個晚上。
+    assert rejected_view.review_reason is not None
+    assert "master_cue_ids" in rejected_view.review_reason
 
     recovered = _production(tmp_path, _CorrectionWorker(keep_anchor=True))
     retry_request_id = recovered.retry_failed_dispatch(COMMAND_ID)
