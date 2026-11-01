@@ -32,12 +32,45 @@
     });
   });
 
-  // Outside click + Escape close every open dropdown.
-  document.addEventListener("click", function () {
+  // ── Mobile menu (≤900px; CSS 決定何時顯示) ────────────────────────────
+  // .has-menu 由這裡掛上——JS 沒跑到時 CSS 不收合，nav 維持換行版、不會消失。
+  var chassis = document.querySelector(".chassis");
+  var menuToggle = chassis && chassis.querySelector(".chassis-menu-toggle");
+  function setMenu(open) {
+    if (!menuToggle) return;
+    chassis.classList.toggle("is-menu-open", open);
+    menuToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    menuToggle.setAttribute("aria-label", open ? "關閉導覽選單" : "開啟導覽選單");
+    if (!open) closeAll(dropdowns);
+  }
+  if (menuToggle) {
+    chassis.classList.add("has-menu");
+    // 鈕上寫目前所在頁（取 active 項目的英文那段），收合後才知道自己在哪。
+    var current = chassis.querySelector(".chassis-nav a.active");
+    var label = menuToggle.querySelector("[data-menu-current]");
+    if (current && label) {
+      var first = current.firstChild;
+      var text = first && first.nodeType === 3 ? first.textContent.trim() : "";
+      if (text) label.textContent = text;
+    }
+    menuToggle.addEventListener("click", function (e) {
+      e.stopPropagation();
+      setMenu(!chassis.classList.contains("is-menu-open"));
+    });
+  }
+
+  // Outside click + Escape close every open dropdown (and the mobile menu).
+  document.addEventListener("click", function (e) {
     closeAll(dropdowns);
+    if (chassis && !chassis.contains(e.target)) setMenu(false);
   });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") closeAll(dropdowns);
+    if (e.key !== "Escape") return;
+    closeAll(dropdowns);
+    if (chassis && chassis.classList.contains("is-menu-open")) {
+      setMenu(false);
+      menuToggle.focus();
+    }
   });
 
   // ── Build stamp ──────────────────────────────────────────────────────────
