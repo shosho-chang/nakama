@@ -197,6 +197,8 @@
         "host_y_pct":            { "type": "number", "default": 0 },
         "guest_y_pct":           { "type": "number", "default": 0 },
         "title_max_width":       { "type": "number", "default": 580 },
+        "title_font_px":         { "type": "number", "default": 100 },
+        "title_font_weight":     { "type": "string", "default": "bold" },
         "text_center_pct":       { "type": "number", "default": 50 },
         "text_top_pct":          { "type": "number", "default": 44 },
         "palette":               { "type": "object", "default": {} }
@@ -306,10 +308,24 @@
         }
         titleEl.append(div);
       }
-      // 行寬超出即整塊縮字（不換行）
+      // 字重＝設計系統 LINE Seed TW 的四個 cut。實裝 TTF 的 family name 帶 _TTF
+      // 與字重後綴（見 html/body 的註解），所以字重要換整個 family，不能只改 weight。
+      // 必須在量行寬之前套上：字重不同，行寬就不同。
+      const TITLE_FONT_CUTS = {
+        thin: ["Thin", 100], regular: ["Regular", 400],
+        bold: ["Bold", 700], extrabold: ["ExtraBold", 800],
+      };
+      const [cutName, cutWeight] = TITLE_FONT_CUTS[vars.title_font_weight] || TITLE_FONT_CUTS.bold;
+      titleEl.style.fontFamily = `"LINE Seed TW_TTF ${cutName}", "LINE Seed TW_TTF", ` +
+        `"Noto Sans TC", "Microsoft JhengHei", sans-serif`;
+      titleEl.style.fontWeight = cutWeight;
+
+      // 字級＝title_font_px；行寬超出即整塊縮字（不換行）
+      const basePx = vars.title_font_px || 100;
+      titleEl.style.fontSize = basePx + "px";
       requestAnimationFrame(() => {
         const w = titleEl.scrollWidth;
-        if (w > maxW) titleEl.style.fontSize = Math.floor(100 * maxW / w) + "px";
+        if (w > maxW) titleEl.style.fontSize = Math.floor(basePx * maxW / w) + "px";
         fitHighlightPadding();
       });
 
