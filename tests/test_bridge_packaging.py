@@ -1021,6 +1021,29 @@ def test_compose_rejects_absurd_title_font_px(client, vault_with_cutouts, value)
     assert _compose(client, title_font_px=value).status_code == 422
 
 
+def test_compose_saves_title_font_weight(client, vault_with_cutouts):
+    """大字字重可選（修修 2026-11-06：「我希望字型也可以改」）。
+
+    設計系統只有一個字族 LINE Seed TW、四個字重 cut（Th／Rg／Bd／Eb），所以「字型」
+    的可選項就是這四個字重；預設 bold＝2026-07-29 修修選定的封面字重。
+    """
+    assert _compose(client, title_font_weight="extrabold").status_code == 303
+    assert _saved_req(vault_with_cutouts)["title_font_weight"] == "extrabold"
+    board = client.get("/bridge/packaging/20260723-xieboran").text
+    for value in ("thin", "regular", "bold", "extrabold"):
+        assert f'name="title_font_weight" value="{value}"' in board
+    assert 'value="extrabold" checked' in board
+
+
+def test_compose_defaults_title_font_weight_to_bold(client, vault_with_cutouts):
+    _compose(client)
+    assert _saved_req(vault_with_cutouts)["title_font_weight"] == "bold"
+
+
+def test_compose_rejects_font_weight_outside_the_design_system(client, vault_with_cutouts):
+    assert _compose(client, title_font_weight="black").status_code == 422
+
+
 def test_board_wheel_on_text_layer_drives_font_size(client, vault_with_cutouts):
     """滾輪停在大字上改的是字級，不再只是寬度框——寬度框跟著撐開才不會把字縮回去。"""
     board = client.get("/bridge/packaging/20260723-xieboran").text

@@ -112,6 +112,7 @@ def _recipe_from_render_spec(spec: dict, *, episode_slug: str, vault_root: Path)
         "highlight_text": variables.get("highlight_text", ""),
         "title_max_width": int(variables.get("title_max_width", 580)),
         "title_font_px": int(variables.get("title_font_px", 100)),
+        "title_font_weight": variables.get("title_font_weight", "bold"),
         "guest_credit": variables.get("guest_credit", ""),
         **text_position,
         **book_cover,

@@ -1044,6 +1044,7 @@ def test_attach_full_program_recipe_keeps_book_cover_and_marks_delivered_png(mon
                         "guest_y_pct": -0.12,
                         "title_max_width": 580,
                         "title_font_px": 132,
+                        "title_font_weight": "extrabold",
                         "text_center_pct": 48.5,
                         "text_top_pct": 44,
                         "book_cover_opacity": 0.38,
@@ -1087,6 +1088,7 @@ def test_attach_full_program_recipe_keeps_book_cover_and_marks_delivered_png(mon
         assert (recipe.book_cover_x_pct, recipe.book_cover_y_pct) == (55.5, 48)
         assert (recipe.text_center_pct, recipe.text_top_pct) == (48.5, 44)
         assert recipe.title_font_px == 132
+        assert recipe.title_font_weight == "extrabold"
         # 這份配方就是這張圖的配方：已出圖，watcher 不該再接手
         assert recipe.rendered_png == package.thumbnail_png
         assert recipe.geometry is not None and not recipe.geometry_manual
@@ -1158,6 +1160,7 @@ def test_render_request_rerenders_textonly_after_highlight_padding_converges(mon
 
     renders: list[tuple[str, list]] = []
     font_px: set = set()
+    font_weight: set = set()
 
     def fake_run(command):
         joined = " ".join(command)
@@ -1167,6 +1170,7 @@ def test_render_request_rerenders_textonly_after_highlight_padding_converges(mon
             dest.write_bytes(b"png")
             renders.append((dest.name, spec["variables"]["highlight_pad"]))
             font_px.add(spec["variables"]["title_font_px"])
+            font_weight.add(spec["variables"]["title_font_weight"])
             return SimpleNamespace(returncode=0, stderr="", stdout="")
         if "occlusion_check.py" in joined:
             return SimpleNamespace(returncode=0, stderr="", stdout="左遮 0px² 右遮 0px²\nPASS\n")
@@ -1197,6 +1201,7 @@ def test_render_request_rerenders_textonly_after_highlight_padding_converges(mon
     assert final_textonly == final_full
     # gate 上用滾輪調的字級，成品與 text-only 對照圖都要照用
     assert font_px == {148}
+    assert font_weight == {"bold"}  # 配方沒寫字重＝預設粗體
 
 
 @pytest.mark.parametrize("failure", ["missing-sidecar", "png-tamper", "asset-path-drift"])

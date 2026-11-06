@@ -401,6 +401,10 @@ class RenderRequestV1(BaseModel):
     # 旋鈕：短大字本來就放得下，撐寬框字也不會變大（修修 2026-10-27：「我想要像
     # Cutout 一樣，可以用上下滾動來調大小」）。預設 100 ＝舊規則，舊配方出圖不變。
     title_font_px: int = Field(default=100, ge=60, le=200)
+    # 大字字重。設計系統只有一個字族 LINE Seed TW、四個 cut（Th／Rg／Bd／Eb，見
+    # docs/design-system.md），所以「字型可以改」（修修 2026-11-06）＝在這四個裡挑。
+    # 預設 bold：2026-07-29 修修嫌 ExtraBold 太粗，封面定在 Bold。
+    title_font_weight: Literal["thin", "regular", "bold", "extrabold"] = "bold"
     # 來賓抬頭（「泛科學知識長 鄭國威」）。以前只活在桌機端的 spec 檔裡，靠 glob
     # 上一份 spec 撈——2026-08-15 把中間產物搬進 _work/ 就撈不到，整行從封面消失。
     # 收進配方後 gate 看得到也改得動，不再靠檔案系統的巧合。
