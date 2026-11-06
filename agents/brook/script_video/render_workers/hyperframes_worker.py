@@ -11,6 +11,8 @@ import logging
 import sys
 from pathlib import Path
 
+from shared.hyperframes_cli import npx_argv
+
 logger = logging.getLogger(__name__)
 
 # repo_root/agents/brook/script_video/render_workers/hyperframes_worker.py → repo_root
@@ -32,9 +34,7 @@ def _build_command(
     out_path: Path,
     params: dict | None,
 ) -> str:
-    parts = [
-        "npx",
-        "hyperframes",
+    parts = npx_argv(
         "render",
         f"compositions/{component}",
         "-c",
@@ -45,7 +45,7 @@ def _build_command(
         "standard",
         "--quiet",
         "--no-browser-gpu",
-    ]
+    )
     if params:
         parts.extend(["--variables", f"'{json.dumps(params)}'"])
     return " ".join(parts)
