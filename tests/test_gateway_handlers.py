@@ -2991,3 +2991,30 @@ def test_create_calendar_event_without_project_stays_standalone():
 
     assert mock_write.call_args.args[0] == "TaskNotes/Tasks/跟 Angie 開會.md"
     assert "projects" not in mock_write.call_args.args[1]
+
+
+def test_find_task_by_title_ignores_task_file_without_frontmatter():
+    """2026-11-08 事故回歸：沒有 frontmatter 的 task 檔（title 為空）不可讓任何標題
+    都被判成撞名。vault 實況：「寫《財富階梯》書籍介紹逐字稿-v2-4700字.md」是直接
+    貼的逐字稿，排「回覆課程留言」「W46 電子報」全部被擋。"""
+    no_fm = SimpleNamespace(name="寫《財富階梯》書籍介紹逐字稿-v2-4700字.md")
+    null_title = SimpleNamespace(name="null-title.md")
+    real = SimpleNamespace(name="寫《財富階梯》書籍介紹逐字稿.md")
+    pages = {
+        f"TaskNotes/Tasks/{no_fm.name}": "標題:攀爬財富階梯\n\n我猜在看這集節目的你……",
+        f"TaskNotes/Tasks/{null_title.name}": "---\ntitle:\nstatus: to-do\n---\n",
+        f"TaskNotes/Tasks/{real.name}": (
+            "---\ntitle: 寫《財富階梯》書籍介紹逐字稿\nstatus: to-do\n---\nbody\n"
+        ),
+    }
+    with (
+        patch("gateway.handlers.nami.list_files", return_value=[no_fm, null_title, real]),
+        patch("gateway.handlers.nami.read_page", side_effect=lambda rel: pages.get(rel)),
+    ):
+        handler = NamiHandler()
+        for unrelated in ("回覆課程留言", "回覆財富階梯 A copy", "W46 電子報"):
+            assert handler._find_task_by_title(unrelated) is None, unrelated
+        # 真正同名的 task 仍要被抓到
+        hit = handler._find_task_by_title("寫《財富階梯》書籍介紹逐字稿")
+        assert hit is not None
+        assert hit[0] == f"TaskNotes/Tasks/{real.name}"
