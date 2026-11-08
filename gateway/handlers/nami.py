@@ -1699,8 +1699,7 @@ class NamiHandler(BaseHandler):
             if not content:
                 continue
             fm = _extract_frontmatter(content)
-            fm_title = str(fm.get("title", f.stem)).lower()
-            if fm_title == title_lower or title_lower in fm_title or fm_title in title_lower:
+            if _title_matches(title_lower, fm.get("title", f.stem)):
                 return rel, fm
         return None
 
@@ -1732,8 +1731,7 @@ class NamiHandler(BaseHandler):
             if not content:
                 continue
             fm = _extract_frontmatter(content)
-            fm_title = str(fm.get("title", "")).lower()
-            if fm_title == title_lower or title_lower in fm_title or fm_title in title_lower:
+            if _title_matches(title_lower, fm.get("title")):
                 parts = content.split("---", 2)
                 body = parts[2].strip() if len(parts) >= 3 else ""
                 return rel, fm, body
@@ -3211,6 +3209,23 @@ def _stringify_fm_dates(fm: dict) -> dict:
     return {
         k: v.isoformat() if isinstance(v, (_dt.date, _dt.datetime)) else v for k, v in fm.items()
     }
+
+
+def _title_matches(query_lower: str, candidate: object) -> bool:
+    """標題雙向子字串比對（撞名 / 找既有 task、project 用）。
+
+    2026-11-08 事故：vault 裡一個沒有 frontmatter 的 task 檔（直接貼逐字稿的
+    「寫《財富階梯》書籍介紹逐字稿-v2-4700字.md」）title 取出來是空字串，
+    而 ``"" in 任何字串`` 恆為 True —— 於是 Nami 排的每個行事曆（回覆課程留言、
+    W46 電子報…）全被判成跟它撞名。空標題（含沒有 title、``title: null``）一律不算。
+    """
+    if candidate is None:
+        return False
+    cand = str(candidate).strip().lower()
+    query = query_lower.strip()
+    if not cand or not query:
+        return False
+    return cand == query or query in cand or cand in query
 
 
 def _extract_frontmatter(content: str) -> dict:
