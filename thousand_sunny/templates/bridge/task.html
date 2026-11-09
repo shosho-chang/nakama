@@ -229,6 +229,8 @@
                    aria-label="音樂音量" title="音樂音量">
             <button type="button" class="pj-timer-secondary pj-music-setup" data-music-setup hidden
                     title="選一次本地音樂資料夾（例如 E:\data\music，內含 focus / uplifting 分類）——之後按 ▶ 就會隨機播放，不經過伺服器">♪ 音樂資料夾</button>
+            {# 修修 (2026-11-09): YouTube / YouTube Music 播放清單來源（設了就優先於本地資料夾）。 #}
+            <button type="button" class="pj-timer-secondary pj-music-setup" data-music-yt-setup hidden>▶ YouTube 清單</button>
           </div>
 
           {# running-only: finish-early (logs ACTUAL elapsed — A2) / abort (no log) #}

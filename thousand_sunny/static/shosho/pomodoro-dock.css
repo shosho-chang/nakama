@@ -120,9 +120,48 @@ body.sho .pj-timer-btn:focus-visible { outline: none; box-shadow: var(--sho-focu
 /* ♪ one-time local-folder picker — ghost like the secondary actions, smaller */
 body.sho .pj-music-setup { font-size: 11px; padding: 4px 10px; }
 body.sho .pj-music-setup[hidden] { display: none; }
+body.sho .pj-music-setup.is-warn { color: var(--sho-danger, #e5584f); border-color: var(--sho-danger, #e5584f); }
 /* 音樂音量 — a slim accent range beside the title, visible while a track plays */
 body.sho .pj-music-vol { width: 72px; accent-color: var(--sho-accent); cursor: pointer; }
 body.sho .pj-music-vol[hidden] { display: none; }
+
+/* 修修 (2026-11-09): YouTube 來源 — IFrame 播放器釘在視窗右下角（YouTube 規定嵌入
+   播放器必須可見、不可縮到看不見，所以做成小縮圖）。 */
+.pj-yt-box {
+  position: fixed; right: 16px; bottom: 16px; z-index: 40;
+  width: 240px; height: 135px; border-radius: 8px; overflow: hidden;
+  background: #000; box-shadow: 0 6px 24px rgba(0, 0, 0, .28);
+}
+.pj-yt-box[hidden] { display: none; }
+.pj-yt-box iframe { display: block; width: 100%; height: 100%; border: 0; }
+
+/* 清單設定對話框 */
+.pj-yt-dialog {
+  width: min(480px, calc(100vw - 32px)); padding: 0; border: 1px solid var(--sho-border, #ddd);
+  border-radius: 12px; background: var(--sho-surface, #fff); color: var(--sho-text, #222);
+  box-shadow: 0 16px 48px rgba(0, 0, 0, .25);
+}
+.pj-yt-dialog::backdrop { background: rgba(0, 0, 0, .35); }
+.pj-yt-form { display: flex; flex-direction: column; gap: 14px; padding: 20px 22px; }
+.pj-yt-h { margin: 0; font-size: 16px; font-weight: 600; }
+.pj-yt-hint, .pj-yt-err { margin: 0; font-size: 12.5px; line-height: 1.6; color: var(--sho-text-2, #666); }
+.pj-yt-hint code { font-family: var(--sho-font-mono, ui-monospace, monospace); font-size: 12px; }
+.pj-yt-err { color: var(--sho-danger, #b3261e); }
+.pj-yt-err[hidden] { display: none; }
+.pj-yt-lab { display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 500; }
+.pj-yt-opt { font-weight: 400; font-size: 11.5px; color: var(--sho-text-2, #888); margin-left: 6px; }
+.pj-yt-in {
+  padding: 8px 10px; border: 1px solid var(--sho-border, #ccc); border-radius: 8px;
+  background: transparent; color: inherit; font: inherit; font-size: 13px; width: 100%; box-sizing: border-box;
+}
+.pj-yt-in:focus-visible { outline: none; box-shadow: var(--sho-focus, 0 0 0 2px var(--sho-accent)); }
+.pj-yt-actions { display: flex; align-items: center; gap: 8px; margin-top: 4px; }
+.pj-yt-spacer { flex: 1; }
+body.sho .pj-yt-save { background: var(--sho-accent); color: #fff; border-color: var(--sho-accent); }
+@media (prefers-reduced-motion: no-preference) {
+  .pj-yt-dialog[open] { animation: pj-yt-in .14s ease-out; }
+  @keyframes pj-yt-in { from { opacity: 0; transform: translateY(6px); } }
+}
 
 /* a secondary (ghost) timer action — e.g. the Task page's 完成·記一段 / 取消
    (body.sho scope for the same reset-specificity reason as the timer button) */
