@@ -114,8 +114,8 @@ ssh nakama-vps
 cd /home/nakama && git pull
 # 確認 .env 有新 agent 的兩組 token
 grep "<AGENT>_SLACK" .env
-systemctl restart thousand-sunny  # 目前 gateway 跑在這個 service 裡；未來拆獨立 service
-systemctl status thousand-sunny --no-pager | head
+systemctl restart nakama-gateway  # gateway 已獨立成 nakama-gateway.service（不在 thousand-sunny 裡）
+systemctl status nakama-gateway --no-pager | head
 ```
 
 **Smoke test**：
@@ -123,11 +123,30 @@ systemctl status thousand-sunny --no-pager | head
 2. 該 bot 應該以自己的 avatar / name 回覆
 3. `https://nakama.shosho.tw/bridge/cost` 查最新一筆 → `agent=<agent>` 對上
 
+## 使用者白名單（誰能叫 agent）
+
+Workspace 裡任何成員都能 DM / @mention 已安裝的 bot，所以 gateway 入口有白名單
+（`gateway/access.py`）。三個入口（slash command / @mention / DM 與 thread 回覆）
+都先檢查發話者：
+
+- 白名單 = `SLACK_ALLOWED_USER_IDS`（逗號分隔）∪ `SLACK_USER_ID_SHOSHO`
+- 兩個都沒設 → gateway **拒絕啟動**（fail-closed）
+- 不在名單：slash command 回「沒有權限」；@mention / DM 不回話，只留 log
+  `Mention denied` / `DM denied`
+- 邀新成員進 workspace **不會**自動給他 agent 權限。要開放：把他的 Slack user ID
+  （profile → ⋮ → Copy member ID）加進 `.env` 的 `SLACK_ALLOWED_USER_IDS`，重啟 gateway。
+  目前白名單是全有全無：加進去就能用**所有** agent 的**所有**工具（含 Nami 操作修修的
+  Gmail / 行事曆 / vault）。
+
 ## Troubleshooting — `@<Agent>` 沒反應
 
 ### 診斷流程（先看 log 判斷是 Slack 端還是 code 端）
 
 ```bash
+# 0. 是不是被白名單擋了？
+journalctl -u nakama-gateway --since "10 minutes ago" --no-pager | grep -E "denied|白名單"
+# 看到 `Mention denied: user U...` → 該 user 不在 SLACK_ALLOWED_USER_IDS / SLACK_USER_ID_SHOSHO
+
 # 1. Gateway 認得 bot 嗎？
 journalctl -u nakama-gateway -n 20 --no-pager | grep "啟動\|Socket"
 # 預期：「啟動 N 個 Slack bot：[..., '<agent>', ...]」+ 「[<agent>] Socket Mode connection started」

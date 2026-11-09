@@ -9,6 +9,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from gateway.slack_files import MAX_EMAIL_BODY_CHARS, attachment_context, with_attachments
 
 # files.info 回傳結構照 2026-09-24 實際 Gmail 分享檔（F0C3XEJC293）的欄位，內容簡化
@@ -98,6 +100,12 @@ def test_with_attachments_appends_after_user_text():
 
 
 # ── bot.py 接線 ─────────────────────────────────────────────────────────
+
+
+@pytest.fixture(autouse=True)
+def _allow_test_user(monkeypatch: pytest.MonkeyPatch) -> None:
+    """bot.py 入口有使用者白名單（gateway/access.py）；讓測試用的 U1 通過。"""
+    monkeypatch.setenv("SLACK_ALLOWED_USER_IDS", "U1")
 
 
 def _dm_event(text: str) -> dict:
