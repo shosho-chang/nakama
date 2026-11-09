@@ -35,7 +35,20 @@
     <header class="tk-head">
       {# v3-I.4: inline rename — ✎ swaps the title for an editable field in place. #}
       <div class="tk-titlewrap">
-        <h1 class="tk-title">{{ task.name }}</h1>
+        {# 修修 2026-11-09：任務頁也要能直接打勾完成——過去只能回週看板勾。
+           走同一條 /done 路由，from_task=1 讓它回到這頁。 #}
+        {% set is_done = task.status == 'done' %}
+        <form class="sho-box-form tk-done-form" method="post"
+              action="/bridge/weekly/task/{{ task.slug | urlencode }}/done">
+          <input type="hidden" name="week" value="{{ week_key }}">
+          <input type="hidden" name="done" value="{{ '0' if is_done else '1' }}">
+          <input type="hidden" name="from_task" value="1">
+          <button type="submit" class="sho-box tk-done {{ 'done' if is_done }}"
+                  aria-pressed="{{ 'true' if is_done else 'false' }}"
+                  aria-label="{{ ('標記未完成：' if is_done else '標記完成：') ~ task.name }}"
+                  title="{{ '改回未完成' if is_done else '標記完成' }}"></button>
+        </form>
+        <h1 class="tk-title{{ ' sho-struck' if is_done }}">{{ task.name }}</h1>
         <button type="button" class="wk-rename-icon tk-rename-icon" title="重新命名"
                 aria-label="重新命名「{{ task.name }}」">✎</button>
         <form class="wk-rename-form tk-rename-form" method="post"

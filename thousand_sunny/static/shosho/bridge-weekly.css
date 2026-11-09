@@ -872,6 +872,13 @@ body.sho .wk-rename-go:hover,
 body.sho .wk-rename-cancel:hover { border-color: var(--sho-accent); }
 /* task page: title + ✎ on one row, the editor expands to fill */
 body.sho .tk-titlewrap { display: flex; align-items: center; gap: 6px; }
+/* 任務頁的完成框：同一個 .sho-box，放大到跟 24px 標題同一個量級；觸控範圍靠
+   form 的 padding 撐到 44px，不放大方框本身。 */
+/* 對齊標題第一行（24px × 1.25 = 30px 行高，框 22px → 上緣 4px）；標題換行時框留在第一行。 */
+body.sho .tk-done-form { align-self: flex-start; padding: 11px 6px 11px 0; margin: -7px 4px -11px 0; }
+body.sho .tk-title.sho-struck { color: var(--sho-muted); }  /* .tk-title 的 ink 色會蓋掉 .sho-struck */
+body.sho .sho-box.tk-done { width: 22px; height: 22px; border-radius: 4px; }
+body.sho .sho-box.tk-done.done::after { left: 6.5px; top: 2px; width: 6px; height: 12px; border-width: 0 2px 2px 0; }
 body.sho .tk-rename-icon { opacity: 1; font-size: 14px; }
 body.sho .tk-titlewrap .wk-rename-input { height: 36px; font-size: 18px; }
 
