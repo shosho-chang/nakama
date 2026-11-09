@@ -9,23 +9,35 @@
 故障模式：
   - ``GamDisabled``（止血開關）→ 安靜長睡，不告警（那是人為關閉）
   - 其他例外 → log ＋ 短睡重試；cursor 未推進，事件不丟失
+  - 連續失敗 ``_ALERT_AFTER_FAILURES`` 輪 → Franky DM（dedupe 一天一則），恢復時再 DM 一次
+
+2026-09-06 教訓：Cloudflare 擋下每一輪請求三週，loop 只每分鐘記一行一模一樣的
+ERROR（journal 7,800+ 行），自己從不告警；唯一的訊號是隔天 05:00 對帳的告警。
 """
 
 from __future__ import annotations
 
 import time
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from agents.sanji import judge, rules, templates
 from agents.sanji.settings import SanjiConfig
 from agents.sanji.store import Store
 from agents.sanji.wp_client import GamAPIError, GamDisabled, WPClient
+from shared.alerts import alert, resolve
 from shared.log import get_logger
 
 logger = get_logger("nakama.sanji.loop")
 
 _DISABLED_SLEEP = 600  # 止血開關關閉時的輪詢間隔
 _ERROR_SLEEP = 60
+_ALERT_AFTER_FAILURES = 5  # ~5 分鐘；濾掉 WP 重啟、網路瞬斷
+_ALERT_RETRY_SECONDS = 3600  # 故障持續中每小時再送一次；實際 DM 由 dedupe 壓成一天一則
+_ALERT_DEDUPE_MINUTES = 24 * 60
+_LOG_EVERY_FAILURES = 60  # 同一個錯誤連續出現時，每 60 輪（~1h）才再記一行 ERROR
+_LOOP_DOWN_KEY = "gam-loop-down"
+_TAIPEI = ZoneInfo("Asia/Taipei")
 
 
 def level_fields(xp_total: int) -> dict:
@@ -133,6 +145,13 @@ class SanjiLoop:
         self.client = client
         self.store = store
         self.theme = theme or "身心健康練習"
+        # 故障追蹤（in-memory；跨重啟的 DM 去重靠 alert_state 表）
+        self._fail_streak = 0
+        self._down_since: datetime | None = None
+        self._last_error = ""
+        self._last_alert_at: datetime | None = None
+        # 啟動後第一次成功也要試著 resolve：可能是上一個 process 告警過、重啟後直接就好了
+        self._resolve_pending = True
 
     # ── cycle ────────────────────────────────────────────────────
     def cycle(self) -> int:
@@ -212,12 +231,76 @@ class SanjiLoop:
         else:  # queue —— 留 pending，reconcile 的 48h fail-open 兜底
             pass
 
+    # ── health ───────────────────────────────────────────────────
+    def on_cycle_error(self, exc: Exception, *, now: datetime | None = None) -> None:
+        now = now or datetime.now(timezone.utc)
+        msg = str(exc)
+        self._fail_streak += 1
+        if self._fail_streak == 1:
+            self._down_since = now
+        if (
+            self._fail_streak == 1
+            or msg != self._last_error
+            or self._fail_streak % _LOG_EVERY_FAILURES == 0
+        ):
+            logger.error(f"[loop] cycle error（連續第 {self._fail_streak} 輪）: {msg}")
+        self._last_error = msg
+
+        if self._fail_streak < _ALERT_AFTER_FAILURES:
+            return
+        if (
+            self._last_alert_at is not None
+            and (now - self._last_alert_at).total_seconds() < _ALERT_RETRY_SECONDS
+        ):
+            return
+        self._last_alert_at = now
+        try:
+            alert(
+                "error",
+                "gam",
+                f"Sanji 主迴圈連續 {self._fail_streak} 輪失敗（{self._since_label()} 起），"
+                f"入帳與打卡回覆都停了；事件留在 plugin 不會丟，恢復後自動補處理。"
+                f"最後錯誤：{msg[:300]}",
+                dedupe_key=_LOOP_DOWN_KEY,
+                dedupe_minutes=_ALERT_DEDUPE_MINUTES,
+            )
+        except Exception as alert_exc:  # noqa: BLE001 — 告警失敗不能拖垮迴圈
+            logger.error(f"[loop] alert failed: {alert_exc}")
+
+    def on_cycle_ok(self) -> None:
+        if not (self._fail_streak or self._resolve_pending):
+            return
+        if self._fail_streak:
+            logger.info(
+                f"[loop] 恢復：{self._since_label()} 起連續 {self._fail_streak} 輪失敗後成功"
+            )
+        since = f"（{self._since_label()} 起中斷）" if self._down_since else ""
+        try:
+            resolve(
+                "gam",
+                f"Sanji 主迴圈已恢復{since}；積壓事件照 cursor 補處理中。",
+                dedupe_key=_LOOP_DOWN_KEY,
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"[loop] resolve failed: {exc}")
+        self._fail_streak = 0
+        self._down_since = None
+        self._last_error = ""
+        self._last_alert_at = None
+        self._resolve_pending = False
+
+    def _since_label(self) -> str:
+        if self._down_since is None:
+            return "?"
+        return self._down_since.astimezone(_TAIPEI).strftime("%m-%d %H:%M")
+
     # ── forever ──────────────────────────────────────────────────
     def run_forever(self) -> None:
         logger.info(f"[loop] start（poll={self.cfg.poll_seconds}s, theme={self.theme}）")
         while True:
             try:
                 processed = self.cycle()
+                self.on_cycle_ok()
                 # 滿頁＝可能還有積壓，立刻再拉；否則按節奏睡
                 time.sleep(0 if processed >= 200 else self.cfg.poll_seconds)
             except GamDisabled:
@@ -227,5 +310,5 @@ class SanjiLoop:
                 logger.info("[loop] interrupted, bye")
                 return
             except Exception as exc:  # noqa: BLE001 — 服務迴圈不許死
-                logger.error(f"[loop] cycle error: {exc}")
+                self.on_cycle_error(exc)
                 time.sleep(_ERROR_SLEEP)
