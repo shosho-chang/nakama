@@ -10,7 +10,7 @@ This is a **multi-context** repo. The map lives at the root:
 
 Per-context vocabulary is **lazy-created**. Only when a skill is grilling or refactoring a specific context does it write that context's `CONTEXT.md`:
 
-- `agents/<name>/CONTEXT.md` — domain language internal to one agent (Robin / Nami / Zoro / Sanji / Brook / Franky / Usopp). Most do not exist yet; create lazily when first needed.
+- `agents/<name>/CONTEXT.md` — domain language internal to one agent (Robin / Nami / Zoro / Brook / Franky / Usopp；Sanji 社群營運已移至 freedom-fleet repo). Most do not exist yet; create lazily when first needed.
 - `thousand_sunny/CONTEXT.md` — domain language for the web presentation layer (Bridge dashboard, agent routers). Lazy.
 - `shared/CONTEXT.md` — kernel vocabulary (Agent, Run, Memory, Event, API call, Token cost). Lazy.
 
