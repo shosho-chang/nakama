@@ -35,7 +35,20 @@
     <header class="tk-head">
       {# v3-I.4: inline rename — ✎ swaps the title for an editable field in place. #}
       <div class="tk-titlewrap">
-        <h1 class="tk-title">{{ task.name }}</h1>
+        {# 修修 2026-11-09：任務頁也要能直接打勾完成——過去只能回週看板勾。
+           走同一條 /done 路由，from_task=1 讓它回到這頁。 #}
+        {% set is_done = task.status == 'done' %}
+        <form class="sho-box-form tk-done-form" method="post"
+              action="/bridge/weekly/task/{{ task.slug | urlencode }}/done">
+          <input type="hidden" name="week" value="{{ week_key }}">
+          <input type="hidden" name="done" value="{{ '0' if is_done else '1' }}">
+          <input type="hidden" name="from_task" value="1">
+          <button type="submit" class="sho-box tk-done {{ 'done' if is_done }}"
+                  aria-pressed="{{ 'true' if is_done else 'false' }}"
+                  aria-label="{{ ('標記未完成：' if is_done else '標記完成：') ~ task.name }}"
+                  title="{{ '改回未完成' if is_done else '標記完成' }}"></button>
+        </form>
+        <h1 class="tk-title{{ ' sho-struck' if is_done }}">{{ task.name }}</h1>
         <button type="button" class="wk-rename-icon tk-rename-icon" title="重新命名"
                 aria-label="重新命名「{{ task.name }}」">✎</button>
         <form class="wk-rename-form tk-rename-form" method="post"
@@ -48,40 +61,186 @@
           <button type="button" class="wk-rename-cancel" title="取消">✕</button>
         </form>
       </div>
-      <div class="tk-meta">
-        {# v3-I follow-up (修修): editable 分類 + 優先 (auto-submit on change). #}
-        <form class="wk-meta-form" method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/meta">
+    </header>
+
+    {# 2026-11-10 修修選 A「兩欄工作台」：桌機（≥1100px）左欄筆記、右欄側欄（計時→數字→
+       屬性→排程→操作），以細線分段而非一疊卡片；番茄鐘從全寬底欄搬進側欄。窄螢幕
+       .tk-side 變 display:contents，用 order 排回單欄，番茄鐘維持固定底欄。 #}
+    <div class="tk-layout">
+    <div class="tk-primary">
+      <section class="tk-notebox" aria-label="任務筆記">
+        <div class="tk-note-head">
+          <span class="wk-h">筆記 · 草稿</span>
+          {% if obsidian_uri %}
+            <a class="tk-note-obsidian" href="{{ obsidian_uri }}">✎ 在 Obsidian 繼續編輯（長文建議）↗</a>
+          {% endif %}
+        </div>
+        <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/body" class="wk-wf tk-noteform">
+          <input type="hidden" name="week" value="{{ week_key }}">
+          <input type="hidden" name="expected_token" value="{{ task_token }}">
+          {# the literal newline after > is eaten by the browser (HTML textarea rule),
+             so the body's own leading newline is preserved verbatim — no strip needed #}
+          <textarea name="body" rows="14" class="tk-note-area" spellcheck="false"
+                    placeholder="在這頁寫草稿／本週電子報…（Markdown；長文請移到 Obsidian 的寫作聖地）">
+  {{ task_body }}</textarea>
+          <div class="wk-wf-actions"><button class="sho-btn" type="submit">儲存筆記</button></div>
+        </form>
+      </section>
+    </div>
+
+    <aside class="tk-side" aria-label="計時、屬性與排程">
+      <div class="pj-dock tk-dock" id="tk-pomodoro-dock"
+           data-log-url="/bridge/weekly/task/{{ task.slug | urlencode }}/log">
+        <div class="pj-dock-row">
+          {# LEFT — task name + 排定日 chips (#3): kept clear of the timer cluster #}
+          <div class="tk-dock-left">
+            <span class="pj-dock-project"><span class="wk-tomato" aria-hidden="true">🍅</span> {{ task.name }}</span>
+            {% if task.plan %}
+              <span class="tk-dock-sched">
+                <span class="tk-dock-sched-label">排程</span>
+                {% for a in task.plan | sort(attribute='date') %}
+                  <span class="tk-plan-chip {{ 'done' if a.done }} {{ 'is-linked' if a.is_linked }}">{{ a.date.strftime('%m/%d') }}{% if a.time_label %} {{ a.time_label }}{% endif %} · {{ a.pomodoros }}<span class="sho-emoji">🍅</span>{% if a.reason %} <span class="tk-plan-r" title="{{ a.reason }}">⚠</span>{% endif %}</span>
+                {% endfor %}
+              </span>
+            {% endif %}
+          </div>
+
+          {# RIGHT — the whole timer cluster (mode / clock / actions / rollup) #}
+          <div class="tk-dock-right">
+            <span class="tk-dock-head" aria-hidden="true"><span class="wk-tomato">🍅</span> 專注計時</span>
+            <div class="pj-timer-mode" role="radiogroup" aria-label="番茄長度">
+              <input type="radio" name="tk-timer-mode" id="tk-mode-pomodoro" value="pomodoro" checked
+                     data-timer-mode data-minutes="25">
+              <label for="tk-mode-pomodoro" title="25 分番茄 🍅">25</label>
+              <input type="radio" name="tk-timer-mode" id="tk-mode-deep" value="deep"
+                     data-timer-mode data-minutes="75">
+              <label for="tk-mode-deep" title="75 分超專注 🤩">75</label>
+            </div>
+
+            <div class="pj-dock-timer" data-timer>
+              <button type="button" class="pj-timer-btn" data-timer-btn>
+                <span class="pj-timer-icon" data-timer-icon>▶</span>
+                <span class="pj-timer-display" data-timer-display>25:00</span>
+              </button>
+              {# 修修 (2026-08-25): now-playing focus music — populated by focus-music.js.
+                 ♪ setup 按鈕只在「瀏覽器支援本地資料夾、但還沒選過」時出現。 #}
+              <span class="pj-music-title" data-music-title hidden>
+                <span class="pj-music-note" aria-hidden="true">♪</span><span data-music-name></span>
+              </span>
+              <input class="pj-music-vol" data-music-vol hidden type="range" min="0" max="100" step="5"
+                     aria-label="音樂音量" title="音樂音量">
+              <button type="button" class="pj-timer-secondary pj-music-setup" data-music-setup hidden
+                      title="選一次本地音樂資料夾（例如 E:\data\music，內含 focus / uplifting 分類）——之後按 ▶ 就會隨機播放，不經過伺服器">♪ 音樂資料夾</button>
+              {# 修修 (2026-11-09): YouTube / YouTube Music 播放清單來源（設了就優先於本地資料夾）。 #}
+              <button type="button" class="pj-timer-secondary pj-music-setup" data-music-yt-setup hidden>▶ YouTube 清單</button>
+            </div>
+
+            {# running-only: finish-early (logs ACTUAL elapsed — A2) / abort (no log) #}
+            <button type="button" class="pj-timer-secondary tk-finish is-hidden" data-timer-finish>完成·記一段</button>
+            <button type="button" class="pj-timer-secondary tk-abort is-hidden" data-timer-abort>取消</button>
+
+            {# manual backup — log a full block done away from the browser. 補記日期 lets 修修
+               backfill a block done on a PAST day; without it the block is stamped today and
+               leaks into the wrong week (修修 bug). JS syncs the picker into each form's
+               entry_date; with no JS it stays blank ⇒ the route records today (safe fallback). #}
+            <label class="tk-backfill" title="手動補記的日期（預設＝最近一次排程日；當天有排時段時，+1 會記在排程時窗內；要補其他天改這裡）">
+              <span class="tk-backfill-cap">補記日期</span>
+              <input type="date" id="tk-backfill-date" value="{{ backfill_default_iso | default(today_iso) }}" max="{{ today_iso }}"
+                     aria-label="手動補記番茄鐘的日期">
+            </label>
+            <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
+              <input type="hidden" name="mode" value="pomodoro"><input type="hidden" name="manual" value="1">
+              <input type="hidden" name="week" value="{{ week_key }}">
+              <input type="hidden" name="entry_date" value="">
+              <button class="pj-timer-secondary" type="submit" title="手動補記一顆 25 分番茄">+1🍅</button>
+            </form>
+            <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
+              <input type="hidden" name="mode" value="deep"><input type="hidden" name="manual" value="1">
+              <input type="hidden" name="week" value="{{ week_key }}">
+              <input type="hidden" name="entry_date" value="">
+              <button class="pj-timer-secondary" type="submit" title="手動補記一段 75 分超專注">+1🤩</button>
+            </form>
+
+            <div class="pj-dock-rollup">
+              🍅 <span class="val">{{ actual_pom }}</span> /
+              <span class="muted">{{ task.est_pomodoros or '—' }}</span>
+            </div>
+          </div>
+        </div>
+
+        {# hidden log forms the timer submits on completion/finish — JS fills elapsed_seconds #}
+        <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-logform" data-mode="pomodoro">
+          <input type="hidden" name="mode" value="pomodoro"><input type="hidden" name="elapsed_seconds" value="">
+          <input type="hidden" name="week" value="{{ week_key }}">
+        </form>
+        <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-logform" data-mode="deep">
+          <input type="hidden" name="mode" value="deep"><input type="hidden" name="elapsed_seconds" value="">
+          <input type="hidden" name="week" value="{{ week_key }}">
+        </form>
+      </div>
+
+      {# ── estimate vs actual (accuracy — ADR-039 E, read-only) ──
+         v3-I.5: the 🍅 stats only for 工作 tasks; 超專注 (🤩) stays for every task. #}
+      <section class="tk-sec tk-stats-sec" aria-label="實際與預估">
+        <div class="tk-stats">
+          {% if task.is_work %}
+          <div class="tk-stat">
+            <span class="tk-stat-num">{{ actual_pom }}<span class="tk-stat-den">/{{ task.est_pomodoros or '—' }}</span></span>
+            <span class="tk-stat-lab"><span class="wk-tomato" aria-hidden="true">🍅</span> 實際 / 預估</span>
+          </div>
+          <div class="tk-stat">
+            <span class="tk-stat-num {{ 'tk-over' if task.est_pomodoros and accuracy_pct > 100 }}">{{ accuracy_pct if task.est_pomodoros else '—' }}{% if task.est_pomodoros %}<span class="tk-stat-den">%</span>{% endif %}</span>
+            <span class="tk-stat-lab"><span class="wk-tomato" aria-hidden="true">🍅</span> 準確率</span>
+          </div>
+          {% endif %}
+          <div class="tk-stat">
+            <span class="tk-stat-num">{{ task.ufo_total }}</span>
+            <span class="tk-stat-lab"><span aria-hidden="true">🤩</span> 超專注</span>
+          </div>
+        </div>
+        {% if task.is_work and task.est_pomodoros and accuracy_pct > 100 %}
+          <p class="tk-note">⚠ 已超出預估 {{ accuracy_pct - 100 }}%——留意完美主義／低估造成的過勞。</p>
+        {% endif %}
+      </section>
+
+      {# 屬性：分類／優先／預估🍅／專案／狀態——2026-11-10 修修選 A「兩欄工作台」，
+         從標題下那排擠在一起的控制項改成一張標籤對齊的屬性表。表單與 auto-submit
+         行為不變（.wk-meta-form 仍是 change 即送出）。 #}
+      <section class="tk-sec tk-props" aria-label="任務屬性">
+        <form class="wk-meta-form tk-props-form" method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/meta">
           <input type="hidden" name="week" value="{{ week_key }}">
           <input type="hidden" name="from_task" value="1">
-          <select class="wk-meta-sel" name="category" aria-label="分類">
-            {% for c, lbl in [('work', '工作'), ('health', '身心健康'), ('growth', '自我進修'), ('misc', '雜事')] %}
-              <option value="{{ c }}" {{ 'selected' if c == task.category }}>{{ lbl }}</option>
-            {% endfor %}
-          </select>
-          <select class="wk-meta-sel" name="priority" aria-label="優先">
-            {% for p, lbl in [('low', 'Low'), ('normal', 'Medium'), ('high', 'High')] %}
-              <option value="{{ p }}" {{ 'selected' if p == task.priority }}>{{ lbl }}</option>
-            {% endfor %}
-          </select>
+          <div class="tk-prop"><span class="tk-prop-k">分類</span>
+            <select class="wk-meta-sel" name="category" aria-label="分類">
+              {% for c, lbl in [('work', '工作'), ('health', '身心健康'), ('growth', '自我進修'), ('misc', '雜事')] %}
+                <option value="{{ c }}" {{ 'selected' if c == task.category }}>{{ lbl }}</option>
+              {% endfor %}
+            </select></div>
+          <div class="tk-prop"><span class="tk-prop-k">優先</span>
+            <select class="wk-meta-sel" name="priority" aria-label="優先">
+              {% for p, lbl in [('low', 'Low'), ('normal', 'Medium'), ('high', 'High')] %}
+                <option value="{{ p }}" {{ 'selected' if p == task.priority }}>{{ lbl }}</option>
+              {% endfor %}
+            </select></div>
           {# 預估🍅 editor (修修): editable for ANY task — non-work tasks hide the 🍅 stat
-             block above, and unscheduled tasks have no plan[] to auto-sync from, so this
-             is the only place to set the estimate by hand. 0 clears it. 1🍅 ≈ 30 分。 #}
-          <label class="wk-meta-est" title="預估番茄數（1🍅 ≈ 30 分）">
-            <input class="wk-meta-estnum" type="number" name="est_pomodoros" min="0" max="40"
-                   inputmode="numeric" value="{{ task.est_pomodoros }}" aria-label="預估番茄數">
-            <span class="wk-meta-est-unit" aria-hidden="true">🍅 預估</span>
-          </label>
+             block, and unscheduled tasks have no plan[] to auto-sync from, so this is the
+             only place to set the estimate by hand. 0 clears it. 1🍅 ≈ 30 分。 #}
+          <div class="tk-prop"><span class="tk-prop-k">預估</span>
+            <label class="wk-meta-est" title="預估番茄數（1🍅 ≈ 30 分）">
+              <input class="wk-meta-estnum" type="number" name="est_pomodoros" min="0" max="40"
+                     inputmode="numeric" value="{{ task.est_pomodoros }}" aria-label="預估番茄數">
+              <span class="wk-meta-est-unit" aria-hidden="true">🍅</span>
+            </label></div>
         </form>
-        {# 修修 2026-08-29 稽核：專案歸屬過去只能在建立當下決定，事後無處可改（這裡
-           以前只是一個唯讀的 tk-proj 文字）。改成可改派的下拉——換專案會連檔名與
-           行事曆事件標題一起搬（歸屬是檔名前綴 + projects: 的雙寫慣例）。 #}
+        {# 修修 2026-08-29 稽核：專案歸屬可改派——換專案會連檔名與行事曆事件標題一起搬
+           （歸屬是檔名前綴 + projects: 的雙寫慣例）。 #}
         <form class="wk-meta-form tk-proj-form" method="post"
               action="/bridge/weekly/task/{{ task.slug | urlencode }}/project">
           <input type="hidden" name="week" value="{{ week_key }}">
           <input type="hidden" name="from_task" value="1">
-          <label class="tk-proj-lbl" title="改變這個任務所屬的專案（會一併改檔名與行事曆事件標題）">
-            <span class="tk-proj-cap">專案</span>
-            <select name="project" aria-label="所屬專案">
+          <div class="tk-prop" title="改變這個任務所屬的專案（會一併改檔名與行事曆事件標題）">
+            <span class="tk-prop-k">專案</span>
+            <select class="wk-meta-sel" name="project" aria-label="所屬專案">
               <option value="">（無專案 · 獨立任務）</option>
               {% for p in all_projects %}
                 <option value="{{ p }}"{{ ' selected' if p == task.project }}>{{ p }}</option>
@@ -91,211 +250,84 @@
                 <option value="{{ task.project }}" selected>{{ task.project }}（找不到專案檔）</option>
               {% endif %}
             </select>
-          </label>
+          </div>
         </form>
-        <span class="sho-chip sho-chip--{{ 'online' if task.status == 'done' else 'offline' }}">{{ task.status }}</span>
+        <div class="tk-prop"><span class="tk-prop-k">狀態</span>
+          <span class="sho-chip sho-chip--{{ 'online' if task.status == 'done' else 'offline' }}">{{ task.status }}</span></div>
+      </section>
+
+      {# ── calendar scheduling — per-entry, IDENTICAL to the dashboard row (v3-C/E). ── #}
+      <section class="tk-cal" aria-label="行事曆排程">
+        <div class="tk-cal-head">
+          <span class="wk-h">📅 行事曆排程</span>
+        </div>
+
+        <div class="wk-plan-list">
+          {% for a in task.plan | sort(attribute='date') %}
+            <span class="wk-plan-chip {{ 'done' if a.done }} {{ 'has-reason' if a.reason }} {{ 'is-linked' if a.is_linked }}">
+              <span class="wk-chip-day">{{ a.date.strftime('%m/%d') }}{% if a.time_label %} {{ a.time_label }}{% endif %}</span>
+              {# v3-I.5: non-work shows the block as minutes, not 🍅 #}
+              <span class="wk-chip-pom">{% if task.is_work %}{{ a.pomodoros }}<span class="sho-emoji">🍅</span>{% else %}{{ a.pomodoros * 30 }} 分{% endif %}</span>
+              {% if a.reason %}<span class="wk-chip-reason" title="{{ a.reason }}">⚠</span>{% endif %}
+              {% if a.is_linked %}
+                <form method="post" action="/bridge/weekly/plan/cancel" class="wk-chip-form"
+                      data-confirm="取消 {{ a.date.strftime('%m/%d') }} 的安排？會刪掉 Google 行事曆事件，並移除這天的計畫。">
+                  <input type="hidden" name="task_slug" value="{{ task.slug }}">
+                  <input type="hidden" name="entry_date" value="{{ a.date.isoformat() }}">
+                  <input type="hidden" name="week" value="{{ week_key }}">
+                  <input type="hidden" name="from_task" value="1">
+                  <button class="wk-chip-x wk-chip-cancel" type="submit"
+                          aria-label="取消 {{ a.date.strftime('%m/%d') }}（含 Google 行事曆事件）">✕</button>
+                </form>
+              {% else %}
+                <form method="post" action="/bridge/weekly/plan/remove" class="wk-chip-form">
+                  <input type="hidden" name="task_slug" value="{{ task.slug }}">
+                  <input type="hidden" name="entry_date" value="{{ a.date.isoformat() }}">
+                  <input type="hidden" name="week" value="{{ week_key }}">
+                  <input type="hidden" name="from_task" value="1">
+                  <button class="wk-chip-x" type="submit" aria-label="移除 {{ a.date.strftime('%m/%d') }} 的計畫">✕</button>
+                </form>
+              {% endif %}
+            </span>
+          {% else %}
+            <span class="wk-plan-none">尚未排入任何時間。</span>
+          {% endfor %}
+        </div>
+
+        {# merged 「排入」 (v3-E): date (any week) + optional time + 🍅 → writes plan[]
+           AND a Google event in one action. With a time = a timed block; blank = all-day. #}
+        <form class="wk-sched-form wk-plan-merged" method="post" action="/bridge/weekly/plan">
+          <input type="hidden" name="task_slug" value="{{ task.slug }}">
+          <input type="hidden" name="week" value="{{ week_key }}">
+          <input type="hidden" name="from_task" value="1">
+          <div class="wk-sched-fields">
+            <label class="wk-sched-lbl"><span class="wk-sched-cap">日期</span>
+              <input class="wk-sched-date" type="date" name="entry_date" value="{{ today_iso }}" required></label>
+            <label class="wk-sched-lbl"><span class="wk-sched-cap">時間 <span class="wk-mut">(留空＝整天)</span></span>
+              <input class="wk-sched-time" type="time" name="entry_time" step="900"></label>
+            <label class="wk-sched-lbl"><span class="wk-sched-cap">{% if task.is_work %}🍅 番茄{% else %}時長{% endif %}</span>
+              <span class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ ([task.est_pomodoros, 20] | min) if task.est_pomodoros else 2 }}" aria-label="{{ '番茄數' if task.is_work else '時長（每格 30 分）' }}"><span class="wk-sched-dur wk-mut" aria-hidden="true"></span></span></label>
+            {# v3-G: 排入 sits in the same row, right of 番茄 — saves a whole row. No 「強制」
+               checkbox: 排入 auto-detects clashes and Nami asks you in Slack how to resolve. #}
+            <button class="sho-btn wk-plan-go wk-sched-go" type="submit">排入</button>
+          </div>
+          <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
+        </form>
+      </section>
+
+      {# 修修 2026-11-10：任務頁加刪除。走週看板同一條 /delete（先取消已連結的 Google
+         行事曆事件，再把任務檔送進資源回收筒），刪完回週看板。放在側欄最底、
+         與其他操作隔開，避免誤按；送出前 data-confirm 會再問一次。 #}
+      <div class="tk-sec tk-actions">
         {% if obsidian_uri %}<a class="tk-obsidian" href="{{ obsidian_uri }}" title="在 Obsidian 開啟">↗ Obsidian</a>{% endif %}
+        <form class="tk-del-form" method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/delete"
+              data-confirm="確定要刪除任務「{{ task.name }}」？任務檔會移到資源回收筒，已排入的 Google 行事曆事件也會一併取消。">
+          <input type="hidden" name="week" value="{{ week_key }}">
+          <button type="submit" class="tk-del">🗑 刪除任務</button>
+        </form>
       </div>
-    </header>
-
-    {# ── estimate vs actual (accuracy — ADR-039 E, read-only) ──
-       v3-I.5: the 🍅 stats (實際/預估 + 準確率) only for 工作 tasks — 🍅 is a work-only
-       metric (修修). 超專注 (🤩) is not a 番茄 count, so it stays for every task. #}
-    <div class="tk-stats">
-      {% if task.is_work %}
-      <div class="tk-stat">
-        <span class="tk-stat-num">{{ actual_pom }}<span class="tk-stat-den">/{{ task.est_pomodoros or '—' }}</span></span>
-        <span class="tk-stat-lab"><span class="wk-tomato" aria-hidden="true">🍅</span> 實際 / 預估</span>
-      </div>
-      <div class="tk-stat">
-        <span class="tk-stat-num {{ 'tk-over' if task.est_pomodoros and accuracy_pct > 100 }}">{{ accuracy_pct if task.est_pomodoros else '—' }}{% if task.est_pomodoros %}<span class="tk-stat-den">%</span>{% endif %}</span>
-        <span class="tk-stat-lab"><span class="wk-tomato" aria-hidden="true">🍅</span> 準確率</span>
-      </div>
-      {% endif %}
-      <div class="tk-stat">
-        <span class="tk-stat-num">{{ task.ufo_total }}</span>
-        <span class="tk-stat-lab"><span aria-hidden="true">🤩</span> 超專注</span>
-      </div>
+    </aside>
     </div>
-    {% if task.is_work and task.est_pomodoros and accuracy_pct > 100 %}
-      <p class="tk-note">⚠ 已超出預估 {{ accuracy_pct - 100 }}%——留意完美主義／低估造成的過勞。</p>
-    {% endif %}
-
-    {# ── calendar scheduling — per-entry, IDENTICAL to the dashboard row (v3-C/E).
-         Each plan[] entry is its own chip; every 排入 projects a Google event (v3-E):
-         timed → block, blank → all-day. One delete control: ✕, confirm-gated when
-         linked (it deletes the Google event too). Same /weekly/plan{,/remove,/cancel}
-         routes the dashboard uses, posted with from_task=1 so each action lands back
-         here (修修: stop the two surfaces diverging). Colour marks linked-to-Google. #}
-    <section class="tk-cal" aria-label="行事曆排程">
-      <div class="tk-cal-head">
-        <span class="wk-h">📅 行事曆排程</span>
-        <span class="wk-mut">每筆計畫是一天，都會推到 Google 行事曆；填時間＝定時，留空＝整天</span>
-      </div>
-
-      <div class="wk-plan-list">
-        {% for a in task.plan | sort(attribute='date') %}
-          <span class="wk-plan-chip {{ 'done' if a.done }} {{ 'has-reason' if a.reason }} {{ 'is-linked' if a.is_linked }}">
-            <span class="wk-chip-day">{{ a.date.strftime('%m/%d') }}{% if a.time_label %} {{ a.time_label }}{% endif %}</span>
-            {# v3-I.5: non-work shows the block as minutes, not 🍅 #}
-            <span class="wk-chip-pom">{% if task.is_work %}{{ a.pomodoros }}<span class="sho-emoji">🍅</span>{% else %}{{ a.pomodoros * 30 }} 分{% endif %}</span>
-            {% if a.reason %}<span class="wk-chip-reason" title="{{ a.reason }}">⚠</span>{% endif %}
-            {% if a.is_linked %}
-              <form method="post" action="/bridge/weekly/plan/cancel" class="wk-chip-form"
-                    data-confirm="取消 {{ a.date.strftime('%m/%d') }} 的安排？會刪掉 Google 行事曆事件，並移除這天的計畫。">
-                <input type="hidden" name="task_slug" value="{{ task.slug }}">
-                <input type="hidden" name="entry_date" value="{{ a.date.isoformat() }}">
-                <input type="hidden" name="week" value="{{ week_key }}">
-                <input type="hidden" name="from_task" value="1">
-                <button class="wk-chip-x wk-chip-cancel" type="submit"
-                        aria-label="取消 {{ a.date.strftime('%m/%d') }}（含 Google 行事曆事件）">✕</button>
-              </form>
-            {% else %}
-              <form method="post" action="/bridge/weekly/plan/remove" class="wk-chip-form">
-                <input type="hidden" name="task_slug" value="{{ task.slug }}">
-                <input type="hidden" name="entry_date" value="{{ a.date.isoformat() }}">
-                <input type="hidden" name="week" value="{{ week_key }}">
-                <input type="hidden" name="from_task" value="1">
-                <button class="wk-chip-x" type="submit" aria-label="移除 {{ a.date.strftime('%m/%d') }} 的計畫">✕</button>
-              </form>
-            {% endif %}
-          </span>
-        {% else %}
-          <span class="wk-plan-none">尚未排入任何時間。</span>
-        {% endfor %}
-      </div>
-
-      {# merged 「排入」 (v3-E): date (any week) + optional time + 🍅 → writes plan[]
-         AND a Google event in one action. With a time = a timed block; blank = all-day. #}
-      <form class="wk-sched-form wk-plan-merged" method="post" action="/bridge/weekly/plan">
-        <input type="hidden" name="task_slug" value="{{ task.slug }}">
-        <input type="hidden" name="week" value="{{ week_key }}">
-        <input type="hidden" name="from_task" value="1">
-        <div class="wk-sched-fields">
-          <label class="wk-sched-lbl"><span class="wk-sched-cap">日期</span>
-            <input class="wk-sched-date" type="date" name="entry_date" value="{{ today_iso }}" required></label>
-          <label class="wk-sched-lbl"><span class="wk-sched-cap">時間 <span class="wk-mut">(留空＝整天)</span></span>
-            <input class="wk-sched-time" type="time" name="entry_time" step="900"></label>
-          <label class="wk-sched-lbl"><span class="wk-sched-cap">{% if task.is_work %}🍅 番茄{% else %}時長{% endif %}</span>
-            <span class="wk-pom-field"><input type="number" name="pomodoros" min="1" max="20" value="{{ ([task.est_pomodoros, 20] | min) if task.est_pomodoros else 2 }}" aria-label="{{ '番茄數' if task.is_work else '時長（每格 30 分）' }}"><span class="wk-sched-dur wk-mut" aria-hidden="true"></span></span></label>
-          {# v3-G: 排入 sits in the same row, right of 番茄 — saves a whole row. No 「強制」
-             checkbox: 排入 auto-detects clashes and Nami asks you in Slack how to resolve. #}
-          <button class="sho-btn wk-plan-go wk-sched-go" type="submit">排入</button>
-        </div>
-        <input class="wk-reason-field" type="text" name="reason" maxlength="80" placeholder="週末原因（必填）">
-      </form>
-    </section>
-
-    {# ── pomodoro / super-focus timer — unified footer dock (same form as the
-         Project page, 25/75 toggle on both; ADR-039 E + 修修 unify request) ── #}
-    <div class="pj-dock tk-dock" id="tk-pomodoro-dock"
-         data-log-url="/bridge/weekly/task/{{ task.slug | urlencode }}/log">
-      <div class="pj-dock-row">
-        {# LEFT — task name + 排定日 chips (#3): kept clear of the timer cluster #}
-        <div class="tk-dock-left">
-          <span class="pj-dock-project"><span class="wk-tomato" aria-hidden="true">🍅</span> {{ task.name }}</span>
-          {% if task.plan %}
-            <span class="tk-dock-sched">
-              <span class="tk-dock-sched-label">排程</span>
-              {% for a in task.plan | sort(attribute='date') %}
-                <span class="tk-plan-chip {{ 'done' if a.done }} {{ 'is-linked' if a.is_linked }}">{{ a.date.strftime('%m/%d') }}{% if a.time_label %} {{ a.time_label }}{% endif %} · {{ a.pomodoros }}<span class="sho-emoji">🍅</span>{% if a.reason %} <span class="tk-plan-r" title="{{ a.reason }}">⚠</span>{% endif %}</span>
-              {% endfor %}
-            </span>
-          {% endif %}
-        </div>
-
-        {# RIGHT — the whole timer cluster (mode / clock / actions / rollup) #}
-        <div class="tk-dock-right">
-          <div class="pj-timer-mode" role="radiogroup" aria-label="番茄長度">
-            <input type="radio" name="tk-timer-mode" id="tk-mode-pomodoro" value="pomodoro" checked
-                   data-timer-mode data-minutes="25">
-            <label for="tk-mode-pomodoro" title="25 分番茄 🍅">25</label>
-            <input type="radio" name="tk-timer-mode" id="tk-mode-deep" value="deep"
-                   data-timer-mode data-minutes="75">
-            <label for="tk-mode-deep" title="75 分超專注 🤩">75</label>
-          </div>
-
-          <div class="pj-dock-timer" data-timer>
-            <button type="button" class="pj-timer-btn" data-timer-btn>
-              <span class="pj-timer-icon" data-timer-icon>▶</span>
-              <span class="pj-timer-display" data-timer-display>25:00</span>
-            </button>
-            {# 修修 (2026-08-25): now-playing focus music — populated by focus-music.js.
-               ♪ setup 按鈕只在「瀏覽器支援本地資料夾、但還沒選過」時出現。 #}
-            <span class="pj-music-title" data-music-title hidden>
-              <span class="pj-music-note" aria-hidden="true">♪</span><span data-music-name></span>
-            </span>
-            <input class="pj-music-vol" data-music-vol hidden type="range" min="0" max="100" step="5"
-                   aria-label="音樂音量" title="音樂音量">
-            <button type="button" class="pj-timer-secondary pj-music-setup" data-music-setup hidden
-                    title="選一次本地音樂資料夾（例如 E:\data\music，內含 focus / uplifting 分類）——之後按 ▶ 就會隨機播放，不經過伺服器">♪ 音樂資料夾</button>
-            {# 修修 (2026-11-09): YouTube / YouTube Music 播放清單來源（設了就優先於本地資料夾）。 #}
-            <button type="button" class="pj-timer-secondary pj-music-setup" data-music-yt-setup hidden>▶ YouTube 清單</button>
-          </div>
-
-          {# running-only: finish-early (logs ACTUAL elapsed — A2) / abort (no log) #}
-          <button type="button" class="pj-timer-secondary tk-finish is-hidden" data-timer-finish>完成·記一段</button>
-          <button type="button" class="pj-timer-secondary tk-abort is-hidden" data-timer-abort>取消</button>
-
-          {# manual backup — log a full block done away from the browser. 補記日期 lets 修修
-             backfill a block done on a PAST day; without it the block is stamped today and
-             leaks into the wrong week (修修 bug). JS syncs the picker into each form's
-             entry_date; with no JS it stays blank ⇒ the route records today (safe fallback). #}
-          <label class="tk-backfill" title="手動補記的日期（預設＝最近一次排程日；當天有排時段時，+1 會記在排程時窗內；要補其他天改這裡）">
-            <span class="tk-backfill-cap">補記日期</span>
-            <input type="date" id="tk-backfill-date" value="{{ backfill_default_iso | default(today_iso) }}" max="{{ today_iso }}"
-                   aria-label="手動補記番茄鐘的日期">
-          </label>
-          <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
-            <input type="hidden" name="mode" value="pomodoro"><input type="hidden" name="manual" value="1">
-            <input type="hidden" name="week" value="{{ week_key }}">
-            <input type="hidden" name="entry_date" value="">
-            <button class="pj-timer-secondary" type="submit" title="手動補記一顆 25 分番茄">+1🍅</button>
-          </form>
-          <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-mform">
-            <input type="hidden" name="mode" value="deep"><input type="hidden" name="manual" value="1">
-            <input type="hidden" name="week" value="{{ week_key }}">
-            <input type="hidden" name="entry_date" value="">
-            <button class="pj-timer-secondary" type="submit" title="手動補記一段 75 分超專注">+1🤩</button>
-          </form>
-
-          <div class="pj-dock-rollup">
-            🍅 <span class="val">{{ actual_pom }}</span> /
-            <span class="muted">{{ task.est_pomodoros or '—' }}</span>
-          </div>
-        </div>
-      </div>
-
-      {# hidden log forms the timer submits on completion/finish — JS fills elapsed_seconds #}
-      <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-logform" data-mode="pomodoro">
-        <input type="hidden" name="mode" value="pomodoro"><input type="hidden" name="elapsed_seconds" value="">
-        <input type="hidden" name="week" value="{{ week_key }}">
-      </form>
-      <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/log" class="tk-logform" data-mode="deep">
-        <input type="hidden" name="mode" value="deep"><input type="hidden" name="elapsed_seconds" value="">
-        <input type="hidden" name="week" value="{{ week_key }}">
-      </form>
-    </div>
-
-    {# ── note body — scoped draft surface (ADR-040 A7 / Slice W) ── #}
-    <section class="tk-notebox" aria-label="任務筆記">
-      <div class="tk-note-head">
-        <span class="wk-h">筆記 · 草稿</span>
-        {% if obsidian_uri %}
-          <a class="tk-note-obsidian" href="{{ obsidian_uri }}">✎ 在 Obsidian 繼續編輯（長文建議）↗</a>
-        {% endif %}
-      </div>
-      <form method="post" action="/bridge/weekly/task/{{ task.slug | urlencode }}/body" class="wk-wf tk-noteform">
-        <input type="hidden" name="week" value="{{ week_key }}">
-        <input type="hidden" name="expected_token" value="{{ task_token }}">
-        {# the literal newline after > is eaten by the browser (HTML textarea rule),
-           so the body's own leading newline is preserved verbatim — no strip needed #}
-        <textarea name="body" rows="14" class="tk-note-area" spellcheck="false"
-                  placeholder="在這頁寫草稿／本週電子報…（Markdown；長文請移到 Obsidian 的寫作聖地）">
-{{ task_body }}</textarea>
-        <div class="wk-wf-actions"><button class="sho-btn" type="submit">儲存筆記</button></div>
-      </form>
-    </section>
 
   </section>
   </main>

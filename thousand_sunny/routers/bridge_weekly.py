@@ -102,6 +102,7 @@ _PLAN_ERRORS = {
         "此任務已連動 Google 行事曆——要改期或取消，請到任務頁操作；重新排入會產生重複事件，已擋下。"
     ),
     "rename_invalid": "新名稱無效（空白或含路徑分隔符號）。",
+    "done_write": "更新完成狀態失敗，任務檔可能被其他程式鎖定。",
     "rename_exists": "已有同名任務，請換一個名稱。",
     # calendar scheduling (ADR-041 41c) — plan is authoritative; calendar is best-effort.
     # v3-I.2: web conflicts pop a Web UI modal (強排 / 改時間 / 取消排程); this banner is the
@@ -648,6 +649,7 @@ async def weekly_task_done(
     done: int = Form(0),  # 1 = mark done, 0 = re-open
     week: str = Form(""),
     from_project: str = Form(""),  # v3-H — fired from a Project Brief tab
+    from_task: int = Form(0),  # 修修 2026-11-09 — fired from the task page's own checkbox
     nakama_auth: str | None = Cookie(None),
 ):
     """Toggle a task's done state from a dashboard / daily-bullet checkbox (#2).
@@ -664,7 +666,11 @@ async def weekly_task_done(
         return _back(wk_key, "task")
     except WeeklyWriteError as exc:
         logger.warning("weekly_task_done: %s", exc)
+        if from_task:
+            return _task_back(slug, wk_key, err="done_write")
         return _back(wk_key, "task")
+    if from_task:
+        return _task_back(slug, wk_key, saved="done" if done else "reopened")
     # v3-I follow-up (修修): anchor on the toggled row so the dashboard lands back in
     # place (the JS save-state restores tab/scroll; the #task- anchor re-opens the row).
     return _back(wk_key, slug=slug)
@@ -1200,6 +1206,8 @@ _TASK_ERRORS = {
 
 _TASK_SAVED = {
     "body": "✓ 已儲存筆記。",
+    "done": "✓ 已標記完成。",
+    "reopened": "✓ 已改回未完成。",
     "scheduled": "✓ 已排入並建立行事曆事件。",
     "rescheduled": "✓ 已改期並更新行事曆事件。",
     "unlinked": "✓ 已移出行事曆（保留本週計畫）。",

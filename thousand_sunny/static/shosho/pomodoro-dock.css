@@ -189,8 +189,11 @@ body.sho .pj-timer-secondary:focus-visible { outline: none; box-shadow: var(--sh
 .pj-dock-rollup .val { color: var(--sho-text, inherit); font-weight: 600; }
 .pj-dock-rollup .muted { color: var(--sho-muted, #888); }
 
-/* running-only controls (Task dock 完成/取消) toggle via .is-hidden */
-.pj-dock .is-hidden { display: none; }
+/* running-only controls (Task dock 完成/取消) toggle via .is-hidden.
+   body.sho scope: `body.sho .pj-timer-secondary { display: inline-flex }` (0,2,1) used
+   to out-specify a bare `.pj-dock .is-hidden` (0,2,0), so 完成·記一段 / 取消 showed even
+   while the timer was idle (found 2026-11-10 during the task-page relayout). */
+body.sho .pj-dock .is-hidden { display: none; }
 /* Task-page dock: the manual +1 forms sit inline, no margin from <form> */
 .tk-dock .tk-mform { display: inline-flex; margin: 0; }
 

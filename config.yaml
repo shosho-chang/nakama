@@ -42,10 +42,6 @@ agents:
   sanji:
     description: "Community Manager — 自由艦隊社群營運、監控、活動策劃（Fluent Community）"
     schedule: "0 * * * *"  # 監控每小時
-    wordpress:
-      community: fluent_community
-      alert_threshold:
-        unanswered_hours: 24
 
   franky:
     description: "Engineer — 工程進度追蹤、系統健康檢查、套件更新監測"

@@ -5,8 +5,7 @@
 - [feedback_no_gemini_default_openai.md](feedback_no_gemini_default_openai.md) — **全面停用 Gemini，LLM 預設走 OpenAI**（修修 2026-08-17 裁決，除非 Google 出新 model）。三類依賴處置不同：生產路由直接換、音訊多模態（`ask_with_audio` 只有 Google 一家實作）結構性卡住要新開發、panel review 腳本另換
 - [reference_agent_sdk_supports_oauth.md](reference_agent_sdk_supports_oauth.md) — **Agent SDK 可以走訂閱額度，「不支援」的舊記載是錯的**（2026-08-18 實測：拔 API key + 無效 OAuth token → 回 401 OAuth invalid）。做法是 `ClaudeAgentOptions.env` 傳 token 並**同時清空** `ANTHROPIC_API_KEY`。⚠️ 訂閱下 `total_cost_usd` **不是 0**（是 API 等值估計，2026-09-25 更正）；別名只解析到內附 CLI 認得的最新版
 - [reference_vps_llm_config_locations.md](reference_vps_llm_config_locations.md) — **VPS 的 LLM 路由設定分三處**：`.env`（`AUTH_*` 等）、systemd unit `nakama-gateway`（`NAMI_USE_AGENT_SDK=1` 在這）、`data/model_overrides.json`（Bridge override）。只看 `.env` 會誤判 Nami 沒走 SDK
-- [../shared/reference/fleet_community_stack.md](../shared/reference/fleet_community_stack.md) — **自由艦隊社群站是 `fleet.shosho.tw` 不是 `shosho.tw` 主站**（FluentCommunity / FluentCart / FluentCRM 全裝這邊，主站一個都沒有）；SSH `nakama-vps` → `/var/www/fleet.shosho.tw`，DB `db2_fleet_shosho` prefix `zcjf_`，wp-cli 要 `sudo -u u2_fleet_shosho`。LiteSpeed object cache 開著、測試帳號是 user 8/9/10。領域知識在 `agents/sanji/CONTEXT.md`
-- [../shared/decision/fluentcart_single_grant_channel.md](../shared/decision/fluentcart_single_grant_channel.md) — **社群權限只能由 FluentCart product feed 授予；FluentCRM funnel #42 的 `add_to_fluent_community` 是刻意刪掉的，不要加回去**（2026-08-16：雙軌授予導致 18 個退款帳號權限殘留半年）。付費空間 privacy 必須 `private`；部分退款不會自動回收（已知 gap 非 bug）
+- **自由艦隊（遊戲化＋社群站操作事實）已於 2026-11-09 拆至獨立 repo `E:\freedom-fleet`（GitHub `shosho-chang/freedom-fleet`，private）**——Sanji 記分服務、`fleet-gamification` plugin、部署（`/home/freedom-fleet`、`fleet-sanji.service`）、`fleet.shosho.tw` 站台事實一切見該 repo 的 `memory/`、`docs/`、`CLAUDE.md`；含「社群權限只能由 FluentCart product feed 授予」決策；nakama 只留 Slack 上的 Sanji 人格（ADR-071）
 - [feedback_hitl_at_cheapest_fork.md](feedback_hitl_at_cheapest_fork.md) — **修修的選擇放在成本最低的分叉點：機器排完就給他挑，不要物化完才問**（2026-08-11 安吉三支長片全做完才嫌主題不吸引人）；排序＝per episode、製作＋packaging＝per cut 線性，這個不對稱就是判斷依據
 - [feedback_book_cover_download_authorized.md](feedback_book_cover_download_authorized.md) — **書封直接下載不用問**（修修 2026-10-09 常設授權；只限出版社／書店官方書封圖，照記來源＋SHA-256）
 - [feedback_subtitle_house_style.md](feedback_subtitle_house_style.md) — **字幕三鐵則（2026-07-25 驗收裁決）：《》「」必標其他標點省略（推翻 PR #23 全刪；2026-10-09 重申《》「」，ADR-063 Memo 產線未落地、seal 前要手動補）；斷句禁字數硬切走 cue_builder；時間軸必須＝原始錄影（靜音裁切 opt-in）**
@@ -374,7 +373,6 @@
 - [量音檔前先確認時鐘](feedback_verify_clock_before_measuring.md) — source／master／tight 差幾十秒，用錯座標會量出假 bug
 - [素材自己去抓](feedback_agent_downloads_stock_itself.md) — 修修不會自己下載 Envato；驗收點在 preview 不在候選頁
 - [vendor SPA 前端不可盲寫 selector](feedback_verify_ui_in_real_browser.md) — minified Vue bundle 的 DOM/CSS/router 無法從原碼推導；先用 magic login + Playwright 解剖真實頁面再寫，含站上生成免密登入連結的指令
-- [自由艦隊 gamification 操作事實](../shared/reference/fleet_gamification_stack.md) — **已遷往 shared（Codex 也讀得到）**；架構鐵則、部署與開關、三個 vendor 縫隙、LSCache 與 CF 兩顆地雷、影片橋接的發分判準、Bunny 遷移三層寫入形狀、品牌色紀律。交接總表見 `docs/plans/2026-08-30-gamification-handoff.md`
 - [標題 cite 不必逐字](feedback_title_cite_is_not_literal.md) — 標題求點擊率優先，意義相近即可；不可因「不在逐字稿裡」就砍標題
 - [生成器不能當評審](feedback_generator_is_not_the_judge.md) — 自動化「好不好」要靠隔離冷讀者＋可回收的事實當對照組；新 gate 必須拿使用者判過的兩組資料校準才能上線
 - [先定位作者再評文案](feedback_locate_the_author_before_judging_copy.md) — 罵產出前先查這行字是哪一關寫的、**是不是我自己的 brief 叫它那樣做的**；排版問題修排版不要砍文案
@@ -391,3 +389,4 @@
 - [「legacy route」是 stop-the-line](feedback_legacy_route_is_stop_the_line.md) — subagent／code 回報 legacy、deprecated、v1 fallback 時先停下來查是不是走錯線；活的流程要求死掉的前置條件，先懷疑路線不要先補條件（長片視覺線＝ADR-066 `--semantic-worker handoff`）
 - [哪個 Python 跑得動測試](reference_test_interpreters.md) — 只有 `py -3.14` 有完整依賴（3.10 只有 ruff/whisperx、3.12 沒 pytest）；全 repo `tests/` 要兩小時且會被 markdownify 擋死，所以 gate 是「模組目錄＋每個引用改動 API 的檔案」
 - [Stand-in 素材庫](reference_standin_footage_library.md) — Envato `YuriArcursPeopleimages` 的留鬍亞裔男是**所有** stock footage 的首要人選；先查本地庫 `E:\data\stock footage\asian man`（索引 INDEX.md）再去 Envato；十支是 DCI 4K 不是 16:9、對短片沒用；核臉要防「誤收別人」與「誤退本人」兩個方向
+- [UI 預覽走 Tailscale](reference_ui_preview_tailscale.md) — 調 Bridge UI 時修修用手機直連桌機預覽版 `100.92.250.116:8765`（uvicorn 只綁 Tailscale IP）；迭代不走 PR/CI/deploy，定案才發一次 PR
