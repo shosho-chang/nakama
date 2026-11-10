@@ -738,7 +738,6 @@ body.sho .tk-cal {
   border-radius: var(--sho-r-2); display: flex; flex-direction: column; gap: 14px;
 }
 body.sho .tk-cal-head { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-body.sho .tk-cal-head .wk-mut { font-family: var(--sho-font-mono); font-size: 11px; }
 
 @media (prefers-reduced-motion: reduce) {
   body.sho .wk-edit-hint, body.sho .wk-plan-chip .wk-chip-x, body.sho .wk-day-caret { transition: none; }
@@ -1098,7 +1097,6 @@ body.sho .tk-del:focus-visible { outline: none; box-shadow: var(--sho-focus); }
 
   /* 排程：卡片外框交給側欄 */
   body.sho .tk-side .tk-cal { margin: 0; background: transparent; border-left: 0; border-right: 0; border-top: 0; border-radius: 0; gap: 12px; }
-  body.sho .tk-side .tk-cal-head .wk-mut { font-size: 10px; line-height: 1.5; }
 
   body.sho .tk-side .tk-actions { padding: 14px 18px; }
 }
