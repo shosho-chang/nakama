@@ -974,3 +974,131 @@ body.sho .tk-proj-form select:hover { border-color: var(--sho-accent); color: va
 body.sho .tk-proj-form select:focus-visible {
   outline: none; border-color: var(--sho-accent); box-shadow: var(--sho-focus);
 }
+
+/* ════════ TASK PAGE · 兩欄工作台（2026-11-10 修修選 A）════════
+   桌機（≥1100px）：左欄筆記、右欄一條 360px 側欄——計時 → 數字 → 屬性 → 排程 →
+   操作，段與段之間用 1px 細線分隔（hairline-driven，不疊卡片）。番茄鐘從全寬底欄
+   搬進側欄最上方，操作與內容在同一個視線範圍。
+   窄螢幕：.tk-side 變 display:contents，用 order 排回單欄（數字 → 屬性 → 排程 →
+   筆記 → 操作），番茄鐘維持 pomodoro-dock.css 的固定底欄。 */
+body.sho .tk-layout { display: flex; flex-direction: column; }
+body.sho .tk-side { display: contents; }
+body.sho .tk-stats-sec { order: 1; }
+body.sho .tk-props     { order: 2; }
+body.sho .tk-side .tk-cal { order: 3; }
+body.sho .tk-primary   { order: 4; }
+body.sho .tk-actions   { order: 5; }
+body.sho .tk-dock-head { display: none; }
+body.sho .tk-head .tk-title { margin: 0; }
+/* 窄螢幕底欄是 position:fixed，內容最後一段要留出它的高度，否則被蓋住 */
+body.sho .tk-main { padding-bottom: 160px; }
+
+/* 屬性表：標籤欄對齊、每列一條細線；控制項平時無框，hover / focus 才現形 */
+body.sho .tk-props { margin-top: 18px; border-top: 1px solid var(--sho-line); }
+body.sho .tk-props .wk-meta-form { display: block; margin: 0; }
+body.sho .tk-prop {
+  display: grid; grid-template-columns: 56px minmax(0, 1fr); align-items: center;
+  gap: 12px; min-height: 42px; border-bottom: 1px solid var(--sho-line);
+}
+body.sho .tk-prop-k {
+  font-family: var(--sho-font-mono); font-size: 10px; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--sho-muted);
+}
+body.sho .tk-prop .wk-meta-sel,
+body.sho .tk-prop .wk-meta-est {
+  justify-self: start; max-width: 100%; min-width: 0;
+  font-size: 13px; padding: 5px 8px; margin-left: -9px;
+  border-color: transparent; background: transparent;
+}
+body.sho .tk-prop .wk-meta-sel:hover,
+body.sho .tk-prop .wk-meta-est:hover { border-color: var(--sho-line-2); }
+body.sho .tk-prop .wk-meta-estnum { font-size: 13px; width: 2.2rem; text-align: left; }
+body.sho .tk-prop .wk-meta-est-unit { font-size: 13px; }
+body.sho .tk-prop .sho-chip { justify-self: start; }
+
+/* 操作列：Obsidian 與刪除；刪除是唯一用 --sho-error 的地方，而且只在 hover 才轉紅 */
+body.sho .tk-actions {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 16px 0 0;
+}
+body.sho .tk-actions .tk-obsidian { margin-left: 0; }
+body.sho .tk-del-form { margin: 0; }
+body.sho .tk-del {
+  font-family: var(--sho-font-mono); font-size: 11px; color: var(--sho-text-2);
+  background: transparent; border: 1px solid var(--sho-line); border-radius: var(--sho-r-1);
+  padding: 3px 9px; cursor: pointer;
+  transition: border-color var(--sho-t-fast) var(--sho-ease), color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .tk-del:hover { color: var(--sho-error); border-color: var(--sho-error); }
+body.sho .tk-del:focus-visible { outline: none; box-shadow: var(--sho-focus); }
+
+@media (min-width: 1100px) {
+  /* body 是 flex 欄，main 加了 margin:auto 會縮成內容寬，所以要明講 width */
+  body.sho .tk-main { width: 100%; max-width: 1240px; margin: 0 auto; padding-bottom: 48px; box-sizing: border-box; }
+  body.sho .tk-main .wk-screen { max-width: none; }
+  body.sho .tk-head { padding: 16px 0 18px; }
+
+  body.sho .tk-layout {
+    display: grid; grid-template-columns: minmax(0, 1fr) 360px;
+    gap: 0 36px; align-items: start; margin-top: 24px;
+  }
+  body.sho .tk-layout > .tk-primary, body.sho .tk-side > .tk-sec, body.sho .tk-side > .tk-cal { order: 0; }
+
+  /* 左欄：筆記吃滿高度——它是這頁唯一需要大面積的東西 */
+  body.sho .tk-primary .tk-notebox { margin: 0; }
+  body.sho .tk-primary .tk-note-area { min-height: max(420px, calc(100vh - 330px)); }
+
+  /* 右欄：一條側欄、段落以細線分隔 */
+  body.sho .tk-side {
+    display: flex; flex-direction: column;
+    background: var(--sho-bg-2); border: 1px solid var(--sho-line); border-radius: var(--sho-r-2);
+  }
+  body.sho .tk-side > .tk-sec,
+  body.sho .tk-side > .tk-cal,
+  body.sho .tk-side > .pj-dock { padding: 16px 18px; border-bottom: 1px solid var(--sho-line); }
+  body.sho .tk-side > :last-child { border-bottom: 0; }
+
+  /* 計時：底欄改成側欄頂端的一段——大顆的 MM:SS 是這欄的視覺重心 */
+  body.sho .tk-side .pj-dock {
+    position: static; z-index: auto; box-shadow: none; background: transparent;
+    border-top: 0; border-left: 0; border-right: 0; padding-top: 18px; padding-bottom: 18px;
+  }
+  body.sho .tk-side .pj-dock-row { display: block; }
+  body.sho .tk-side .tk-dock-left,
+  body.sho .tk-side .pj-dock-rollup { display: none; }
+  body.sho .tk-side .tk-dock-right {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 0;
+  }
+  body.sho .tk-dock-head {
+    display: inline-flex; align-items: center; gap: 6px; flex: 1 1 auto;
+    font-size: 13px; font-weight: 600; color: var(--sho-text);
+  }
+  body.sho .tk-side .pj-dock-timer { flex: 1 1 100%; flex-wrap: wrap; gap: 8px; }
+  body.sho .tk-side .pj-timer-btn {
+    flex: 1 1 100%; justify-content: center; gap: 12px;
+    padding: 14px 16px; font-size: 32px; letter-spacing: -0.5px;
+  }
+  body.sho .tk-side .pj-timer-icon { font-size: 16px; }
+  /* 跑起來才出現的 完成 / 取消 自己一排、各半；補記那排在下面 */
+  body.sho .tk-side .tk-finish,
+  body.sho .tk-side .tk-abort { flex: 1 1 calc(50% - 5px); justify-content: center; white-space: nowrap; }
+  body.sho .tk-side .tk-mform .pj-timer-secondary { white-space: nowrap; }
+  body.sho .tk-side .tk-backfill { flex: 1 1 auto; }
+  body.sho .tk-side .tk-backfill input[type="date"] { min-width: 0; }
+
+  /* 數字：三欄等分，數字縮到側欄的尺度 */
+  body.sho .tk-side .tk-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; padding: 0; }
+  body.sho .tk-side .tk-stat-num { font-size: 26px; }
+  body.sho .tk-side .tk-stat-den { font-size: 14px; }
+  body.sho .tk-side .tk-stat-lab { font-size: 10px; letter-spacing: 0.06em; }
+
+  /* 屬性：側欄裡最後一列的細線交給段落分隔線 */
+  body.sho .tk-side .tk-props { margin-top: 0; border-top: 0; padding-top: 6px; padding-bottom: 6px; }
+  body.sho .tk-side .tk-props > .tk-prop:last-child { border-bottom: 0; }
+
+  /* 排程：卡片外框交給側欄 */
+  body.sho .tk-side .tk-cal { margin: 0; background: transparent; border-left: 0; border-right: 0; border-top: 0; border-radius: 0; gap: 12px; }
+  body.sho .tk-side .tk-cal-head .wk-mut { font-size: 10px; line-height: 1.5; }
+
+  body.sho .tk-side .tk-actions { padding: 14px 18px; }
+}
