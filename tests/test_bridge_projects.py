@@ -471,3 +471,90 @@ class TestTaskCheckbox:
         assert "番茄 實際 / 預估" in stats
         assert "2" in stats and "/ 4" in stats  # actual 2 (50min//25) over est 4
         assert "剩 2" in stats  # remaining still shown, demoted to the sub-line
+
+
+class TestDeleteProject:
+    """修修 2026-11-12：建錯的專案要能刪——連同成員任務一起進資源回收筒。"""
+
+    @pytest.fixture
+    def recycle(self, monkeypatch):
+        """Stand-in recycle bin (unlink) + recorded calendar deletions, so tests
+        never shell out to PowerShell or touch Google."""
+        import shared.discard_service as ds
+        import shared.google_calendar as gc
+
+        binned: list = []
+        cancelled: list = []
+
+        def fake_bin(path):
+            binned.append(path.name)
+            path.unlink()
+
+        monkeypatch.setattr(ds, "_send_to_recycle_bin", fake_bin)
+        monkeypatch.setattr(gc, "delete_event", lambda eid: cancelled.append(eid))
+        return binned, cancelled
+
+    def test_empty_project_is_deleted(self, client, tmp_path, recycle):
+        _write_project(tmp_path, "【Pod】建錯的")
+        r = client.post("/bridge/projects/【Pod】建錯的/delete", follow_redirects=False)
+        assert r.status_code == 303
+        assert r.headers["location"].startswith("/bridge/projects?deleted=")
+        assert not (tmp_path / "Projects" / "【Pod】建錯的.md").exists()
+        assert recycle[0] == ["【Pod】建錯的.md"]
+        html = client.get(r.headers["location"]).text
+        assert "已刪除「【Pod】建錯的」" in html
+        assert "【Pod】建錯的</a>" not in html  # gone from the list itself
+
+    def test_member_tasks_go_too_and_linked_events_are_cancelled(self, client, tmp_path, recycle):
+        _write_project(tmp_path, "P")
+        _write_task(tmp_path, "P - 一", project="P")
+        _write_task(tmp_path, "舊式前綴任務", project="P")
+        _write_task(tmp_path, "別人的任務", project="Q")
+        task = tmp_path / "TaskNotes" / "Tasks" / "P - 一.md"
+        task.write_text(
+            task.read_text(encoding="utf-8").replace(
+                "timeEntries", 'plan: [{date: 2026-11-20, calendar_event_id: "evt-1"}]\ntimeEntries'
+            ),
+            encoding="utf-8",
+        )
+        r = client.post("/bridge/projects/P/delete", follow_redirects=False)
+        assert r.status_code == 303
+        assert "n=2" in r.headers["location"]
+        binned, cancelled = recycle
+        assert sorted(binned) == sorted(["P - 一.md", "舊式前綴任務.md", "P.md"])
+        assert binned[-1] == "P.md"  # project file last
+        assert cancelled == ["evt-1"]
+        assert (tmp_path / "TaskNotes" / "Tasks" / "別人的任務.md").exists()
+        assert "底下 2 個任務" in client.get(r.headers["location"]).text
+
+    def test_project_kept_when_a_task_cannot_be_removed(self, client, tmp_path, monkeypatch):
+        import shared.discard_service as ds
+
+        _write_project(tmp_path, "P")
+        _write_task(tmp_path, "P - 鎖住", project="P")
+        monkeypatch.setattr(ds, "_send_to_recycle_bin", lambda path: None)  # file stays
+        r = client.post("/bridge/projects/P/delete", follow_redirects=False)
+        assert r.headers["location"] == "/bridge/projects/P?err=delete_failed"
+        assert (tmp_path / "Projects" / "P.md").exists()
+        assert "沒有刪除成功" in client.get(r.headers["location"]).text
+
+    def test_missing_project_bounces_to_index(self, client, recycle):
+        r = client.post("/bridge/projects/不存在/delete", follow_redirects=False)
+        assert r.headers["location"] == "/bridge/projects?err=missing"
+
+    def test_non_project_file_is_never_deleted(self, client, tmp_path, recycle):
+        (tmp_path / "Projects").mkdir()
+        f = tmp_path / "Projects" / "Brook 風格訓練.md"
+        f.write_text("---\ntype: agent-workspace\n---\n", encoding="utf-8")
+        r = client.post("/bridge/projects/Brook 風格訓練/delete", follow_redirects=False)
+        assert r.headers["location"] == "/bridge/projects?err=missing"
+        assert f.exists()
+
+    def test_detail_page_has_confirmed_delete_button(self, client, tmp_path):
+        _write_project(tmp_path, "P")
+        _write_task(tmp_path, "P - 一", project="P")
+        html = client.get("/bridge/projects/P").text
+        assert 'action="/bridge/projects/P/delete"' in html
+        assert "刪除專案</button>" in html
+        assert "底下 1 個任務會一起刪除" in html
+        assert "onclick=" not in html  # confirm text lives in data-confirm, not inline JS
