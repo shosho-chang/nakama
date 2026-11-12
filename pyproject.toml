@@ -116,6 +116,7 @@ markers = [
     "real_extractor: run the real memory_extractor (bypass conftest auto-mock)",
     "real_slack: send real Slack DM via FrankySlackBot.from_env (bypass conftest auto-mock)",
     "real_calendar: hit the live Google Calendar API (bypass conftest auto-mock)",
+    "weekly_autotask: let the Weekly page auto-create the week's 電子報 task (off by default in conftest)",
     "live_wp: run against local Docker WP staging (requires PYTEST_WP_BASE_URL + WP_SHOSHO_* env vars)",
 ]
 

@@ -98,6 +98,17 @@ def _prevent_real_google_calendar(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _no_weekly_autotasks(request, monkeypatch):
+    """Opening a current/future week on the Weekly page auto-creates that week's
+    「WXX 電子報」 task (shared.weekly_newsletter). Hundreds of dashboard tests GET
+    that page against a tmp vault and assert on its task list — keep it off unless
+    a test opts in with ``@pytest.mark.weekly_autotask``."""
+    if request.node.get_closest_marker("weekly_autotask"):
+        return
+    monkeypatch.setattr("shared.weekly_newsletter.ENABLED", False)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_incidents_pending(tmp_path: Path, monkeypatch):
     """Route shared.incident_archive default dir to tmp.
 
