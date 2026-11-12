@@ -746,6 +746,10 @@ body.sho .tk-cal-head { display: flex; align-items: baseline; gap: 12px; flex-wr
 }
 
 @media (max-width: 720px) {
+  /* 4 task tabs (今日/整週/全部/行事曆) + 新增任務 no longer fit beside 任務 — let the
+     head wrap instead of squeezing every label into a vertical column (2026-11-12). */
+  body.sho .wk-zone-head { flex-wrap: wrap; row-gap: 8px; }
+  body.sho .wk-h, body.sho .wk-tab { white-space: nowrap; }
   body.sho .wk-hero { margin-left: 0; gap: 16px; }
   body.sho .wk-rev-grid { grid-template-columns: 1fr; }
   body.sho .wk-plan-edit { padding-left: 12px; }

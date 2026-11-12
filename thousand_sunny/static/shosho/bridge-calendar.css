@@ -1,0 +1,188 @@
+/* ══ 任務 → 行事曆 tab (修修 2026-11-12) ══════════════════════════════════════
+   Hairlines + type hierarchy, no boxes. The only filled shapes are the task cells:
+   次要 = --sho-accent-tint, 重點（本週重要）= solid --sho-accent with --sho-on-accent
+   text, 已完成 = empty + struck. No left stripe, no border on the cells, 4px corners.
+   Horizontal hour lines only; weekend columns are half width. --cal-hh is the height
+   of one hour; block geometry is minute-based (--s / --e) so the JS can re-place them. */
+body.sho .wk-cal {
+  --cal-hh: 44px;
+  --cal-gut: 40px;
+  --cal-cols: var(--cal-gut) minmax(0, .5fr) repeat(5, minmax(0, 1fr)) minmax(0, .5fr);
+  margin-top: 6px;
+  font-family: var(--sho-font-zh);
+  font-variant-numeric: tabular-nums;
+}
+body.sho .wk-cal-row { display: grid; grid-template-columns: var(--cal-cols); }
+body.sho .wk-cal-gutter { display: block; }
+
+/* day header: weekday kicker over a large date numeral; today in accent */
+body.sho .wk-cal-dh {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
+  padding: 0 0 10px 2px; text-align: left; cursor: default;
+}
+body.sho .wk-cal-wd { font-size: 11px; font-weight: 700; letter-spacing: .14em; color: var(--sho-muted); }
+body.sho .wk-cal-dn { font-size: 22px; line-height: 1.2; font-weight: 400; color: var(--sho-ink); }
+body.sho .wk-cal-dh.is-today .wk-cal-wd,
+body.sho .wk-cal-dh.is-today .wk-cal-dn { color: var(--sho-accent); }
+body.sho .wk-cal-dh.is-today .wk-cal-dn { font-weight: 700; }
+
+/* 整天 row */
+body.sho .wk-cal-adl {
+  font-size: 11px; color: var(--sho-muted); padding: 10px 0; border-top: 1px solid var(--sho-line);
+}
+body.sho .wk-cal-adcell {
+  min-height: 40px; padding: 6px 6px 6px 0; border-top: 1px solid var(--sho-line);
+  display: flex; flex-direction: column; gap: 4px; min-width: 0;
+}
+body.sho .wk-cal-adcell.is-over { background: var(--sho-accent-soft); }
+body.sho .wk-cal-chip {
+  display: block; padding: 3px 8px; border-radius: 4px; font-size: 13px; line-height: 1.4;
+  color: var(--sho-ink); background: var(--sho-accent-tint); cursor: grab;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+
+/* time grid — one hairline per hour, painted once behind every column */
+body.sho .wk-cal-grid {
+  position: relative; border-top: 1px solid var(--sho-line-2);
+  height: calc(var(--cal-span) * var(--cal-hh));
+  background-image: linear-gradient(to bottom, var(--sho-line) 1px, transparent 1px);
+  /* lines start after the hour gutter so the labels sit on clean ground */
+  background-size: calc(100% - var(--cal-gut)) var(--cal-hh);
+  background-position: var(--cal-gut) calc(var(--cal-hh) - 1px);
+  background-repeat: repeat-y;
+}
+body.sho .wk-cal-axis { position: relative; }
+body.sho .wk-cal-hl {
+  position: absolute; left: 0; top: calc(var(--h) * var(--cal-hh) - 6px);
+  font-size: 11px; line-height: 1; color: var(--sho-muted);
+}
+body.sho .wk-cal-hl:first-child { top: 4px; }
+body.sho .wk-cal-hl.is-odd { visibility: hidden; }
+body.sho .wk-cal.is-dragging .wk-cal-hl,
+body.sho .wk-cal.is-resizing .wk-cal-hl { visibility: hidden; }
+body.sho .wk-cal-mark {
+  position: absolute; left: 0; z-index: 4; font-size: 11px; line-height: 1; font-weight: 700;
+  color: var(--sho-ink); transform: translateY(-50%); pointer-events: none;
+}
+body.sho .wk-cal-col { position: relative; min-width: 0; }
+body.sho .wk-cal-col.is-empty-hover { cursor: cell; }
+
+/* task cells */
+body.sho .wk-cal-block,
+body.sho .wk-cal-ghost {
+  position: absolute; z-index: 1;
+  top: calc((var(--s) / 60 - var(--cal-hs)) * var(--cal-hh) + 1px);
+  height: calc((var(--e) - var(--s)) / 60 * var(--cal-hh) - 3px);
+  left: calc(var(--lane, 0) / var(--lanes, 1) * 100%);
+  width: calc(100% / var(--lanes, 1) - 6px);
+  padding: 6px 8px; border-radius: 4px; overflow: hidden;
+  font-size: 13px; line-height: 1.4; color: var(--sho-ink); background: var(--sho-accent-tint);
+  cursor: grab; touch-action: pan-y;
+  user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+body.sho .wk-cal-block.is-short,
+body.sho .wk-cal-ghost.is-short { padding-top: 2px; padding-bottom: 2px; }
+body.sho .wk-cal-bt {
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 4;
+  overflow: hidden; overflow-wrap: anywhere;
+}
+body.sho .wk-cal-block.is-short .wk-cal-bt { -webkit-line-clamp: 1; }
+body.sho .wk-cal-block.is-strong,
+body.sho .wk-cal-chip.is-strong,
+body.sho .wk-cal-ghost.is-strong {
+  background: var(--sho-accent); color: var(--sho-on-accent); font-weight: 700;
+}
+body.sho .wk-cal-block.is-done,
+body.sho .wk-cal-chip.is-done {
+  background: transparent; color: var(--sho-muted); font-weight: 400;
+  text-decoration: line-through; box-shadow: inset 0 0 0 1px var(--sho-line);
+  cursor: pointer; touch-action: auto;
+}
+body.sho .wk-cal-block:focus-visible,
+body.sho .wk-cal-chip:focus-visible { outline: 2px solid var(--sho-ink); outline-offset: 2px; }
+
+/* resize handle: the bottom edge; a short bar shows on hover / while resizing */
+body.sho .wk-cal-grip {
+  position: absolute; left: 0; right: 0; bottom: 0; height: 10px; cursor: ns-resize;
+}
+body.sho .wk-cal-grip::after {
+  content: ""; position: absolute; left: 50%; bottom: 3px; width: 18px; margin-left: -9px;
+  border-top: 2px solid currentColor; opacity: 0;
+}
+body.sho .wk-cal-block:hover .wk-cal-grip::after,
+body.sho .wk-cal-block.is-lifted .wk-cal-grip::after { opacity: .55; }
+@media (hover: none) {
+  body.sho .wk-cal-grip { height: 16px; }
+  body.sho .wk-cal-grip::after { opacity: .45; }
+}
+
+/* lifted / saving */
+body.sho .wk-cal-block.is-lifted,
+body.sho .wk-cal-ghost {
+  z-index: 5; outline: 1.5px solid var(--sho-ink); outline-offset: 1.5px;
+}
+body.sho .wk-cal-ghost { pointer-events: none; }
+body.sho .wk-cal-block.is-hidden { visibility: hidden; }
+body.sho .wk-cal.is-saving { pointer-events: none; }
+body.sho .wk-cal.is-saving .wk-cal-block.is-lifted { opacity: .6; }
+body.sho .wk-cal.is-dragging, body.sho .wk-cal.is-dragging * { cursor: grabbing !important; }
+body.sho .wk-cal.is-resizing, body.sho .wk-cal.is-resizing * { cursor: ns-resize !important; }
+body.sho .wk-cal-chip.is-lifted, body.sho .wk-cal-trow.is-lifted { opacity: .35; }
+
+/* now line (today column) */
+body.sho .wk-cal-now {
+  position: absolute; left: -2px; right: 4px; z-index: 3; pointer-events: none;
+  top: calc((var(--now) / 60 - var(--cal-hs)) * var(--cal-hh));
+  border-top: 1px solid var(--sho-ink);
+}
+body.sho .wk-cal-now::before {
+  content: ""; position: absolute; left: -3px; top: -4px; width: 7px; height: 7px;
+  border-radius: 50%; background: var(--sho-ink);
+}
+
+/* 還沒排時間 tray — hairline rows */
+body.sho .wk-cal-grp {
+  font-size: 11px; font-weight: 700; letter-spacing: .14em; color: var(--sho-muted);
+  margin: 28px 0 0; padding-bottom: 8px;
+}
+body.sho .wk-cal-tray { margin: 0; padding: 0; list-style: none; }
+body.sho .wk-cal-trow {
+  display: flex; align-items: center; gap: 10px; padding: 10px 0;
+  border-top: 1px solid var(--sho-line); color: var(--sho-ink); font-size: 14px; cursor: grab;
+  touch-action: pan-y; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
+}
+body.sho .wk-cal-trow:last-child { border-bottom: 1px solid var(--sho-line); }
+body.sho .wk-cal-trow svg {
+  width: 14px; height: 14px; flex: none; fill: none; stroke: var(--sho-line-2);
+  stroke-width: 2.6; stroke-linecap: round;
+}
+body.sho .wk-cal-trow a { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* weekend reason dialog (native <dialog>) */
+body.sho .wk-cal-reason {
+  border: 1px solid var(--sho-line); border-radius: var(--sho-r-2); padding: 18px 20px;
+  background: var(--sho-bg); color: var(--sho-text); width: min(340px, 90vw);
+}
+body.sho .wk-cal-reason::backdrop { background: oklch(0 0 0 / .35); }
+body.sho .wk-cal-reason-h { font-size: 15px; font-weight: 700; color: var(--sho-ink); margin-bottom: 12px; }
+body.sho .wk-cal-reason .wk-sched-lbl { display: flex; flex-direction: column; gap: 6px; }
+body.sho .wk-cal-reason input {
+  width: 100%; font: inherit; font-size: 14px; color: var(--sho-text); background: var(--sho-bg);
+  border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-1); padding: 7px 9px;
+}
+body.sho .wk-cal-reason-acts { display: flex; justify-content: flex-end; gap: 10px; margin-top: 16px; }
+
+/* phone: one day at a time — the header becomes the day switcher */
+@media (max-width: 767px) {
+  body.sho .wk-cal { --cal-cols: var(--cal-gut) minmax(0, 1fr); }
+  body.sho .wk-cal-head { grid-template-columns: repeat(7, minmax(0, 1fr)); }
+  body.sho .wk-cal-head .wk-cal-gutter { display: none; }
+  body.sho .wk-cal-dh {
+    align-items: center; padding: 0 0 8px; cursor: pointer; border-bottom: 2px solid transparent;
+  }
+  body.sho .wk-cal-dh.is-focus { border-bottom-color: var(--sho-ink); }
+  body.sho .wk-cal-dn { font-size: 18px; }
+  body.sho .wk-cal-adcell:not(.is-focus),
+  body.sho .wk-cal-col:not(.is-focus) { display: none; }
+}
