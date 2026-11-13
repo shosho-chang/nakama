@@ -20,7 +20,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, Cookie, Form, Query, Request
 from fastapi import Path as PathParam
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from shared import calendar_scheduler
@@ -57,6 +57,7 @@ from shared.weekly_writer import (
     set_task_done,
     set_task_meta,
     sync_scheduled_to_next_plan,
+    task_file_token,
     weekly_file_token,
     write_task_body,
     write_weekly,
@@ -1437,8 +1438,16 @@ async def weekly_task_body_save(
     return _task_back(slug, wk_key, saved="body")
 
 
+def _wants_json(request: Request) -> bool:
+    """The task page's live timer posts /log via fetch() with ``Accept: application/json``
+    so the page never navigates away mid-edit (修修 2026-11-13 bug: the timer's
+    form.submit() reloaded the page and wiped an unsaved 筆記 draft)."""
+    return "application/json" in (request.headers.get("accept") or "")
+
+
 @page_router.post("/weekly/task/{slug}/log")
 async def weekly_task_log(
+    request: Request,
     slug: str = PathParam(..., min_length=1),
     mode: str = Form("pomodoro"),
     # actual elapsed from the live timer; 0/absent → manual full block
@@ -1446,15 +1455,29 @@ async def weekly_task_log(
     manual: int = Form(0),
     entry_date: str = Form(""),  # 手動補記：這 block 是哪一天做的（YYYY-MM-DD）；空/今天 = 現在
     week: str = Form(""),
+    # JSON mode only: the 筆記 form's If-Match token as the page loaded it. Logging
+    # rewrites the task file (timeEntries), which would otherwise leave the open
+    # draft holding a stale token → its next 儲存 bounces as a false conflict.
+    expected_token: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ):
+    as_json = _wants_json(request)
     if not check_auth(nakama_auth):
+        if as_json:
+            return JSONResponse({"ok": False, "error": "登入已過期，請重新登入。"}, status_code=401)
         return RedirectResponse("/login?next=/bridge/weekly", status_code=302)
     wk_key = _safe_week_key(week)
 
+    def _fail(code: str, status: int):
+        if as_json:
+            return JSONResponse(
+                {"ok": False, "error": _TASK_ERRORS.get(code, code)}, status_code=status
+            )
+        return _task_back(slug, wk_key, err=code)
+
     nominal = _MODE_MINUTES.get(mode)
     if nominal is None:
-        return _task_back(slug, wk_key, err="mode")
+        return _fail("mode", 400)
 
     end = _now_taipei()
     # 手動補記可指定「哪一天做的」(entry_date)：週儀表板用 endTime 歸屬週次，不給日期就一律記
@@ -1488,9 +1511,15 @@ async def weekly_task_log(
         start = end - timedelta(seconds=seconds)
     else:
         start = end - timedelta(minutes=nominal)
+    vault = get_vault_path()
+    # Snapshot the file hash BEFORE the write: only if it still equals the page's
+    # token (nobody else touched the file since load) may we hand back the
+    # post-log token — otherwise a real Obsidian/Syncthing edit must still trip
+    # the 筆記 conflict guard.
+    token_before = task_file_token(vault, slug) if as_json and expected_token else ""
     try:
         log_time_entry(
-            get_vault_path(),
+            vault,
             slug,
             start,
             end,
@@ -1501,8 +1530,28 @@ async def weekly_task_log(
         )
     except WeeklyWriteError as exc:
         logger.warning("weekly_task_log: %s", exc)
-        return _task_back(slug, wk_key, err="log")
-    return _task_back(slug, wk_key, logged=True)
+        return _fail("log", 500)
+    if not as_json:
+        return _task_back(slug, wk_key, logged=True)
+
+    rotated = (
+        task_file_token(vault, slug) if token_before and token_before == expected_token else ""
+    )
+    payload: dict = {"ok": True, "minutes": round((end - start).total_seconds() / 60)}
+    if rotated:
+        payload["token"] = rotated
+    task = WeeklyIndexer(vault).find_task(slug)
+    if task is not None:
+        actual_pom = task_actual(vault, task.slug, task.time_entries).total_pomodoros
+        payload.update(
+            actual_pom=actual_pom,
+            est_pomodoros=task.est_pomodoros or 0,
+            accuracy_pct=(
+                int(round(100 * actual_pom / task.est_pomodoros)) if task.est_pomodoros else 0
+            ),
+            ufo_total=task.ufo_total,
+        )
+    return JSONResponse(payload)
 
 
 # ── Calendar-block reschedule + cancel (ADR-041 41d — D8/D9) ─────────────────
