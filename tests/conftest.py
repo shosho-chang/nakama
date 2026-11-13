@@ -108,6 +108,97 @@ def _no_weekly_autotasks(request, monkeypatch):
     monkeypatch.setattr("shared.weekly_newsletter.ENABLED", False)
 
 
+# 這些模組用 ``from ... import probe_stock_video`` 綁了自己的 reference，
+# 要跟 highlight_broll 本身一起換掉。新增 consumer 時同步補（漏補只會變慢，不會錯）。
+_FFPROBE_CONSUMER_MODULES = (
+    "agents.brook.script_video.highlight_broll",
+    "agents.brook.script_video.highlight_candidate_renderer",
+    "agents.brook.script_video.highlight_visual_pipeline",
+    "shared.shortform_broll",
+)
+
+
+@pytest.fixture(autouse=True)
+def _memoize_ffprobe_per_test(request, monkeypatch):
+    """同一個測試內，對「同路徑＋同 bytes」的影片只跑一次真的 ffprobe。
+
+    highlight visual pipeline 每次 fresh-load 都會把歷史上每支影片重新 ffprobe
+    一遍；一個測試走完整條 Director → DP → audit 流程會 spawn 四千多次 ffprobe
+    （CI 上 test_highlight_visual_pipeline.py 一個檔就 ~9 分鐘）。ffprobe 對同一份
+    bytes 的輸出是確定的，所以 key 用 (resolved path, sha256(bytes))：檔案被竄改或
+    換掉，hash 就不同、照樣重跑真的 ffprobe——fail-closed 的測試語意不變。
+
+    - 只快取成功結果；失敗（BrollContractError 等）每次都重跑，錯誤訊息不會串味。
+    - cache 每個測試一份（function scope），不跨測試。
+    - 測試自己 monkeypatch ``probe_stock_video`` 時，它的 patch 在這之後套用、優先。
+    - 要測「每次都真的呼叫 ffprobe」的測試標 ``@pytest.mark.real_ffprobe`` 跳過。
+    """
+    broll = sys.modules.get("agents.brook.script_video.highlight_broll")
+    if broll is None or request.node.get_closest_marker("real_ffprobe"):
+        return
+    import copy
+    import hashlib
+
+    original = broll.probe_stock_video
+    cache: dict[tuple[str, str], dict] = {}
+
+    def probe(path):
+        resolved = Path(path).resolve()
+        try:
+            digest = hashlib.sha256(resolved.read_bytes()).hexdigest()
+        except OSError:
+            return original(path)
+        key = (str(resolved), digest)
+        if key not in cache:
+            cache[key] = original(path)
+        return copy.deepcopy(cache[key])
+
+    for name in _FFPROBE_CONSUMER_MODULES:
+        module = sys.modules.get(name)
+        if module is not None and getattr(module, "probe_stock_video", None) is original:
+            monkeypatch.setattr(module, "probe_stock_video", probe)
+
+
+@pytest.fixture(autouse=True)
+def _memoize_opencc_per_test(monkeypatch):
+    """同一個測試內，OpenCC 字典只 parse 一次、converter 只建一次。
+
+    podcast_subtitles 的 orthographic projection 每次投影／replay 都重新 parse
+    數 MB 的 OpenCC 字典、重建 converter（verified-projection 測試一半時間在這）。
+
+    為什麼放測試端而不改 ``orthographic_projection.py``：那個檔案的 bytes hash
+    就是投影 identity 的 ``adapter_code_hash``，``verify_orthographic_projection``
+    replay 時要求完全一致——改檔會讓正式環境既有的投影全部驗不過。
+
+    - 字典 cache key = (路徑, sha256(bytes))：每次照樣讀檔，bytes 變了就重新 parse。
+    - converter cache 每個測試一份（安裝的 OpenCC 套件在測試期間不會變）。
+    """
+    projection = sys.modules.get("agents.brook.podcast_subtitles.orthographic_projection")
+    if projection is None:
+        return
+    import hashlib
+
+    original_read = projection._read_dictionary
+    original_opencc = projection.OpenCC
+    dictionaries: dict[tuple[str, str], dict] = {}
+    converters: dict[str, object] = {}
+
+    def read_dictionary(path):
+        raw = Path(path).read_bytes()
+        key = (str(path), hashlib.sha256(raw).hexdigest())
+        if key not in dictionaries:
+            dictionaries[key] = original_read(path)
+        return dictionaries[key]
+
+    def opencc(conversion):
+        if conversion not in converters:
+            converters[conversion] = original_opencc(conversion)
+        return converters[conversion]
+
+    monkeypatch.setattr(projection, "_read_dictionary", read_dictionary)
+    monkeypatch.setattr(projection, "OpenCC", opencc)
+
+
 @pytest.fixture(autouse=True)
 def _isolated_incidents_pending(tmp_path: Path, monkeypatch):
     """Route shared.incident_archive default dir to tmp.

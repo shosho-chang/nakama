@@ -31,6 +31,11 @@ from tests.agents.brook.podcast_subtitles.test_verified_projection_handoff impor
     _project_fixture,
 )
 
+# slow：每個測試先建完整 podcast_subtitles verified projection 再交接 script_video
+# （全檔 ~3–4 分鐘）。
+# PR CI 只在改動落在它們的 import 範圍時才跑（scripts/ci_slow_test_scope.py）；main push 全跑。
+pytestmark = pytest.mark.slow
+
 
 def _canonical_json(value: object) -> bytes:
     return json.dumps(

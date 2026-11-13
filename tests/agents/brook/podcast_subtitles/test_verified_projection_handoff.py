@@ -20,6 +20,10 @@ from tests.agents.brook.podcast_subtitles.test_module import (
     _module,
 )
 
+# slow：建完整 verified projection generation 再驗 public loader（全檔 ~2 分鐘）。
+# PR CI 只在改動落在它們的 import 範圍時才跑（scripts/ci_slow_test_scope.py）；main push 全跑。
+pytestmark = pytest.mark.slow
+
 
 def _sha256(payload: bytes) -> str:
     return hashlib.sha256(payload).hexdigest()

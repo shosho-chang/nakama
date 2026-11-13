@@ -86,6 +86,10 @@ from shared.schemas.podcast_subtitles_v2 import (
     reference_evidence_set_hash,
 )
 
+# slow：PodcastSubtitleV2 端到端，多代 generation 反覆 load＋重驗 hash（全檔 ~4–7 分鐘）。
+# PR CI 只在改動落在它們的 import 範圍時才跑（scripts/ci_slow_test_scope.py）；main push 全跑。
+pytestmark = pytest.mark.slow
+
 
 def _sha(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
