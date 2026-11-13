@@ -29,7 +29,6 @@ from shared.log import get_logger
 from shared.pomodoro_aggregator import TAIPEI, task_actual
 from shared.project_index import list_projects
 from shared.project_writer import (
-    TASKS_DIR,
     ProjectWriteError,
     create_task,
     reassign_task_project,
@@ -49,6 +48,7 @@ from shared.weekly_writer import (
     WeekendReasonRequired,
     WeeklyConflictError,
     WeeklyWriteError,
+    delete_task,
     log_time_entry,
     migrate_legacy_projection,
     read_task_split,
@@ -889,27 +889,7 @@ async def weekly_task_delete(
     vault = get_vault_path()
     slug = unicodedata.normalize("NFC", slug)
 
-    # Cancel any linked Google Calendar events before the file disappears.
-    task = WeeklyIndexer(vault).find_task(slug)
-    if task is not None:
-        from shared import google_calendar
-
-        for entry in task.plan:
-            if entry.is_linked:
-                try:
-                    google_calendar.delete_event(entry.event_id)
-                except Exception:  # noqa: BLE001 — vault delete proceeds regardless
-                    logger.warning(
-                        "weekly_task_delete: cal event %s not removed for task %s",
-                        entry.event_id,
-                        slug,
-                    )
-
-    task_path = vault / TASKS_DIR / f"{slug}.md"
-    if task_path.exists():
-        from shared.discard_service import _send_to_recycle_bin
-
-        _send_to_recycle_bin(task_path)
+    delete_task(vault, slug)
     return _back(wk_key, saved="task_deleted")
 
 
