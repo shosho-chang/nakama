@@ -68,6 +68,11 @@ gateway:
       robin: ""     # #robin channel ID
       franky: ""    # #franky channel ID
       brook: ""     # #brook channel ID
+    # 誰可以叫哪個 agent（gateway/access.py）。修修（env SLACK_USER_ID_SHOSHO）永遠可以叫全部；
+    # 其他人預設一律不行，要開放就在這裡列 Slack user ID。沒列的 agent = 只有修修。
+    extra_allowed_users:
+      sanji:
+        - U0CFJS8A8K1   # 吳曉宣（社群經理，Slack @margerent）
     cost_limit:
       daily_haiku_calls: 200
       warn_at: 150

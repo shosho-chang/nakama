@@ -18,6 +18,7 @@ import re
 import threading
 from typing import TYPE_CHECKING, Callable
 
+from gateway.access import DENY_MESSAGE, is_allowed
 from gateway.conversation_state import get_store
 from gateway.formatters import format_agent_response
 from gateway.handlers import get_handler
@@ -97,6 +98,10 @@ def _make_slash_command_handler() -> Callable:
         logger.info(f"Slash command: {cmd_name} '{text}' from {user_id}")
 
         route = route_slash_command(cmd_name, text)
+        if not is_allowed(route.agent, user_id):
+            logger.info(f"Slash command {cmd_name} denied for {user_id} (agent={route.agent})")
+            respond(DENY_MESSAGE)
+            return
         handler = get_handler(route.agent)
 
         if not handler:
@@ -105,6 +110,10 @@ def _make_slash_command_handler() -> Callable:
 
         if not handler.can_handle(route.intent):
             redirect = handler.suggest_redirect(route.intent)
+            if redirect and not is_allowed(redirect, user_id):
+                logger.info(f"Slash redirect to {redirect} denied for {user_id}")
+                respond(DENY_MESSAGE)
+                return
             if redirect:
                 redirect_handler = get_handler(redirect)
                 if redirect_handler:
@@ -134,6 +143,11 @@ def _make_mention_handler(agent_name: str) -> Callable:
         msg_thread_ts = event.get("thread_ts")
 
         logger.info(f"[{agent_name}] Mention in {channel}: '{text}' from {user_id}")
+
+        if not is_allowed(agent_name, user_id):
+            logger.info(f"[{agent_name}] Mention denied for {user_id}")
+            say(DENY_MESSAGE, thread_ts=msg_thread_ts or event_ts)
+            return
 
         handler = get_handler(agent_name)
         if not handler:
@@ -207,6 +221,11 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
                 return
             logger.info(f"[{agent_name}] DM new conversation: user={user_id} text='{text[:50]}'")
 
+            if not is_allowed(agent_name, user_id):
+                logger.info(f"[{agent_name}] DM denied for {user_id}")
+                say(DENY_MESSAGE)
+                return
+
             handler = get_handler(agent_name)
             if handler is None:
                 return
@@ -236,6 +255,9 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
             return
         if conv.agent_name != agent_name:
             # 其他 bot 的 thread，不要搶
+            return
+        # 開串之後才被移出白名單的人，不再接續
+        if not is_allowed(agent_name, user_id):
             return
 
         handler = get_handler(conv.agent_name)
