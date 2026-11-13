@@ -46,6 +46,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[4]))
 from shared.cam_validate import validate_cam_speaker  # noqa: E402
 from shared.config import get_vault_path  # noqa: E402
 from shared.cutout_library import cutout_filename, resolve_emotion  # noqa: E402
+from shared.hyperframes_cli import npx_argv  # noqa: E402
 
 _HYPERFRAMES_VIDEO_DIR = Path(__file__).resolve().parents[4] / "video"
 
@@ -137,7 +138,7 @@ def _remove_bg_birefnet(frame: Path, dst: Path) -> None:
 
 async def _remove_bg_hyperframes(frame: Path, dst: Path) -> None:
     npx = shutil.which("npx") or "npx"  # Windows 上是 npx.cmd，CreateProcess 不自動解析
-    argv = [npx, "hyperframes", "remove-background", str(frame), "-o", str(dst)]
+    argv = [npx, *npx_argv("remove-background", str(frame), "-o", str(dst))[1:]]
     proc = await asyncio.create_subprocess_exec(
         *argv,
         cwd=str(_HYPERFRAMES_VIDEO_DIR),
