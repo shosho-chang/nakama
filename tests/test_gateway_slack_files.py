@@ -9,6 +9,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from gateway.slack_files import MAX_EMAIL_BODY_CHARS, attachment_context, with_attachments
 
 # files.info 回傳結構照 2026-09-24 實際 Gmail 分享檔（F0C3XEJC293）的欄位，內容簡化
@@ -39,6 +41,12 @@ EMAIL_FILE_IN_EVENT = {
     "mode": "email",
     "title": EMAIL_FILE_FULL["title"],
 }
+
+
+@pytest.fixture(autouse=True)
+def _sender_is_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    """這裡的事件都是修修（U1）發的；權限檢查見 test_gateway_access.py。"""
+    monkeypatch.setenv("SLACK_USER_ID_SHOSHO", "U1")
 
 
 def _client(file: dict | None = None, error: Exception | None = None) -> MagicMock:
