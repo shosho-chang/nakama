@@ -116,6 +116,16 @@ def is_event_request(text: str) -> bool:
     return bool(_TRIGGER_RE.search(body))
 
 
+# Slack 對「透過 AI 工具代發」的訊息會在最後加一行「*Sent using* <工具名>」，
+# 不是使用者打的字；留著的話「確認」比對不到、也會混進文案。
+_AI_FOOTER_RE = re.compile(r"\s*\*Sent using\*\s+\S[^\n]*\Z")
+
+
+def strip_ai_footer(text: str) -> str:
+    """移除 Slack 代發訊息結尾的「*Sent using* …」那一行。"""
+    return _AI_FOOTER_RE.sub("", text or "").rstrip()
+
+
 def extract_image_lines(text: str) -> tuple[str, dict | None]:
     """把 ``[附件圖片] ...`` 行從文字中拿掉，回 (乾淨文字, 最後一張圖片 or None)。
 
@@ -539,6 +549,7 @@ def _respond(state: dict, text: str) -> HandlerResponse:
 def start_flow(text: str, user_id: str) -> HandlerResponse:
     """handle() 偵測到建活動請求時呼叫。"""
     body, image = extract_image_lines(text)
+    body = strip_ai_footer(body)
     try:
         event = parse_event(body)
     except EventParseError as e:
@@ -567,6 +578,7 @@ def continue_flow(state: dict, text: str, user_id: str) -> HandlerResponse:
     state.setdefault("progress", {})
     state.setdefault("sources", [])
     body, new_image = extract_image_lines(text)
+    body = strip_ai_footer(body)
     if new_image:
         state["image"] = new_image
 
