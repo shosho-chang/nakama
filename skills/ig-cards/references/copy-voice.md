@@ -101,4 +101,4 @@ qualifier that makes a sentence correct is not tightening.
 | Sentences are clipped fragments in parallel | Restore connectives (但 / 於是 / 都可以) and write near speech. |
 | The subject or causal connective was dropped for compression | Name the subject (`予昕`) and the causality (`於是`). |
 | A qualifier was cut so the line reads cleanly | Keep the word that makes the claim true (`馬上`). |
-| Prose praises a course, exercise, or product the episode has a commercial relationship with | Remove it or disclose it; 修修 deleted the 家庭圖 exercise from `point-not-awareness` and the short-form brand lens independently flagged the same span as undisclosed placement. |
+| Prose praises a course, exercise, or product the episode has a commercial relationship with | Remove it or disclose it; 修修 deleted the 家庭圖 exercise from `point-not-awareness`. |

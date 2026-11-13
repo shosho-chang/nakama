@@ -40,6 +40,9 @@ class TemplateError(RuntimeError):
 class Stage:
     name: str
     pomodoros: int = 4
+    # Pre-filled task body (修修 2026-10-26: 後製與上架 always carries the same
+    # Intro/Outro script — 「這樣我就不用一直複製貼上了」).
+    notes: str = ""
 
 
 @dataclass(frozen=True)
@@ -78,7 +81,13 @@ def load_templates() -> dict[str, ProjectTemplate]:
                     pom = int(s.get("pomodoros") or 4)
                 except (TypeError, ValueError):
                     pom = 4
-                stages.append(Stage(name=str(s["name"]).strip(), pomodoros=max(1, min(20, pom))))
+                stages.append(
+                    Stage(
+                        name=str(s["name"]).strip(),
+                        pomodoros=max(1, min(20, pom)),
+                        notes=str(s.get("notes") or "").strip(),
+                    )
+                )
             elif isinstance(s, str) and s.strip():
                 stages.append(Stage(name=s.strip()))
         if not stages:
@@ -152,6 +161,7 @@ def create_project_with_template(vault_root: Path, raw_name: str, kind: str = ""
                     task_name=stage.name,
                     estimated_pomodoros=stage.pomodoros,
                     stage=stage.name,
+                    notes=stage.notes,
                 )
             )
     return entry, paths

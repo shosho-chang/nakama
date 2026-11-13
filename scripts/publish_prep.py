@@ -20,6 +20,12 @@ Release（draft），等文案（packaging 交接檔）、等排程、等修修�
 `<cut_id>_clean.mp4` 乾淨版供重燒）。CC 字幕直接用
 `highlights/srt/<cut_id>_tight_r*.srt` 最新版（已平移 0 起點）。
 
+完整版（`--cut full`）例外：落點是 `<episode>/final/<集數資料夾名>.mp4`（跟封面、標題同一個
+上傳包資料夾），旁邊放同名的
+上傳字幕 `<集數資料夾名>.srt`＝Editorial Master `master.srt` 的逐位元組複本，以及
+podcast 音檔 `<集數資料夾名>.mp3`（從封存的 master.mp4 抽音軌，含片尾音樂尾巴）。
+檔名規則的唯一來源是 `shared/export_paths.py`。
+
 執行環境同 longform-cut skill：Resolve Studio 開著、`py -3.10`。
 """
 
@@ -29,6 +35,7 @@ import argparse
 import json
 import logging
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -43,6 +50,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 from run_highlight_cut import FORMAT_LABEL  # noqa: E402
 
 from agents.brook.script_video.editorial_master import (  # noqa: E402
+    CANONICAL_ARTIFACTS,
+    VERSION_RELATIVE,
     editorial_master_timeline,
 )
 from agents.usopp.publish_timeline import (  # noqa: E402
@@ -51,10 +60,17 @@ from agents.usopp.publish_timeline import (  # noqa: E402
     resolve_target,
     verify_duration,
 )
+from shared.export_paths import (  # noqa: E402
+    FULL_CUT_ID,
+    export_audio_path,
+    export_media_path,
+    export_stem,
+    export_subtitle_path,
+    output_dir,
+)
 
 logger = logging.getLogger("publish_prep")
 
-EXPORTS_DIR = "highlights/exports"
 # 短片燒錄字幕樣式：QC preview 用 540 寬 FontSize 14——全解析 1080 寬等比 ×2。
 # 樣式盡量貼近 Resolve 直式模板（修修 UAT 後可調）。
 SHORT_SUB_STYLE = "FontName=Microsoft JhengHei,FontSize=28,Outline=2,MarginV=84"
@@ -62,7 +78,6 @@ RENDER_TIMEOUT_SEC = 3600  # 長片全解析 render 上限（12 分鐘片 + 排�
 # 完整版是 60–100 分鐘，固定 3600 秒比素材本身還短——等於要求 render 穩定跑在
 # 1.7× realtime 以上才不逾時。改成照素材長度給倍率，並保留原本的下限。
 RENDER_TIMEOUT_RATIO = 3.0
-FULL_CUT_ID = "full"
 
 
 def render_timeout_sec(duration_sec: float) -> int:
@@ -211,8 +226,29 @@ def _pick_timeline(project, episode_dir: Path, cut: dict):
     return timeline, target.timeline, target.plan_id
 
 
+def _render_mark_out(timeline) -> int:
+    """render 的最後一格（MarkOut 含該格）：收在 V1 主畫面的最後一格。
+
+    timeline 尾是所有軌最遠的那一格；字幕軌的量化尾巴會比畫面多一兩格，照
+    timeline 尾 render 就是片尾黑底只剩一行字幕（2026-10-07 20260722 李海碩
+    長1／長4 preview 實測最後兩格）。實測 Resolve：MarkIn 0／MarkOut 9 出 10 格
+    （含尾），item 的 GetEnd() 是不含的下一格。
+    """
+    end = timeline.GetEndFrame() - 1
+    items = timeline.GetItemListInTrack("video", 1) or []
+    if not items:
+        return end
+    return min(end, max(item.GetEnd() for item in items) - 1)
+
+
 def _render_master(
-    project, timeline, out_dir: Path, name: str, *, burn_subtitles: bool = False
+    project,
+    timeline,
+    out_dir: Path,
+    name: str,
+    *,
+    burn_subtitles: bool = False,
+    end_at_main_picture: bool = False,
 ) -> Path:
     """Resolve render queue 出全解析 H.264 mp4（timeline 原生解析度）。
 
@@ -229,10 +265,25 @@ def _render_master(
     """
     w = int(timeline.GetSetting("timelineResolutionWidth"))
     h = int(timeline.GetSetting("timelineResolutionHeight"))
-    project.SetCurrentRenderFormatAndCodec("mp4", "H264")
+    # 2026-11-13 20261111 李惠貞：先前算過純音訊（Wave／Audio Only）後，這行會靜默失敗、
+    # codec 停在 APVYUV422_10，master.mp4 只剩聲音被 seal 擋下。失敗就先載入內建
+    # 「H.264 Master」重設，再設一次；還是不行就停，不要算出錯的檔。
+    if not project.SetCurrentRenderFormatAndCodec("mp4", "H264"):
+        project.LoadRenderPreset("H.264 Master")
+        if not project.SetCurrentRenderFormatAndCodec("mp4", "H264"):
+            current = project.GetCurrentRenderFormatAndCodec()
+            raise SystemExit(f"無法把 render 格式設成 mp4/H264（目前 {current}）")
+    # ExportVideo／ExportAudio 必須明設：沒設就繼承 Deliver 頁當下的 preset。
+    # 2026-10-02 20260722 李海碩：修修剛在 Deliver 頁用「Audio Only」匯 podcast mp3，
+    # master.mp4 跟著變成純音訊，Editorial Master seal 擋在「must contain both
+    # video and audio streams」。
     settings = {
+        "ExportVideo": True,
+        "ExportAudio": True,
         "MarkIn": timeline.GetStartFrame(),
-        "MarkOut": timeline.GetEndFrame(),
+        # 精華 cut 收在 V1 主畫面；Editorial Master seal 不收——那是修修自己剪的
+        # timeline，V2 片尾卡或蓋過黑底的配樂可能本來就比 V1 長。
+        "MarkOut": _render_mark_out(timeline) if end_at_main_picture else timeline.GetEndFrame(),
         "TargetDir": str(out_dir),
         "CustomName": name,
         "FormatWidth": w,
@@ -366,39 +417,117 @@ def _probe(path: Path) -> tuple[float, int]:
     return dur, path.stat().st_size
 
 
+def _master_srt(episode_dir: Path) -> Path:
+    """完整版的上傳字幕來源：Editorial Master 封存的 `master.srt`。"""
+    return Path(episode_dir) / VERSION_RELATIVE / CANONICAL_ARTIFACTS["subtitles"]
+
+
+def _master_media(episode_dir: Path) -> Path:
+    """Editorial Master 封存的 `master.mp4`：整條 timeline，含片尾音樂尾巴。"""
+    return Path(episode_dir) / VERSION_RELATIVE / CANONICAL_ARTIFACTS["media"]
+
+
+def _extract_podcast_mp3(video: Path, target: Path) -> Path:
+    """封存母帶的音軌 → podcast mp3（320k／48 kHz／stereo，同 Kelly Tsai 集上架規格）。
+
+    來源是 `master.mp4`，不是上傳用 mp4：上傳版算到主畫面最後一格就停
+    （20261111 李惠貞 少 2.66 秒），會切掉片尾音樂的尾巴；master.mp4 是整條 timeline。
+    也不叫 Resolve 另算純音訊：2026-11-13 先在 Resolve 算 Wave 之後，render 格式
+    卡在非 H264，Editorial Master seal 算出只有聲音的 master.mp4。
+    """
+    temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp.mp3")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-i",
+            str(video),
+            "-vn",
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            "320k",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            str(temporary),
+        ],
+        check=True,
+    )
+    os.replace(temporary, target)
+    return target
+
+
+def _copy_upload_srt(source: Path, target: Path) -> Path:
+    """逐位元組複製，先寫暫存檔再 replace——不留半份字幕給上傳端撿。"""
+    temporary = target.with_name(target.name + f".{os.getpid()}.tmp")
+    shutil.copyfile(source, temporary)
+    os.replace(temporary, target)
+    return target
+
+
 def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
-    """單支 cut：render → （短片燒字幕）→ exports/<cut_id>.mp4。"""
+    """單支 cut：render →（短片燒字幕）→ 成品（路徑與檔名見 shared/export_paths）。"""
+    cid = cut["id"]
+    is_full = cid == FULL_CUT_ID
+    master_srt = _master_srt(episode_dir) if is_full else None
+    if master_srt is not None and not master_srt.is_file():
+        # render 前就擋：完整版 render 一次一兩個小時，跑完才發現沒字幕可上傳是白工。
+        raise SystemExit(f"完整版缺上傳字幕來源 {master_srt}——Editorial Master 封存不完整，先修")
     timeline, label, plan_id = _pick_timeline(project, episode_dir, cut)
     project.SetCurrentTimeline(timeline)
-    out_dir = episode_dir / EXPORTS_DIR
+    out_dir = output_dir(episode_dir, cid)
     out_dir.mkdir(parents=True, exist_ok=True)
-    cid = cut["id"]
+    stem = export_stem(episode_dir, cid)
+    upload_srt: Path | None = None
 
     if cut["format"] == "long":
         # 長片發布預設：DRT 攜帶 Shosho YT 樣式，Resolve 明確燒進成品。
         n = _set_subtitle_tracks(resolve, timeline, True)
         logger.info("%s: 長片——啟用 %d 條 Shosho YT 字幕軌並 Burn In", cid, n)
-        final = _render_master(project, timeline, out_dir, cid, burn_subtitles=True)
+        # 完整版是修修自己剪的 timeline，照整條算（同 Editorial Master seal）：片尾配樂本來就
+        # 比最後一格畫面長。2026-11-13 20261111 李惠貞 A2 的片尾音樂比 V1 多 80 格，收在主畫面
+        # 等於把音樂尾巴切掉 2.67 秒（Kelly Tsai 集同樣少 2.62 秒）。精華 cut 才收在主畫面。
+        final = _render_master(
+            project,
+            timeline,
+            out_dir,
+            stem,
+            burn_subtitles=True,
+            end_at_main_picture=not is_full,
+        )
+        if master_srt is not None:
+            # 完整版上傳的是「<集數名>.mp4＋<集數名>.srt」這一對；字幕就是封存的
+            # master.srt，不重抽、不改寫（CC 跟 Editorial Master 必須是同一份）。
+            upload_srt = _copy_upload_srt(master_srt, export_subtitle_path(episode_dir, cid))
+            logger.info("%s: 上傳字幕 %s ← %s", cid, upload_srt.name, master_srt)
     elif _covers_full_transcript(episode_dir, cid):
         # mode B（ADR-067）：字卡逐子句承接**全部**逐字稿，字卡就是文字層。
         # 再燒一層字幕＝同一句話在畫面上出現兩次。sidecar SRT 仍然出，
         # 那是 YouTube CC（無障礙與 SEO），跟燒進畫面是兩回事。
-        final = _render_master(project, timeline, out_dir, cid)
+        final = _render_master(project, timeline, out_dir, cid, end_at_main_picture=True)
         logger.info("%s: 短片 mode B——字卡即文字層，不燒字幕", cid)
     else:
         srt = _latest_tight_srt(episode_dir, cid)
         if srt is None:
             raise SystemExit(f"{cid} 沒有 tight SRT——沒有字卡承接就必須燒字幕（Q4b）")
-        clean = _render_master(project, timeline, out_dir, f"{cid}_clean")
-        final = out_dir / f"{cid}.mp4"
-        import shutil
-
+        clean = _render_master(project, timeline, out_dir, f"{cid}_clean", end_at_main_picture=True)
+        final = export_media_path(episode_dir, cid)
         shutil.copy(srt, out_dir / f"{cid}.srt")
         logger.info("%s: 短片——ffmpeg 燒字幕（%s）", cid, srt.name)
         _burn_short_subs(clean, out_dir / f"{cid}.srt", final)
 
     dur, size = _probe(final)
-    srt_path = _latest_tight_srt(episode_dir, cid)
+    podcast_mp3: Path | None = None
+    if is_full:
+        podcast_mp3 = _extract_podcast_mp3(
+            _master_media(episode_dir), export_audio_path(episode_dir)
+        )
+        logger.info("%s: podcast 音檔 %s", cid, podcast_mp3.name)
+    srt_path = upload_srt if is_full else _latest_tight_srt(episode_dir, cid)
     return {
         "cut_id": cid,
         "format": cut["format"],
@@ -407,6 +536,7 @@ def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
         "duration_sec": round(dur, 2),
         "file_bytes": size,
         "cc_srt": str(srt_path) if srt_path else None,
+        "podcast_mp3": str(podcast_mp3) if podcast_mp3 else None,
         "timeline": label,
         # 這支成品是哪一版 plan record 的內容。重鑄一份 plan 可以不改變片長
         # （移一支 b-roll、拿掉另一支，長度分毫不差），長度護欄看不出差別；

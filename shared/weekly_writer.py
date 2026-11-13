@@ -18,7 +18,7 @@ import re
 import tempfile
 import time
 import unicodedata
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 from zoneinfo import ZoneInfo
@@ -354,6 +354,26 @@ def add_plan_entry(
     _write_task(path, fm, body)
 
 
+def _stamp_completion(fm: dict[str, Any], done: bool, *, was_done: bool) -> None:
+    """Record WHEN a task was finished (修修 2026-10-23).
+
+    ``shared.task_archiver`` moves a done task to Archive/ 14 days after it was
+    completed, reading ``completedDate`` / ``dateModified``. Without this stamp an
+    old task ticked today still carries its creation-day ``dateModified`` and is
+    swept the very next morning. ``completedDate`` is the TaskNotes plugin's own
+    field (Taipei ``YYYY-MM-DD``); re-ticking an already-done task keeps its
+    original date. Re-opening clears it."""
+    now = datetime.now(TAIPEI_TZ)
+    if done and not was_done:
+        fm["completedDate"] = now.date().isoformat()
+    elif not done:
+        fm.pop("completedDate", None)
+    # same shape the plugin writes: UTC, milliseconds, trailing Z
+    fm["dateModified"] = (
+        now.astimezone(timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    )
+
+
 def set_task_done(vault_root: Path, task_slug: str, done: bool) -> str:
     """Toggle a task's completion from the dashboard checkbox (#2).
 
@@ -373,6 +393,7 @@ def set_task_done(vault_root: Path, task_slug: str, done: bool) -> str:
     if not path.exists():
         raise TaskNotFoundError(f"task not found: {path}")
     fm, body = _read_task(path)
+    _stamp_completion(fm, done, was_done=str(fm.get("status") or "") == "done")
     if done:
         fm["status"] = "done"
         if fm.get("✅") is not None:
@@ -461,6 +482,9 @@ def set_plan_entry_done(vault_root: Path, task_slug: str, day: date, done: bool)
     # roll the day slices up to the task's own done state (see docstring)
     if entries:
         all_done = all(bool(e.get("done")) for e in entries)
+        was_done = str(fm.get("status") or "") == "done"
+        if all_done != was_done:
+            _stamp_completion(fm, all_done, was_done=was_done)
         if all_done:
             fm["status"] = "done"
             if fm.get("✅") is not None:

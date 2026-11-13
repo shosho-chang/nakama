@@ -58,6 +58,18 @@ def test_a_guest_whose_name_is_a_suffix_of_another_does_not_match(vault):
         interview_dir("20260901 予昕", vault)
 
 
+def test_english_name_matches_regardless_of_spaces(vault):
+    """episode `20261021 Kelly Tsai` 對 Vault `2026-10-19-KellyTsai`：採集時拿掉了空白。"""
+    (vault / "AgentOutputs" / "interviews" / "2026-10-19-KellyTsai").mkdir()
+    assert interview_dir("20261021 Kelly Tsai", vault).name == "2026-10-19-KellyTsai"
+
+
+def test_space_squashing_keeps_the_dash_boundary(vault):
+    (vault / "AgentOutputs" / "interviews" / "2026-10-19-MaryKellyTsai").mkdir()
+    with pytest.raises(VaultInterviewError, match="找不到"):
+        interview_dir("20261021 Kelly Tsai", vault)
+
+
 def test_next_number_continues_the_existing_sequence(tmp_path):
     for name in ("01-足跡地圖.md", "02-採集計畫.md", "06-title-brainstorm.md"):
         (tmp_path / name).write_text("x", encoding="utf-8")

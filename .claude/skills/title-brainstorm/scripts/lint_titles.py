@@ -6,7 +6,7 @@
     python lint_titles.py -              # 從 stdin 讀（一行一條）
 
 規則:
-    FAIL (exit 1) — 長度 > 80 字、含 emoji。
+    FAIL (exit 1) — 長度 > 80 字、含 emoji、命中 AI 腔禁用清單（shared/ai_slop.py，與描述共用）。
     WARN          — 疑似含簡體字（人工複核；避免誤判不硬擋）。
 乾淨則印 "OK" 並 exit 0。
 """
@@ -14,6 +14,13 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
+
+_REPO_ROOT = Path(__file__).resolve().parents[4]
+if str(_REPO_ROOT) not in sys.path:
+    sys.path.insert(0, str(_REPO_ROOT))
+
+from shared.ai_slop import slop_hits  # noqa: E402
 
 # stdin 也要一起。Windows 的 stdin 預設走 locale（cp950），中文管進來會解成
 # surrogate，然後在下面 print 標題那一行 UnicodeEncodeError——看起來像「這條標題
@@ -55,6 +62,8 @@ def main() -> int:
         emo = _has_emoji(t)
         if emo:
             problems.append("含 emoji: " + " ".join(emo))
+        for hit in slop_hits(t):
+            problems.append(f"AI 腔：{hit}")
         simp = sorted(set(t) & _SIMPLIFIED)
         if problems:
             failed = True
@@ -68,7 +77,7 @@ def main() -> int:
     if failed:
         print("\n✗ 有 FAIL，修掉再交付。")
         return 1
-    print(f"\n✓ OK: {len(titles)} 條全部通過長度/emoji 檢查。")
+    print(f"\n✓ OK: {len(titles)} 條全部通過長度／emoji／AI 腔檢查。")
     return 0
 
 

@@ -17,3 +17,16 @@ created: 2026-07-25
 - 動 cue 切分邏輯 → 跑 `tests/test_cue_builder.py` 全套 + 抽真檔 SRT 人眼掃前 20 cue
 - cue 參數迭代用 `run_subtitle_gen.py --recue`（吃 `subs/aligned_segments.json`，零 GPU）
 - 相關：[[feedback_chinese_srt_word_boundary_jieba]]（jieba 詞邊界的前身教訓）、[[feedback_subscription_first_no_api_spend]]（校正走 subagent）
+
+## 2026-10-09 補記：《》在 ADR-063 Memo 產線沒有落地
+
+修修 2026-10-09（20261001 洪瀞集 Editorial Master 前）：「我希望之後在講到書的時候，都能夠把全型的書名號《》放上去。這個是少數需要加標點符號的地方。」——等於重申上面第 1 條。
+
+**落差**：ADR-063 Memo Dual-Audit 產線（S4 稽核 brief、`release.srt`、S7E 片頭片尾裁決）都沒有套這條；洪瀞集的 release.srt 一個《》都沒有，片頭片尾裁決甚至寫了「書名不加《》（同 release.srt）」。當集在 seal 前用 `resolve_subtitle_rebuild.py rebuild --fix` 補上 6 句。
+
+**How to apply（ADR-063 路線）:**
+- 只在**提到書名本身**時加《》（「他的新書《思考城堡》」「第一本書寫的《自己的力學》」）；把書名當概念用的不加（「建思考城堡」「要先降噪」）。分不清的列給修修裁。
+- 書名本身含逗號時（《先降噪，再聚焦》），字幕裡拿掉逗號寫《先降噪再聚焦》——《》是「少數」要加的標點，其他標點照舊省略（2026-10-09 修修核可）。
+- seal 前掃標點時，《》不是殘留標點；反過來要**主動找**漏掉的書名。
+- 「」那半條同樣重申（修修 2026-10-09：「「」也加」）。對象是術語／方法／自創概念（前例 謝伯讓集：「多巴胺」「正念」「預設模式網路」「證偽」「大腦外包」），每次出現都標；人名、地名、機構、日常用法不標；跨 cue 的詞不標。ADR-063 產線一樣沒落地——呂冠緯／李海碩兩集 master.srt 只有 1–3 個「」。
+- 封存（seal）一旦完成 master.srt 就鎖死：《》「」要在 seal 前補完。洪瀞集是 seal 渲染中途中止（未發布）回頭補的。

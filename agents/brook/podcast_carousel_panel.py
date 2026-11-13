@@ -118,12 +118,12 @@ class PanelResult(_PanelModel):
             for finding in self.reviews["brand_evidence"].findings
             if finding.severity == "high" and finding.finding_id in known
         }
-        # 高嚴重度的 brand finding 預設不可駁回——那道護欄擋掉的是「agent 覺得
+        # 高嚴重度的 evidence finding 預設不可駁回——那道護欄擋掉的是「agent 覺得
         # 沒關係」。唯一的例外是修修自己指定的值：他的決定是最高權限，駁回理由
         # 連同 finding 全文一起留在 panel 裡可稽核。
         if not brand_high.issubset(accepted | editor_decisions):
             raise ValueError(
-                "high brand/evidence findings cannot be rejected unless the rejection is "
+                "high evidence-lens findings cannot be rejected unless the rejection is "
                 "marked editor_decision (the editor's own instruction)"
             )
 
@@ -178,15 +178,18 @@ _LENS_BRIEFS = {
     "ig_audience": (
         "你是 IG 受眾 reviewer。只評 Hook 是否抓人、卡片理解成本、閱讀節奏、"
         "Hook 與後續 ordered points 是否一致，以及看完是否想聽完整節目。"
-        "不要替品牌或 evidence lens 投票。"
+        "不要替 evidence lens 投票。"
     ),
     "episode_editorial": (
         "你是 Podcast episode 編輯。檢查這份 Carousel 是否涵蓋整集最值得傳播的"
         "多個重點、Episode Highlight Arc 是否成立、是否漏掉關鍵主題。不要要求逐段摘要。"
     ),
+    # key 沿用 `brand_evidence`（收據與舊 panel 都綁這個名字），但這個 lens 只查證據：
+    # 修修 2026-10-07 拿掉品牌評審——整集訪談本來就完整公開，品牌審查不增加任何東西。
     "brand_evidence": (
-        "你是品牌與證據 reviewer。逐項檢查改寫是否改變原意、錯置說話者、"
-        "創造不存在的因果、拼接不連續 quote，或讓來賓被斷章取義。"
+        "你是證據 reviewer。逐項檢查每一句可見文案是否對得上逐字稿：改寫是否改變原意、"
+        "錯置說話者、創造不存在的因果、拼接不連續 quote，或讓來賓被斷章取義。"
+        "不做品牌安全審查。"
     ),
 }
 
@@ -292,7 +295,7 @@ def _synthesis_prompt(findings: list[PanelFinding]) -> str:
 請決定如何收斂成一次修訂，不以平均分或多數決消除少數 lens。
 
 硬規則：
-- brand_evidence 的 high finding 必須 accepted。
+- brand_evidence（證據 lens）的 high finding 必須 accepted。
 - 同一問題可合併成一條 revision instruction，但 finding ID 仍逐一列 accepted/rejected。
 - rejected 必須寫具體 editorial 理由，不能寫「不喜歡」。
 - blockers 只放在無法靠現有逐字稿修正的問題。
@@ -385,7 +388,7 @@ def run_panel(
             if finding.severity == "high" and finding.finding_id in known
         }
         if not required.issubset(accepted):
-            raise ValueError("high brand/evidence findings cannot be rejected")
+            raise ValueError("high evidence-lens findings cannot be rejected")
 
     status = "converged"
     if synthesis.blockers:

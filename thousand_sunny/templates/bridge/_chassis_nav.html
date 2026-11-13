@@ -55,9 +55,9 @@
          6 個頁面，而真正需要它的是 packaging / publish 那些「行為不對但畫面正常」
          的地方。內容由 chassis_nav.js 去 /bridge/build 取，所以 50 個 template
          都不用改、也不用把 build 資訊塞進 25 個 Jinja env 的 context。 --#}
-    <div class="chassis-version" id="chassis-build" data-build-slot>v0.4</div>
+    <div class="chassis-version" id="chassis-build" data-build-slot></div>
   </div>
-  <nav class="chassis-nav" aria-label="Bridge sections">
+  <nav class="chassis-nav" id="chassis-nav" aria-label="Bridge sections">
 
     {#-- Fleet dropdown --#}
     <div class="chassis-dropdown{% if _in_fleet %} is-active{% endif %}">
@@ -121,6 +121,15 @@
       {{ caller() }}
     </div>
     {%- endif %}
+    {#-- 手機版選單鈕（≤900px 才顯示，由 chassis_nav.js 掛上 .has-menu 才生效）。
+         2026-11-01 修修：手機上 13 個項目換行成四行、header 吃掉 ~40% 螢幕。
+         收成一行 brand + 主題 + 這顆鈕，鈕上寫目前所在頁，點開才展開全部。
+         沒有 JS 時退回原本的換行排法，導覽不會消失。 --#}
+    <button class="chassis-menu-toggle" type="button"
+            aria-expanded="false" aria-controls="chassis-nav" aria-label="開啟導覽選單">
+      <span class="chassis-menu-current" data-menu-current>Menu</span>
+      <span class="chassis-menu-icon" aria-hidden="true"></span>
+    </button>
   </div>
 </header>
 {#-- Dropdown behaviour lives in an external file so the shared chassis header

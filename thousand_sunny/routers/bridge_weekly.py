@@ -35,6 +35,7 @@ from shared.project_writer import (
     reassign_task_project,
     rename_task,
 )
+from shared.weekly_calendar import build_week_calendar
 from shared.weekly_indexer import (
     CATEGORY_LABELS,
     CATEGORY_ORDER,
@@ -82,6 +83,8 @@ def _shosho_asset_version() -> str:
         "theme.js",
         "bridge-weekly.js",  # the page links it with ?v= — a JS-only fix must cache-bust too
         "focus-music.js",  # task page pomodoro dock (修修 2026-08-25)
+        "bridge-calendar.css",  # 任務 → 行事曆 tab (修修 2026-11-12)
+        "bridge-calendar.js",
     ):
         path = static_dir / css
         if path.exists():
@@ -102,6 +105,7 @@ _PLAN_ERRORS = {
         "此任務已連動 Google 行事曆——要改期或取消，請到任務頁操作；重新排入會產生重複事件，已擋下。"
     ),
     "rename_invalid": "新名稱無效（空白或含路徑分隔符號）。",
+    "done_write": "更新完成狀態失敗，任務檔可能被其他程式鎖定。",
     "rename_exists": "已有同名任務，請換一個名稱。",
     # calendar scheduling (ADR-041 41c) — plan is authoritative; calendar is best-effort.
     # v3-I.2: web conflicts pop a Web UI modal (強排 / 改時間 / 取消排程); this banner is the
@@ -116,6 +120,10 @@ _PLAN_ERRORS = {
     "cancel_cal_failed": (
         "已從本週計畫移除，但刪除 Google 行事曆事件失敗——請到 Google 行事曆手動移除，或稍後重試。"
     ),
+    # 行事曆 tab drag-to-another-day (修修 2026-11-12)
+    "move_occupied": "這個任務那天已經有安排了——沒有搬移。",
+    "move_done": "這天的安排已經完成，不能搬移。",
+    "move_cancel_failed": ("已排到新的那天，但舊的那天沒能移除——請到任務頁把舊的那天取消。"),
     # weekly-file (Journals/Weekly 🟡) write errors — ADR-040 Slice 2
     "conflict": (
         "週檔在你開啟頁面後被改動（Obsidian / Syncthing / 另一分頁），"
@@ -183,6 +191,11 @@ async def weekly_landing(
         wk = week_for_date(today_taipei())
 
     vault = get_vault_path()
+    # 修修 (2026-11-12): every current/future week gets 「WXX 電子報」 on Monday
+    # 06:00 (2 🍅) — created once, lazily, the first time the week is opened.
+    from shared.weekly_newsletter import ensure_weekly_newsletter  # noqa: PLC0415
+
+    ensure_weekly_newsletter(vault, wk, today=today_taipei())
     idx = WeeklyIndexer(vault)
     try:
         view = idx.view(wk)
@@ -222,6 +235,8 @@ async def weekly_landing(
             # 任務相鄰、戰線名視覺區隔、獨立任務殿後；組內保留原排序。
             "today_groups": _group_by_project(view.today_tasks),
             "week_groups": _group_by_project(view.tasks),
+            # 任務 → 行事曆 tab (修修 2026-11-12): week time-grid over the same plan[]
+            "calendar": build_week_calendar(view),
             "daily_review": review_summary,
             # If-Match token for the weekly-file forms (ADR-040 Slice 2)
             "weekly_token": weekly_file_token(vault, wk.file_key),
@@ -336,7 +351,9 @@ def _back(
     return RedirectResponse(url, status_code=303)
 
 
-def _conflict_modal_params(task_slug, entry_date, entry_time, pomodoros, reason, conflicts) -> str:
+def _conflict_modal_params(
+    task_slug, entry_date, entry_time, pomodoros, reason, conflicts, *, from_date: str = ""
+) -> str:
     """v3-I.2: build the query string that drives the Web UI conflict modal
     (bridge-weekly.js). Carries the attempted slot (so 強排 can re-POST force=1 and 改時間
     can prefill), the clashing event titles, and best-effort nearby free slots. Replaces
@@ -365,6 +382,8 @@ def _conflict_modal_params(task_slug, entry_date, entry_time, pomodoros, reason,
     ]
     if reason:
         parts.append(f"cf_reason={quote(reason)}")
+    if from_date:  # 行事曆 drag to another day — 強排 must finish the move
+        parts.append(f"cf_from={quote(from_date)}")
     if slot_txt:
         parts.append(f"cf_slots={quote(slot_txt)}")
     return "&".join(parts)
@@ -490,6 +509,11 @@ async def weekly_plan_add(
     week: str = Form(""),
     from_task: int = Form(0),  # v3-C — fired from the task page → land back there
     from_project: str = Form(""),  # v3-H — fired from a Project Brief tab → land back there
+    # 行事曆 tab (修修 2026-11-12): the entry's ORIGINAL date when a block is dragged to
+    # another day. The new day is scheduled first; only once that stands is the old
+    # day's entry dropped (and its Google event deleted). Blank / same day ⇒ the plain
+    # upsert below, which already moves/resizes a same-day block in place.
+    from_date: str = Form(""),
     nakama_auth: str | None = Cookie(None),
 ):
     """v3 merged 「排入」 (ADR-041 v3 V2): one action writes the ``plan[]`` entry AND,
@@ -534,6 +558,21 @@ async def weekly_plan_add(
     all_day = et is None
     task = WeeklyIndexer(vault).find_task(task_slug)
     title = task.title if task is not None else task_slug
+
+    # 行事曆 drag to another day: validate before any write (nothing half-moved).
+    move_from: date | None = None
+    if from_date.strip():
+        fd = _parse_entry_date(from_date)
+        if fd is None:
+            return _plan_back(ft, task_slug, wk_key, err="date")
+        if fd != ed and task is not None and task.entry_on(fd) is not None:
+            if task.entry_on(fd).done:
+                return _plan_back(ft, task_slug, wk_key, err="move_done")
+            if task.entry_on(ed) is not None:
+                # upsert is keyed by date — moving onto the task's other entry that day
+                # would silently merge the two; refuse instead.
+                return _plan_back(ft, task_slug, wk_key, err="move_occupied")
+            move_from = fd
     start = datetime.combine(ed, et or datetime.min.time())  # naive Asia/Taipei (D4)
     try:
         outcome = calendar_scheduler.schedule_entry(
@@ -557,21 +596,40 @@ async def weekly_plan_add(
     # v3-G: from here the plan entry is written (vault-first), so jump to its week
     # (dest_week) regardless of the calendar status — the chip/banner shows in context.
     st = outcome.calendar_status
-    if st == calendar_scheduler.CREATED:
-        return _plan_back(ft, task_slug, dest_week, saved="scheduled")
     if st == calendar_scheduler.CONFLICT:
         # v3-I.2: web-initiated conflicts resolve in a Web UI modal (NOT Slack — 修修:
         # only Slack-initiated scheduling via Nami should bounce back through Slack).
         # The plan entry already stands (vault-first); the modal (bridge-weekly.js, keyed
         # on ?err=cal_conflict&cf_*) offers 強排 (re-POST force=1) / 改時間 (reopen the
         # chip) / 取消排程 (keep the plan-only entry, no event). Pass the clash + nearby
-        # free slots so the modal can guide the pick.
+        # free slots so the modal can guide the pick. A pre-checked clash writes nothing
+        # (v3-I.4), so a dragged block's old day is still intact — 強排 carries cf_from.
         extra = _conflict_modal_params(
-            task_slug, entry_date, entry_time, pomodoros, rsn, outcome.conflicts
+            task_slug,
+            entry_date,
+            entry_time,
+            pomodoros,
+            rsn,
+            outcome.conflicts,
+            from_date=move_from.isoformat() if move_from else "",
         )
         return _plan_back(
             ft, task_slug, dest_week, err="cal_conflict", n=len(outcome.conflicts), extra=extra
         )
+    if move_from is not None:
+        # The new day's entry is written (CREATED / UNAVAILABLE / FAILED all wrote the
+        # plan) — now retire the old day: drop its entry, delete its Google event.
+        try:
+            cancelled = calendar_scheduler.cancel_entry(
+                vault, task_slug, day=move_from, drop_plan=True
+            )
+        except (TaskNotFoundError, WeeklyWriteError) as exc:
+            logger.warning("weekly_plan move: old entry %s not dropped: %s", move_from, exc)
+            return _plan_back(ft, task_slug, dest_week, err="move_cancel_failed")
+        if cancelled.calendar_status == calendar_scheduler.CANCEL_CAL_FAILED:
+            return _plan_back(ft, task_slug, dest_week, err="cancel_cal_failed")
+    if st == calendar_scheduler.CREATED:
+        return _plan_back(ft, task_slug, dest_week, saved="scheduled")
     if st == calendar_scheduler.UNAVAILABLE:
         return _plan_back(ft, task_slug, dest_week, err="cal_unavailable")
     return _plan_back(ft, task_slug, dest_week, err="cal_failed")  # FAILED — event rolled back
@@ -648,6 +706,7 @@ async def weekly_task_done(
     done: int = Form(0),  # 1 = mark done, 0 = re-open
     week: str = Form(""),
     from_project: str = Form(""),  # v3-H — fired from a Project Brief tab
+    from_task: int = Form(0),  # 修修 2026-11-09 — fired from the task page's own checkbox
     nakama_auth: str | None = Cookie(None),
 ):
     """Toggle a task's done state from a dashboard / daily-bullet checkbox (#2).
@@ -664,7 +723,11 @@ async def weekly_task_done(
         return _back(wk_key, "task")
     except WeeklyWriteError as exc:
         logger.warning("weekly_task_done: %s", exc)
+        if from_task:
+            return _task_back(slug, wk_key, err="done_write")
         return _back(wk_key, "task")
+    if from_task:
+        return _task_back(slug, wk_key, saved="done" if done else "reopened")
     # v3-I follow-up (修修): anchor on the toggled row so the dashboard lands back in
     # place (the JS save-state restores tab/scroll; the #task- anchor re-opens the row).
     return _back(wk_key, slug=slug)
@@ -1200,6 +1263,8 @@ _TASK_ERRORS = {
 
 _TASK_SAVED = {
     "body": "✓ 已儲存筆記。",
+    "done": "✓ 已標記完成。",
+    "reopened": "✓ 已改回未完成。",
     "scheduled": "✓ 已排入並建立行事曆事件。",
     "rescheduled": "✓ 已改期並更新行事曆事件。",
     "unlinked": "✓ 已移出行事曆（保留本週計畫）。",

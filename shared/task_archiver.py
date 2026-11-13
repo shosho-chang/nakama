@@ -11,8 +11,9 @@
 plugin 自己的 auto-archive 上限只有 1440 分鐘，蓋不住這個窗口，所以走
 server-side cron（``agents/franky/jobs/task_archive_daily``）。
 
-完成時間的認定（取最晚者）：``timeEntries[]`` 最後一筆 ``endTime`` >
-``dateModified`` > 檔案 mtime。frontmatter 壞掉的檔案一律跳過不動。
+完成時間的認定（取最晚者）：``timeEntries[]`` 最後一筆 ``endTime`` /
+``completedDate`` / ``dateModified``，三者皆無才用檔案 mtime。
+frontmatter 壞掉的檔案一律跳過不動。
 """
 
 from __future__ import annotations
@@ -100,9 +101,12 @@ def _completed_at(fm: dict, path: Path) -> datetime:
                 dt = _parse_dt(e.get("endTime"))
                 if dt:
                     candidates.append(dt)
-    dt = _parse_dt(fm.get("dateModified"))
-    if dt:
-        candidates.append(dt)
+    # completedDate：Bridge 打勾 / TaskNotes plugin 完成時寫的日期（修修 2026-10-23）。
+    # 建立很久才打勾的任務 dateModified 可能還停在建立日，沒有它 14 天就從建立日起算。
+    for key in ("completedDate", "dateModified"):
+        dt = _parse_dt(fm.get(key))
+        if dt:
+            candidates.append(dt)
     if candidates:
         return max(candidates)
     return datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)

@@ -33,16 +33,11 @@ import re
 from pathlib import Path
 from typing import Callable
 
+from shared.ai_slop import slop_hits
+
 _TEMPLATES = Path(__file__).resolve().parent / "templates"
 FOOTER_FILE = _TEMPLATES / "video_description_footer.md"
 _DESCRIPTION_MODEL = "claude-sonnet-4-6"
-_AI_SLOP_PATTERNS = (
-    re.compile(r"不是[^。！？\n]{0,40}[，,、]?\s*而是"),
-    re.compile(r"不只[^。！？\n]{0,40}[，,、]?\s*更(?:是|要|能)?"),
-    re.compile(r"這一段會"),
-    re.compile(r"帶你看"),
-    re.compile(r"深入探討"),
-)
 _HOOK_MIN_CHARS = 180
 _HOOK_MAX_CHARS = 320
 # 段落上限：修修實際上架的描述是 3–4 段，原本寫死 2 段會把合格稿退掉。
@@ -313,7 +308,7 @@ def validate_description_hook(hook: str) -> str:
     cleaned = hook.strip()
     if not cleaned:
         raise ValueError("description hook 不可為空")
-    matches = [pattern.pattern for pattern in _AI_SLOP_PATTERNS if pattern.search(cleaned)]
+    matches = slop_hits(cleaned)  # 禁用清單與標題共用：shared/ai_slop.py
     if matches:
         raise _hook_rejected(f"description hook 命中 AI slop：{', '.join(matches)}", cleaned)
     paragraphs = [part.strip() for part in re.split(r"\n\s*\n", cleaned) if part.strip()]

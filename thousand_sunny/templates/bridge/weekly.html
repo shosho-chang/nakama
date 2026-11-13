@@ -13,6 +13,7 @@
 {# v3-H Slice 3: task_row extracted to a shared partial so the Project Brief tab can
    reuse the exact same row (chips + 排入) as the dashboard. #}
 {% from "_task_row.html" import task_row %}
+{% from "_week_calendar.html" import week_calendar %}
 
 {# ── Weekly-file 週交接 forms (ADR-040 A6 composable steps; Journals/Weekly 🟡) ── #}
 {% macro _sec(view, heading) %}{{ view.review.sections.get(heading, '') if view.review else '' }}{% endmacro %}
@@ -139,6 +140,7 @@
 <link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version | default('') }}">
 <link rel="stylesheet" href="/static/shosho/bridge-weekly.css?v={{ asset_version | default('') }}">
+<link rel="stylesheet" href="/static/shosho/bridge-calendar.css?v={{ asset_version | default('') }}">
 </head>
 <body class="sho bridge-page bridge-page--scroll">
   {% from "_chassis_nav.html" import chassis_nav %}
@@ -347,6 +349,7 @@
             <button class="wk-tab is-on" data-tab="today" type="button">今日</button>
             <button class="wk-tab" data-tab="week" type="button">整週</button>
             <button class="wk-tab" data-tab="all" type="button">全部</button>
+            <button class="wk-tab" data-tab="cal" type="button">行事曆</button>
           </div>
           {# v3-H Slice 2: 新增任務 — optional project (blank = standalone) + category.
              Bare creation; schedule later via the 排入 chips. Same dual-write path as Nami. #}
@@ -367,10 +370,11 @@
                 </select></label>
               <label class="wk-sched-lbl"><span class="wk-sched-cap">🍅 預估</span>
                 <input class="wk-newtask-pom" type="number" name="est_pomodoros" min="1" max="20" value="4"></label>
-              {# 建立時直接排程（留空＝先建立、之後再用排入 chip）— 走與排入相同的
-                 plan+calendar 路徑 (/weekly/task/new 轉呼叫 schedule_entry)。 #}
-              <label class="wk-sched-lbl"><span class="wk-sched-cap">日期（留空＝不排程）</span>
-                <input class="wk-newtask-date" type="date" name="entry_date"></label>
+              {# 建立時直接排程，日期預填今天（修修 2026-11-12）；清掉日期＝先建立、之後
+                 再用排入 chip — 走與排入相同的 plan+calendar 路徑 (/weekly/task/new
+                 轉呼叫 schedule_entry)。 #}
+              <label class="wk-sched-lbl"><span class="wk-sched-cap">日期</span>
+                <input class="wk-newtask-date" type="date" name="entry_date" value="{{ view.today_iso }}"></label>
               <label class="wk-sched-lbl"><span class="wk-sched-cap">時間（留空＝整天）</span>
                 <input class="wk-newtask-time" type="time" name="entry_time" step="300"></label>
               <button class="sho-btn wk-sched-go" type="submit">建立</button>
@@ -422,13 +426,16 @@
                     <span class="wk-tsection-label">{{ label }}</span>
                     <span class="wk-tsection-n">{{ tasks | length }}</span>
                   </div>
-                  {% for t in tasks %}{{ task_row(t, view, lifetime=True) }}{% endfor %}
+                  {% for t in tasks %}{{ task_row(t, view, lifetime=True, show_project=True) }}{% endfor %}
                 </section>
               {% endif %}
             {% endfor %}
           {% else %}
             <p class="wk-empty">沒有未完成的任務 🎉</p>
           {% endif %}
+        </div>
+        <div class="wk-tabpane is-hidden" data-pane="cal">
+          {{ week_calendar(calendar, view) }}
         </div>
       </div>
 
@@ -451,6 +458,7 @@
   </main>
 
   <script src="/static/shosho/bridge-weekly.js?v={{ asset_version | default('') }}"></script>
+  <script src="/static/shosho/bridge-calendar.js?v={{ asset_version | default('') }}"></script>
   <script>
   /* Page-agnostic task-row handlers (done-toggle stopPropagation, confirm-gate,
      排入 weekend/duration/double-submit) live in bridge-weekly.js — shared with the
@@ -504,8 +512,10 @@
       // .sho-box-form = the done-toggle checkbox (in the row summary AND the daily card),
       // which lives outside .wk-plan-edit — without it, checking a task jumped the view (修修).
       // .wk-del-form = the delete button — also outside .wk-plan-edit, needs the same treatment.
+      // .wk-cal-form = the 行事曆 tab's drag/resize submit — keep the 行事曆 tab + scroll.
       if (!e.target.closest('.wk-plan-edit') && !e.target.closest('.wk-rename-form')
-          && !e.target.closest('.sho-box-form') && !e.target.closest('.wk-del-form')) return;
+          && !e.target.closest('.sho-box-form') && !e.target.closest('.wk-del-form')
+          && !e.target.closest('.wk-cal-form')) return;
       try {
         sessionStorage.setItem('wk-tab', activeTab() || '');
         sessionStorage.setItem('wk-open', JSON.stringify(openSlugs()));

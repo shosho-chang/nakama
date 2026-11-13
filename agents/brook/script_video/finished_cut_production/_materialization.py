@@ -710,6 +710,41 @@ def _within_one_frame(measured_sec: float, expected_sec: float, fps: float) -> b
     return abs(round(measured_sec * fps) - round(expected_sec * fps)) <= 1
 
 
+def _reported_source_matches(
+    source_in: int, source_out: int, expected_in: int, expected_out: int
+) -> bool:
+    """Resolve 回報的 source 起訖格本身會因浮點捨入差一格；容許這一格，不容許更多。
+
+    20260722 李海碩 punch-L01：要 61577–62046，`GetSourceEndFrame` 回 62045；要
+    62064–62602 回 62601——timeline 上的錄製位置與長度（`GetStart`/`GetEnd`/
+    `GetDuration`）全部逐格正確，錯的只是回報值（frame→秒→frame 的往返取整）。
+    呼叫端已經逐格比對錄製位置與長度；這裡只把**回報的 source 格**放寬一格。
+    """
+    return abs(source_in - expected_in) <= 1 and abs(source_out - expected_out) <= 1
+
+
+def _end_frame_covers_cut(state, *, record_cursor: int, segment_count: int) -> bool:
+    """影音必須剛好收在剪點上；只有字幕可以多壓一點尾巴。
+
+    timeline 的結束影格是**所有軌道**的最大值。V1／音軌每一段都是「秒→格截斷」
+    （見上方 `int(source.t0 * master_fps)` 的註解），字幕卻是用秒重新對時的，所以
+    段數越多，字幕尾巴就比影音多出越多：每段截斷最多少不到一格。20260722 李海碩
+    punch-L02 是 19 段、少 1.66 格，字幕收在 14626、V1 與音軌收在 14624——內容完全
+    對得上，卻被舊的「只容許一格」擋成 `protected_track_drift`。
+
+    所以：非字幕軌最多多一格（原本的容忍度不變）、不可短少；字幕尾巴最多多「段數」格
+    （量化誤差的上限）。影音覆蓋不足、或任何非字幕內容超出剪點，照舊擋下。
+    """
+    overhang = state.end_frame - record_cursor
+    non_subtitle_end = max(
+        (item.end_frame for item in state.items if item.track_type != "subtitle"),
+        default=state.start_frame,
+    )
+    if overhang < 0 or not 0 <= non_subtitle_end - record_cursor <= 1:
+        return False
+    return overhang <= max(1, segment_count)
+
+
 def _canonical_json(value: object) -> bytes:
     try:
         return json.dumps(
@@ -1101,18 +1136,21 @@ def _validate_editorial_base(
             if (
                 item.start_frame != record_cursor
                 or item.end_frame != expected_record_end
-                or item.source_in_frame != expected_source_in
-                or item.source_out_frame != expected_source_out
+                or not _reported_source_matches(
+                    item.source_in_frame,
+                    item.source_out_frame,
+                    expected_source_in,
+                    expected_source_out,
+                )
             ):
                 raise MaterializationError(
                     "protected V1 or audio source range differs from ApprovedCut",
                     reason_code="protected_track_drift",
                 )
             record_cursor = expected_record_end
-        # 允許差一格：timeline 的結束影格是**所有軌道**的最大值，字幕軌常常比
-        # 影音多壓一格（punch-L02 的字幕收在 16541、V1 與音軌都收在 16540）。
-        # 那一格不是覆蓋缺口，是字幕尾巴。少一格以上、或影音反而超出，仍然擋下。
-        if not 0 <= state.end_frame - record_cursor <= 1:
+        if not _end_frame_covers_cut(
+            state, record_cursor=record_cursor, segment_count=len(context.source_ranges)
+        ):
             raise MaterializationError(
                 "protected V1 or audio record spans do not cover the exact cut",
                 reason_code="protected_track_drift",

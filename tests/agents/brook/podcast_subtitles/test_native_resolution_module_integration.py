@@ -83,6 +83,11 @@ from tests.agents.brook.podcast_subtitles.test_text_audit_execution import (
     _response_payload as text_response_payload,
 )
 
+# slow：真 GenerationStore 走完整 native resolve/publish，每次 load 重驗全部 artifact hash
+# （單一測試 60–90s）。
+# PR CI 只在改動落在它們的 import 範圍時才跑（scripts/ci_slow_test_scope.py）；main push 全跑。
+pytestmark = pytest.mark.slow
+
 
 def _configured_native_module(
     episode_root: Path,

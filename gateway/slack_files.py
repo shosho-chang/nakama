@@ -10,6 +10,10 @@ subject / from / date，不必自己 parse HTML。
 
 需要 bot token 有 `files:read` scope（見 docs/runbooks/add-agent-slack-bot.md）。
 
+圖片附件（opt-in，目前只有 Sanji 的建活動流程用）：``include_images=True`` 時把
+png / jpeg / webp 圖片列成 ``[附件圖片] <檔名> <下載網址> <mimetype>`` 行，由 handler 自己
+決定要不要下載（下載一樣要 bot token + ``files:read``）。
+
 注意：信件內容只能接在 **routing 之後**。router 會在整段 text 裡找 agent 名稱與
 intent 關鍵字、還會把 agent 名稱刪掉 — 信件內文不能參與 routing。
 """
@@ -163,9 +167,50 @@ def attachment_context(event: dict[str, Any], client: Any) -> str:
     return "\n\n".join(blocks)
 
 
-def with_attachments(text: str, event: dict[str, Any], client: Any) -> str:
-    """在使用者打的字後面接上附件信件內容。"""
-    extra = attachment_context(event, client)
-    if not extra:
+IMAGE_MIMETYPES = frozenset({"image/png", "image/jpeg", "image/jpg", "image/webp"})
+
+
+def _image_url(file: dict[str, Any], client: Any) -> str:
+    url = file.get("url_private_download") or file.get("url_private") or ""
+    if url or client is None or not file.get("id"):
+        return url
+    # event 裡的 file 物件可能是殘缺版（沒有網址）→ files.info 補
+    try:
+        full = client.files_info(file=file["id"])["file"]
+    except Exception as e:  # SlackApiError（missing_scope 等）/ 網路錯誤
+        logger.warning(f"files.info 讀取圖片失敗 file={file.get('id')}: {e}")
+        return ""
+    return full.get("url_private_download") or full.get("url_private") or ""
+
+
+def image_attachment_lines(event: dict[str, Any], client: Any = None) -> list[str]:
+    """event 附的圖片（png / jpeg / webp）→ ``[附件圖片] <檔名> <網址> <mimetype>`` 行。
+
+    只列網址、不下載。沒有網址的圖片略過（記 log）。
+    """
+    lines: list[str] = []
+    for f in event.get("files") or []:
+        mimetype = str(f.get("mimetype") or "").lower()
+        if mimetype not in IMAGE_MIMETYPES:
+            continue
+        url = _image_url(f, client)
+        if not url:
+            logger.warning(f"圖片附件沒有下載網址，略過 file={f.get('id')}")
+            continue
+        name = " ".join(str(f.get("name") or f.get("title") or f.get("id") or "image").split())
+        lines.append(f"[附件圖片] {name} {url} {mimetype}")
+    return lines
+
+
+def with_attachments(
+    text: str, event: dict[str, Any], client: Any, *, include_images: bool = False
+) -> str:
+    """在使用者打的字後面接上附件信件內容；``include_images=True`` 時再接圖片附件行。"""
+    parts = [p for p in (text, attachment_context(event, client)) if p]
+    if include_images:
+        image_lines = image_attachment_lines(event, client)
+        if image_lines:
+            parts.append("\n".join(image_lines))
+    if not parts:
         return text
-    return f"{text}\n\n{extra}" if text else extra
+    return "\n\n".join(parts)

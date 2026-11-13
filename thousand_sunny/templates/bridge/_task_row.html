@@ -13,7 +13,11 @@
    four logged pomodoros read "0 / 4". Those rows show the ALL-TIME actual over the
    all-time estimate instead. 今日/整週 keep the weekly figures, which is the right
    question for them. #}
-{% macro task_row(t, view, return_to="", lifetime=False) %}
+{# `show_project` (修修 2026-10-23): t.name has the 「專案 - 」 prefix stripped, so a
+   podcast's 節目錄製 / 後製與上架 rows from different episodes read identically.
+   今日/整週 carry the project as a group header; the 「全部」 tab groups by schedule
+   status instead, so its rows name their project inline. #}
+{% macro task_row(t, view, return_to="", lifetime=False, show_project=False) %}
   {% set timed = t.plan | selectattr('start') | list %}
   <details class="wk-task-d" data-slug="{{ t.slug }}">
     <summary class="wk-task {{ 'done' if t.done }}">
@@ -31,6 +35,7 @@
          their right stay aligned across rows (N541 invisible-table). #}
       <span class="wk-namecell">
         <span class="wk-tname">{{ t.name }}</span>
+        {% if show_project and t.project %}<span class="wk-tproj" title="{{ t.project }}">{{ t.project }}</span>{% endif %}
         <button type="button" class="wk-rename-icon" title="重新命名"
                 aria-label="重新命名「{{ t.name }}」">✎</button>
         <form class="wk-rename-form" method="post"

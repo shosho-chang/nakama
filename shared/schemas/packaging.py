@@ -420,6 +420,11 @@ class RenderRequestV1(BaseModel):
     book_cover_opacity: float = Field(default=0.42, ge=0, le=1)
     book_cover_brightness: float = Field(default=0.38, ge=0, le=1)
     book_cover_height_pct: float = Field(default=100, ge=20, le=150)
+    # 書封中心點（% of 畫布）。以前書封只能置中，大小也只有桌機端改得到；
+    # 2026-10-11 修修要跟來賓、大字一樣在 gate 上拖、滾輪縮放。書封沒有 solver
+    # 會動它，所以不需要 manual 旗標——存什麼就出什麼。
+    book_cover_x_pct: float = Field(default=50.0, ge=0, le=100)
+    book_cover_y_pct: float = Field(default=50.0, ge=0, le=100)
     # N2 only: the image and orange frame are one editable layer behind both people.
     # The path stays vault-relative so the desktop renderer can reproduce the exact package.
     center_visual_asset: str | None = None

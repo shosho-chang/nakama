@@ -42,10 +42,6 @@ agents:
   sanji:
     description: "Community Manager — 自由艦隊社群營運、監控、活動策劃（Fluent Community）"
     schedule: "0 * * * *"  # 監控每小時
-    wordpress:
-      community: fluent_community
-      alert_threshold:
-        unanswered_hours: 24
 
   franky:
     description: "Engineer — 工程進度追蹤、系統健康檢查、套件更新監測"
@@ -72,6 +68,11 @@ gateway:
       robin: ""     # #robin channel ID
       franky: ""    # #franky channel ID
       brook: ""     # #brook channel ID
+    # 誰可以叫哪個 agent（gateway/access.py）。修修（env SLACK_USER_ID_SHOSHO）永遠可以叫全部；
+    # 其他人預設一律不行，要開放就在這裡列 Slack user ID。沒列的 agent = 只有修修。
+    extra_allowed_users:
+      sanji:
+        - U0CFJS8A8K1   # 吳曉宣（社群經理，Slack @margerent）
     cost_limit:
       daily_haiku_calls: 200
       warn_at: 150

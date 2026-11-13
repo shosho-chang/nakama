@@ -19,7 +19,7 @@ Owner（修修 · 船長）
   └── Manual / Bridge UI
            ├── Brook ──► blog / FB / IG / 電子報 各平台格式輸出
            │        └──► Video Production Line：B-roll storyboard → FCPXML（DaVinci）（原 Foundry，ADR-050 歸 Brook）
-           └── Sanji（社群 · 規劃中）
+           └── Sanji（Slack 人格；社群營運／遊戲化已移至 freedom-fleet repo，ADR-071）
 ```
 
 > **逐 agent 的功能模組 / 用到的 `scripts/` / 已 skill 化能力**，見 Bridge 內部頁

@@ -84,6 +84,39 @@ def test_timeout_leaves_the_packet_on_disk_and_says_so(tmp_path):
     assert (root / "out" / "prompt.md").is_file()
 
 
+def test_max_wait_caps_the_adapter_timeout(tmp_path):
+    """等待時整集的 command lock 一直被握著；要短等就讓它自己逾時（記成 failed、可
+    retry），不要從外面砍 process（會卡在 claimed、無法復原）。2026-10-07 李海碩。"""
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    root = tmp_path / "handoff"
+    clock = _clock()
+    runner = AgentHandoffProcessRunner(
+        root, announce=lambda _: None, sleep=lambda _: None, now=clock, max_wait_sec=5
+    )
+
+    result = runner.run(_argv(workspace), cwd=workspace, prompt="p", timeout_sec=900)
+
+    assert result.timed_out
+    assert "（5s）" in result.stderr
+    # 時鐘每問一次前進一秒：被封頂在 5 秒，不是跑滿 900 秒
+    assert clock() < 20
+
+
+def test_max_wait_never_extends_a_shorter_adapter_timeout(tmp_path):
+    workspace = tmp_path / "ws"
+    workspace.mkdir()
+    root = tmp_path / "handoff"
+    runner = AgentHandoffProcessRunner(
+        root, announce=lambda _: None, sleep=lambda _: None, now=_clock(), max_wait_sec=600
+    )
+
+    result = runner.run(_argv(workspace), cwd=workspace, prompt="p", timeout_sec=3)
+
+    assert result.timed_out
+    assert "（3s）" in result.stderr
+
+
 def test_malformed_answer_fails_loud_instead_of_reaching_the_adapter(tmp_path):
     workspace = tmp_path / "ws"
     workspace.mkdir()

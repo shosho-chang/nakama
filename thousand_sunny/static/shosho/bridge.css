@@ -297,6 +297,196 @@ body.sho [data-theme-toggle-slot] .sho-theme-toggle:hover {
   background: transparent;
 }
 
+/* ── Compact menu（導覽列放不下時）──────────────────────────────────────── */
+/* 2026-11-01 修修：手機上「很醜」——上面那條換行版 nav 在 390px 排成四行，
+   加上主題鈕自己一行，header 吃掉約 40% 螢幕。改成一行：brand ＋ 主題 ＋
+   選單鈕（鈕上寫目前所在頁），點開才在 header 底下展開全部項目。
+   同一天又量到筆電寬度（901–~1600px）nav 內容 996px、可用只有 755px，
+   DIGESTS / SEO / OPS 被主題鈕壓住。所以收合不看螢幕寬度，看「放不放得下」：
+   chassis_nav.js 量 nav 是否溢出，放不下（或 ≤900px）就掛 .is-compact。
+   JS 沒跑到時沒有 .is-compact，≤900px 維持上面的換行版，導覽不會整條消失。
+   chassis 底色在兩主題間翻轉，所以分隔線一律由 --sho-bg（header 的前景色）
+   混出來，不用 --sho-line（那是給頁面底色用的）。 */
+body.sho .chassis-menu-toggle { display: none; }
+body.sho .chassis.is-compact {
+  --chassis-rule: color-mix(in oklch, var(--sho-bg) 16%, transparent);
+  --chassis-dim:  color-mix(in oklch, var(--sho-bg) 70%, var(--sho-ink));
+  height: auto;
+  min-height: 48px;
+  flex-wrap: wrap;
+  gap: 0 12px;
+}
+@media (max-width: 900px) {
+  body.sho .chassis.is-compact { padding: 0 16px; }
+}
+body.sho .chassis.is-compact .chassis-brand {
+  height: 48px;
+  /* basis 0：flex-wrap 會在收縮之前先換行，basis auto 時版本晶片一長，
+     選單鈕就被擠到第二行。basis 0 讓第一行永遠排得下，brand 再長滿剩餘寬度。 */
+  flex: 1 1 0%;
+  min-width: 0;
+}
+body.sho .chassis.is-compact .chassis-bolt,
+body.sho .chassis.is-compact .chassis-wordmark { flex-shrink: 0; }
+body.sho .chassis.is-compact .chassis-version {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 讓主題鈕、meta、選單鈕直接當 chassis 的 flex 子項，才能用 order 排：
+   第一行放主題＋選單鈕，meta 移到展開面板最底下。 */
+body.sho .chassis.is-compact .chassis-right { display: contents; }
+body.sho .chassis.is-compact [data-theme-toggle-slot] {
+  order: 1;
+  flex-shrink: 0;
+}
+body.sho .chassis.is-compact .chassis-menu-toggle {
+  order: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  height: 32px;
+  padding: 0 10px;
+  background: transparent;
+  border: 1px solid var(--chassis-rule);
+  border-radius: var(--sho-r-1);
+  color: var(--sho-bg);
+  font-family: var(--sho-font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: border-color var(--sho-t-fast) var(--sho-ease);
+}
+body.sho .chassis.is-compact .chassis-menu-toggle:hover,
+body.sho .chassis.is-compact.is-menu-open .chassis-menu-toggle {
+  border-color: var(--sho-accent);
+}
+body.sho .chassis.is-compact .chassis-menu-toggle:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--sho-ink), 0 0 0 4px var(--sho-accent);
+}
+/* 三條 hairline 的漢堡；展開時中間那條收掉、上下兩條併成一條。 */
+body.sho .chassis-menu-icon {
+  position: relative;
+  width: 14px;
+  height: 9px;
+  border-top: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transition: height var(--sho-t-base) var(--sho-ease);
+}
+body.sho .chassis-menu-icon::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  border-top: 1.5px solid currentColor;
+  transform: translateY(-50%);
+  transition: opacity var(--sho-t-base) var(--sho-ease);
+}
+body.sho .chassis.is-compact.is-menu-open .chassis-menu-icon { height: 1.5px; border-bottom-width: 0; }
+body.sho .chassis.is-compact.is-menu-open .chassis-menu-icon::after { opacity: 0; }
+
+/* 收合時整個 nav 與 meta 都不佔位。 */
+body.sho .chassis.is-compact .chassis-nav,
+body.sho .chassis.is-compact .chassis-meta {
+  display: none;
+}
+
+/* 展開面板：直接項目手機兩欄、寬螢幕四欄（8 項剛好兩排），FLEET / OPS 排在後面各佔一整行、點了就地展開。 */
+body.sho .chassis.is-compact.is-menu-open .chassis-nav {
+  order: 3;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+  flex-basis: 100%;
+  padding: 4px 0 12px;
+  border-top: 1px solid var(--chassis-rule);
+}
+body.sho .chassis.is-compact.is-menu-open .chassis-nav > a,
+body.sho .chassis.is-compact.is-menu-open .chassis-dropdown-menu a,
+body.sho .chassis.is-compact.is-menu-open .chassis-dropdown-item {
+  min-height: 44px;
+  padding: 0 0 0 10px;
+  border-bottom: none;
+  border-left: 2px solid transparent;
+  background: transparent;
+  color: var(--chassis-dim);
+  font-size: 11px;
+}
+body.sho .chassis.is-compact.is-menu-open .chassis-nav > a.active,
+body.sho .chassis.is-compact.is-menu-open .chassis-dropdown-menu a.active {
+  color: var(--sho-bg);
+  border-left-color: var(--sho-accent);
+}
+body.sho .chassis.is-compact.is-menu-open .chassis-nav > a:hover,
+body.sho .chassis.is-compact.is-menu-open .chassis-dropdown-menu a:hover {
+  color: var(--sho-bg);
+  background: transparent;
+}
+body.sho .chassis.is-compact.is-menu-open .chassis-dropdown {
+  order: 1;
+  grid-column: 1 / -1;
+  flex-direction: column;
+  align-items: stretch;
+  border-top: 1px solid var(--chassis-rule);
+}
+body.sho .chassis.is-compact.is-menu-open .chassis-dropdown:first-of-type { margin-top: 4px; }
+body.sho .chassis.is-compact.is-menu-open .chassis-nav-trigger {
+  justify-content: space-between;
+  min-height: 44px;
+  padding: 0 0 0 10px;
+  border-bottom: none;
+  border-left: 2px solid transparent;
+  color: var(--chassis-dim);
+  font-size: 11px;
+}
+body.sho .chassis.is-compact.is-menu-open .chassis-dropdown.is-active .chassis-nav-trigger {
+  color: var(--sho-bg);
+  border-left-color: var(--sho-accent);
+}
+body.sho .chassis.is-compact.is-menu-open .chassis-caret {
+  font-size: 10px;
+  transition: transform var(--sho-t-base) var(--sho-ease);
+}
+body.sho .chassis.is-compact.is-menu-open .chassis-nav-trigger[aria-expanded="true"] .chassis-caret {
+  transform: rotate(180deg);
+}
+body.sho .chassis.is-compact.is-menu-open .chassis-dropdown-menu {
+  position: static;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+body.sho .chassis.is-compact.is-menu-open .chassis-dropdown-menu.open {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0 16px;
+  padding: 0 0 8px 12px;
+}
+body.sho .chassis.is-compact.is-menu-open .chassis-meta {
+  order: 4;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 20px;
+  flex-basis: 100%;
+  min-height: 44px;
+  border-top: 1px solid var(--chassis-rule);
+}
+
+@media (min-width: 901px) {
+  body.sho .chassis.is-compact.is-menu-open .chassis-nav,
+  body.sho .chassis.is-compact.is-menu-open .chassis-dropdown-menu.open {
+    grid-template-columns: repeat(4, minmax(0, 200px));
+  }
+}
+
 /* ── Breadcrumb trail (shared `_breadcrumb.html` partial) ───────────────── */
 body.sho .nk-breadcrumb {
   display: flex;

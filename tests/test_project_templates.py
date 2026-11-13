@@ -29,7 +29,12 @@ templates:
     stages:
       - { name: 訪綱撰寫, pomodoros: 3 }
       - { name: 節目錄製, pomodoros: 4 }
-      - { name: 後製與上架, pomodoros: 8 }
+      - name: 後製與上架
+        pomodoros: 8
+        notes: |
+          ## Intro
+
+          大家好！
   bare:
     label: 只有名字的樣板
     stages: [第一關, 第二關]
@@ -89,6 +94,15 @@ class TestCreateFromTemplate:
         assert fm["stage"] == "訪綱撰寫"
         assert fm["預估🍅"] == 3
         assert fm["projects"] == ["[[【Pod】蘇予昕]]"]
+
+    def test_stage_notes_prefill_the_task_body(self, vault: Path):
+        """修修 2026-10-26：後製與上架 每次都要貼同一段 Intro/Outro。"""
+        _, paths = create_project_with_template(vault, "【Pod】蘇予昕", "podcast")
+        text = paths[2].read_text(encoding="utf-8")
+        assert text.split("---", 2)[2] == "\n\n## Intro\n\n大家好！\n"
+        assert _fm(paths[2])["stage"] == "後製與上架"
+        # stages without notes keep an empty body
+        assert paths[0].read_text(encoding="utf-8").endswith("---\n")
 
     def test_no_kind_creates_a_bare_project(self, vault: Path):
         entry, paths = create_project_with_template(vault, "自由專案", "")
@@ -175,3 +189,6 @@ def test_shipped_yaml_is_valid():
     assert set(tpls) >= {"podcast", "youtube-book", "youtube-health"}
     assert [s.name for s in tpls["podcast"].stages] == ["訪綱撰寫", "節目錄製", "後製與上架"]
     assert [s.name for s in tpls["youtube-health"].stages] == ["前期研究", "拍攝", "後製", "上架"]
+    post = tpls["podcast"].stages[2].notes
+    assert post.startswith("## Intro\n\n大家好！歡迎收聽今天的不正常人類研究所")
+    assert "## Outro" in post and post.endswith("我們下次見，掰掰！")

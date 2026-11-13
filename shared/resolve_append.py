@@ -28,6 +28,11 @@ logger = logging.getLogger("resolve_append")
 # ⚠️ 別把這種 timing 失敗誤判成素材或模板壞掉：當時的 A/B（不套模板成功、
 # 套模板失敗）看起來像模板的鍋，其實只是兩次嘗試中間隔了時間。要下這種
 # 結論必須重現，單次觀察不算。
+#
+# ⛔ 2026-10-08（20261001 洪瀞）重現後的修正：上面「重測就過」靠的其實是**換了
+# 一條新匯入的 timeline**，不是等得夠久。建置當下的模板 timeline 可能整條卡死，
+# 幾分鐘後對它 append 仍回 `[None]`；重匯一條立刻成功（5/5）。所以重試預算
+# 不要再往上加——模板 timeline 的復原在 build_resolve_project.timeline_from_template。
 DEFAULT_RETRIES = 6
 DEFAULT_DELAY = 5.0
 

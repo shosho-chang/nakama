@@ -12,6 +12,9 @@ Chrome／hyperframes／LINE Seed 字型，那些只在桌機（ADR-054 D11：VPS
   遮蔽收斂、face_measure 交付 gate、回填 rendered_png 與 packages.json）
 - **同一份配方只出一次**：狀態記在 `logs/render-watcher-state.json`（key =
   slug/cut_id/rank，value = 已處理的 requested_at）。連按五次「存配方」也只 render 一次
+- **已有成品的配方不出**：`render_recipe.rendered_png` 有值 = 這份配方已經出過圖
+  （render_request 回填，或 attach 交付時就填好）。gate 存配方一律不帶它，所以只有
+  修修真的存了新配方才會觸發；手改配方要重出圖，得把 rendered_png 清成 null
 - working-set packaging 目錄靠掃 `G:/Footages/*/packaging/packages.json` 的
   `episode` 欄位對回來（vault 端沒有這個路徑，也不該有——D10 硬規則①）
 - 失敗不靜默：寫 log、記進 state 的 `last_error`，下一輪不會無限重試同一份
@@ -255,6 +258,13 @@ def pending_requests(vault: Path, state: dict) -> list[dict]:
                     if not req or not req.get("requested_at"):
                         continue
                     cuts_with_recipe.add(cut["cut_id"])
+                    if req.get("rendered_png"):
+                        # 配方已經有成品：gate 每次存配方都重建、不帶 rendered_png，
+                        # 只有出過圖的那一方（render_request／attach）才會填。以前只看
+                        # requested_at，於是 attach 一寫配方就被當成新配方——重解幾何、
+                        # 蓋掉 attach 剛交付的 PNG（2026-10-09 洪瀞集 full 三張）。
+                        # 手改配方要重出圖：把 rendered_png 清成 null 再更新 requested_at。
+                        continue
                     rank = int(package["title_rank"])
                     key = f"{slug}/{cut['cut_id']}/r{rank}"
                     done = (state.get(key) or {}).get("requested_at")

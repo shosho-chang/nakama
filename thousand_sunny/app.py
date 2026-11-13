@@ -44,6 +44,7 @@ from thousand_sunny.routers import (  # noqa: E402
     bridge_digests,
     bridge_models,
     bridge_projects,
+    bridge_rental,
     bridge_weekly,
     bridge_zoro,
     brook,
@@ -158,6 +159,7 @@ app.include_router(publish_review.page_router)
 app.include_router(bridge_weekly.page_router)
 app.include_router(focus_music.page_router)
 app.include_router(bridge_zoro.page_router)
+app.include_router(bridge_rental.page_router)
 app.include_router(brook_video.page_router)
 app.include_router(brook_video.legacy_router)
 app.include_router(repurpose.page_router)

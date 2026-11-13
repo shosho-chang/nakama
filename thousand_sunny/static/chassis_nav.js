@@ -32,12 +32,73 @@
     });
   });
 
-  // Outside click + Escape close every open dropdown.
-  document.addEventListener("click", function () {
+  // ── Compact menu（導覽列放不下時收成選單鈕）────────────────────────────
+  // 不看螢幕寬度看「放不放得下」：筆電寬度下 nav 內容 996px、可用 755px，
+  // 用固定 breakpoint 一定會有一段寬度重疊。≤900px 一律收（那裡 CSS 的
+  // 換行版不會溢出、量不出來）。JS 沒跑到就沒有 .is-compact，導覽不會消失。
+  var chassis = document.querySelector(".chassis");
+  var menuToggle = chassis && chassis.querySelector(".chassis-menu-toggle");
+  var chassisNav = chassis && chassis.querySelector(".chassis-nav");
+  var narrow = window.matchMedia ? window.matchMedia("(max-width: 900px)") : null;
+  function setMenu(open) {
+    if (!menuToggle) return;
+    chassis.classList.toggle("is-menu-open", open);
+    menuToggle.setAttribute("aria-expanded", open ? "true" : "false");
+    menuToggle.setAttribute("aria-label", open ? "關閉導覽選單" : "開啟導覽選單");
+    if (!open) closeAll(dropdowns);
+  }
+  function fitNav() {
+    if (!menuToggle || !chassisNav) return;
+    var compact = !!(narrow && narrow.matches);
+    if (!compact) {
+      // 先拿掉 class 量攤開版的溢出，再決定要不要掛回去——同步完成，不會閃。
+      var wasCompact = chassis.classList.contains("is-compact");
+      chassis.classList.remove("is-compact");
+      compact = chassisNav.scrollWidth > chassisNav.clientWidth + 1;
+      if (!compact && wasCompact) setMenu(false);
+    }
+    chassis.classList.toggle("is-compact", compact);
+  }
+  if (menuToggle) {
+    fitNav();
+    var fitQueued = false;
+    window.addEventListener("resize", function () {
+      if (fitQueued) return;
+      fitQueued = true;
+      window.requestAnimationFrame(function () {
+        fitQueued = false;
+        fitNav();
+      });
+    });
+    // 字型載完、主題鈕掛上、版本晶片填字之後寬度都會變，各重量一次。
+    window.addEventListener("load", fitNav);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fitNav);
+    // 鈕上寫目前所在頁（取 active 項目的英文那段），收合後才知道自己在哪。
+    var current = chassis.querySelector(".chassis-nav a.active");
+    var label = menuToggle.querySelector("[data-menu-current]");
+    if (current && label) {
+      var first = current.firstChild;
+      var text = first && first.nodeType === 3 ? first.textContent.trim() : "";
+      if (text) label.textContent = text;
+    }
+    menuToggle.addEventListener("click", function (e) {
+      e.stopPropagation();
+      setMenu(!chassis.classList.contains("is-menu-open"));
+    });
+  }
+
+  // Outside click + Escape close every open dropdown (and the mobile menu).
+  document.addEventListener("click", function (e) {
     closeAll(dropdowns);
+    if (chassis && !chassis.contains(e.target)) setMenu(false);
   });
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape") closeAll(dropdowns);
+    if (e.key !== "Escape") return;
+    closeAll(dropdowns);
+    if (chassis && chassis.classList.contains("is-menu-open")) {
+      setMenu(false);
+      menuToggle.focus();
+    }
   });
 
   // ── Build stamp ──────────────────────────────────────────────────────────
@@ -62,27 +123,27 @@
       return response.json();
     })
     .then(function (build) {
+      window.requestAnimationFrame(fitNav);
       if (!build.known) {
         // 拿不到 commit（非 git 部署、git 不在 PATH）就別假裝知道版本。
         slot.textContent = "版本不明";
         slot.title = "這次部署讀不到 git commit；無法判斷程式碼是否為最新。";
         return;
       }
-      var uptime = describeUptime(build.uptime_seconds);
-      slot.textContent = build.commit_short + " · 已跑 " + uptime;
-      slot.title =
-        "執行中：" + build.commit + "（" + (build.branch || "?") + "）\n" +
-        "commit 時間：" + (build.committed_at || "?") + "\n" +
-        "啟動時間：" + build.started_at;
-      if (build.stale) {
-        slot.classList.add("is-stale");
-        slot.textContent = "⚠ 需重啟 · 已跑 " + uptime;
-        slot.title =
-          "磁碟上的程式碼已經更新，但這個服務還跑在舊版上。\n" +
-          "執行中：" + build.commit_short + "\n" +
-          "磁碟上：" + build.current_commit_short + "\n" +
-          "重啟 Nakama-ThousandSunny 才會套用。";
+      // 2026-11-12（修修）：commit 代號與「已跑 N 天」對使用者沒意義，平常不顯示。
+      // 只在服務落後磁碟程式碼時才出現「⚠ 需重啟」——那才是這顆晶片存在的理由。
+      if (!build.stale) {
+        slot.textContent = "";
+        return;
       }
+      var uptime = describeUptime(build.uptime_seconds);
+      slot.classList.add("is-stale");
+      slot.textContent = "⚠ 需重啟 · 已跑 " + uptime;
+      slot.title =
+        "磁碟上的程式碼已經更新，但這個服務還跑在舊版上。\n" +
+        "執行中：" + build.commit_short + "\n" +
+        "磁碟上：" + build.current_commit_short + "\n" +
+        "重啟 Nakama-ThousandSunny 才會套用。";
     })
     .catch(function () {
       // 這是輔助診斷資訊，失敗不該在 header 留一個壞掉的東西。

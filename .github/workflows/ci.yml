@@ -16,12 +16,21 @@ on:
       - 'memory/**'
       - '.github/ISSUE_TEMPLATE/**'
 
+# PR：同一條 branch 推新 commit／rebase 時取消舊的那輪（舊結果已無用，只會佔 runner）。
+# main push：group 帶 sha，每個 commit 各自一組、不互相取消（main 每一輪都要跑完）。
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # PR 的 merge commit 需要 HEAD^1（base）才算得出這個 PR 改了哪些檔
+          fetch-depth: 2
 
       - uses: actions/setup-python@v5
         with:
@@ -44,8 +53,26 @@ jobs:
       - name: Ruff format check
         run: ruff format --check .
 
+      # slow 測試（`@pytest.mark.slow`，約佔全套一半時間）：PR 只在改動落在它們的
+      # import 範圍時才跑；push 到 main 永遠全跑。判斷邏輯見 scripts/ci_slow_test_scope.py。
+      - name: Decide test scope
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+            python scripts/ci_slow_test_scope.py "$RUNNER_TEMP/changed.txt" >> "$GITHUB_OUTPUT"
+          else
+            echo "pytest_args=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run tests with coverage
-        run: pytest --cov=shared --cov=thousand_sunny --cov=agents --cov-report=json:coverage.json --cov-report=term
+        # -n auto：依實體核心數開 worker（GH public runner = 4 vCPU / 2 實體核 → 2 worker）。
+        # 同機對照（PR #1386）：-n 2 13:57／13:21、-n 4 12:36，4 worker 只快 6–10%，
+        # 但 4 worker 搶 2 顆實體核時，test_audio_audit_execution 的並發 claim 競態
+        # （production 既有問題，見 PR follow-up）6 次觸發 1 次 → 選穩定的 2 worker。
+        # pytest-cov 會自動合併各 worker 的覆蓋率，critical-path gate 照讀 coverage.json。
+        # --durations=25：log 尾端列最慢的 25 個測試，下次 CI 又變慢時直接看這裡。
+        run: pytest -n auto --durations=25 ${{ steps.scope.outputs.pytest_args }} --cov=shared --cov=thousand_sunny --cov=agents --cov-report=json:coverage.json --cov-report=term
 
       - name: Critical-path coverage gate
         run: python scripts/check_critical_path_coverage.py

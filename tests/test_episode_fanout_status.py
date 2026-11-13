@@ -55,6 +55,53 @@ def test_full_cut_is_dispatchable_before_the_miners_run(episode, capsys):
     assert "--cut full" in out
 
 
+def test_full_upload_render_comes_before_packaging(episode, capsys):
+    """上傳檔＋上傳字幕封存後立刻出，不等 packaging（修修 2026-10-26）。"""
+    module, root = episode
+
+    module.report(root)
+
+    lines = capsys.readouterr().out.splitlines()
+    render = next(i for i, line in enumerate(lines) if "publish_prep --cut full" in line)
+    packaging = next(i for i, line in enumerate(lines) if "title-brainstorm" in line)
+    assert render < packaging
+    assert "[序列·Resolve]" in lines[render]
+    assert "20260722 李海碩.mp4 + 20260722 李海碩.srt" in lines[render]
+    assert "publish_prep" not in lines[packaging]
+
+
+def test_full_render_hint_disappears_once_exported(episode, capsys):
+    module, root = episode
+    exports = root / "highlights" / "exports"
+    exports.mkdir()
+    (exports / "20260722 李海碩.mp4").write_bytes(b"mp4")
+
+    module.report(root)
+
+    out = capsys.readouterr().out
+    assert "--cut full" not in out
+    assert "完整版 packaging" in out
+
+
+@pytest.mark.parametrize("name", ["20260722 李海碩.mp4", "full.mp4"], ids=["集數名", "舊檔名"])
+def test_full_cut_exported_under_either_name(episode, capsys, monkeypatch, name):
+    """新檔名是集數名；舊集數的 full.mp4 也算匯出過，不叫人重 render。"""
+    module, root = episode
+    hl = root / "highlights"
+    monkeypatch.setattr(module, "_candidates", lambda hl_dir: {"long": 1})
+    monkeypatch.setattr(module, "_winners", lambda hl_dir, fmt: [])
+    monkeypatch.setattr(module, "_panel", lambda hl_dir, fmt: (True, "ok"))
+    (hl / "exports").mkdir()
+    (hl / "exports" / name).write_bytes(b"mp4")
+
+    module.report(root)
+
+    out = capsys.readouterr().out
+    full_line = next(line for line in out.splitlines() if line.strip().startswith("full"))
+    assert "匯出 ✅" in full_line
+    assert "--cut full" not in out
+
+
 def test_full_cut_is_listed_with_the_other_cuts(episode, capsys, monkeypatch):
     """有候選之後，完整版要跟精華並列，而且排在最前面。"""
     module, root = episode
@@ -110,3 +157,19 @@ def test_full_cut_that_still_needs_exporting_is_not_reported_as_done(episode, ca
     assert "匯出 ⬜" in out
     assert "沒有待派的工作了" not in out
     assert "--cut full" in out
+
+
+def test_panel_dispatch_has_no_brand_lens(episode, capsys, monkeypatch):
+    """品牌 lens 已拿掉（修修 2026-10-07）：長片 3 位 persona＋Renee，短片只有 3 位。"""
+    module, root = episode
+    monkeypatch.setattr(module, "_candidates", lambda hl_dir: {"long": 3, "short": 3})
+    monkeypatch.setattr(module, "_winners", lambda hl_dir, fmt: [])
+    monkeypatch.setattr(module, "_panel", lambda hl_dir, fmt: (False, "missing review"))
+
+    module.report(root)
+
+    out = capsys.readouterr().out
+    assert "【平行 ×4】long 盲審：阿哲／凱文／淑芬／Renee lens" in out
+    assert "【平行 ×3】short 盲審：阿哲／凱文／淑芬（Renee 不需要）" in out
+    assert "brand" not in out
+    assert "品牌" not in out
