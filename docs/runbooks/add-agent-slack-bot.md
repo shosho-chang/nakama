@@ -133,7 +133,10 @@ Workspace 裡任何成員都能 DM / @mention 已安裝的 bot，所以 gateway 
 - 其他人預設一律不行；要開放就把對方的 Slack member ID（profile → ⋮ → Copy member ID）
   列進 `config.yaml` 的 `gateway.slack.extra_allowed_users.<agent>`，部署後重啟 gateway
 - `SLACK_USER_ID_SHOSHO` 沒設 → 不會因此放行任何人（fail closed），只剩白名單上的人能用
-- 被擋的人會收到「抱歉，我目前只接受修修的指令。」，log 留 `... denied for U...`
+- 從 slash command / @mention / DM 被擋：對方收到「抱歉，我目前只接受修修的指令。」，log 留
+  `... denied for U...`
+- 從 thread 接續被擋（開串之後才被移出白名單的人）：**不回話、也不留 log**，直接略過
+  （`gateway/bot.py` 的 thread message handler），所以 grep `denied` 找不到
 - 權限是 agent 層級：開放某個 agent = 該 agent 的**所有**工具都能用。Nami 背後是修修的
   Gmail / 行事曆 / vault，開放前要先想清楚
 
