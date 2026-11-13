@@ -43,7 +43,7 @@ _TAIPEI = ZoneInfo("Asia/Taipei")
 _RETRO_VAULT_DIR = "KB/Wiki/Digests/AI"
 
 # ---------------------------------------------------------------------------
-# "Last Sunday of month" helper (ADR-023 §7 S4)
+# "Last Sunday of month" helper (ADR-023 §7 S4 + cron_dispatcher)
 # ---------------------------------------------------------------------------
 
 

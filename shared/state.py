@@ -414,8 +414,8 @@ def _init_tables(conn: sqlite3.Connection) -> None:
 
         -- S4: 👍/👎 ground truth signals parsed from digest.md checkboxes.
         -- Canonical DDL: migrations/013_kb_search_feedback.sql.
-        -- No live writer: shared/kb_search_feedback_store.py and
-        -- agents/robin/book_digest_writer.py were removed (N521 retirement).
+        -- Owned by shared/kb_search_feedback_store.py; written by
+        -- agents.robin.book_digest_writer.write_digest() on each sync.
         -- Dual-use: future Chopper retrieval QA dataset.
         CREATE TABLE IF NOT EXISTS kb_search_feedback (
             id         INTEGER PRIMARY KEY AUTOINCREMENT,

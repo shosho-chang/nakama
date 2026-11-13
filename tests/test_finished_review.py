@@ -644,6 +644,17 @@ def test_finished_review_rejects_unknown_format(client):
     assert response.status_code == 400
 
 
+def test_lightweight_review_app_mounts_gate_without_full_agent_surfaces(monkeypatch):
+    monkeypatch.setenv("NAKAMA_DEV_AUTH_BYPASS", "1")
+    import thousand_sunny.review_app as review_app
+
+    paths = set(review_app.app.openapi()["paths"])
+    assert "/bridge/highlights/{episode_slug}/finished" in paths
+    assert "/bridge/highlights/{episode_slug}/finished/media/{cut_id}" in paths
+    assert "/login" in paths
+    assert TestClient(review_app.app).get("/healthz").json()["surface"] == "finished-review"
+
+
 def _moved(event_id: str, t0: float, shift: float):
     from agents.brook.script_video.finished_cut_production import RunEventDiff
 

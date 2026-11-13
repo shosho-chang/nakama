@@ -84,7 +84,7 @@
             <td><span class="cm ship">✓</span>project-bootstrap</td></tr>
           <tr><td class="row-label">Brook<span class="sub">音樂家 · 撰稿</span></td>
             <td>內容 repurpose / 撰稿 / 影片腳本</td><td>4 輸出</td>
-            <td>無獨立 CLI（<code>python -m agents.brook</code> 為 stub）</td>
+            <td><code>python -m agents.brook.synthesize</code></td>
             <td><span class="cm ship">✓</span>article-compose</td></tr>
           <tr><td class="row-label">Foundry<span class="sub">工坊 · 影像</span></td>
             <td>B-roll storyboard → FCPXML</td><td>5 製作</td>
@@ -137,6 +137,7 @@
               <li><code>kb_search.py</code><span class="desc">KB 查詢（BM25+wikilink RRF / Haiku ranker）</span></li>
               <li><code>daily_review.py</code><span class="desc">每日回顧：Annotations delta → LLM 候選篩選</span></li>
               <li><code>annotation_merger.py</code><span class="desc">註記 → Concept 頁 / Literature Note</span></li>
+              <li><code>annotation_weave.py</code><span class="desc">純字串：callout 編織進雙語 MD body</span></li>
               <li><code>chunker.py</code><span class="desc">按 heading 優先的文件分段器</span></li>
               <li><code>categories.py</code><span class="desc">source_type → content_nature 兩層分類</span></li>
               <li><code>image_fetcher.py</code><span class="desc">外部圖片本地化 + 改寫 wikilink</span></li>
@@ -145,11 +146,15 @@
               <li><code>pubmed_html.py</code><span class="desc">publisher 網頁抓取 → markdown</span></li>
               <li><code>reading_context_package.py</code><span class="desc">Stage 3→4 交接包組裝</span></li>
               <li><code>source_map_extractor.py</code><span class="desc">ADR-024 LLM claim 提取</span></li>
+              <li><code>style_extractor.py</code><span class="desc">既有文章 → 寫作風格 profile</span></li>
+              <li><code>book_digest_writer.py</code><span class="desc retired"><span class="tag-retired">退役</span>N521 由 Literature Note 取代</span></li>
+              <li><code>book_notes_writer.py</code><span class="desc retired"><span class="tag-retired">退役</span>N521 由 literature_writer 接管</span></li>
             </ul>
           </div>
           <div class="inv-block">
             <p class="inv-block-label">用到的 scripts</p>
             <div class="inv-chips">
+              <span class="inv-chip">ab_ingest_bench.py</span>
               <span class="inv-chip">update_scimago.py</span>
             </div>
           </div>
@@ -245,7 +250,7 @@
           <p class="inv-tagline">把 podcast / 影片腳本依風格 profile 轉成多平台格式（blog / FB / IG / 電子報），並做 scaffold 與 SEO audit。ADR-027 已 narrow，B-roll 移交 Foundry。</p>
           <span class="inv-skillflag has">1 skill</span>
         </div>
-        <div class="inv-cli">python -m agents.brook 為 stub</div>
+        <div class="inv-cli">python -m agents.brook.synthesize &lt;slug&gt; --topic … --keyword …   ·   python -m agents.brook 為 stub</div>
         <div class="inv-body">
           <div class="inv-block inv-block--fns">
             <p class="inv-block-label">核心功能模組</p>
@@ -254,11 +259,12 @@
               <li><code>blog_renderer.py</code><span class="desc">YAML frontmatter + LLM blog body</span></li>
               <li><code>fb_renderer.py</code><span class="desc">4 種語氣 FB post（並行）</span></li>
               <li><code>ig_renderer.py</code><span class="desc">IG carousel JSON（5–10 卡）</span></li>
-              <li><code>line1_extractor.py</code><span class="desc">diarized SRT → 8 段敘事 JSON</span></li>
-              <li><code>seo_block.py</code><span class="desc">SEO context 注入 + token 預算裁剪</span></li>
+              <li><code>line1_extractor.py</code> / <code>line1b</code><span class="desc">diarized SRT → 8 段敘事 JSON</span></li>
+              <li><code>seo_block.py</code> / <code>seo_narrow.py</code><span class="desc">SEO context 注入 + token 預算裁剪</span></li>
               <li><code>style_profile_loader.py</code><span class="desc">凍結的 StyleProfile 載入</span></li>
               <li><code>context_bridge.py</code><span class="desc">Claude.ai 可貼上的 prompt 包</span></li>
               <li><code>audit_runner.py</code><span class="desc">包 seo-audit-post skill 子程序</span></li>
+              <li><code>synthesize/</code><span class="desc">研究 + 大綱撰稿 CLI</span></li>
               <li><code>script_video/</code><span class="desc">影片腳本 → SRT/FCPXML（Phase 1）</span></li>
             </ul>
           </div>
@@ -266,6 +272,10 @@
             <p class="inv-block-label">用到的 scripts</p>
             <div class="inv-chips">
               <span class="inv-chip">run_repurpose.py</span>
+              <span class="inv-chip">brook_posts_inventory.py</span>
+              <span class="inv-chip">compose_playbook_v1.py</span>
+              <span class="inv-chip">splice_playbook_v1.py</span>
+              <span class="inv-chip">dispatch_*_playbook_audit.py</span>
             </div>
           </div>
           <div class="inv-block">
@@ -309,6 +319,8 @@
             <div class="inv-chips">
               <span class="inv-chip">align_srt.py</span>
               <span class="inv-chip">analyze_srt_cuts.py</span>
+              <span class="inv-chip">compare_srt.py</span>
+              <span class="inv-chip">analyze_qwen_srt.py</span>
             </div>
           </div>
           <div class="inv-block">
@@ -394,6 +406,7 @@
               <li><code>news_synthesis.py</code> / <code>news_retrospective.py</code><span class="desc">週報合成 / 月末回顧</span></li>
               <li><code>r2_backup_verify.py</code><span class="desc">每日 R2 備份驗證</span></li>
               <li><code>weekly_digest.py</code><span class="desc">週一 5 區 Slack 摘要</span></li>
+              <li><code>cron_dispatcher.py</code><span class="desc">週日智能路由（synthesis vs retrospective）</span></li>
               <li><code>jobs/gsc_daily.py</code><span class="desc">每日 GSC 7 天 ranking pull</span></li>
               <li><code>news/*</code><span class="desc">RSS / HTML / awesome-diff / trending</span></li>
               <li><code>state/*</code><span class="desc">context snapshot · proposal FSM</span></li>
@@ -406,6 +419,7 @@
               <span class="inv-chip">restore_from_r2.py</span>
               <span class="inv-chip">mirror_backup_to_secondary.py</span>
               <span class="inv-chip">verify_backup_integrity.py</span>
+              <span class="inv-chip">vps_baseline_monitor.py</span>
               <span class="inv-chip">cleanup_logs.py</span>
               <span class="inv-chip">maintain_user_memories.py</span>
             </div>
@@ -460,14 +474,14 @@
       <table class="matrix">
         <thead><tr><th class="row-label">分組</th><th>主要 scripts</th></tr></thead>
         <tbody>
-          <tr><td class="row-label">Robin · KB</td><td><code>update_scimago.py</code> · <code>vault_layout_audit.py</code></td></tr>
-          <tr><td class="row-label">Brook · repurpose</td><td><code>run_repurpose.py</code></td></tr>
-          <tr><td class="row-label">Foundry · video</td><td><code>align_srt.py</code> · <code>analyze_srt_cuts.py</code></td></tr>
+          <tr><td class="row-label">Robin · KB</td><td><code>ab_ingest_bench.py</code> · <code>update_scimago.py</code> · <code>vault_layout_audit.py</code> · <code>migrate_*_concept_frontmatter.py</code></td></tr>
+          <tr><td class="row-label">Brook · repurpose</td><td><code>run_repurpose.py</code> · <code>brook_posts_inventory.py</code> · playbook 系列（<code>compose / splice / fix / dispatch_*_audit</code>）</td></tr>
+          <tr><td class="row-label">Foundry · video</td><td><code>align_srt.py</code> · <code>analyze_srt_cuts.py</code> · <code>compare_srt.py</code> · <code>analyze_qwen_srt.py</code></td></tr>
           <tr><td class="row-label">Zoro · keyword</td><td><code>run_keyword_research.py</code></td></tr>
           <tr><td class="row-label">Nami · setup</td><td><code>run_project_bootstrap.py</code> · <code>google_calendar_auth.py</code> · <code>google_gmail_auth.py</code></td></tr>
-          <tr><td class="row-label">transcribe · ASR</td><td><code>srt_refine.py</code></td></tr>
-          <tr><td class="row-label">Franky · ops/backup</td><td><code>backup_nakama_state.py</code> · <code>restore_from_r2.py</code> · <code>mirror_backup_to_secondary.py</code> · <code>verify_backup_integrity.py</code> · <code>cleanup_logs.py</code> · <code>maintain_user_memories.py</code></td></tr>
-          <tr><td class="row-label">deploy · release</td><td><code>deploy_vps.sh</code> · <code>start_thousand_sunny.ps1</code> · <code>start_*_server.bat</code></td></tr>
+          <tr><td class="row-label">transcribe · ASR</td><td><code>run_qwen3_asr.py</code> · <code>srt_refine.py</code> · <code>debug_auphonic*.py</code></td></tr>
+          <tr><td class="row-label">Franky · ops/backup</td><td><code>backup_nakama_state.py</code> · <code>restore_from_r2.py</code> · <code>mirror_backup_to_secondary.py</code> · <code>verify_backup_integrity.py</code> · <code>vps_baseline_monitor.py</code> · <code>cleanup_logs.py</code> · <code>maintain_user_memories.py</code></td></tr>
+          <tr><td class="row-label">deploy · release</td><td><code>release.py</code> · <code>deploy_vps.sh</code> · <code>start_thousand_sunny.ps1</code> · <code>start_*_server.bat</code></td></tr>
         </tbody>
       </table>
     </div>

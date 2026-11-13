@@ -67,7 +67,7 @@ class ProposalFrontmatterV1(BaseModel):
     they are persisted as JSON-encoded strings in the DB. Empty lists are
     allowed (a proposal may not reference any prior ADR / issue), but the
     keys themselves MUST be present in the source frontmatter — missing
-    keys raise on extraction.
+    keys raise on extraction (see frontmatter_extractor.py).
     """
 
     model_config = ConfigDict(extra="forbid", frozen=True)

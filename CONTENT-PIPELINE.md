@@ -166,7 +166,7 @@ ADR-001 把 Brook 定為 Composer，但實際職責橫跨 5 個子領域、`agen
 | 子職責 | 模組 | 屬於 Stage |
 |---|---|---|
 | 文章 compose | `compose.py` | 4 |
-| SEO audit + enrich | `audit_runner.py` + `seo_block.py` | 7 |
+| SEO audit + enrich | `audit_runner.py` + `seo_block.py` + `seo_narrow.py` | 7 |
 | Repurpose engine | `repurpose_engine.py` + 3 legacy renderer；Podcast Carousel 另走 episode-first flow（ADR-064） | 5 |
 | Script-driven video | `script_video/` 7 module | 4+5 |
 | Style profile / compliance | `style_profile_loader.py` | 4 |

@@ -13,6 +13,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -1191,6 +1192,33 @@ def test_success_cache_does_not_cache_failure_and_test_mode_stays_fresh(
     )
 
     assert frame_audit_calls == 3
+
+
+def test_renderer_cli_help_exposes_explicit_runtime_gate() -> None:
+    script = Path(__file__).parents[3] / "scripts" / "podcast_highlight_candidate_renderer.py"
+    completed = subprocess.run(
+        [sys.executable, str(script), "--help"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+
+    assert completed.returncode == 0
+    assert "prepare-runtime" in completed.stdout
+    assert "runtime-status" in completed.stdout
+    assert "hydrate-dp" in completed.stdout
+    assert "never downloads packages" in completed.stdout
+    hydrate_help = subprocess.run(
+        [sys.executable, str(script), "hydrate-dp", "--help"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=False,
+    )
+    assert hydrate_help.returncode == 0
+    assert "--attempt" in hydrate_help.stdout
+    assert "--asset-authority" not in hydrate_help.stdout
 
 
 @pytest.mark.skipif(
