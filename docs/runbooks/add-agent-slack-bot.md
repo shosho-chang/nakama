@@ -114,8 +114,8 @@ ssh nakama-vps
 cd /home/nakama && git pull
 # 確認 .env 有新 agent 的兩組 token
 grep "<AGENT>_SLACK" .env
-systemctl restart thousand-sunny  # 目前 gateway 跑在這個 service 裡；未來拆獨立 service
-systemctl status thousand-sunny --no-pager | head
+systemctl restart nakama-gateway  # gateway 已獨立成 nakama-gateway.service（不在 thousand-sunny 裡）
+systemctl status nakama-gateway --no-pager | head
 ```
 
 **Smoke test**：
@@ -123,11 +123,30 @@ systemctl status thousand-sunny --no-pager | head
 2. 該 bot 應該以自己的 avatar / name 回覆
 3. `https://nakama.shosho.tw/bridge/cost` 查最新一筆 → `agent=<agent>` 對上
 
+## 使用者白名單（誰能叫 agent）
+
+Workspace 裡任何成員都能 DM / @mention 已安裝的 bot，所以 gateway 入口有權限檢查
+（`gateway/access.py`）。四個入口（slash command / @mention / DM / thread 接續）都先檢查
+「這個人能不能叫這個 agent」：
+
+- 修修（env `SLACK_USER_ID_SHOSHO`）可以叫全部 agent
+- 其他人預設一律不行；要開放就把對方的 Slack member ID（profile → ⋮ → Copy member ID）
+  列進 `config.yaml` 的 `gateway.slack.extra_allowed_users.<agent>`，部署後重啟 gateway
+- `SLACK_USER_ID_SHOSHO` 沒設 → 不會因此放行任何人（fail closed），只剩白名單上的人能用
+- 被擋的人會收到「抱歉，我目前只接受修修的指令。」，log 留 `... denied for U...`
+- 權限是 agent 層級：開放某個 agent = 該 agent 的**所有**工具都能用。Nami 背後是修修的
+  Gmail / 行事曆 / vault，開放前要先想清楚
+
 ## Troubleshooting — `@<Agent>` 沒反應
 
 ### 診斷流程（先看 log 判斷是 Slack 端還是 code 端）
 
 ```bash
+# 0. 是不是被白名單擋了？
+journalctl -u nakama-gateway --since "10 minutes ago" --no-pager | grep "denied"
+# 看到 `[<agent>] Mention denied for U...` → 該 user 不是修修、也不在
+# config.yaml gateway.slack.extra_allowed_users.<agent>
+
 # 1. Gateway 認得 bot 嗎？
 journalctl -u nakama-gateway -n 20 --no-pager | grep "啟動\|Socket"
 # 預期：「啟動 N 個 Slack bot：[..., '<agent>', ...]」+ 「[<agent>] Socket Mode connection started」
