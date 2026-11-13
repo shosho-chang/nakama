@@ -6,6 +6,7 @@
 - Stage: 5 製作
 - Supersedes for production: ADR-056 Podcast Subtitle V2
 - Retains: ADR-032 exact-copy、ADR-050 D4 provenance、ADR-056 artifacts as legacy forensic evidence
+- Amended: 2026-11-13 — Formal Subtitle V2 code removed outright (see「Amendment — 2026-11-13」)
 
 ## Context
 
@@ -80,6 +81,9 @@ an in-place rename.
 Formal Subtitle V2 Stage 7 code and checkpoints remain readable only through an explicit
 `legacy-forensic` entry point. The Podcast E2E default must not call its checkpoint migration, correction
 packet materialization, Canonical Generation, Semantic Unit, or Verified Projection paths.
+(Amended 2026-11-13: the owner replaced “remain readable through a `legacy-forensic` entry point”
+with outright removal of the Formal Subtitle V2 code — see「Amendment — 2026-11-13」below. Old
+checkpoints and evidence files stay immutable on disk.)
 
 The public production runner is `scripts/podcast_subtitle_release.py` with
 `init`／`status`／`seal`／`prepare-major-audio`／`run-major-asr`／`build-audio-decisions`／`finalize`.
@@ -175,7 +179,8 @@ review, and explicit YouTube upload approval.
 2. Route Resolve and highlight consumers to `memo-dual-audit-v1` by default; production commands must not
    require `--degraded-release-handoff`.
 3. Move deep Full V2 entry points behind an explicit `legacy-forensic` mode and prove default routing does
-   not import or invoke them.
+   not import or invoke them. (Amended 2026-11-13: superseded — the deep Full V2 entry points were
+   deleted instead, so there is nothing left to import or invoke.)
 4. Update Podcast and transcription skills to describe only this ADR as the default production path.
 5. Keep all old checkpoints and evidence immutable. Do not rename or rewrite 抹布 artifacts.
 6. The clean-episode operational smoke completed on `20260805 林之晨`: Auphonic, Memo, dual audit,
@@ -219,6 +224,46 @@ operational smoke completed later the same day on `20260805 林之晨`:
 
 The smoke encountered and closed production-shaped PCM24, null-proposal, miner-lineage, and review-envelope
 case/citation gaps before reaching the gate. 抹布 remains legacy/backward-compatibility evidence only.
+
+## Amendment — 2026-11-13: Formal Subtitle V2 code removed
+
+The Decision section above said Formal Subtitle V2 code would “remain readable only through an explicit
+`legacy-forensic` entry point”, and Migration step 3 asked to move the deep entry points behind such a
+mode. That mode was never built: a 2026-11-13 read-only audit found no `legacy-forensic` flag anywhere
+in non-test code, found that the production line executed only about 2,400 lines of definitions in
+11 files of `agents/brook/podcast_subtitles/` while the remaining 51 files (about 58,000 lines, plus
+about 840 tests) served only the old V2 machinery, and found that the package `__init__` still imported
+all of it on every production run.
+
+On 2026-11-13 the owner changed the decision from “keep readable” to **remove outright**. Owner 原話：
+
+> 「這個舊字幕程式直接砍掉吧，現在既然都已經用新的字幕程式在跑，那舊的字幕留著幹嘛？」
+
+What this amendment changes:
+
+- The Formal Subtitle V2 implementation is deleted: the Generation store, checkpoints, Canonical
+  Generation, Semantic Units, Verified Projection, native resolution, full-audit attestation, the
+  correction／audit execution modules, the old recognition／reference／semantic／speaker adapters, the
+  `python -m agents.brook.podcast_subtitles` CLI, `handoff.open_verified_projection`, and the old-only
+  helper scripts and schemas, together with the tests that only exercised them.
+- The Stage 5 selector no longer has a `verified-v2` mode or Verified Projection identity flags.
+  `memo-dual-audit-v1` stays the default; `degraded-dual-asr-v1` and `legacy-v1` stay explicit opt-ins.
+- `verify-legacy` is unchanged. It never depended on the removed modules and still checks the 抹布
+  degraded bundle by hash.
+
+What it does not change:
+
+- Migration step 5 still holds: old checkpoints and evidence files are immutable and must not be
+  renamed, rewritten, or deleted. This repository can simply no longer re-verify a V2 Generation or
+  Verified Projection; doing so would require checking out a commit from before this amendment.
+- The Memo evidence helpers that the production line executes keep their behaviour.
+  `adapters/memo_recognition.py` — the only remaining file that hashes its own bytes into an adapter
+  identity (`adapter_code_hash`) — is byte-for-byte unchanged, as are `hashing.py`, `ports.py`,
+  `memo_boundary.py`, the Memo bundled runner, and the Memo SRT repair modules. `memo_projection.py`
+  lost only its unused CLI tail, which depended on the removed `accurate_correction` module.
+- The standalone script-video line (ADR-062) is not retired. Owner 原話：「影片這條線之後會用到，而且會經過很大的修改，現在先不要動」。
+  Its `plan`／`run`／`emit` consumed a Verified Projection, so they now stop with a clear
+  “字幕來源待重做” message until the owner decides the new subtitle source during that redesign.
 
 ## Acceptance criteria
 

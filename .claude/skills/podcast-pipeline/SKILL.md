@@ -633,7 +633,8 @@ E:\nakama\.venv-v2\Scripts\python.exe `
 **seal 前人工掃一次 `master.srt` 有沒有殘留標點**（2026-09-04 20260901 蘇予昕漏網：`inspect` 的
 `timing_qc` 只查時間軸——非正時長、超出 timeline、重疊——不查文字內容，house style「不留標點」
 沒有自動化把關）。4480 條 cue 裡 5 條連續 cue（01:23:42–01:24:04）用了半形逗號＋全形句號，明顯繞過
-了 Memo 文字風險掃描員（`agents/brook/podcast_subtitles/adapters/correction.py` 的 house style）該有
+了 Memo 文字風險掃描員（當時寫的是 `agents/brook/podcast_subtitles/adapters/correction.py` 的
+house style；該檔屬舊 Subtitle V2，已於 2026-11-13 移除）該有
 的清理，原因待查——這一集發生在使用者事後於 Resolve 手動補救／調整過的區段附近，懷疑跟繞過正常
 correction pass 的手動編輯有關。此集已 seal（ADR-064 不可變），這次先不補救；**換集時**：
 
@@ -1058,8 +1059,11 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\youtube_publish_reconcile.py --epi
 ## Explicit legacy forensic only
 
 ADR-056 Full Subtitle V2 的 checkpoint migration、526 correction packets、ordinary 10%／30% sampling、
-Canonical Generation、Semantic Units、Verified Projection 全部只屬 legacy forensic。預設 E2E 不得 import
-或呼叫 formal factory，也不得使用 `--degraded-release-handoff`。
+Canonical Generation、Semantic Units、Verified Projection 全部只屬 legacy forensic，而且**程式已於
+2026-11-13 依 owner 裁決從 repo 移除**（ADR-063「Amendment — 2026-11-13」）：沒有 formal factory、
+沒有 `python -m agents.brook.podcast_subtitles`、沒有 `--projection-id`，也沒有 `legacy-forensic` 入口。
+舊集數留下的 `.subtitle-v2/` checkpoint 與 evidence 檔案照舊不可改名、不可改寫，但這個 repo 已無法
+重驗它們。預設 E2E 不得使用 `--degraded-release-handoff`。
 
 抹布舊 bundle 如需 integrity check，只能明示：
 
@@ -1070,8 +1074,8 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_subtitle_release.py verify
   --status-output "<episode>/subtitle-v2/degraded-audio-release-v1/legacy-verification.json"
 ```
 
-這不會 promotion／rename 舊 artifact，也不構成新 production success。Formal、legacy/degraded 與
-`memo-dual-audit-v1` handoff routes 互斥；不可 silent fallback。
+這不會 promotion／rename 舊 artifact，也不構成新 production success。`verify-legacy` 不依賴已移除的
+V2 模組，照常可用。legacy/degraded 與 `memo-dual-audit-v1` handoff routes 互斥；不可 silent fallback。
 
 ## Stop and recovery policy
 
