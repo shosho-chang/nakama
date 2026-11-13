@@ -160,6 +160,46 @@ def _memoize_ffprobe_per_test(request, monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _memoize_opencc_per_test(monkeypatch):
+    """同一個測試內，OpenCC 字典只 parse 一次、converter 只建一次。
+
+    podcast_subtitles 的 orthographic projection 每次投影／replay 都重新 parse
+    數 MB 的 OpenCC 字典、重建 converter（verified-projection 測試一半時間在這）。
+
+    為什麼放測試端而不改 ``orthographic_projection.py``：那個檔案的 bytes hash
+    就是投影 identity 的 ``adapter_code_hash``，``verify_orthographic_projection``
+    replay 時要求完全一致——改檔會讓正式環境既有的投影全部驗不過。
+
+    - 字典 cache key = (路徑, sha256(bytes))：每次照樣讀檔，bytes 變了就重新 parse。
+    - converter cache 每個測試一份（安裝的 OpenCC 套件在測試期間不會變）。
+    """
+    projection = sys.modules.get("agents.brook.podcast_subtitles.orthographic_projection")
+    if projection is None:
+        return
+    import hashlib
+
+    original_read = projection._read_dictionary
+    original_opencc = projection.OpenCC
+    dictionaries: dict[tuple[str, str], dict] = {}
+    converters: dict[str, object] = {}
+
+    def read_dictionary(path):
+        raw = Path(path).read_bytes()
+        key = (str(path), hashlib.sha256(raw).hexdigest())
+        if key not in dictionaries:
+            dictionaries[key] = original_read(path)
+        return dictionaries[key]
+
+    def opencc(conversion):
+        if conversion not in converters:
+            converters[conversion] = original_opencc(conversion)
+        return converters[conversion]
+
+    monkeypatch.setattr(projection, "_read_dictionary", read_dictionary)
+    monkeypatch.setattr(projection, "OpenCC", opencc)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_incidents_pending(tmp_path: Path, monkeypatch):
     """Route shared.incident_archive default dir to tmp.
 

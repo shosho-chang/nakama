@@ -21,7 +21,7 @@ pytest --cov=shared --cov=thousand_sunny --cov=agents \
 `.github/workflows/ci.yml` 三步：
 
 1. `python scripts/ci_slow_test_scope.py`（只在 PR）：決定這次要不要跑 `@pytest.mark.slow` 測試（見下節）
-2. `pytest -n logical --durations=25 [-m "not slow"] --cov=... --cov-report=json:coverage.json --cov-report=term`（pytest-xdist 4 worker 平行跑，pytest-cov 自動合併各 worker 覆蓋率；整體不設 `--cov-fail-under`，**整體 % 不擋 CI**）
+2. `pytest -n auto --durations=25 [-m "not slow"] --cov=... --cov-report=json:coverage.json --cov-report=term`（pytest-xdist 平行跑，GH runner 上是 2 worker，pytest-cov 自動合併各 worker 覆蓋率；整體不設 `--cov-fail-under`，**整體 % 不擋 CI**）
 3. `python scripts/check_critical_path_coverage.py`（讀 `coverage.json`，對 critical-path 模組逐一驗 ≥ threshold；缺一個就 exit 1）
 
 ### slow 測試分流

@@ -66,12 +66,13 @@ jobs:
           fi
 
       - name: Run tests with coverage
-        # -n logical：4 worker（GH public runner = 4 vCPU / 2 實體核）。同一台 runner 對照
-        # （PR #1386）：-n 2 13:57／13:21、-n 4 12:36 → 4 worker 快約 6–10%。
-        # （-n auto 只看實體核，只會開 2 個。）
+        # -n auto：依實體核心數開 worker（GH public runner = 4 vCPU / 2 實體核 → 2 worker）。
+        # 同機對照（PR #1386）：-n 2 13:57／13:21、-n 4 12:36，4 worker 只快 6–10%，
+        # 但 4 worker 搶 2 顆實體核時，test_audio_audit_execution 的並發 claim 競態
+        # （production 既有問題，見 PR follow-up）6 次觸發 1 次 → 選穩定的 2 worker。
         # pytest-cov 會自動合併各 worker 的覆蓋率，critical-path gate 照讀 coverage.json。
         # --durations=25：log 尾端列最慢的 25 個測試，下次 CI 又變慢時直接看這裡。
-        run: pytest -n logical --durations=25 ${{ steps.scope.outputs.pytest_args }} --cov=shared --cov=thousand_sunny --cov=agents --cov-report=json:coverage.json --cov-report=term
+        run: pytest -n auto --durations=25 ${{ steps.scope.outputs.pytest_args }} --cov=shared --cov=thousand_sunny --cov=agents --cov-report=json:coverage.json --cov-report=term
 
       - name: Critical-path coverage gate
         run: python scripts/check_critical_path_coverage.py

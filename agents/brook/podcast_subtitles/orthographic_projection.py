@@ -261,33 +261,9 @@ def _package_root() -> Path:
     return path
 
 
-# 解析結果以「路徑＋檔案 bytes 的 sha256」為 key 快取：每次呼叫照樣讀取並 hash
-# 已安裝的字典檔，bytes 一變就重新解析——語意仍是「由當下已安裝 bytes 決定」，
-# 只是省掉重複 parse 同一份 bytes（單次投影原本要重 parse 數 MB 字典好幾次）。
-# 呼叫端只讀不改；回傳的 dict 為共用物件，請勿 mutate。
-_DICTIONARY_CACHE: dict[tuple[str, str], dict[str, tuple[str, ...]]] = {}
-
-# OpenCC converter 以 measure 出來的 inventory_hash（config＋三本字典＋runtime 原始碼
-# 的 bytes hash）為 key 快取；任何一個檔案 bytes 改變 → 新 key → 重建 converter。
-_CONVERTER_CACHE: dict[str, OpenCC] = {}
-
-
-def _converter_for_inventory(inventory_hash: str) -> OpenCC:
-    converter = _CONVERTER_CACHE.get(inventory_hash)
-    if converter is None:
-        converter = OpenCC(_CONVERSION_NAME)
-        _CONVERTER_CACHE[inventory_hash] = converter
-    return converter
-
-
 def _read_dictionary(path: Path) -> dict[str, tuple[str, ...]]:
-    raw = path.read_bytes()
-    cache_key = (str(path), sha256_bytes(raw))
-    cached = _DICTIONARY_CACHE.get(cache_key)
-    if cached is not None:
-        return cached
     entries: dict[str, tuple[str, ...]] = {}
-    for line_number, line in enumerate(raw.decode("utf-8").splitlines(), start=1):
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
         try:
             source, raw_candidates = line.split("\t")
         except ValueError as exc:
@@ -302,7 +278,6 @@ def _read_dictionary(path: Path) -> dict[str, tuple[str, ...]]:
         if source in entries:
             raise OrthographicProjectionError(f"duplicate OpenCC dictionary key {source!r}")
         entries[source] = candidates
-    _DICTIONARY_CACHE[cache_key] = entries
     return entries
 
 
@@ -392,14 +367,13 @@ def measure_opencc_s2tw_identity() -> OpenCCS2TWIdentityV1:
             "opencc_source_inventory": source_inventory,
         }
     )
-    inventory_hash = hash_object(inventory)
-    converter = _converter_for_inventory(inventory_hash)
+    converter = OpenCC(_CONVERSION_NAME)
     probes = tuple((source, converter.convert(source)) for source in _PROBES)
     return OpenCCS2TWIdentityV1(
         implementation_version=version,
         dictionary_chain=dictionary_chain,
         inventory=inventory,
-        inventory_hash=inventory_hash,
+        inventory_hash=hash_object(inventory),
         ambiguous_dictionaries=tuple(ambiguous_dictionaries),
         ambiguous_inventory_hash=hash_object(tuple(ambiguous_dictionaries)),
         ambiguous_entry_count=sum(item.entry_count for item in ambiguous_dictionaries),
@@ -562,7 +536,7 @@ def project_recognition_evidence(
     source_parts = tuple(token.text for token in evidence.tokens)
     source_text = "".join(source_parts)
     identity = measure_opencc_s2tw_identity()
-    projected_text = _converter_for_inventory(identity.inventory_hash).convert(source_text)
+    projected_text = OpenCC(_CONVERSION_NAME).convert(source_text)
     projected_parts = project_full_text_exact_length(source_parts, projected_text)
     token_projections: list[OrthographicTokenProjectionV1] = []
     source_cursor = 0
