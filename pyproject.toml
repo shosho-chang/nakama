@@ -137,17 +137,6 @@ select = ["E", "F", "I", "W"]
 # ADR-032 Phase 1.5 may refactor; for now allow E501 on this single file.
 "agents/brook/script_video/lib/web_highlight_record.py" = ["E501"]
 
-# Playbook pipeline scripts embed long multi-line LLM prompts where forced
-# wrapping hurts readability. The prompts are the primary work product — fluff
-# breaks compose / cluster prompt clarity. ADR-033 D4 pipeline.
-"scripts/cluster_thumbnail_patterns.py" = ["E501"]
-"scripts/compose_playbook_v1.py" = ["E501"]
-"scripts/dispatch_codex_playbook_audit.py" = ["E501"]
-"scripts/dispatch_gemini_playbook_audit.py" = ["E501"]
-"scripts/extract_thumbnail_features.py" = ["E501"]
-"scripts/fix_playbook_v1_to_v1_1.py" = ["E501"]
-"scripts/splice_playbook_v1.py" = ["E501"]
-
 # composer skill 的 style_lint.py 內嵌簡體字偵測常數與繁中檢查訊息 f-string，
 # 斷行會破壞常數/訊息語意，與上述嵌入型檔案同類——允許 E501。
 ".claude/skills/composer/scripts/style_lint.py" = ["E501"]

@@ -1097,13 +1097,7 @@ All 140 thumbnails were selected from high-performing creators, meaning the data
 - **v2** (future): expand to 修修-published thumbnails ground-truth (修修's own past+future publishes only) + add Podcast track.
 - **v3** (future): brand-adaptation grades upgraded from heuristic to revealed-preference data.
 
-When adding a new corpus row:
-1. Add new image to `E:/Thumbnail-example/{creator}/` (or future vault path).
-2. `python -m scripts.extract_thumbnail_features --creator "New Creator"`
-3. `python -m scripts.cluster_thumbnail_patterns`
-4. Manually update §2/§3/§4/§5 sections with the new clustering output.
-
-Cluster script is idempotent on row IDs; extraction script skips already-extracted IDs.
+When adding a new corpus row: the v1 build scripts (extract / cluster / compose / splice / fix) were retired (ADR-070 D8). For v2, rebuild in a Claude Code conversation by looking at the images (subscription lane), then manually update §2/§3/§4/§5.
 
 ---
 
