@@ -237,3 +237,118 @@ def test_long_pdf_text_truncated():
     assert "訪" * MAX_PDF_CHARS in out
     assert "訪" * (MAX_PDF_CHARS + 1) not in out
     assert "PDF 過長" in out
+
+
+# ── 圖片附件（opt-in，Sanji 建活動用）───────────────────────────────────
+
+IMAGE_FILE = {
+    "id": "F0IMG",
+    "name": "atomic habits.jpg",
+    "mimetype": "image/jpeg",
+    "filetype": "jpg",
+    "url_private": "https://files.slack.com/files-pri/T1-F0IMG/atomic.jpg",
+    "url_private_download": "https://files.slack.com/files-pri/T1-F0IMG/download/atomic.jpg",
+}
+
+
+def test_image_lines_only_when_opted_in():
+    from gateway.slack_files import image_attachment_lines
+
+    event = {"files": [IMAGE_FILE, {"id": "F2", "mimetype": "application/zip"}]}
+    client = _client()
+    assert with_attachments("建活動", event, client) == "建活動"
+
+    out = with_attachments("建活動", event, client, include_images=True)
+    assert out == (
+        "建活動\n\n[附件圖片] atomic habits.jpg "
+        "https://files.slack.com/files-pri/T1-F0IMG/download/atomic.jpg image/jpeg"
+    )
+    assert image_attachment_lines(event) == [out.split("\n\n", 1)[1]]
+    client.files_info.assert_not_called()
+
+
+def test_image_line_falls_back_to_url_private_and_files_info():
+    from gateway.slack_files import image_attachment_lines
+
+    no_download = {k: v for k, v in IMAGE_FILE.items() if k != "url_private_download"}
+    assert image_attachment_lines({"files": [no_download]}) == [
+        "[附件圖片] atomic habits.jpg "
+        "https://files.slack.com/files-pri/T1-F0IMG/atomic.jpg image/jpeg"
+    ]
+    # event 裡的殘缺 file 物件沒有網址 → files.info 補
+    partial = {"id": "F0IMG", "mimetype": "image/png", "name": "cover.png"}
+    client = _client({**IMAGE_FILE, "mimetype": "image/png"})
+    lines = image_attachment_lines({"files": [partial]}, client)
+    assert lines == [
+        "[附件圖片] cover.png "
+        "https://files.slack.com/files-pri/T1-F0IMG/download/atomic.jpg image/png"
+    ]
+
+
+def test_image_lines_with_email_and_no_text():
+    out = with_attachments(
+        "", {"files": [EMAIL_FILE_IN_EVENT, IMAGE_FILE]}, _client(), include_images=True
+    )
+    assert out.startswith("[附件信件]")
+    assert out.endswith("image/jpeg")
+
+
+def _sanji_dm(files: list[dict]) -> dict:
+    return {
+        "text": "幫我建活動",
+        "user": "U1",
+        "channel": "D1",
+        "channel_type": "im",
+        "ts": "1.0",
+        "files": files,
+    }
+
+
+def _run_dm_for(agent: str):
+    from gateway import bot
+
+    handler = MagicMock()
+    handler.handle.return_value = SimpleNamespace(text="ok", continuation=None)
+    store = MagicMock()
+    store.get.return_value = None
+    store.get_latest_for_user_and_agent.return_value = None
+    route = SimpleNamespace(agent=agent, intent="general", text="幫我建活動", confidence="keyword")
+    with (
+        patch.object(bot, "get_store", return_value=store),
+        patch.object(bot, "get_handler", return_value=handler),
+        patch.object(bot, "route_mention", return_value=route),
+    ):
+        bot._make_thread_message_handler(agent)(_sanji_dm([IMAGE_FILE]), MagicMock(), _client())
+    return handler.handle.call_args.args[1]
+
+
+def test_bot_passes_images_to_sanji_only():
+    assert "[附件圖片] atomic habits.jpg" in _run_dm_for("sanji")
+    assert "[附件圖片]" not in _run_dm_for("nami")
+
+
+def test_bot_thread_continuation_passes_images_to_sanji():
+    from gateway import bot
+
+    conv = SimpleNamespace(
+        thread_ts="1.0", user_id="U1", agent_name="sanji", flow_name="event_draft", state={}
+    )
+    store = MagicMock()
+    store.get.return_value = conv
+    handler = MagicMock()
+    handler.continue_flow.return_value = SimpleNamespace(text="ok", blocks=None, continuation=None)
+    event = {
+        "text": "換這張",
+        "user": "U1",
+        "channel": "C1",
+        "ts": "2.0",
+        "thread_ts": "1.0",
+        "files": [IMAGE_FILE],
+    }
+    with (
+        patch.object(bot, "get_store", return_value=store),
+        patch.object(bot, "get_handler", return_value=handler),
+    ):
+        bot._make_thread_message_handler("sanji")(event, MagicMock(), _client())
+    text = handler.continue_flow.call_args.args[2]
+    assert text.startswith("換這張\n\n[附件圖片] atomic habits.jpg")
