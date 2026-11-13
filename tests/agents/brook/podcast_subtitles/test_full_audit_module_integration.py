@@ -84,6 +84,10 @@ from tests.agents.brook.podcast_subtitles.test_text_audit_execution import (
     _response_bytes as text_response_bytes,
 )
 
+# slow：native full-audit create/reopen 整合，真 store＋真 checkpoint chain（全檔 ~3 分鐘）。
+# PR CI 只在改動落在它們的 import 範圍時才跑（scripts/ci_slow_test_scope.py）；main push 全跑。
+pytestmark = pytest.mark.slow
+
 
 def _pcm_wav(path: Path, *, duration_seconds: int = 4) -> None:
     with wave.open(str(path), "wb") as sink:

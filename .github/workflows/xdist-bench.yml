@@ -15,11 +15,9 @@ jobs:
           cache: 'pip'
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: pip install -e ".[dev]"
-      - run: lscpu | head -20; python -c "import psutil;print(psutil.cpu_count(False), psutil.cpu_count(True))"
+      - run: lscpu | grep -E "Model name|Thread|Core"
       - run: python -m compileall -q agents shared tests thousand_sunny scripts gateway
-      - name: n2
-        run: pytest -q -n 2 --cov=shared --cov=thousand_sunny --cov=agents --cov-report= | tail -1
-      - name: n4
-        run: pytest -q -n 4 --cov=shared --cov=thousand_sunny --cov=agents --cov-report= | tail -1
-      - name: n2-again
-        run: pytest -q -n 2 --cov=shared --cov=thousand_sunny --cov=agents --cov-report= | tail -1
+      - name: not-slow (typical PR)
+        run: pytest -q -n logical -m "not slow" --cov=shared --cov=thousand_sunny --cov=agents --cov-report=json:coverage.json --cov-report= | tail -1 && python scripts/check_critical_path_coverage.py | tail -1
+      - name: full (main push / PR touching slow area)
+        run: pytest -q -n logical --cov=shared --cov=thousand_sunny --cov=agents --cov-report= | tail -1

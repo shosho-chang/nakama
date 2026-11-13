@@ -28,6 +28,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # PR 的 merge commit 需要 HEAD^1（base）才算得出這個 PR 改了哪些檔
+          fetch-depth: 2
 
       - uses: actions/setup-python@v5
         with:
@@ -50,13 +53,25 @@ jobs:
       - name: Ruff format check
         run: ruff format --check .
 
+      # slow 測試（`@pytest.mark.slow`，約佔全套一半時間）：PR 只在改動落在它們的
+      # import 範圍時才跑；push 到 main 永遠全跑。判斷邏輯見 scripts/ci_slow_test_scope.py。
+      - name: Decide test scope
+        id: scope
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            git diff --name-only HEAD^1 HEAD > "$RUNNER_TEMP/changed.txt"
+            python scripts/ci_slow_test_scope.py "$RUNNER_TEMP/changed.txt" >> "$GITHUB_OUTPUT"
+          else
+            echo "pytest_args=" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Run tests with coverage
-        # -n auto：xdist 依實體核心數開 worker（GH public runner = 4 vCPU / 2 實體核 → 2 worker）。
-        # 實測（PR #1386）：2 worker 測試 8:22；-n logical 開 4 worker 反而 10:09
-        # （超執行緒互搶，每個測試約慢一倍），所以不要改成 logical。
+        # -n logical：4 worker（GH public runner = 4 vCPU / 2 實體核）。同一台 runner 對照
+        # （PR #1386）：-n 2 13:57／13:21、-n 4 12:36 → 4 worker 快約 6–10%。
+        # （-n auto 只看實體核，只會開 2 個。）
         # pytest-cov 會自動合併各 worker 的覆蓋率，critical-path gate 照讀 coverage.json。
         # --durations=25：log 尾端列最慢的 25 個測試，下次 CI 又變慢時直接看這裡。
-        run: pytest -n auto --durations=25 --cov=shared --cov=thousand_sunny --cov=agents --cov-report=json:coverage.json --cov-report=term
+        run: pytest -n logical --durations=25 ${{ steps.scope.outputs.pytest_args }} --cov=shared --cov=thousand_sunny --cov=agents --cov-report=json:coverage.json --cov-report=term
 
       - name: Critical-path coverage gate
         run: python scripts/check_critical_path_coverage.py
