@@ -105,11 +105,9 @@
       /* 書封模式參考作者訪談封面：中央文案必須壓在麥克風懸臂之上。
          人臉已經外移到左右邊緣，所以不會用文字蓋臉。 */
       #root.book-mode #text-block { z-index: 7; }
-      #root.book-mode #credit {
-        display: table; margin-left: auto; margin-right: auto;
-        padding: 5px 18px 9px; border-radius: 10px;
-        background: rgba(20,20,20,0.68);
-      }
+      /* 書封模式的 credit 不加黑底（修修 2026-11-13，20261111 李惠貞：「畫面已經夠暗了，
+         在來賓的 title 跟姓名後面不需要再加一個黑框」）。書封本來就壓暗當中景，
+         再墊一塊 rgba(20,20,20,0.68) 的圓角底是多的。 */
       #title {
         color: #FFFFFF;
         /* Bold(700) 而非 ExtraBold — 修修 2026-07-29：原本太粗 */
