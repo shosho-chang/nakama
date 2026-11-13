@@ -234,8 +234,7 @@ def get_annotation_store() -> AnnotationStore:
 # v1 (paper) or v2 (book) shapes; we upgrade in-place at the save boundary so
 # the on-disk store is uniformly v3 going forward. ``CommentV2`` (type ==
 # "comment") becomes ``ReflectionV3`` (type == "reflection") — a vocabulary
-# rename with no semantic shift. Migration script for existing v1 files lives
-# in ``scripts/migrate_annotations_v3.py`` and reuses these helpers.
+# rename with no semantic shift.
 
 
 def _highlight_v1_to_v3(item: HighlightV1) -> HighlightV3:

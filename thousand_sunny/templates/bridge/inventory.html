@@ -150,7 +150,6 @@
           <div class="inv-block">
             <p class="inv-block-label">用到的 scripts</p>
             <div class="inv-chips">
-              <span class="inv-chip">ab_ingest_bench.py</span>
               <span class="inv-chip">update_scimago.py</span>
             </div>
           </div>
@@ -267,10 +266,6 @@
             <p class="inv-block-label">用到的 scripts</p>
             <div class="inv-chips">
               <span class="inv-chip">run_repurpose.py</span>
-              <span class="inv-chip">brook_posts_inventory.py</span>
-              <span class="inv-chip">compose_playbook_v1.py</span>
-              <span class="inv-chip">splice_playbook_v1.py</span>
-              <span class="inv-chip">dispatch_*_playbook_audit.py</span>
             </div>
           </div>
           <div class="inv-block">
@@ -314,8 +309,6 @@
             <div class="inv-chips">
               <span class="inv-chip">align_srt.py</span>
               <span class="inv-chip">analyze_srt_cuts.py</span>
-              <span class="inv-chip">compare_srt.py</span>
-              <span class="inv-chip">analyze_qwen_srt.py</span>
             </div>
           </div>
           <div class="inv-block">
@@ -413,7 +406,6 @@
               <span class="inv-chip">restore_from_r2.py</span>
               <span class="inv-chip">mirror_backup_to_secondary.py</span>
               <span class="inv-chip">verify_backup_integrity.py</span>
-              <span class="inv-chip">vps_baseline_monitor.py</span>
               <span class="inv-chip">cleanup_logs.py</span>
               <span class="inv-chip">maintain_user_memories.py</span>
             </div>
@@ -468,13 +460,13 @@
       <table class="matrix">
         <thead><tr><th class="row-label">分組</th><th>主要 scripts</th></tr></thead>
         <tbody>
-          <tr><td class="row-label">Robin · KB</td><td><code>ab_ingest_bench.py</code> · <code>update_scimago.py</code> · <code>vault_layout_audit.py</code> · <code>migrate_*_concept_frontmatter.py</code></td></tr>
-          <tr><td class="row-label">Brook · repurpose</td><td><code>run_repurpose.py</code> · <code>brook_posts_inventory.py</code> · playbook 系列（<code>compose / splice / fix / dispatch_*_audit</code>）</td></tr>
-          <tr><td class="row-label">Foundry · video</td><td><code>align_srt.py</code> · <code>analyze_srt_cuts.py</code> · <code>compare_srt.py</code> · <code>analyze_qwen_srt.py</code></td></tr>
+          <tr><td class="row-label">Robin · KB</td><td><code>update_scimago.py</code> · <code>vault_layout_audit.py</code></td></tr>
+          <tr><td class="row-label">Brook · repurpose</td><td><code>run_repurpose.py</code></td></tr>
+          <tr><td class="row-label">Foundry · video</td><td><code>align_srt.py</code> · <code>analyze_srt_cuts.py</code></td></tr>
           <tr><td class="row-label">Zoro · keyword</td><td><code>run_keyword_research.py</code></td></tr>
           <tr><td class="row-label">Nami · setup</td><td><code>run_project_bootstrap.py</code> · <code>google_calendar_auth.py</code> · <code>google_gmail_auth.py</code></td></tr>
-          <tr><td class="row-label">transcribe · ASR</td><td><code>run_qwen3_asr.py</code> · <code>srt_refine.py</code> · <code>debug_auphonic*.py</code></td></tr>
-          <tr><td class="row-label">Franky · ops/backup</td><td><code>backup_nakama_state.py</code> · <code>restore_from_r2.py</code> · <code>mirror_backup_to_secondary.py</code> · <code>verify_backup_integrity.py</code> · <code>vps_baseline_monitor.py</code> · <code>cleanup_logs.py</code> · <code>maintain_user_memories.py</code></td></tr>
+          <tr><td class="row-label">transcribe · ASR</td><td><code>srt_refine.py</code></td></tr>
+          <tr><td class="row-label">Franky · ops/backup</td><td><code>backup_nakama_state.py</code> · <code>restore_from_r2.py</code> · <code>mirror_backup_to_secondary.py</code> · <code>verify_backup_integrity.py</code> · <code>cleanup_logs.py</code> · <code>maintain_user_memories.py</code></td></tr>
           <tr><td class="row-label">deploy · release</td><td><code>deploy_vps.sh</code> · <code>start_thousand_sunny.ps1</code> · <code>start_*_server.bat</code></td></tr>
         </tbody>
       </table>
