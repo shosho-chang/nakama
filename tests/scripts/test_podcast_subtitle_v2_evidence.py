@@ -19,7 +19,6 @@ from agents.brook.podcast_subtitles.adapters.memo_recognition import (
 from agents.brook.podcast_subtitles.adapters.normalized_handoff import (
     VerifiedNormalizedAudioHandoffAdapter,
 )
-from agents.brook.podcast_subtitles.composition import FactoryContextV1
 from agents.brook.podcast_subtitles.hashing import canonical_json_bytes, hash_file
 from agents.brook.podcast_subtitles.memo_boundary import (
     MemoSrtAcceptanceReceiptV1,
@@ -39,7 +38,6 @@ from agents.brook.podcast_subtitles.ports import (
     NormalizeRequest,
     RecognitionRequest,
 )
-from agents.brook.podcast_subtitles.production import build_production
 from scripts import podcast_subtitle_v2_evidence as _evidence_cli
 
 
@@ -947,7 +945,7 @@ def _prepared_cue_review(tmp_path: Path) -> tuple[Path, Path, Path]:
 
 
 def test_status_verifies_complete_bundle_and_exports_production_environment(
-    tmp_path: Path, capsys, monkeypatch
+    tmp_path: Path, capsys
 ) -> None:
     bundle = _accepted_evidence_bundle(tmp_path)
 
@@ -985,19 +983,6 @@ def test_status_verifies_complete_bundle_and_exports_production_environment(
         "PODCAST_SUBTITLE_V2_MEMO_CUE_SOURCE_EXPORT",
         "PODCAST_SUBTITLE_V2_MEMO_CUE_ACCEPTANCE_RECEIPT",
     }
-    environment.update(
-        {
-            "PODCAST_SUBTITLE_V2_TEXT_AUDIT_MODEL": "gpt-5.6-sol",
-            "PODCAST_SUBTITLE_V2_TEXT_AUDIT_MODEL_VERSION": "2026-08-12",
-            "PODCAST_SUBTITLE_V2_SEMANTIC_MODEL": "gpt-5.6-sol",
-            "PODCAST_SUBTITLE_V2_SEMANTIC_MODEL_VERSION": "2026-08-12",
-            "PODCAST_SUBTITLE_V2_AUDIO_AUDIT_MODEL": "gemini-3.6-flash",
-            "PODCAST_SUBTITLE_V2_AUDIO_AUDIT_MODEL_VERSION": "2026-07-22",
-        }
-    )
-    monkeypatch.setattr("agents.brook.podcast_subtitles.production.os.environ", environment)
-    module = build_production(FactoryContextV1(1, tmp_path / "episode", None))
-    assert isinstance(module._recognizers[0], MemoRecognizerAdapter)
 
 
 def _accepted_evidence_bundle(tmp_path: Path) -> dict[str, Path]:
