@@ -13,6 +13,8 @@
 from __future__ import annotations
 
 import argparse
+import json
+import re
 import sys
 from pathlib import Path
 
@@ -53,13 +55,80 @@ def recent_titles(youtube, limit: int) -> list[tuple[str, str]]:
     return out[:limit]
 
 
+_ISO_DURATION = re.compile(r"PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?")
+
+
+def _duration_sec(iso: str) -> int:
+    match = _ISO_DURATION.fullmatch(iso or "")
+    if not match:
+        return 0
+    hours, minutes, seconds = (int(part or 0) for part in match.groups())
+    return hours * 3600 + minutes * 60 + seconds
+
+
+def recent_videos(youtube, limit: int) -> list[dict]:
+    """上傳清單加上觀看數與片長（videos.list）——標題好壞要對著真實成績看，不是對著候選分數。"""
+    channels = youtube.channels().list(part="contentDetails", mine=True).execute()
+    items = channels.get("items") or []
+    if not items:
+        raise SystemExit("這組 OAuth 憑證看不到任何頻道")
+    uploads = items[0]["contentDetails"]["relatedPlaylists"]["uploads"]
+    ids: list[str] = []
+    token = None
+    while len(ids) < limit:
+        page = (
+            youtube.playlistItems()
+            .list(
+                part="contentDetails",
+                playlistId=uploads,
+                maxResults=min(50, limit - len(ids)),
+                pageToken=token,
+            )
+            .execute()
+        )
+        ids.extend(item["contentDetails"]["videoId"] for item in page.get("items", []))
+        token = page.get("nextPageToken")
+        if not token:
+            break
+    out: list[dict] = []
+    for start in range(0, len(ids), 50):
+        page = (
+            youtube.videos()
+            .list(
+                part="snippet,statistics,contentDetails,status",
+                id=",".join(ids[start : start + 50]),
+            )
+            .execute()
+        )
+        for item in page.get("items", []):
+            out.append(
+                {
+                    "video_id": item["id"],
+                    "published": item["snippet"].get("publishedAt", "")[:10],
+                    "title": item["snippet"].get("title", ""),
+                    "views": int(item.get("statistics", {}).get("viewCount", 0)),
+                    "duration_sec": _duration_sec(item["contentDetails"].get("duration", "")),
+                    "privacy": item.get("status", {}).get("privacyStatus", ""),
+                }
+            )
+    return out
+
+
 def main(argv: list[str] | None = None) -> int:
     for stream in (sys.stdout, sys.stderr):
         stream.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--limit", type=int, default=30)
+    parser.add_argument(
+        "--stats",
+        action="store_true",
+        help="輸出 JSON：每支帶 views／duration_sec／privacy（標題要對著真實成績看）",
+    )
     args = parser.parse_args(argv)
     youtube = load_youtube_client(TOKEN_PATH)
+    if args.stats:
+        print(json.dumps(recent_videos(youtube, args.limit), ensure_ascii=False, indent=1))
+        return 0
     for published, title in recent_titles(youtube, args.limit):
         print(f"{published[:10]}  {title}")
     return 0
