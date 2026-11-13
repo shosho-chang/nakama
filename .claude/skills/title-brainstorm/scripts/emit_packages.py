@@ -147,6 +147,40 @@ def _ensure_keywords_cache(packaging_dir: Path, input_data: dict) -> tuple[Path,
 _SLUG_SHAPED = re.compile(r"^\d{8}-[A-Za-z0-9._-]+$")
 
 
+def _carry_over_packages(old_cut: dict, new_cut: dict) -> None:
+    """重 emit 同一支長片的標題時，把已經配好的封面留下來。
+
+    2026-11-13 20261111 李惠貞：舊版整支換掉、`packages` 一律清空——重跑標題等於把
+    thumbnail-brainstorm 綁好的封面、連同修修在 gate 上存的配方一起洗掉。
+    留下的條件：**同一個 rank 的標題文字沒變**（封面是配那條標題的）。標題換了的
+    rank，封面就不再對得上，丟掉並印出來（PNG 還在磁碟上，沒有刪檔）。
+    候選池 `brainstorm` 與 `title_trace_ref` 跟標題文字無關，原樣帶過去。
+    """
+    old_text = {t.get("rank"): t.get("text") for t in old_cut.get("titles", [])}
+    new_text = {t.get("rank"): t.get("text") for t in new_cut.get("titles", [])}
+    kept, dropped = [], []
+    for package in old_cut.get("packages", []) or []:
+        rank = package.get("title_rank")
+        if rank in new_text and old_text.get(rank) == new_text[rank]:
+            kept.append(package)
+        else:
+            dropped.append(package)
+    new_cut["packages"] = kept
+    for key in ("brainstorm", "title_trace_ref"):
+        if old_cut.get(key) is not None and key not in new_cut:
+            new_cut[key] = old_cut[key]
+    if kept:
+        sys.stderr.write(
+            f"emit_packages: 保留 {len(kept)} 個已配好的封面"
+            f"（rank {sorted(p.get('title_rank') for p in kept)} 標題沒變）\n"
+        )
+    for package in dropped:
+        sys.stderr.write(
+            f"emit_packages: rank {package.get('title_rank')} 的標題換了，原本配它的封面"
+            f"（{package.get('thumbnail_png')}）已從 packages.json 拿掉，要重配\n"
+        )
+
+
 def _require_episode_name(episode: str) -> None:
     if _SLUG_SHAPED.match(episode.strip()):
         raise ValueError(
@@ -291,6 +325,8 @@ def emit(
     cuts: list[dict] = list(existing.get("cuts", []))
     for i, c in enumerate(cuts):
         if c.get("cut_id") == cut_id:
+            if fmt == "long":
+                _carry_over_packages(c, new_cut)
             cuts[i] = new_cut
             break
     else:
