@@ -756,7 +756,7 @@ def execute(state: dict, user_id: str) -> HandlerResponse:
             main_image, main_kind, note = _main_image(event, image, fleet_cover)
 
             step = "合成封面"
-            png = fleet_cover.render_cover(
+            cover_jpg = fleet_cover.render_cover(
                 fleet_cover.CoverSpec(
                     eyebrow=event["cover_eyebrow"],
                     headline_lines=list(event["cover_headline_lines"]),
@@ -769,7 +769,7 @@ def execute(state: dict, user_id: str) -> HandlerResponse:
             step = "上傳封面"
             fca = importlib.import_module("shared.fca_events_client")
             client = fca.FcaEventsClient.from_env()
-            uploaded = client.upload_image(png, f"sanji-cover-{start.strftime('%Y%m%d')}.png")
+            uploaded = client.upload_image(cover_jpg, f"sanji-cover-{start.strftime('%Y%m%d')}.jpg")
             progress["cover"] = {"id": uploaded.id, "url": uploaded.url, "key": key, "note": note}
             logger.info(f"event_draft: cover uploaded id={uploaded.id} user={user_id}")
         else:

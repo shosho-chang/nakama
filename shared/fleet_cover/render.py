@@ -1,4 +1,4 @@
-"""自由艦隊活動封面（1600×800 PNG）的 Pillow renderer。
+"""自由艦隊活動封面（1600×800 JPEG）的 Pillow renderer。
 
 VPS 是無頭 Linux、沒有瀏覽器，所以不走 HTML 截圖，直接用 Pillow 疊圖層。
 版面照品牌設計稿（原型是 HTML 的 covers_v3）：
@@ -375,8 +375,13 @@ def _draw_logo(canvas: Image.Image) -> None:
     canvas.alpha_composite(logo, (x, y))
 
 
-def render_cover(spec: CoverSpec) -> bytes:
-    """畫一張 1600×800 的活動封面，回傳 RGB PNG bytes。"""
+# JPEG：同一張圖 PNG 130–460 KB → JPEG 約 90–180 KB（2026-11-13 修修裁決改 JPG）。
+# subsampling=0（4:4:4）讓深藍字邊緣不糊；quality 88 目檢看不出壓縮痕跡。
+JPEG_QUALITY = 88
+
+
+def render_cover(spec: CoverSpec, *, fmt: str = "jpeg") -> bytes:
+    """畫一張 1600×800 的活動封面，預設回傳 JPEG bytes（`fmt="png"` 給測試做像素比對）。"""
     lines = _validate(spec)
     lay = _layout(spec)
     canvas = _plate().copy()
@@ -386,5 +391,13 @@ def render_cover(spec: CoverSpec) -> bytes:
     _draw_main(canvas, spec)
     _draw_logo(canvas)
     out = io.BytesIO()
-    canvas.convert("RGB").save(out, format="PNG", optimize=True)
+    rgb = canvas.convert("RGB")
+    if fmt == "png":
+        rgb.save(out, format="PNG", optimize=True)
+    elif fmt == "jpeg":
+        rgb.save(
+            out, format="JPEG", quality=JPEG_QUALITY, subsampling=0, optimize=True, progressive=True
+        )
+    else:
+        raise ValueError(f"fmt must be 'jpeg' or 'png', got {fmt!r}")
     return out.getvalue()

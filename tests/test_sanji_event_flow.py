@@ -333,7 +333,7 @@ def test_confirm_online_live_runs_in_order(ext):
     assert spec.date_label == "11/28（六）20:00・線上直播"
     assert spec.main_image == b"ILLU" and spec.main_kind == "illustration"
 
-    ext.client.upload_image.assert_called_once_with(b"PNG", "sanji-cover-20261128.png")
+    ext.client.upload_image.assert_called_once_with(b"PNG", "sanji-cover-20261128.jpg")
     draft = ext.client.create_draft_event.call_args.args[0]
     assert draft.event_type == "online"
     assert draft.event_url == "https://zoom.us/j/111?pwd=x"
