@@ -14,7 +14,9 @@ Resolve API 也改不了既有字幕 item 的文字，所以單句文字修正�
     pieces     唯讀。列出 V1 上某支來源檔的每一段剪輯：tl_start／tl_end／src_start_frame／src_fps
     map-cues   純計算。裁決後的「來源秒數」字幕 → timeline 幀，產出 rebuild 吃的 cues.json
     rebuild    備份 duplicate → 確認 current timeline → 快照 → 合併（重疊檢查）→ 清空 →
-               append → 逐句驗證 → SaveProject。`--scratch` 改在拋棄式副本上跑，驗完即刪
+               append → 逐句驗證 → SaveProject。`--scratch` 改在拋棄式副本上跑，驗完即刪。
+               大量修正用 `--fix-file`（JSON），避開 Windows 命令列 32767 字元上限
+    snapshot   唯讀。把 live ST1 原樣寫成 `st1-live.<timeline>.<stamp>.srt`（S7C 前後文審查的輸入）
 
 rebuild exit codes：
     0  驗證通過：ST1 每一句的起訖幀與文字都和計畫一致
@@ -238,6 +240,34 @@ def apply_fixes(cues: Sequence[Cue], fixes: Sequence[Fix]) -> list[Cue]:
             )
         out[positions[0]] = live._replace(text=fix.new)
     return out
+
+
+def load_fix_file(path: Path) -> list[Fix]:
+    """`--fix-file`：`{"fixes": [{"start": 幀, "old": "...", "new": "...", ...}, ...]}`。
+
+    S7C `subtitle_context_review.py apply` 產的 context-fixes.json 就是這個形狀（多出的欄位忽略）。
+    一集上百條修正塞進 `--fix` 會撞 Windows 命令列長度上限。
+    """
+    try:
+        data = json.loads(Path(path).read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RebuildError(f"cannot read --fix-file {path}: {exc}") from exc
+    raw_fixes = data.get("fixes") if isinstance(data, Mapping) else None
+    if not isinstance(raw_fixes, list):
+        raise RebuildError(f"--fix-file {path}: expected an object with a 'fixes' list")
+    fixes = []
+    for position, raw in enumerate(raw_fixes):
+        if not isinstance(raw, Mapping) or not all(key in raw for key in ("start", "old", "new")):
+            raise RebuildError(f"--fix-file {path}: fix #{position} needs start/old/new")
+        try:
+            start = _strict_int(raw["start"])
+        except RebuildError as exc:
+            raise RebuildError(f"--fix-file {path}: fix #{position}: {exc}") from exc
+        fix = Fix(start, normalize_text(str(raw["old"])), normalize_text(str(raw["new"])))
+        if not fix.new:
+            raise RebuildError(f"--fix-file {path}: fix for frame {fix.start} has empty new text")
+        fixes.append(fix)
+    return fixes
 
 
 def build_plan(
@@ -624,6 +654,8 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
     # 1. 規劃：只讀，任何問題都在動到 Resolve 之前擋下
     try:
         fixes = [parse_fix(spec) for spec in args.fix]
+        if args.fix_file:
+            fixes.extend(load_fix_file(args.fix_file))
         added = load_add_cues(args.add_cues, args.timeline) if args.add_cues else []
         resolve = _connect()
         manager, project = _current_project(resolve, args.project)
@@ -761,6 +793,46 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def snapshot_path(out_dir: Path, timeline_name: str, stamp: str) -> Path:
+    """`st1-live.<timeline>.<stamp>.srt`；同名已存在就加 `-2`、`-3`…（不覆寫舊快照）。"""
+    stem = f"st1-live.{_UNSAFE_NAME.sub('_', timeline_name.strip())}.{stamp}"
+    path = out_dir / f"{stem}.srt"
+    suffix = 2
+    while path.exists():
+        path = out_dir / f"{stem}-{suffix}.srt"
+        suffix += 1
+    return path
+
+
+def cmd_snapshot(args: argparse.Namespace) -> int:
+    """唯讀：live ST1 → SRT。不切 current timeline、不存專案。"""
+    try:
+        resolve = _connect()
+        _manager, project = _current_project(resolve, args.project)
+        timeline = _timeline_by_name(project, args.timeline)
+        fps = _timeline_fps(timeline)
+        _timeline_limit(timeline)  # 同 rebuild 的佈局前提（單一字幕軌、start frame 0）
+        cues = _snapshot_st1(timeline)
+    except RebuildError as exc:
+        print(f"ABORT: {exc}", file=sys.stderr)
+        return EXIT_PRECONDITION
+    if not cues:
+        print(f"ABORT: ST1 of {args.timeline!r} is empty", file=sys.stderr)
+        return EXIT_PRECONDITION
+    srt_text = render_srt(cues, fps)
+    if parse_srt(srt_text, fps) != cues:
+        print(
+            "ABORT: snapshot SRT does not parse back to live ST1 (frame rounding?)", file=sys.stderr
+        )
+        return EXIT_PRECONDITION
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    path = snapshot_path(out_dir, args.timeline, datetime.now().strftime("%Y%m%d-%H%M%S"))
+    path.write_text(srt_text, encoding="utf-8")
+    print(f"wrote {path} ({len(cues)} cues, fps {format_fps(fps)})")
+    return EXIT_OK
+
+
 def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         prog="resolve_subtitle_rebuild",
@@ -790,6 +862,11 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         metavar="FRAME=OLD=>NEW",
         help="replace the text of the live cue starting at FRAME (repeatable)",
     )
+    rebuild.add_argument(
+        "--fix-file",
+        type=Path,
+        help='JSON {"fixes": [{"start", "old", "new"}, ...]} (e.g. S7C context-fixes.json)',
+    )
     rebuild.add_argument("--out-dir", required=True, type=Path)
     rebuild.add_argument(
         "--scratch",
@@ -797,6 +874,12 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         help="run on a throwaway duplicate and delete it afterwards (dry run)",
     )
     rebuild.set_defaults(handler=cmd_rebuild)
+
+    snap = commands.add_parser("snapshot", help="read-only: write live ST1 to an SRT")
+    snap.add_argument("--project", required=True)
+    snap.add_argument("--timeline", required=True)
+    snap.add_argument("--out-dir", required=True, type=Path)
+    snap.set_defaults(handler=cmd_snapshot)
     return parser.parse_args(argv)
 
 

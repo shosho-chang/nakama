@@ -81,6 +81,7 @@ consumer 已切換；缺少／stale／tampered receipt 一律 fail closed，不�
 | S5 MAJOR AUDIO | 所有 major-risk components 有 Faster＋Qwen evidence；衝突 retain Memo | 無普通人工 gate |
 | S6 RELEASE | release／ledger／manifest／handoff hash-bound，fresh replay byte-identical | 無普通人工 gate |
 | S7 RESOLVE | project/timeline 建立，字幕 handoff exact-copy | 非字幕 GUI requirement 不算 editorial gate |
+| S7C CONTEXT REVIEW | 全集 live ST1 經第二套 ASR＋說話者＋前後文審查，有把握的修正已寫回 ST1 並逐句驗證，待聽清單已寫 Vault（[§S7C](#s7c-字幕前後文審查agent-owned不是-human-gate)） | **無**——agent-owned，明顯錯誤 agent 自己改 |
 | S7E EDITORIAL MASTER | Intro/Outro 剪入且字幕已上 ST1 並逐句驗證（[§S7E Intro／Outro 字幕上軌](#s7e-introoutro-字幕上軌)）、完整節目人工剪輯、master media/SRT/receipt hash-bound | **Editorial Master approval** |
 | S7P FULL PACKAGING | 完整節目 title／thumbnail／description variants 已產生 | 可非阻塞 review；發布前必須核准 |
 | S8 HIGHLIGHTS | mining、validate、persona review、long shortlist 完成 | **Highlight shortlist review** |
@@ -319,6 +320,12 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_subtitle_release.py build-
 `build-audio-decisions` 只接受 A/B audit-derived exact candidate 且兩個 target observations normalization 後
 完全一致的修正；其他一律 retain Memo。
 
+> 這條 gate 刻意嚴格，代價是會擋掉「兩家都聽對、但和 A/B proposal 差一個字」的修正——2026-11-12
+> 李惠貞 cue 1290「大家知道我們有贊助」：Faster 與 Qwen 都聽到「沒有贊助」，卻因 A/B proposal 的
+> 「我／我們」一字之差被擋，錯字一路進了 Resolve。**不要為此放寬這裡**（ADR-063 的證據契約）；
+> 這類由 S7C 前後文審查補（[§S7C](#s7c-字幕前後文審查agent-owned不是-human-gate)）。真的認為 gate 該改，
+> 另寫 ADR 提案，不要直接改 `build-audio-decisions`。
+
 四步完成後執行 `seal`、再跑 `status`；不得先 finalize、不得要求使用者逐段確認。只有 status 進到
 `ready_to_finalize` 才執行下一節。
 
@@ -400,10 +407,112 @@ E:\nakama\.venv-v2\Scripts\python.exe `
 
 清理數量必須印進 log，不得靜默。要調整詞表改 `HESITATION_FILLERS` / `POSITIONAL_FILLERS`。
 
-Actual build exit 0 只代表 base timeline 建立成功；agent 必須把 base full-program timeline 交給使用者。
-此時 normalization／subtitle
+Actual build exit 0 只代表 base timeline 建立成功；**先跑完 S7C 字幕前後文審查（下一節）**，
+agent 再把 base full-program timeline 交給使用者。此時 normalization／subtitle
 已完成，而使用者可放入自己錄好的 Intro／Outro，完整觀看並移除咳嗽、道歉、卡頓、中斷與不要的段落。
 使用者明確核准並鎖定後，才可建立 `podcast-editorial-master-v1` receipt 並開始任何 repurpose。
+
+### S7C 字幕前後文審查（agent-owned，不是 human gate）
+
+**時機**：S7 actual build 成功之後、把 base timeline 交給修修之前；一定在 Editorial Master approval 之前。
+`second-asr` 只吃 `normalized.wav`，S2 完成後就可以背景先跑，S7 建完時通常只剩 align → 審查 → apply。
+
+> **血淚（2026-11-12，20261111 李惠貞）**：修修在 Resolve 看到節目最後來賓說「好 謝謝學生」——應為
+> 「好 謝謝修修」。這句**字面通順**，所以 S4 兩份「只看文字」的審核都沒標；S5 只聽 major-risk 的
+> 25 項。**全集沒有任何一關拿音檔對文字，也沒有說話者資訊**——而「來賓說的、來賓整集都叫主持人
+> 修修」正是判斷這句錯的關鍵。當天臨時補了本節的流程：第二套 ASR ＋ 麥克風判說話者 ＋ 6 段平行
+> 前後文審查 ＋ 主 agent 逐條複核，抓到 **52 條內容錯誤**（吳欣→無心、進反目→進墳墓、在琴→再興、
+> 打安卓→打籃球…）、清掉 **103 句殘留標點**，62 條列為待聽。另見 §S4–S6 Major-risk dual ASR 的
+> cue 1290「沒有贊助」——S5 gate 擋下的那類，也由這一關補。
+>
+> 修修的立場：**不要讓他在 Resolve 手動改明顯錯誤。** 這一關的輸出是「已經改好的 ST1」，
+> 不是一份要他看的清單。
+
+**這是 agent-owned 工作，不是 human gate。** 主 agent 必須自己判斷明顯錯誤並改掉——像「謝謝學生→
+謝謝修修」（來賓說的、整集稱主持人修修、收尾互謝），證據就在說話者欄與前後文裡，**不可丟回給
+使用者**。只有證據真的不足（兩套 ASR 不一致或一樣錯、前後文兩種讀法都通）才進待聽清單。
+
+**前提**：ST1 的 timeline 時間必須等於 `normalized.wav`／COMBO 的時間（S7 建好、修修還沒插 Intro、
+沒剪段落的 base timeline）。`align` 用 ASR2 吻合率擋時鐘錯位：李惠貞對齊時 67%，時鐘偏 2 秒就掉到
+0.3%，門檻 35%。中止時**停下來回報**，不要加 `--allow-low-match` 硬跑——Intro 已插入／段落已剪的
+timeline 需要另做時間對應，目前沒有實作。
+
+工作目錄 `<work>` = `<episode>\subtitle-work\context-review-v1`。程式：`scripts/subtitle_context_review.py`
+（純邏輯測試 `tests/scripts/test_subtitle_context_review.py`）；寫回 Resolve 走
+`scripts/resolve_subtitle_rebuild.py`（同 §S7E 的整軌重建，Resolve scripting 單執行緒，不要和其他上軌
+工作同時跑）。
+
+**1. 第二套 ASR**（Faster-Whisper large-v3，固定 revision、cuda/float16、word timestamps、VAD off、
+`condition_on_previous_text=False`；GPU 工作，先看 subtitle-gen 的 GPU 注意事項）：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\subtitle_context_review.py second-asr `
+  --episode "<episode>" --out-dir "<work>"
+```
+
+**2. live ST1 快照 → 對齊**（唯讀快照；`align` 每句算 frame、說話者、同時段 ASR2（OpenCC s2twp）、
+相似度，寫 `review.jsonl` 與每 620 句一段的 `review-NN.txt`）：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\resolve_subtitle_rebuild.py snapshot `
+  --project "<project>" --timeline "<timeline>" --out-dir "<work>"
+E:\nakama\.venv-v2\Scripts\python.exe scripts\subtitle_context_review.py align `
+  --episode "<episode>" --srt "<work>\st1-live.<timeline>.<stamp>.srt" --out-dir "<work>"
+```
+
+timeline 不是 30 fps 時加 `--fps`（snapshot 會印出 fps）。說話者：主持麥 `Audio/1_COMBO-1.wav` 與
+來賓麥 `Audio/2_COMBO-2.wav` 的 RMS 差**大於** 8 dB 才判給一方，否則「兩人」。
+
+**3. 平行審查**：每段 `review-NN.txt` 派一位審查 subagent（李惠貞 3659 句＝6 段＝6 位），同一則訊息
+平行派出。brief 用 [references/subtitle-context-review-brief.md](references/subtitle-context-review-brief.md)，
+把 `{…}` 換成本集的來賓資料、已確認寫法、Vault reference 路徑、`<work>` 路徑。每位寫
+`<work>\proposals\proposals-NN.json`（`fixes` ＋ `needs_ear`；`high` = 有具體證據，不是「聽起來像」）。
+
+**4. 主 agent 逐條複核**（不可跳過、不可整批照收）：對每一條 proposal 讀 `review.jsonl` 的**前後兩句
+＋說話者＋ASR2**，自己判斷，寫 `<work>\decisions.json`：
+
+```json
+{"accepted": [3400, 450],
+ "rejected": [{"n": 2128, "why": "證據不足", "needs_ear": true},
+              {"n": 3422, "why": "本人改口，照實保留"}],
+ "edited":   [{"n": 1290, "new": "大家知道我們沒有贊助", "why": "兩套 ASR 都是沒有；審查員多改了一字"}],
+ "added":    [{"n": 3401, "old": "…", "new": "…", "why": "複核時順手抓到"}],
+ "needs_ear": [{"n": 1450, "why": "…", "maybe": "…"}]}
+```
+
+每條 proposal 必須恰好出現在 `accepted`／`rejected`／`edited` 其中之一，否則 `apply` 整批中止；
+兩位審查員對同一句給不同答案時只能用 `edited` 裁決。口誤（本人說錯的事實）照實保留，進 `rejected`。
+
+**5. apply**：合併決定 ＋ 全集標點清理 → `<work>\context-fixes.json` → 先 scratch 再正式：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\subtitle_context_review.py apply --work-dir "<work>" --plan-only
+E:\nakama\.venv-v2\Scripts\python.exe scripts\subtitle_context_review.py apply --work-dir "<work>" `
+  --project "<project>" --timeline "<timeline>" --scratch
+E:\nakama\.venv-v2\Scripts\python.exe scripts\subtitle_context_review.py apply --work-dir "<work>" `
+  --project "<project>" --timeline "<timeline>" --live
+```
+
+- 標點清理對**每一句**都做（包含審查員的 `new`）：去掉 `，。；：？！ ,.;:?!` 與 `~～…`；
+  **保留**列舉頓號「、」、書名號、數字內的 `. , :`（3.5、1,000、10:30）與英數之間的 `.`（shosho.tw）；
+  最後過 `shared.subtitle_finalize.space_han_latin`（半形英數與漢字間一個空白）。清完變空句的不改，進待聽。
+- `apply` 把修正寫成 `context-fixes.json` 交給 `rebuild --fix-file`（上百條塞 `--fix` 會撞 Windows
+  命令列上限）。rebuild 會比對每句 live 文字＝`old`；修修若已在 Resolve 改過某句就整批 exit 2、
+  ST1 沒動——重跑 snapshot → align → apply（decisions 的 n 要重對）。
+- `--scratch` 驗證通過（`VERIFIED on scratch`）才跑 `--live`；exit code 與還原方式同 §S7E。
+- `--plan-only` 先看 `counts`（content／format／needs_ear／skipped）與前幾條修正是否合理。
+
+**6. 待聽清單寫 Vault**（下一個 NN 編號，接在該訪談資料夾既有檔案之後）：
+
+```powershell
+E:\nakama\.venv-v2\Scripts\python.exe scripts\subtitle_context_review.py listen-list --work-dir "<work>" `
+  --out "E:\Shosho LifeOS\AgentOutputs\interviews\<訪談日>-<來賓>\NN-字幕待聽清單.md" `
+  --title "<來賓> 字幕待聽清單" --episode-name "<episode 資料夾名>" --timeline "<timeline>" --created <YYYY-MM-DD>
+```
+
+產生後主 agent 把表格**去重、刪掉其實已有把握的**（有把握就回第 4 步改掉，不要留給修修），
+必要時依段落（節目本體／錄完後閒聊）分節。回報修修時只講：改了幾句（舉 3–5 個代表例）、待聽幾句、
+清單路徑。
 
 ### S7E Intro／Outro 字幕上軌
 

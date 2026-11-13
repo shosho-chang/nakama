@@ -445,3 +445,57 @@ def test_map_cues_cli_exits_2_on_bad_input(tmp_path: Path) -> None:
     out = tmp_path / "cues.json"
     assert rsr.main(["map-cues", "--input", str(source), "--out", str(out)]) == 2
     assert not out.exists()
+
+
+def test_load_fix_file_reads_context_fixes_shape(tmp_path: Path) -> None:
+    path = tmp_path / "context-fixes.json"
+    path.write_text(
+        json.dumps(
+            {
+                "counts": {"content": 1},
+                "fixes": [
+                    {
+                        "n": 3400,
+                        "start": 168807,
+                        "old": " 好 謝謝學生",
+                        "new": "好 謝謝修修 ",
+                        "kind": "content",
+                    },
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8-sig",
+    )
+    assert rsr.load_fix_file(path) == [Fix(168807, "好 謝謝學生", "好 謝謝修修")]
+
+
+@pytest.mark.parametrize(
+    "payload",
+    [
+        [],
+        {"fixes": {}},
+        {"fixes": [{"start": 1, "old": "a"}]},
+        {"fixes": [{"start": "1", "old": "a", "new": "b"}]},
+        {"fixes": [{"start": 1, "old": "a", "new": "  "}]},
+    ],
+)
+def test_load_fix_file_rejects_bad_shapes(tmp_path: Path, payload) -> None:
+    path = tmp_path / "fixes.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+    with pytest.raises(RebuildError):
+        rsr.load_fix_file(path)
+
+
+def test_load_fix_file_missing_file_is_a_rebuild_error(tmp_path: Path) -> None:
+    with pytest.raises(RebuildError):
+        rsr.load_fix_file(tmp_path / "nope.json")
+
+
+def test_snapshot_path_never_overwrites(tmp_path: Path) -> None:
+    first = rsr.snapshot_path(tmp_path, "20261111 李惠貞", "20261112-120000")
+    assert first.name == "st1-live.20261111_李惠貞.20261112-120000.srt"
+    first.write_text("x", encoding="utf-8")
+    assert rsr.snapshot_path(tmp_path, "20261111 李惠貞", "20261112-120000").name == (
+        "st1-live.20261111_李惠貞.20261112-120000-2.srt"
+    )
