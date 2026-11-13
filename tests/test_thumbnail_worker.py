@@ -31,6 +31,13 @@ from agents.brook.script_video.render_workers.thumbnail_worker import (
 )
 
 
+def _fake_video_dir(root: Path) -> Path:
+    """render 會從 video/package.json 讀 hyperframes 的確切版本（shared.hyperframes_cli）。"""
+    root.mkdir(parents=True, exist_ok=True)
+    (root / "package.json").write_text(json.dumps({"dependencies": {"hyperframes": "0.8.206"}}))
+    return root
+
+
 def _post_measurement(url: str, *, missing: str | None = None) -> None:
     boxes = {
         "protected_center_bbox": {"x": 420, "y": 100, "width": 440, "height": 520},
@@ -124,7 +131,12 @@ def assets(tmp_path: Path) -> dict[str, Path]:
     bg = tmp_path / "bg.jpg"
     bg.write_bytes(b"\xff\xd8\xff\xe0fake-jpeg-bytes")
     out_png = tmp_path / "out" / "v1.png"
-    return {"cutout": cutout, "bg": bg, "out_png": out_png, "video_dir": tmp_path / "video"}
+    return {
+        "cutout": cutout,
+        "bg": bg,
+        "out_png": out_png,
+        "video_dir": _fake_video_dir(tmp_path / "video"),
+    }
 
 
 def test_build_argv_uses_variables_file_not_inline_variables():
@@ -132,7 +144,8 @@ def test_build_argv_uses_variables_file_not_inline_variables():
     variables_file = Path("/some/path/v1.variables.json")
     frames_dir = Path("/some/path/_frames_v1")
     argv = _build_argv(YOUTUBE_COMPOSITION, variables_file, frames_dir)
-    assert argv[:3] == ["npx", "hyperframes", "render"]
+    assert argv[:2] == ["npx", "--yes"]
+    assert argv[2].startswith("hyperframes@") and argv[3] == "render"
     assert YOUTUBE_COMPOSITION in argv
     assert "--variables-file" in argv
     assert str(variables_file) in argv
@@ -243,7 +256,7 @@ def test_render_success_writes_variables_json_and_copies_first_frame(
     argv = written_argv[0]
     # argv[0] 在 spawn 前經 shutil.which 解析（Windows 上 npx 是 npx.cmd）
     assert Path(argv[0]).stem == "npx"
-    assert list(argv[1:3]) == ["hyperframes", "render"]
+    assert list(argv[1:4]) == ["--yes", "hyperframes@0.8.206", "render"]
 
 
 def test_render_success_variables_json_contains_data_urls(assets: dict[str, Path]):
@@ -363,7 +376,7 @@ def podcast_assets(tmp_path: Path) -> dict[str, Path]:
         "guest": guest,
         "bg": bg,
         "out_png": out_png,
-        "video_dir": tmp_path / "video",
+        "video_dir": _fake_video_dir(tmp_path / "video"),
     }
 
 
