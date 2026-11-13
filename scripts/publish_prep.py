@@ -23,7 +23,7 @@ Release（draft），等文案（packaging 交接檔）、等排程、等修修�
 完整版（`--cut full`）例外：落點是 `<episode>/final/<集數資料夾名>.mp4`（跟封面、標題同一個
 上傳包資料夾），旁邊放同名的
 上傳字幕 `<集數資料夾名>.srt`＝Editorial Master `master.srt` 的逐位元組複本，以及
-podcast 音檔 `<集數資料夾名>.mp3`（從完整版 mp4 抽音軌）。
+podcast 音檔 `<集數資料夾名>.mp3`（從封存的 master.mp4 抽音軌，含片尾音樂尾巴）。
 檔名規則的唯一來源是 `shared/export_paths.py`。
 
 執行環境同 longform-cut skill：Resolve Studio 開著、`py -3.10`。
@@ -422,12 +422,18 @@ def _master_srt(episode_dir: Path) -> Path:
     return Path(episode_dir) / VERSION_RELATIVE / CANONICAL_ARTIFACTS["subtitles"]
 
 
-def _extract_podcast_mp3(video: Path, target: Path) -> Path:
-    """完整版 mp4 的音軌 → podcast mp3（320k／48 kHz／stereo，同 Kelly Tsai 集上架規格）。
+def _master_media(episode_dir: Path) -> Path:
+    """Editorial Master 封存的 `master.mp4`：整條 timeline，含片尾音樂尾巴。"""
+    return Path(episode_dir) / VERSION_RELATIVE / CANONICAL_ARTIFACTS["media"]
 
-    不再叫 Resolve 另算純音訊：2026-11-13 20261111 李惠貞 先在 Resolve 算 Wave 之後，
-    render 格式卡在非 H264，Editorial Master seal 算出只有聲音的 master.mp4。
-    完整版 mp4 的混音就是 timeline 混音，直接抽最穩。
+
+def _extract_podcast_mp3(video: Path, target: Path) -> Path:
+    """封存母帶的音軌 → podcast mp3（320k／48 kHz／stereo，同 Kelly Tsai 集上架規格）。
+
+    來源是 `master.mp4`，不是上傳用 mp4：上傳版算到主畫面最後一格就停
+    （20261111 李惠貞 少 2.66 秒），會切掉片尾音樂的尾巴；master.mp4 是整條 timeline。
+    也不叫 Resolve 另算純音訊：2026-11-13 先在 Resolve 算 Wave 之後，render 格式
+    卡在非 H264，Editorial Master seal 算出只有聲音的 master.mp4。
     """
     temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp.mp3")
     subprocess.run(
@@ -509,7 +515,9 @@ def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
     dur, size = _probe(final)
     podcast_mp3: Path | None = None
     if is_full:
-        podcast_mp3 = _extract_podcast_mp3(final, export_audio_path(episode_dir))
+        podcast_mp3 = _extract_podcast_mp3(
+            _master_media(episode_dir), export_audio_path(episode_dir)
+        )
         logger.info("%s: podcast 音檔 %s", cid, podcast_mp3.name)
     srt_path = upload_srt if is_full else _latest_tight_srt(episode_dir, cid)
     return {

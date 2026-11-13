@@ -407,8 +407,9 @@ def test_full_cut_upload_pair_is_named_after_the_episode(tmp_path, monkeypatch):
     assert info["cut_id"] == "full"
     assert info["file"] == str(media)
     assert info["cc_srt"] == str(srt)
-    # podcast 音檔從完整版 mp4 抽，同名放在 final/
-    assert extracted == [(media, exports / "20261021 Kelly Tsai.mp3")]
+    # podcast 音檔從封存的 master.mp4 抽（整條 timeline，不是算到主畫面為止的上傳版），同名放 final/
+    master_media = root / "editorial-master" / "v1" / "master.mp4"
+    assert extracted == [(master_media, exports / "20261021 Kelly Tsai.mp3")]
     assert info["podcast_mp3"] == str(exports / "20261021 Kelly Tsai.mp3")
     assert not (exports / "full.mp4").exists()
     assert not list(exports.glob("*.tmp"))

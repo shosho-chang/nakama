@@ -674,7 +674,7 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\publish_prep.py "<episode>" --cut 
 
 - `<episode>\final\<episode>.mp4`——上傳用影片，Shosho YT 字幕樣式燒進畫面
 - `<episode>\final\<episode>.srt`——上傳用 CC，與 `master.srt` byte-identical
-- `<episode>\final\<episode>.mp3`——podcast 平台音檔（320k／48 kHz／stereo），從上面的 mp4 抽音軌
+- `<episode>\final\<episode>.mp3`——podcast 平台音檔（320k／48 kHz／stereo），從封存的 `master.mp4` 抽音軌（上傳版 mp4 算到主畫面為止，會少片尾音樂尾巴）
 
 **不要為了 podcast 音檔另外叫 Resolve 算純音訊**（Deliver 的 Audio Only／Wave）：2026-11-13 這樣做之後
 render 格式卡在非 H264，Editorial Master seal 算出只有聲音的 master.mp4 被擋。修修急著要音檔時，

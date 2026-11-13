@@ -55,6 +55,7 @@ _REPO_ROOT = _SCRIPT_DIR.parents[3]  # scripts/ → title-brainstorm/ → skills
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from shared.ai_slop import slop_hits  # noqa: E402
 from shared.thumbnail_playbook import load_playbook_index  # noqa: E402
 
 try:
@@ -198,6 +199,16 @@ def emit(
         sys.stderr.write(
             f"emit_packages: D/F-grade archetype 已剔除 {rejected_ids} (brand credibility gate)\n"
         )
+
+    # AI 腔硬關卡（修修 2026-11-13）：LLM panel 看不出來，這裡 deterministic 擋。
+    slop = [
+        (raw.get("text", ""), hits)
+        for raw in accepted_raw
+        if (hits := slop_hits(str(raw.get("text", ""))))
+    ]
+    if slop:
+        detail = "；".join(f"{text!r} → {'、'.join(hits)}" for text, hits in slop)
+        raise ValueError(f"標題命中 AI 腔禁用清單（shared/ai_slop.py），重寫後再 emit：{detail}")
 
     # Validate each TitleV1 — pydantic raises ValidationError on bad shape
     titles: list[TitleV1] = []

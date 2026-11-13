@@ -457,3 +457,17 @@ class TestEpisodeIsNotASlug:
 
         written = json.loads((tmp_path / "packages.json").read_text(encoding="utf-8"))
         assert written["episode"] == "20250604 Ray 不平等優勢"
+
+
+class TestAiSlopGate:
+    """修修 2026-11-13：「那筆帳」「算一筆帳」全都是 AI slop，嚴禁。panel 看不出來，emit 硬擋。"""
+
+    def test_emit_refuses_slop_title_and_writes_nothing(self, tmp_path):
+        payload = _long_input()
+        payload["titles"] = [dict(t) for t in _LONG_TITLES]
+        payload["titles"][0]["text"] = "不敢離職的人：她離職前算的那筆帳 ft. 李惠貞"
+        packaging_dir = tmp_path / "packaging"
+
+        with pytest.raises(ValueError, match="AI 腔"):
+            emit_mod.emit(payload, packaging_dir)
+        assert not (packaging_dir / "packages.json").exists()
