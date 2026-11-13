@@ -18,10 +18,24 @@ pytest --cov=shared --cov=thousand_sunny --cov=agents \
 
 ### CI 自動跑
 
-`.github/workflows/ci.yml` 兩步：
+`.github/workflows/ci.yml` 三步：
 
-1. `pytest --cov=... --cov-report=json:coverage.json --cov-report=term`（整體不設 `--cov-fail-under`，**整體 % 不擋 CI**）
-2. `python scripts/check_critical_path_coverage.py`（讀 `coverage.json`，對 critical-path 模組逐一驗 ≥ threshold；缺一個就 exit 1）
+1. `python scripts/ci_slow_test_scope.py`（只在 PR）：決定這次要不要跑 `@pytest.mark.slow` 測試（見下節）
+2. `pytest -n logical --durations=25 [-m "not slow"] --cov=... --cov-report=json:coverage.json --cov-report=term`（pytest-xdist 4 worker 平行跑，pytest-cov 自動合併各 worker 覆蓋率；整體不設 `--cov-fail-under`，**整體 % 不擋 CI**）
+3. `python scripts/check_critical_path_coverage.py`（讀 `coverage.json`，對 critical-path 模組逐一驗 ≥ threshold；缺一個就 exit 1）
+
+### slow 測試分流
+
+少數幾個天生就重的整合測試檔（真的 `GenerationStore`、每次 load 重驗全部 artifact hash）
+在檔頭標 `pytestmark = pytest.mark.slow`，約佔全套測試時間 4 成。
+
+- **push 到 main**：永遠全跑。
+- **PR**：`scripts/ci_slow_test_scope.py` 用 AST 靜態算出 slow 測試檔（含 conftest 鏈）的傳遞 import 範圍；PR 改動命中範圍內的 `.py`、範圍內 package 底下的資料檔、或全域設定（`pyproject.toml` / `requirements*` / 任何 `conftest.py` / `ci.yml`）才跑 slow，否則 `-m "not slow"`。判斷理由印在 CI log 的「Decide test scope」步驟。
+- critical-path gate 在 `-m "not slow"` 下照樣要過（已驗證：9 個模組都不靠 slow 測試撐覆蓋率）。
+- 新增 slow 檔：檔頭加 `pytestmark = pytest.mark.slow` 加一行理由註解即可，import 範圍自動算，不用改清單。
+- 本機想跳過：`pytest -m "not slow"`。
+
+CI 時間實測（PR #1386，同一台 runner）：一般 PR 測試 ~8 分、全跑 ~12.5 分；改版前序列執行 ~48 分。
 
 ### 預設不在 pytest 跑 cov
 
