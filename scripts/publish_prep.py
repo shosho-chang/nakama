@@ -262,7 +262,14 @@ def _render_master(
     """
     w = int(timeline.GetSetting("timelineResolutionWidth"))
     h = int(timeline.GetSetting("timelineResolutionHeight"))
-    project.SetCurrentRenderFormatAndCodec("mp4", "H264")
+    # 2026-11-13 20261111 李惠貞：先前算過純音訊（Wave／Audio Only）後，這行會靜默失敗、
+    # codec 停在 APVYUV422_10，master.mp4 只剩聲音被 seal 擋下。失敗就先載入內建
+    # 「H.264 Master」重設，再設一次；還是不行就停，不要算出錯的檔。
+    if not project.SetCurrentRenderFormatAndCodec("mp4", "H264"):
+        project.LoadRenderPreset("H.264 Master")
+        if not project.SetCurrentRenderFormatAndCodec("mp4", "H264"):
+            current = project.GetCurrentRenderFormatAndCodec()
+            raise SystemExit(f"無法把 render 格式設成 mp4/H264（目前 {current}）")
     # ExportVideo／ExportAudio 必須明設：沒設就繼承 Deliver 頁當下的 preset。
     # 2026-10-02 20260722 李海碩：修修剛在 Deliver 頁用「Audio Only」匯 podcast mp3，
     # master.mp4 跟著變成純音訊，Editorial Master seal 擋在「must contain both
