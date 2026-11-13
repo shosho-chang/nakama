@@ -7,8 +7,9 @@ nami 版 delegate 到 shared 版，兩組測試都不可刪。
 ADR-070 S0 的部分鎖住兩件事：
 1. ``log_sdk_message`` / ``log_sdk_exception`` 把 F15 的額度訊號、錯誤與成功摘要
    原樣寫進 ``nakama.llm_lane``，而且對舊版 SDK（缺欄位、缺類別）不會炸。
-2. 四個呼叫點（Nami、merger、Sanji judge、``claude -p``）真的有接上，且控制流程
-   與回傳值不變。全部用假 stream / 假 subprocess，不打任何網路或 LLM。
+2. 三個呼叫點（Nami、merger、``claude -p``）真的有接上，且控制流程
+   與回傳值不變（Sanji judge 的呼叫點已隨遊戲化移至 freedom-fleet）。
+   全部用假 stream / 假 subprocess，不打任何網路或 LLM。
 """
 
 from __future__ import annotations
@@ -457,31 +458,6 @@ def test_merger_sdk_success_return_value_unchanged(lane_caplog, monkeypatch):
     monkeypatch.setattr(claude_agent_sdk, "query", _fake_stream([_assistant(), final]))
     mapping, result_msg = merger._sdk_merge_once("p", "opus")
     assert mapping is None and result_msg is final
-    assert [e for e, _, _ in _lane(lane_caplog)] == ["sdk_result_ok"]
-
-
-def test_sanji_judge_logs_and_still_degrades_to_provisional(lane_caplog, monkeypatch):
-    from agents.sanji import judge  # noqa: PLC0415
-
-    err = Exception("Claude Code returned an error result: rate limited")
-    monkeypatch.setattr(judge, "query", _fake_stream([_rate_limit_event()], raise_after=err))
-    monkeypatch.setattr(judge, "get_model", lambda **kw: "haiku")
-    text = "今天睡前做了十分鐘的身體掃描，肩膀放鬆很多，記錄一下感受。"
-    d = judge.judge_feed({"message": text, "media": []}, "睡眠")
-    assert (d.action, d.note) == ("provisional", "haiku:error:Exception")
-    events = [(e, p["site"]) for e, p, _ in _lane(lane_caplog)]
-    assert events == [("sdk_rate_limit", "sanji.judge"), ("sdk_exception", "sanji.judge")]
-
-
-def test_sanji_judge_success_path_unchanged(lane_caplog, monkeypatch):
-    from agents.sanji import judge  # noqa: PLC0415
-
-    ok = _result(result='{"verdict": "pass", "reason": "有練習"}')
-    monkeypatch.setattr(judge, "query", _fake_stream([_assistant(), ok]))
-    monkeypatch.setattr(judge, "get_model", lambda **kw: "haiku")
-    text = "今天睡前做了十分鐘的身體掃描，肩膀放鬆很多，記錄一下感受。"
-    d = judge.judge_feed({"message": text, "media": []}, "睡眠")
-    assert (d.action, d.note) == ("approve", "haiku:pass:有練習")
     assert [e for e, _, _ in _lane(lane_caplog)] == ["sdk_result_ok"]
 
 

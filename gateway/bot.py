@@ -18,7 +18,7 @@ import re
 import threading
 from typing import TYPE_CHECKING, Callable
 
-from gateway.access import allowed_user_ids, is_allowed
+from gateway.access import DENY_MESSAGE, is_allowed
 from gateway.conversation_state import get_store
 from gateway.formatters import format_agent_response
 from gateway.handlers import get_handler
@@ -95,14 +95,13 @@ def _make_slash_command_handler() -> Callable:
         text = command.get("text", "").strip()
         user_id = command["user_id"]
 
-        if not is_allowed(user_id):
-            logger.warning(f"Slash command {cmd_name} denied: user {user_id} not in allowlist")
-            respond("你目前沒有使用這個 agent 的權限。")
-            return
-
         logger.info(f"Slash command: {cmd_name} '{text}' from {user_id}")
 
         route = route_slash_command(cmd_name, text)
+        if not is_allowed(route.agent, user_id):
+            logger.info(f"Slash command {cmd_name} denied for {user_id} (agent={route.agent})")
+            respond(DENY_MESSAGE)
+            return
         handler = get_handler(route.agent)
 
         if not handler:
@@ -111,6 +110,10 @@ def _make_slash_command_handler() -> Callable:
 
         if not handler.can_handle(route.intent):
             redirect = handler.suggest_redirect(route.intent)
+            if redirect and not is_allowed(redirect, user_id):
+                logger.info(f"Slash redirect to {redirect} denied for {user_id}")
+                respond(DENY_MESSAGE)
+                return
             if redirect:
                 redirect_handler = get_handler(redirect)
                 if redirect_handler:
@@ -139,12 +142,12 @@ def _make_mention_handler(agent_name: str) -> Callable:
         event_ts = event.get("ts")
         msg_thread_ts = event.get("thread_ts")
 
-        if not is_allowed(user_id):
-            # 不回話：避免對非白名單成員洩漏 agent 行為；只留 log
-            logger.warning(f"[{agent_name}] Mention denied: user {user_id} in {channel}")
-            return
-
         logger.info(f"[{agent_name}] Mention in {channel}: '{text}' from {user_id}")
+
+        if not is_allowed(agent_name, user_id):
+            logger.info(f"[{agent_name}] Mention denied for {user_id}")
+            say(DENY_MESSAGE, thread_ts=msg_thread_ts or event_ts)
+            return
 
         handler = get_handler(agent_name)
         if not handler:
@@ -189,12 +192,6 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
         user_id = event.get("user", "")
         channel = event.get("channel", "")
 
-        if not is_allowed(user_id):
-            # 頻道裡的一般對話也會進這裡，只有 DM 值得記 warning
-            if event.get("channel_type") == "im":
-                logger.warning(f"[{agent_name}] DM denied: user {user_id}")
-            return
-
         logger.debug(
             f"[{agent_name}] Message event: ts={msg_ts} thread_ts={thread_ts} "
             f"user={user_id} channel={channel}"
@@ -223,6 +220,11 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
             if not text and not event.get("files"):
                 return
             logger.info(f"[{agent_name}] DM new conversation: user={user_id} text='{text[:50]}'")
+
+            if not is_allowed(agent_name, user_id):
+                logger.info(f"[{agent_name}] DM denied for {user_id}")
+                say(DENY_MESSAGE)
+                return
 
             handler = get_handler(agent_name)
             if handler is None:
@@ -253,6 +255,9 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
             return
         if conv.agent_name != agent_name:
             # 其他 bot 的 thread，不要搶
+            return
+        # 開串之後才被移出白名單的人，不再接續
+        if not is_allowed(agent_name, user_id):
             return
 
         handler = get_handler(conv.agent_name)
@@ -349,15 +354,7 @@ def run() -> None:
             "<AGENT>_SLACK_APP_TOKEN 至少一組）。見 docs/runbooks/add-agent-slack-bot.md"
         )
 
-    allowed = allowed_user_ids()
-    if not allowed:
-        raise RuntimeError(
-            "Slack 使用者白名單是空的：至少要設 SLACK_USER_ID_SHOSHO 或 "
-            "SLACK_ALLOWED_USER_IDS，否則 workspace 所有成員都能操作 agent。"
-        )
-
     logger.info(f"啟動 {len(bots)} 個 Slack bot：{[a for a, _, _ in bots]}")
-    logger.info(f"Slack 使用者白名單：{sorted(allowed)}")
 
     from slack_bolt.adapter.socket_mode import SocketModeHandler
 

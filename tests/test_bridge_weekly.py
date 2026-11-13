@@ -1520,6 +1520,33 @@ class TestUnifiedTaskViewsAndDone:
         fm = yaml.safe_load(_task_path(tmp_path).read_text(encoding="utf-8").split("---", 2)[1])
         assert fm["status"] == "to-do"
 
+    def test_done_route_from_task_page_returns_to_task(self, client, tmp_path):
+        # 修修 2026-11-09: the task page's own checkbox posts from_task=1 and lands
+        # back on the task page with a saved banner, not on the dashboard.
+        r = client.post(
+            "/bridge/weekly/task/測試任務/done",
+            data={"done": "1", "week": WEEK_KEY, "from_task": "1"},
+            follow_redirects=False,
+        )
+        assert r.status_code == 303
+        assert r.headers["location"] == (
+            f"/bridge/weekly/task/%E6%B8%AC%E8%A9%A6%E4%BB%BB%E5%8B%99?week={WEEK_KEY}&saved=done"
+        )
+        fm = yaml.safe_load(_task_path(tmp_path).read_text(encoding="utf-8").split("---", 2)[1])
+        assert fm["status"] == "done"
+        page = client.get(r.headers["location"]).text
+        assert "已標記完成" in page
+        assert 'aria-pressed="true"' in page
+        assert 'name="from_task" value="1"' in page
+        r = client.post(
+            "/bridge/weekly/task/測試任務/done",
+            data={"done": "0", "week": WEEK_KEY, "from_task": "1"},
+            follow_redirects=False,
+        )
+        assert r.headers["location"].endswith("&saved=reopened")
+        fm = yaml.safe_load(_task_path(tmp_path).read_text(encoding="utf-8").split("---", 2)[1])
+        assert fm["status"] == "to-do"
+
     def test_done_route_unknown_task(self, client):
         r = client.post(
             "/bridge/weekly/task/不存在/done",

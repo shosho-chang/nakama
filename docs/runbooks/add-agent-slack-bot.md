@@ -125,18 +125,17 @@ systemctl status nakama-gateway --no-pager | head
 
 ## 使用者白名單（誰能叫 agent）
 
-Workspace 裡任何成員都能 DM / @mention 已安裝的 bot，所以 gateway 入口有白名單
-（`gateway/access.py`）。三個入口（slash command / @mention / DM 與 thread 回覆）
-都先檢查發話者：
+Workspace 裡任何成員都能 DM / @mention 已安裝的 bot，所以 gateway 入口有權限檢查
+（`gateway/access.py`）。四個入口（slash command / @mention / DM / thread 接續）都先檢查
+「這個人能不能叫這個 agent」：
 
-- 白名單 = `SLACK_ALLOWED_USER_IDS`（逗號分隔）∪ `SLACK_USER_ID_SHOSHO`
-- 兩個都沒設 → gateway **拒絕啟動**（fail-closed）
-- 不在名單：slash command 回「沒有權限」；@mention / DM 不回話，只留 log
-  `Mention denied` / `DM denied`
-- 邀新成員進 workspace **不會**自動給他 agent 權限。要開放：把他的 Slack user ID
-  （profile → ⋮ → Copy member ID）加進 `.env` 的 `SLACK_ALLOWED_USER_IDS`，重啟 gateway。
-  目前白名單是全有全無：加進去就能用**所有** agent 的**所有**工具（含 Nami 操作修修的
-  Gmail / 行事曆 / vault）。
+- 修修（env `SLACK_USER_ID_SHOSHO`）可以叫全部 agent
+- 其他人預設一律不行；要開放就把對方的 Slack member ID（profile → ⋮ → Copy member ID）
+  列進 `config.yaml` 的 `gateway.slack.extra_allowed_users.<agent>`，部署後重啟 gateway
+- `SLACK_USER_ID_SHOSHO` 沒設 → 不會因此放行任何人（fail closed），只剩白名單上的人能用
+- 被擋的人會收到「抱歉，我目前只接受修修的指令。」，log 留 `... denied for U...`
+- 權限是 agent 層級：開放某個 agent = 該 agent 的**所有**工具都能用。Nami 背後是修修的
+  Gmail / 行事曆 / vault，開放前要先想清楚
 
 ## Troubleshooting — `@<Agent>` 沒反應
 
@@ -144,8 +143,9 @@ Workspace 裡任何成員都能 DM / @mention 已安裝的 bot，所以 gateway 
 
 ```bash
 # 0. 是不是被白名單擋了？
-journalctl -u nakama-gateway --since "10 minutes ago" --no-pager | grep -E "denied|白名單"
-# 看到 `Mention denied: user U...` → 該 user 不在 SLACK_ALLOWED_USER_IDS / SLACK_USER_ID_SHOSHO
+journalctl -u nakama-gateway --since "10 minutes ago" --no-pager | grep "denied"
+# 看到 `[<agent>] Mention denied for U...` → 該 user 不是修修、也不在
+# config.yaml gateway.slack.extra_allowed_users.<agent>
 
 # 1. Gateway 認得 bot 嗎？
 journalctl -u nakama-gateway -n 20 --no-pager | grep "啟動\|Socket"

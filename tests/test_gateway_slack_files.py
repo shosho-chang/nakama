@@ -43,6 +43,12 @@ EMAIL_FILE_IN_EVENT = {
 }
 
 
+@pytest.fixture(autouse=True)
+def _sender_is_owner(monkeypatch: pytest.MonkeyPatch) -> None:
+    """這裡的事件都是修修（U1）發的；權限檢查見 test_gateway_access.py。"""
+    monkeypatch.setenv("SLACK_USER_ID_SHOSHO", "U1")
+
+
 def _client(file: dict | None = None, error: Exception | None = None) -> MagicMock:
     client = MagicMock()
     if error is not None:
@@ -100,12 +106,6 @@ def test_with_attachments_appends_after_user_text():
 
 
 # ── bot.py 接線 ─────────────────────────────────────────────────────────
-
-
-@pytest.fixture(autouse=True)
-def _allow_test_user(monkeypatch: pytest.MonkeyPatch) -> None:
-    """bot.py 入口有使用者白名單（gateway/access.py）；讓測試用的 U1 通過。"""
-    monkeypatch.setenv("SLACK_ALLOWED_USER_IDS", "U1")
 
 
 def _dm_event(text: str) -> dict:
