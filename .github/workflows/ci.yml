@@ -16,6 +16,12 @@ on:
       - 'memory/**'
       - '.github/ISSUE_TEMPLATE/**'
 
+# PR：同一條 branch 推新 commit／rebase 時取消舊的那輪（舊結果已無用，只會佔 runner）。
+# main push：group 帶 sha，每個 commit 各自一組、不互相取消（main 每一輪都要跑完）。
+concurrency:
+  group: ci-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
@@ -45,7 +51,9 @@ jobs:
         run: ruff format --check .
 
       - name: Run tests with coverage
-        run: pytest --cov=shared --cov=thousand_sunny --cov=agents --cov-report=json:coverage.json --cov-report=term
+        # -n auto：xdist 依 runner 核心數開 worker（GH public runner = 4 vCPU）；
+        # pytest-cov 會自動合併各 worker 的覆蓋率，critical-path gate 照讀 coverage.json。
+        run: pytest -n auto --cov=shared --cov=thousand_sunny --cov=agents --cov-report=json:coverage.json --cov-report=term
 
       - name: Critical-path coverage gate
         run: python scripts/check_critical_path_coverage.py
