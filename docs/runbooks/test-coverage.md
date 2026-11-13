@@ -35,7 +35,7 @@ pytest --cov=shared --cov=thousand_sunny --cov=agents \
 - 新增 slow 檔：檔頭加 `pytestmark = pytest.mark.slow` 加一行理由註解即可，import 範圍自動算，不用改清單。
 - 本機想跳過：`pytest -m "not slow"`。
 
-CI 時間實測（PR #1386，同一台 runner）：一般 PR 測試 ~8 分、全跑 ~12.5 分；改版前序列執行 ~48 分。
+CI 時間實測（PR #1386，同一台 runner、2 worker）：一般 PR 的 pytest 步驟 ~9 分、全跑 ~14 分；改版前序列執行 ~48 分。GH runner 機器差異大，同設定兩次可差到 1.7 倍。
 
 ### 預設不在 pytest 跑 cov
 
