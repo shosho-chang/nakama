@@ -10,7 +10,7 @@ word_count:
 # 正文不撒 emoji，但 CTA/購書連結附近偶見（👉🥰）。v2 盲抽修正 v1「完全禁止」
 # 誤判——證據：designing-your-life 購書段確有 emoji（見 _extraction-notes.md v2 更新）。
 forbid_emoji: false
-# Brook 產稿時的候選 tag hint（tag_filter 會做白名單交集）
+# Brook 產稿時的候選 tag hint
 default_tag_hints:
   - book-review
   - reading

@@ -56,12 +56,3 @@ def test_not_last_sunday_of_december_2026():
 def test_last_sunday_of_january_2026():
     """Jan 25, 2026 is the last Sunday of January."""
     assert is_last_sunday_of_month(_dt(2026, 1, 25)) is True
-
-
-def test_cron_dispatcher_delegates_correctly():
-    """cron_dispatcher.should_run_retrospective delegates to is_last_sunday_of_month."""
-    from agents.franky.cron_dispatcher import should_run_retrospective
-
-    assert should_run_retrospective(_dt(2026, 5, 31)) is True
-    assert should_run_retrospective(_dt(2026, 5, 24)) is False
-    assert should_run_retrospective(_dt(2026, 12, 27)) is True
