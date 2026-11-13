@@ -730,6 +730,86 @@ class TestTaskDetail:
         )
         assert "err=log" in r.headers["location"]
 
+    # ── 修修 2026-11-13 bug: timer auto-log wiped an unsaved 筆記 draft ──────────
+    # The live timer now posts /log via fetch (Accept: JSON) so the page never
+    # navigates; the route answers JSON and rotates the 筆記 If-Match token.
+    _JSON = {"Accept": "application/json"}
+
+    def test_log_json_mode_returns_json_not_redirect(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "pomodoro", "elapsed_seconds": "1500", "week": WEEK_KEY},
+            headers=self._JSON,
+            follow_redirects=False,
+        )
+        assert r.status_code == 200
+        d = r.json()
+        assert d["ok"] is True
+        assert d["minutes"] == 25
+        assert d["est_pomodoros"] == 6
+        assert d["actual_pom"] >= 1
+        assert d["accuracy_pct"] == int(round(100 * d["actual_pom"] / 6))
+        assert len(_time_entries(tmp_path)) == 1
+
+    def test_log_json_rotates_note_token_so_draft_save_still_works(self, client, tmp_path):
+        """The bug's second half: logging rewrites the task file, so the open draft's
+        token goes stale and 儲存筆記 would bounce as a conflict. A clean token is
+        rotated to the post-log hash, and saving the draft with it succeeds."""
+        from shared.weekly_writer import task_file_token
+
+        page_token = task_file_token(tmp_path, "測試任務")
+        d = client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "pomodoro", "week": WEEK_KEY, "expected_token": page_token},
+            headers=self._JSON,
+        ).json()
+        assert d["token"] == task_file_token(tmp_path, "測試任務") != page_token
+        r = client.post(
+            "/bridge/weekly/task/測試任務/body",
+            data={"body": "\n寫到一半的草稿\n", "expected_token": d["token"], "week": WEEK_KEY},
+            follow_redirects=False,
+        )
+        assert "saved=body" in r.headers["location"]
+        raw = _task_path(tmp_path).read_text(encoding="utf-8")
+        assert "寫到一半的草稿" in raw
+        assert len(_time_entries(tmp_path)) == 1  # the log survived the body save
+
+    def test_log_json_withholds_token_when_file_changed_elsewhere(self, client, tmp_path):
+        """If the file drifted since the page loaded (Obsidian edit), the route must NOT
+        hand back a fresh token — the 筆記 conflict guard has to keep firing."""
+        d = client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "pomodoro", "week": WEEK_KEY, "expected_token": "stale-hash"},
+            headers=self._JSON,
+        ).json()
+        assert d["ok"] is True
+        assert "token" not in d
+
+    def test_log_json_errors_are_json(self, client, tmp_path):
+        r = client.post(
+            "/bridge/weekly/task/測試任務/log",
+            data={"mode": "bogus", "week": WEEK_KEY},
+            headers=self._JSON,
+            follow_redirects=False,
+        )
+        assert r.status_code == 400
+        assert r.json()["ok"] is False and r.json()["error"]
+        r = client.post(
+            "/bridge/weekly/task/不存在/log",
+            data={"mode": "pomodoro", "week": WEEK_KEY},
+            headers=self._JSON,
+            follow_redirects=False,
+        )
+        assert r.status_code == 500
+        assert r.json()["ok"] is False
+
+    def test_task_page_timer_logs_in_background(self, client):
+        body = client.get(f"/bridge/weekly/task/測試任務?week={WEEK_KEY}").text
+        assert "data-timer-status" in body
+        assert "'Accept': 'application/json'" in body
+        assert "f.submit();" not in body  # the page-reloading submit is gone
+        assert "beforeunload" in body  # unsaved-draft leave guard
+
     # ── A7 / Slice W — scoped note-body editor ──────────────────────────────
     def test_get_renders_note_editor(self, client):
         body = client.get(f"/bridge/weekly/task/測試任務?week={WEEK_KEY}").text
