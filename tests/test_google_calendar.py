@@ -311,8 +311,29 @@ def test_update_event_all_day_patches_date(monkeypatch):
     svc = _FakeService()
     monkeypatch.setattr(google_calendar, "_get_service", lambda: svc)
     google_calendar.update_event("evt1", start="2026-06-07", end="2026-06-08")
-    assert svc.patched["start"] == {"date": "2026-06-07"}
-    assert svc.patched["end"] == {"date": "2026-06-08"}
+    # dateTime/timeZone nulled: PATCH merges, so a timed → all-day switch must clear them
+    assert svc.patched["start"] == {"date": "2026-06-07", "dateTime": None, "timeZone": None}
+    assert svc.patched["end"] == {"date": "2026-06-08", "dateTime": None, "timeZone": None}
+
+
+def test_update_event_all_day_to_timed_clears_date(monkeypatch):
+    """整天 → 有時間：PATCH merges nested objects, so the old ``date`` must be
+    explicitly nulled — otherwise Google sees both date and dateTime and rejects
+    the update (Bridge showed「行事曆暫時無法連動」and the event stayed all-day)."""
+    from shared import google_calendar
+
+    svc = _FakeService()
+    monkeypatch.setattr(google_calendar, "_get_service", lambda: svc)
+    google_calendar.update_event(
+        "evt1", start="2026-11-09T10:00:00+08:00", end="2026-11-09T12:00:00+08:00"
+    )
+    assert svc.patched["start"] == {
+        "dateTime": "2026-11-09T10:00:00+08:00",
+        "timeZone": "Asia/Taipei",
+        "date": None,
+    }
+    assert svc.patched["end"]["date"] is None
+    assert svc.patched["end"]["dateTime"] == "2026-11-09T12:00:00+08:00"
 
 
 def test_is_date_only():
