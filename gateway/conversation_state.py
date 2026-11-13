@@ -4,7 +4,8 @@ When a handler returns a `HandlerResponse` with a `continuation` dict, the bot
 registers that flow against the reply's thread. Subsequent messages posted
 in the same thread are routed back to the same handler's `continue_flow()`
 with the stored state dict, until the handler returns a response without a
-`continuation` (which ends the flow) or the idle timeout expires.
+`continuation` (which ends the flow) or the idle timeout expires (24h, or
+7 days while the conversation is waiting on the user's answer).
 
 Storage is SQLite-backed (`conversations.db`) so conversation state survives a
 gateway restart / deploy / VPS reboot — the in-memory dict it replaced silently
@@ -32,6 +33,15 @@ from pathlib import Path
 # for human Slack pacing (a 47-min gap between turns silently dropped context and
 # Nami restarted fresh). 24h matches how a single user actually chats across a day.
 DEFAULT_TIMEOUT_SECONDS = 86400  # 24 hours
+
+# A conversation parked on a question the user hasn't answered yet (Nami's
+# ask_user) gets a longer window. 2026-10-15: Nami asked「要排多久？」at 06:43,
+# 修修 answered 07:02 the next day (24h19m) — the thread had already been
+# evicted, so the answer landed in a fresh, context-less conversation.
+PENDING_TIMEOUT_SECONDS = 7 * 86400  # 7 days
+# State key handlers set while waiting on the user (gateway/handlers/nami.py,
+# both the legacy and the Agent SDK path). Truthy = a question is outstanding.
+PENDING_STATE_KEY = "pending_tool_use_id"
 
 
 @dataclass
@@ -65,9 +75,11 @@ class ConversationStore:
         self,
         timeout_seconds: int = DEFAULT_TIMEOUT_SECONDS,
         *,
+        pending_timeout_seconds: int = PENDING_TIMEOUT_SECONDS,
         db_path: str | None = None,
     ) -> None:
         self._timeout = timeout_seconds
+        self._pending_timeout = pending_timeout_seconds
         self._lock = threading.Lock()
         self._db_path = db_path or _resolve_db_path()
         if self._db_path != ":memory:":
@@ -194,9 +206,32 @@ class ConversationStore:
             return self._row_to_conv(row) if row else None
 
     def _evict_expired_locked(self) -> None:
-        cutoff = time.time() - self._timeout
-        self._conn.execute("DELETE FROM conversations WHERE last_activity < ?", (cutoff,))
-        self._conn.commit()
+        now = time.time()
+        cutoff = now - self._timeout
+        pending_cutoff = now - self._pending_timeout
+        rows = self._conn.execute(
+            "SELECT thread_ts, state_json, last_activity FROM conversations "
+            "WHERE last_activity < ?",
+            (cutoff,),
+        ).fetchall()
+        stale = [
+            (row["thread_ts"],)
+            for row in rows
+            if row["last_activity"] < pending_cutoff or not _awaiting_answer(row["state_json"])
+        ]
+        if stale:
+            self._conn.executemany("DELETE FROM conversations WHERE thread_ts = ?", stale)
+            self._conn.commit()
+
+
+def _awaiting_answer(state_json: str | None) -> bool:
+    if not state_json:
+        return False
+    try:
+        state = json.loads(state_json)
+    except ValueError:
+        return False
+    return isinstance(state, dict) and bool(state.get(PENDING_STATE_KEY))
 
 
 _STORE: ConversationStore | None = None

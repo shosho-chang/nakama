@@ -538,6 +538,13 @@ body.sho .wk-toast--ok {
   border-color: color-mix(in oklch, var(--sho-success, var(--sho-accent)) 50%, transparent);
   background: color-mix(in oklch, var(--sho-success, var(--sho-accent)) 10%, transparent);
 }
+/* 計時記錄結果（背景 fetch，不換頁）——就地顯示在計時器旁，捲到哪都看得到 */
+body.sho .tk-dock-status {
+  font-family: var(--sho-font-mono); font-size: 12px; line-height: 1.4;
+  color: var(--sho-success, var(--sho-accent));
+}
+body.sho .tk-dock-status.is-error { color: var(--sho-warning); }
+body.sho .tk-dock-status[hidden] { display: none; }
 
 /* ── task note body — scoped draft surface (ADR-040 A7 / Slice W) ── */
 body.sho .tk-notebox {

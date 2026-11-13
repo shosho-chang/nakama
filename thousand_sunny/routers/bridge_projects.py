@@ -7,6 +7,7 @@ This router replaces the retired ADR-031 7-stage workspace with two thin pages:
 - ``POST /bridge/projects/new``             — create minimal stub → redirect to detail
 - ``GET  /bridge/projects/{name}``          — one thread: all member tasks across weeks
 - ``POST /bridge/projects/{name}/status``   — archive / restore toggle
+- ``POST /bridge/projects/{name}/delete``   — project + member tasks → recycle bin
 - ``POST /bridge/projects/{name}/attach``   — bulk-assign existing tasks into it
 - ``POST /bridge/projects/{name}/task/{slug}/done`` — tick a task off in place
 
@@ -38,6 +39,7 @@ from shared.pomodoro_aggregator import POMODORO_MINUTES, all_time_actual
 from shared.project_index import (
     ProjectEntry,
     ProjectError,
+    delete_project_file,
     find_project,
     list_projects,
     set_project_status,
@@ -52,7 +54,12 @@ from shared.project_templates import (
 )
 from shared.project_writer import ProjectWriteError, reassign_task_project
 from shared.weekly_indexer import WeeklyIndexer, WeeklyTask, today_taipei
-from shared.weekly_writer import TaskNotFoundError, WeeklyWriteError, set_task_done
+from shared.weekly_writer import (
+    TaskNotFoundError,
+    WeeklyWriteError,
+    delete_task,
+    set_task_done,
+)
 from thousand_sunny.auth import check_auth
 
 logger = get_logger("nakama.web.bridge_projects")
@@ -88,6 +95,10 @@ _ERRORS = {
     "template": "找不到該專案類型，或樣板任務檔名已被佔用——請看 config/project-templates.yaml。",
     "attach_none": "沒有勾選任何任務。",
     "task": "找不到該任務檔，可能已在 Obsidian 改名或移除。",
+    "delete_failed": (
+        "沒有刪除成功——有檔案可能正被 Obsidian 或同步程式佔用。"
+        "剩下的任務和專案都還在，關掉佔用的程式後再按一次刪除。"
+    ),
     "bracket": (
         "戰線名稱不可含 [ ] # ^ —— Obsidian 的 [[連結]] 沒有辦法跳脫它，"
         "任務歸屬與反向連結都會壞掉。改用全形版本即可，例如「【Pod】蘇予昕」。"
@@ -270,10 +281,17 @@ def _project_view(p: ProjectEntry, members: list[WeeklyTask], actual: dict[str, 
 async def projects_index(
     request: Request,
     err: str | None = None,
+    deleted: str | None = None,
+    n: int = 0,
     nakama_auth: str | None = Cookie(None),
 ):
     if not check_auth(nakama_auth):
         return RedirectResponse("/login?next=/bridge/projects", status_code=302)
+
+    saved_msg = None
+    if deleted:
+        with_tasks = f"和底下 {n} 個任務" if n else ""
+        saved_msg = f"已刪除「{deleted}」{with_tasks}，可從資源回收筒救回。"
 
     vault = get_vault_path()
     projects = list_projects(vault)
@@ -298,6 +316,7 @@ async def projects_index(
             "archived": archived,
             "kinds": [(k, t.label) for k, t in sorted(load_templates().items())],
             "error_msg": _ERRORS.get(err) if err else None,
+            "saved_msg": saved_msg,
             "asset_version": _SHOSHO_ASSET_VERSION,
         },
     )
@@ -449,6 +468,42 @@ async def project_task_done(
         logger.exception("project_task_done failed: %s", slug)
         return RedirectResponse(f"{back}?err=task", status_code=303)
     return RedirectResponse(f"{back}#task-{quote(slug)}", status_code=303)
+
+
+@page_router.post("/projects/{name}/delete")
+async def project_delete(
+    name: str,
+    nakama_auth: str | None = Cookie(None),
+):
+    """刪除專案 (修修 2026-11-12)：連同所有成員任務一起移到資源回收筒。
+
+    Tasks go first, each through the same ``delete_task`` the task page uses
+    (linked Google Calendar events are cancelled). If any task survives, the
+    project file is kept so the leftovers still have a home and the page can
+    say what went wrong — never a half-deleted project with orphaned tasks."""
+    if not check_auth(nakama_auth):
+        return RedirectResponse("/login?next=/bridge/projects", status_code=302)
+    name = unicodedata.normalize("NFC", name)
+    vault = get_vault_path()
+    entry = find_project(vault, name)
+    if entry is None:
+        return RedirectResponse("/bridge/projects?err=missing", status_code=303)
+
+    members = tasks_for(entry.name, WeeklyIndexer(vault).read_tasks())
+    left = [t.slug for t in members if not delete_task(vault, t.slug)]
+    if left:
+        logger.warning("project_delete: %s kept, %d task(s) not removed: %s", name, len(left), left)
+        return RedirectResponse(
+            f"/bridge/projects/{quote(name)}?err=delete_failed", status_code=303
+        )
+    try:
+        delete_project_file(vault, entry.name)
+    except ProjectError as e:
+        return RedirectResponse(f"/bridge/projects/{quote(name)}?err={e.code}", status_code=303)
+    logger.info("project deleted: %s (%d tasks)", name, len(members))
+    return RedirectResponse(
+        f"/bridge/projects?deleted={quote(name)}&n={len(members)}", status_code=303
+    )
 
 
 @page_router.post("/projects/{name}/status")

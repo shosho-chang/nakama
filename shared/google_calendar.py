@@ -228,6 +228,18 @@ def list_events(
     return [_parse_event(e) for e in result.get("items", [])]
 
 
+def _patch_time_field(value: str) -> dict:
+    """PATCH body for an event's ``start`` / ``end``.
+
+    Google's PATCH **merges** nested objects, so sending only ``{"dateTime": ...}``
+    to an all-day event keeps its old ``date`` — the event then has both and the
+    API rejects it (整天 → 有時間 改期失敗，Bridge 顯示「行事曆暫時無法連動」).
+    Explicitly null the other representation so the switch works both ways."""
+    if _is_date_only(value):
+        return {"date": value, "dateTime": None, "timeZone": None}
+    return {"dateTime": _ensure_tz_iso(value), "timeZone": TIMEZONE, "date": None}
+
+
 def update_event(
     event_id: str,
     *,
@@ -251,17 +263,9 @@ def update_event(
     if description is not None:
         body["description"] = description
     if start is not None:
-        body["start"] = (
-            {"date": start}
-            if _is_date_only(start)
-            else {"dateTime": _ensure_tz_iso(start), "timeZone": TIMEZONE}
-        )
+        body["start"] = _patch_time_field(start)
     if end is not None:
-        body["end"] = (
-            {"date": end}
-            if _is_date_only(end)
-            else {"dateTime": _ensure_tz_iso(end), "timeZone": TIMEZONE}
-        )
+        body["end"] = _patch_time_field(end)
     if idempotency_key is not None:
         body["extendedProperties"] = {"private": {IDEMPOTENCY_PROP: idempotency_key}}
     updated = service.events().patch(calendarId="primary", eventId=event_id, body=body).execute()
