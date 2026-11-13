@@ -48,6 +48,17 @@ def _png(color=(200, 30, 30, 255), size=(300, 400)) -> bytes:
     return out.getvalue()
 
 
+def _render_png(spec: CoverSpec) -> bytes:
+    """像素比對用 PNG（JPEG 有損，同色像素不會完全相等）。"""
+    return render_cover(spec, fmt="png")
+
+
+def test_render_cover_png_and_bad_format():
+    assert render_cover(CoverSpec("Club", ["June"]), fmt="png")[:8] == b"\x89PNG\r\n\x1a\n"
+    with pytest.raises(ValueError):
+        render_cover(CoverSpec("Club", ["June"]), fmt="gif")
+
+
 def _open(png: bytes) -> Image.Image:
     img = Image.open(io.BytesIO(png))
     img.load()
@@ -57,11 +68,11 @@ def _open(png: bytes) -> Image.Image:
 # ── render_cover ──
 
 
-def test_render_cover_returns_png_1600x800():
-    png = render_cover(CoverSpec("Captain's Book Club", ["June Pick"], "6/28 20:00"))
-    assert png[:8] == b"\x89PNG\r\n\x1a\n"
-    img = _open(png)
-    assert img.format == "PNG"
+def test_render_cover_returns_jpeg_1600x800_by_default():
+    data = render_cover(CoverSpec("Captain's Book Club", ["June Pick"], "6/28 20:00"))
+    assert data[:3] == b"\xff\xd8\xff"
+    img = _open(data)
+    assert img.format == "JPEG"
     assert img.size == (1600, 800)
     assert img.mode == "RGB"
 
@@ -118,14 +129,14 @@ def _slot_center() -> tuple[int, int]:
 
 
 def test_main_kind_none_ignores_image():
-    plain = _open(render_cover(CoverSpec("Club", ["June"])))
-    with_img = _open(render_cover(CoverSpec("Club", ["June"], main_image=_png(), main_kind="none")))
+    plain = _open(_render_png(CoverSpec("Club", ["June"])))
+    with_img = _open(_render_png(CoverSpec("Club", ["June"], main_image=_png(), main_kind="none")))
     assert plain.getpixel(_slot_center()) == with_img.getpixel(_slot_center())
 
 
 def test_main_kind_book_draws_image_with_shadow():
-    plain = _open(render_cover(CoverSpec("Club", ["June"])))
-    img = _open(render_cover(CoverSpec("Club", ["June"], main_image=_png(), main_kind="book")))
+    plain = _open(_render_png(CoverSpec("Club", ["June"])))
+    img = _open(_render_png(CoverSpec("Club", ["June"], main_image=_png(), main_kind="book")))
     assert img.getpixel(_slot_center()) == (200, 30, 30)
     # 300x400 contain 進 520x640 → 480x640，置中；圖下緣正下方有陰影
     below = (SLOT_LEFT + SLOT_W // 2, SLOT_TOP + SLOT_H + 10)
@@ -138,9 +149,9 @@ def test_main_kind_illustration_drops_faint_halo_and_has_no_shadow():
     buf = io.BytesIO()
     art.save(buf, format="PNG")
 
-    plain = _open(render_cover(CoverSpec("Club", ["June"])))
+    plain = _open(_render_png(CoverSpec("Club", ["June"])))
     img = _open(
-        render_cover(
+        _render_png(
             CoverSpec("Club", ["June"], main_image=buf.getvalue(), main_kind="illustration")
         )
     )

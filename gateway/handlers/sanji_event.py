@@ -116,6 +116,16 @@ def is_event_request(text: str) -> bool:
     return bool(_TRIGGER_RE.search(body))
 
 
+# Slack 對「透過 AI 工具代發」的訊息會在最後加一行「*Sent using* <工具名>」，
+# 不是使用者打的字；留著的話「確認」比對不到、也會混進文案。
+_AI_FOOTER_RE = re.compile(r"\s*\*Sent using\*\s+\S[^\n]*\Z")
+
+
+def strip_ai_footer(text: str) -> str:
+    """移除 Slack 代發訊息結尾的「*Sent using* …」那一行。"""
+    return _AI_FOOTER_RE.sub("", text or "").rstrip()
+
+
 def extract_image_lines(text: str) -> tuple[str, dict | None]:
     """把 ``[附件圖片] ...`` 行從文字中拿掉，回 (乾淨文字, 最後一張圖片 or None)。
 
@@ -539,6 +549,7 @@ def _respond(state: dict, text: str) -> HandlerResponse:
 def start_flow(text: str, user_id: str) -> HandlerResponse:
     """handle() 偵測到建活動請求時呼叫。"""
     body, image = extract_image_lines(text)
+    body = strip_ai_footer(body)
     try:
         event = parse_event(body)
     except EventParseError as e:
@@ -567,6 +578,7 @@ def continue_flow(state: dict, text: str, user_id: str) -> HandlerResponse:
     state.setdefault("progress", {})
     state.setdefault("sources", [])
     body, new_image = extract_image_lines(text)
+    body = strip_ai_footer(body)
     if new_image:
         state["image"] = new_image
 
@@ -744,7 +756,7 @@ def execute(state: dict, user_id: str) -> HandlerResponse:
             main_image, main_kind, note = _main_image(event, image, fleet_cover)
 
             step = "合成封面"
-            png = fleet_cover.render_cover(
+            cover_jpg = fleet_cover.render_cover(
                 fleet_cover.CoverSpec(
                     eyebrow=event["cover_eyebrow"],
                     headline_lines=list(event["cover_headline_lines"]),
@@ -757,7 +769,7 @@ def execute(state: dict, user_id: str) -> HandlerResponse:
             step = "上傳封面"
             fca = importlib.import_module("shared.fca_events_client")
             client = fca.FcaEventsClient.from_env()
-            uploaded = client.upload_image(png, f"sanji-cover-{start.strftime('%Y%m%d')}.png")
+            uploaded = client.upload_image(cover_jpg, f"sanji-cover-{start.strftime('%Y%m%d')}.jpg")
             progress["cover"] = {"id": uploaded.id, "url": uploaded.url, "key": key, "note": note}
             logger.info(f"event_draft: cover uploaded id={uploaded.id} user={user_id}")
         else:

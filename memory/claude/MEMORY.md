@@ -390,3 +390,6 @@
 - [哪個 Python 跑得動測試](reference_test_interpreters.md) — 只有 `py -3.14` 有完整依賴（3.10 只有 ruff/whisperx、3.12 沒 pytest）；全 repo `tests/` 要兩小時且會被 markdownify 擋死，所以 gate 是「模組目錄＋每個引用改動 API 的檔案」
 - [Stand-in 素材庫](reference_standin_footage_library.md) — Envato `YuriArcursPeopleimages` 的留鬍亞裔男是**所有** stock footage 的首要人選；先查本地庫 `E:\data\stock footage\asian man`（索引 INDEX.md）再去 Envato；十支是 DCI 4K 不是 16:9、對短片沒用；核臉要防「誤收別人」與「誤退本人」兩個方向
 - [UI 預覽走 Tailscale](reference_ui_preview_tailscale.md) — 調 Bridge UI 時修修用手機直連桌機預覽版 `100.92.250.116:8765`（uvicorn 只綁 Tailscale IP）；迭代不走 PR/CI/deploy，定案才發一次 PR
+- [封存 Editorial Master 是我的工作](feedback_editorial_master_sealing_is_mine.md) — 「我完成 Editorial Master 了」＝他剪定了（含 intro/outro），不是封存了；封存前我要先去 Obsidian 抓講稿、用 **Memo** 辨識 intro/outro、依稿校對字幕，才 seal；錯誤訊息不要丟指令給他
+- [他動過的就是定案，不要偵測分岔](feedback_his_edit_wins_no_drift_checks.md) — 封存後他再改 timeline 就直接 overwrite 重封存，不比 uid／長度／hash；「一道永遠得到同一個答案的閘，價值是負的」；已在 seal 驗過的下游只讀不重驗
+- [遷移要帶走手藝](feedback_migration_must_carry_the_craft.md) — 系統取代系統時權威／資料模型會被搬、手藝（設計語彙、定版配方、內容標準、節奏規則）不會；先列舊系統的手藝清單逐項確認去向，否則新系統會重新發明而且更差（2026-09-08 蘇予昕長精華 ADR-066 對照）

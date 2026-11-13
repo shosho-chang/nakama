@@ -97,7 +97,8 @@ def test_request_url_and_auth_with_wp_json_base():
     assert str(req.url) == "https://fleet.shosho.tw/wp-json/fca-events/v1/upload"
     expected = base64.b64encode(b"sanji-bot:abcdefghijkl").decode()
     assert req.headers["Authorization"] == f"Basic {expected}"
-    assert req.headers["User-Agent"] == "nakama-fca-events-client/1.0"
+    # Cloudflare skip rule 只放行這個 UA（VPS IP 打 /wp-json/）
+    assert req.headers["User-Agent"] == "nakama-wordpress-client/1.0"
     assert client.edit_url("abc") == "https://fleet.shosho.tw/deck/events/edit/abc"
     assert client.manage_url == "https://fleet.shosho.tw/deck/events/manage"
 

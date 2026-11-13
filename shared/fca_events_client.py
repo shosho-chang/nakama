@@ -36,7 +36,10 @@ from shared.wordpress_client import WPAuthError, WPClientError, WPServerError
 
 logger = get_logger("nakama.fca_events_client")
 
-_USER_AGENT = "nakama-fca-events-client/1.0"
+# 刻意沿用 WordPressClient 的 UA：Cloudflare 的 SBFM 會擋 VPS IP，只有這個 UA
+# （＋VPS IP＋/wp-json/ 路徑）有 skip rule。自訂新 UA 會被「Just a moment...」擋成 403
+# （2026-11-13 上線實測踩到）。見 docs/runbooks/cf-waf-skip-rules.md。
+_USER_AGENT = "nakama-wordpress-client/1.0"
 _NAMESPACE = "fca-events/v1"
 _UPLOAD_TIMEOUT_S = 60.0
 _DEFAULT_TIMEOUT_S = 30.0

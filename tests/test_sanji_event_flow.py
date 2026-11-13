@@ -333,7 +333,7 @@ def test_confirm_online_live_runs_in_order(ext):
     assert spec.date_label == "11/28（六）20:00・線上直播"
     assert spec.main_image == b"ILLU" and spec.main_kind == "illustration"
 
-    ext.client.upload_image.assert_called_once_with(b"PNG", "sanji-cover-20261128.png")
+    ext.client.upload_image.assert_called_once_with(b"PNG", "sanji-cover-20261128.jpg")
     draft = ext.client.create_draft_event.call_args.args[0]
     assert draft.event_type == "online"
     assert draft.event_url == "https://zoom.us/j/111?pwd=x"
@@ -512,3 +512,24 @@ def test_state_json_roundtrip_through_conversation_store(ext):
     )
     conv = store.get("1.0")
     assert conv.state == resp.continuation.state
+
+
+# ── 2026-11-13 上線實測修正 ───────────────────────────────────────────────
+
+
+def test_strip_ai_footer():
+    f = sanji_event.strip_ai_footer
+    assert f("確認\n*Sent using* Claude") == "確認"
+    assert f("時間改成晚上八點半 *Sent using* Claude") == "時間改成晚上八點半"
+    assert f("文案第一行\n\n文案第二行") == "文案第一行\n\n文案第二行"
+    # 一般句子裡的 sent using 不能被誤刪
+    assert f("This was sent using a boat") == "This was sent using a boat"
+
+
+def test_confirm_with_ai_footer_executes(ext):
+    """透過 AI 工具代發的「確認」結尾帶 *Sent using* Claude，仍要當成確認。"""
+    resp, _ = _start([_llm_json()])
+    resp2, m_ask = _cont(resp.continuation.state, "確認\n*Sent using* Claude")
+    m_ask.assert_not_called()  # 不是修改 → 不呼叫 LLM
+    assert ext.client.create_draft_event.call_count == 1
+    assert resp2.continuation is None

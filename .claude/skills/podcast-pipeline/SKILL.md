@@ -559,6 +559,22 @@ S3–S6 的 release 只涵蓋訪談本體，片頭片尾沒有字幕；這一步
    **不要再傳 `--add-cues`**：第一次重建後 live ST1 已含片頭片尾，同一份 cues 再加一次會被重疊檢查擋下。
    live 原文對不上也會擋（exit 2）——代表修修已經改過那句，先重讀現況再下修正。
 
+10. **seal 前必做：長句切分＋書名號**（修修 2026-11-13，20261111 李惠貞：「有一些句子太長，沒有分段好；
+    書名沒有用括號括起來」）。ADR-063 產線沒有任何一步切長句或補《》，Memo 的 cue 最長到 54 字；
+    這一步不做，修修就得自己在 Resolve 手切。
+
+    - **《》**：照 [[feedback_subtitle_house_style]]，只在提到書名本身時加（「並不是《成為自由人》」），
+      「成為自由人之後」這種當事件用的不加。先從本集 Vault 參考資料收書名清單，再掃 live ST1 文字＋
+      `這本／新書／叫做` 等語境找漏網的，用 `--fix` 補。
+    - **長句**：去空白後超過 18 字的 cue 都切。切點優先順序：兩人對話的 ` -` 換人處 → 原有空格（Memo
+      的停頓）→ jieba 詞邊界；一律挑**錄音裡真的有停頓**的位置（Qwen3-ForcedAligner 對該句原音做
+      forced alignment，revision 同 S5），且不可切開辭典詞（「公｜部門」「盡｜量」「中山女｜高」都是
+      2026-11-13 第一版切出來的錯）、不可切開英文專名（Shopping Design）、不可落在《》內。
+      切出的每段至少 0.5 秒。自動結果逐條人眼看過，不順的手動指定切法。
+    - 上軌用 `rebuild --split-file <splits.json>`：`{"timeline", "splits":[{"start","old",
+      "parts":[{"start","end","text"}]}]}`，parts 必須剛好鋪滿原句的起訖幀；同一句不可同時 `--fix`。
+      可和 `--add-cues`、`--fix` 同一次重建，一樣先 `--scratch`。
+
 **裁決規則**
 
 - 文字以 Memo bundled runner（large-v2）為底，逐句對照 faster-whisper large-v3 與講稿；來源打架的
@@ -651,10 +667,19 @@ Editorial Master `verify --live` 通過後，**同一輪就跑**完整版 render
 E:\nakama\.venv-v2\Scripts\python.exe scripts\publish_prep.py "<episode>" --cut full
 ```
 
-產出兩個檔，**檔名＝episode 資料夾名＝Resolve project 名**（例：`20261021 Kelly Tsai`），不是 `full`：
+產出三個檔，**檔名＝episode 資料夾名＝Resolve project 名**（例：`20261021 Kelly Tsai`），不是 `full`，
+全部放在 **`<episode>\final\`**——跟封面 `cover-full.png`、`title-full.txt` 同一個上傳包資料夾
+（修修 2026-11-13：「為什麼會在 Highlights 裡面？應該在 Final 裡面才對」。2026-11-13 以前的集數在
+`highlights\exports\`，不搬，程式仍認得）：
 
-- `<episode>\highlights\exports\<episode>.mp4`——上傳用影片，Shosho YT 字幕樣式燒進畫面
-- `<episode>\highlights\exports\<episode>.srt`——上傳用 CC，與 `master.srt` byte-identical
+- `<episode>\final\<episode>.mp4`——上傳用影片，Shosho YT 字幕樣式燒進畫面
+- `<episode>\final\<episode>.srt`——上傳用 CC，與 `master.srt` byte-identical
+- `<episode>\final\<episode>.mp3`——podcast 平台音檔（320k／48 kHz／stereo），從封存的 `master.mp4` 抽音軌（上傳版 mp4 算到主畫面為止，會少片尾音樂尾巴）
+
+**不要為了 podcast 音檔另外叫 Resolve 算純音訊**（Deliver 的 Audio Only／Wave）：2026-11-13 這樣做之後
+render 格式卡在非 H264，Editorial Master seal 算出只有聲音的 master.mp4 被擋。修修急著要音檔時，
+等 seal 後的 `publish_prep --cut full` 一起出；真的要更早，用 ffmpeg 從 timeline 已有的素材處理，不動
+Resolve 的 render 設定。
 
 並登錄 draft Release（YouTube target draft）。這一步碰 Resolve：與 `--materialize`、ST1 重建等
 序列執行，不可並行。
@@ -752,7 +777,7 @@ Editorial Master 開得起來＝定稿是真的。開不起來就**立刻**回�
 Editorial Master 封存
  │
  ├─ [序列·Resolve] publish_prep.py --cut full —— 定稿後立刻出，不等任何人
- │     ⇒ highlights\exports\<episode>.mp4（Shosho YT 字幕燒入）＋ <episode>.srt（上傳 CC）
+ │     ⇒ final\<episode>.mp4（Shosho YT 字幕燒入）＋ <episode>.srt（上傳 CC）＋ <episode>.mp3（podcast）
  │
  ├─【平行】完整節目 packaging（S7P）—— 一路跑到 gate，中間不要停下來問
  │     title-brainstorm --cut-id full → emit_packages

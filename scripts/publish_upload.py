@@ -48,6 +48,7 @@ from agents.usopp.youtube_credentials import (  # noqa: E402
     load_youtube_client,
 )
 from shared.config import get_runtime_data_dir  # noqa: E402
+from shared.export_paths import episode_dir_of_export  # noqa: E402
 
 logger = logging.getLogger("publish_upload")
 
@@ -606,7 +607,7 @@ def _ensure_zh_tw_caption(yt, release: dict, target: dict) -> None:
             raise RuntimeError("YouTube 已有 zh-TW caption，但平台處理狀態為 failed")
         return
 
-    episode_dir = Path(release["file_path"]).parents[2]
+    episode_dir = episode_dir_of_export(Path(release["file_path"]))
     response = upload_captions(yt, target["video_id"], episode_dir, release["cut_id"])
     if response is None or not response.get("id"):
         raise FileNotFoundError(f"{release['cut_id']} 沒有可上傳的 tight SRT")
