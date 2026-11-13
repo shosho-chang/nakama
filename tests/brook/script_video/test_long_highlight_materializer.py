@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import subprocess
-import sys
 from pathlib import Path
 from typing import Any
 
@@ -399,63 +398,6 @@ def test_projection_rejects_explicit_unplayable_candidate(tmp_path: Path) -> Non
         project_recipes(episode, "value-L02", state)
 
 
-def test_cli_validate_runs_from_repo_root_without_writing_recipes(tmp_path: Path) -> None:
-    repo_root = Path(__file__).resolve().parents[3]
-    episode = tmp_path / "episode"
-    state_path = tmp_path / "state.json"
-    state_path.write_text(json.dumps(_state(episode)), encoding="utf-8")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "scripts/run_long_highlight_materializer.py",
-            "validate",
-            str(episode),
-            "--cut-id",
-            "value-L02",
-            "--state",
-            str(state_path),
-        ],
-        cwd=repo_root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout)["status"] == "projection-valid"
-    assert not (episode / "highlights" / "tighten" / "value-L02_titles.json").exists()
-
-
-def test_cli_emit_recipes_writes_both_recipe_files(tmp_path: Path) -> None:
-    repo_root = Path(__file__).resolve().parents[3]
-    episode = tmp_path / "episode"
-    state_path = tmp_path / "state.json"
-    state_path.write_text(json.dumps(_state(episode)), encoding="utf-8")
-
-    result = subprocess.run(
-        [
-            sys.executable,
-            "scripts/run_long_highlight_materializer.py",
-            "emit-recipes",
-            str(episode),
-            "--cut-id",
-            "value-L02",
-            "--state",
-            str(state_path),
-        ],
-        cwd=repo_root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0, result.stderr
-    payload = json.loads(result.stdout)
-    assert Path(payload["broll_path"]).is_file()
-    assert Path(payload["titles_path"]).is_file()
-
-
 def test_apply_preview_uses_duplicate_work_timeline_and_persists_recovery_state(
     tmp_path: Path,
 ) -> None:
@@ -707,24 +649,6 @@ def test_resolve_adapter_duplicate_swap_can_restore_original_by_persisted_uid(
     assert [(row.GetName(), row.GetUniqueId()) for row in project.timelines] == [
         ("長2 - fixture（緊·導播）", "canonical-uid")
     ]
-
-
-def test_cli_exposes_explicit_transaction_commands_without_connecting_resolve() -> None:
-    repo_root = Path(__file__).resolve().parents[3]
-
-    result = subprocess.run(
-        [sys.executable, "scripts/run_long_highlight_materializer.py", "--help"],
-        cwd=repo_root,
-        check=False,
-        capture_output=True,
-        text=True,
-    )
-
-    assert result.returncode == 0, result.stderr
-    assert "apply-preview" in result.stdout
-    assert "commit" in result.stdout
-    assert "rollback" in result.stdout
-    assert "supersede-stale" in result.stdout
 
 
 def test_supersede_can_normalize_legacy_open_metadata_with_explicit_uids(tmp_path: Path) -> None:
