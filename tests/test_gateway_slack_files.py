@@ -360,3 +360,46 @@ def test_bot_thread_continuation_passes_images_to_sanji():
         bot._make_thread_message_handler("sanji")(event, MagicMock(), _client())
     text = handler.continue_flow.call_args.args[2]
     assert text.startswith("換這張\n\n[附件圖片] atomic habits.jpg")
+
+
+# ── Sanji 拿使用者原文（router 會刪掉文中所有 agent 別名）─────────────────
+
+
+def test_sanji_mention_gets_raw_text_with_agent_name_kept():
+    from gateway import bot
+
+    handler = MagicMock()
+    handler.handle.return_value = SimpleNamespace(text="ok", continuation=None)
+    raw = "<@U0SANJI> 幫我建活動\n文案：這是 Sanji 建活動功能的測試"
+    route = SimpleNamespace(
+        agent="sanji",
+        intent="general",
+        text="幫我建活動\n文案：這是 建活動功能的測試",
+        confidence="keyword",
+    )
+    event = {"text": raw, "user": "U1", "channel": "C1", "ts": "1.0"}
+    with (
+        patch.object(bot, "get_handler", return_value=handler),
+        patch.object(bot, "route_mention", return_value=route),
+        patch.object(bot, "_register_continuation"),
+    ):
+        bot._make_mention_handler("sanji")(event, MagicMock(), _client())
+    _, body, _ = handler.handle.call_args.args
+    assert body == "幫我建活動\n文案：這是 Sanji 建活動功能的測試"
+
+
+def test_nami_still_gets_router_text():
+    from gateway import bot
+
+    handler = MagicMock()
+    handler.handle.return_value = SimpleNamespace(text="ok", continuation=None)
+    route = SimpleNamespace(agent="nami", intent="general", text="ROUTED", confidence="keyword")
+    event = {"text": "<@U0NAMI> 原文", "user": "U1", "channel": "C1", "ts": "1.0"}
+    with (
+        patch.object(bot, "get_handler", return_value=handler),
+        patch.object(bot, "route_mention", return_value=route),
+        patch.object(bot, "_register_continuation"),
+    ):
+        bot._make_mention_handler("nami")(event, MagicMock(), _client())
+    _, body, _ = handler.handle.call_args.args
+    assert body == "ROUTED"

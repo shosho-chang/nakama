@@ -46,6 +46,18 @@ def _get_allowed_channels() -> set[str]:
     return {v for v in channels.values() if v}
 
 
+# 這些 agent 拿「使用者原文」（只去掉 <@bot> mention），不拿 router 處理過的 text。
+# router 會把整段裡所有 agent 別名刪掉（例如文案裡的「Sanji」），Sanji 建活動要逐字照抄文案。
+RAW_TEXT_AGENTS = {"sanji"}
+_MENTION_TOKEN_RE = re.compile(r"<@[A-Z0-9]+>")
+
+
+def _handler_text(agent_name: str, raw_text: str, route: RouteResult) -> str:
+    if agent_name in RAW_TEXT_AGENTS:
+        return _MENTION_TOKEN_RE.sub("", raw_text or "").strip()
+    return route.text
+
+
 def _register_continuation(
     result: HandlerResponse,
     *,
@@ -158,7 +170,12 @@ def _make_mention_handler(agent_name: str) -> Callable:
         # intent="create_project" 進 bootstrap flow）；忽略 route.agent
         route = route_mention(text)
         # 附件信件（Gmail → Slack）在 routing 之後才接上，不讓信件內文影響分類
-        body = with_attachments(route.text, event, client, include_images=(agent_name == "sanji"))
+        body = with_attachments(
+            _handler_text(agent_name, text, route),
+            event,
+            client,
+            include_images=(agent_name == "sanji"),
+        )
         result = handler.handle(route.intent, body, user_id)
         fallback, blocks = format_agent_response(agent_name, result.text, route.intent)
 
@@ -236,7 +253,10 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
                 else RouteResult(agent=agent_name, intent="general", text="", confidence="exact")
             )
             body = with_attachments(
-                route.text, event, client, include_images=(agent_name == "sanji")
+                _handler_text(agent_name, text, route),
+                event,
+                client,
+                include_images=(agent_name == "sanji"),
             )
             if not body:
                 return
