@@ -51,9 +51,11 @@ jobs:
         run: ruff format --check .
 
       - name: Run tests with coverage
-        # -n auto：xdist 依 runner 核心數開 worker（GH public runner = 4 vCPU）；
+        # -n logical：xdist 依「邏輯」核心數開 worker（GH public runner = 4 vCPU / 2 實體核；
+        # -n auto 只看實體核、只開 2 個）。
         # pytest-cov 會自動合併各 worker 的覆蓋率，critical-path gate 照讀 coverage.json。
-        run: pytest -n auto --cov=shared --cov=thousand_sunny --cov=agents --cov-report=json:coverage.json --cov-report=term
+        # --durations=25：log 尾端列最慢的 25 個測試，下次 CI 又變慢時直接看這裡。
+        run: pytest -n logical --durations=25 --cov=shared --cov=thousand_sunny --cov=agents --cov-report=json:coverage.json --cov-report=term
 
       - name: Critical-path coverage gate
         run: python scripts/check_critical_path_coverage.py
