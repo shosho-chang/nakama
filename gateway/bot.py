@@ -158,7 +158,7 @@ def _make_mention_handler(agent_name: str) -> Callable:
         # intent="create_project" 進 bootstrap flow）；忽略 route.agent
         route = route_mention(text)
         # 附件信件（Gmail → Slack）在 routing 之後才接上，不讓信件內文影響分類
-        body = with_attachments(route.text, event, client)
+        body = with_attachments(route.text, event, client, include_images=(agent_name == "sanji"))
         result = handler.handle(route.intent, body, user_id)
         fallback, blocks = format_agent_response(agent_name, result.text, route.intent)
 
@@ -235,7 +235,9 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
                 if text
                 else RouteResult(agent=agent_name, intent="general", text="", confidence="exact")
             )
-            body = with_attachments(route.text, event, client)
+            body = with_attachments(
+                route.text, event, client, include_images=(agent_name == "sanji")
+            )
             if not body:
                 return
             result = handler.handle(route.intent, body, user_id)
@@ -269,7 +271,7 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
             f"[{agent_name}] Thread continuation: thread={thread_ts} flow={conv.flow_name} "
             f"user={user_id} text='{text[:50]}...'"
         )
-        text = with_attachments(text, event, client)
+        text = with_attachments(text, event, client, include_images=(agent_name == "sanji"))
 
         try:
             result = handler.continue_flow(conv.flow_name, conv.state, text, user_id)

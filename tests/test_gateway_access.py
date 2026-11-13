@@ -105,7 +105,7 @@ def _mention(agent: str, user: str, thread_ts: str | None = None):
         patch.object(bot, "get_handler", return_value=handler),
         patch.object(bot, "route_mention", return_value=route),
         patch.object(bot, "_register_continuation"),
-        patch.object(bot, "with_attachments", side_effect=lambda t, e, c: t),
+        patch.object(bot, "with_attachments", side_effect=lambda t, e, c, **kw: t),
     ):
         bot._make_mention_handler(agent)(event, say, MagicMock())
     return handler, say
@@ -145,7 +145,7 @@ def _dm(agent: str, user: str):
         patch.object(bot, "get_store", return_value=store),
         patch.object(bot, "get_handler", return_value=handler),
         patch.object(bot, "route_mention", return_value=route),
-        patch.object(bot, "with_attachments", side_effect=lambda t, e, c: t),
+        patch.object(bot, "with_attachments", side_effect=lambda t, e, c, **kw: t),
     ):
         bot._make_thread_message_handler(agent)(event, say, MagicMock())
     return handler, say
