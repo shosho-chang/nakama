@@ -1,0 +1,25 @@
+name: xdist-bench (temporary, remove before merge)
+
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  bench:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'
+      - run: sudo apt-get update && sudo apt-get install -y ffmpeg
+      - run: pip install -e ".[dev]"
+      - run: lscpu | head -20; python -c "import psutil;print(psutil.cpu_count(False), psutil.cpu_count(True))"
+      - run: python -m compileall -q agents shared tests thousand_sunny scripts gateway
+      - name: n2
+        run: pytest -q -n 2 --cov=shared --cov=thousand_sunny --cov=agents --cov-report= | tail -1
+      - name: n4
+        run: pytest -q -n 4 --cov=shared --cov=thousand_sunny --cov=agents --cov-report= | tail -1
+      - name: n2-again
+        run: pytest -q -n 2 --cov=shared --cov=thousand_sunny --cov=agents --cov-report= | tail -1
