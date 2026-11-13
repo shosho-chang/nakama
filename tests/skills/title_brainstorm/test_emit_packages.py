@@ -457,3 +457,61 @@ class TestEpisodeIsNotASlug:
 
         written = json.loads((tmp_path / "packages.json").read_text(encoding="utf-8"))
         assert written["episode"] == "20250604 Ray 不平等優勢"
+
+
+class TestAiSlopGate:
+    """修修 2026-11-13：「那筆帳」「算一筆帳」全都是 AI slop，嚴禁。panel 看不出來，emit 硬擋。"""
+
+    def test_emit_refuses_slop_title_and_writes_nothing(self, tmp_path):
+        payload = _long_input()
+        payload["titles"] = [dict(t) for t in _LONG_TITLES]
+        payload["titles"][0]["text"] = "不敢離職的人：她離職前算的那筆帳 ft. 李惠貞"
+        packaging_dir = tmp_path / "packaging"
+
+        with pytest.raises(ValueError, match="AI 腔"):
+            emit_mod.emit(payload, packaging_dir)
+        assert not (packaging_dir / "packages.json").exists()
+
+
+class TestReEmitKeepsCovers:
+    """2026-11-13 20261111 李惠貞：重跑標題不可以把已經配好的封面洗掉。"""
+
+    @staticmethod
+    def _package(rank: int) -> dict:
+        return {
+            "title_rank": rank,
+            "thumbnail_png": f"Attachments/packaging/20260723-xieboran/pkg-punch-L1-{rank}.png",
+            "thumb_archetype_id": "T-V4",
+            "joint_pairing_id": "self-pair-T-A1-T-V4",
+            "host_cutout": "Attachments/cutouts/podcast/20260723-xieboran/host-1-serious.png",
+            "guest_cutout": "Attachments/cutouts/podcast/20260723-xieboran/guest-1-serious.png",
+        }
+
+    def _emit_with_covers(self, tmp_path):
+        packaging_dir = tmp_path / "packaging"
+        emit_mod.emit(_long_input(), packaging_dir)
+        path = packaging_dir / "packages.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["cuts"][0]["packages"] = [self._package(1), self._package(2)]
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return packaging_dir, path
+
+    def test_cover_stays_when_its_title_is_unchanged(self, tmp_path):
+        packaging_dir, path = self._emit_with_covers(tmp_path)
+
+        emit_mod.emit(_long_input(), packaging_dir)
+
+        packages = json.loads(path.read_text(encoding="utf-8"))["cuts"][0]["packages"]
+        assert [p["title_rank"] for p in packages] == [1, 2]
+
+    def test_cover_is_dropped_only_for_the_rank_whose_title_changed(self, tmp_path, capsys):
+        packaging_dir, path = self._emit_with_covers(tmp_path)
+        payload = _long_input()
+        payload["titles"] = [dict(t) for t in _LONG_TITLES]
+        payload["titles"][1]["text"] = "第 2 名換了一條新標題：封面要重配"
+
+        emit_mod.emit(payload, packaging_dir)
+
+        packages = json.loads(path.read_text(encoding="utf-8"))["cuts"][0]["packages"]
+        assert [p["title_rank"] for p in packages] == [1]
+        assert "rank 2 的標題換了" in capsys.readouterr().err
