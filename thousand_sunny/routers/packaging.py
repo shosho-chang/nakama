@@ -46,6 +46,7 @@ from shared.background_job import (
     new_job,
 )
 from shared.config import get_db_path, get_vault_path
+from shared.export_paths import export_roots
 from shared.log import get_logger
 from shared.release_store import ensure_target, get_release, register_release, update_target
 from shared.render_timeout import looks_like_render_timeout
@@ -1403,11 +1404,9 @@ def _release_from_receipt(episode: str, cut_id: str) -> dict | None:
         raise HTTPException(status_code=409, detail="publish_prep receipt 缺少唯一 cut")
     row = rows[0]
     file_path = Path(str(row.get("file", ""))).resolve()
-    exports_dir = (episode_dir / "highlights" / "exports").resolve()
-    try:
-        file_path.relative_to(exports_dir)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail="publish_prep receipt 成品路徑越界") from exc
+    roots = [root.resolve() for root in export_roots(episode_dir)]
+    if not any(file_path.is_relative_to(root) for root in roots):
+        raise HTTPException(status_code=409, detail="publish_prep receipt 成品路徑越界")
     if not file_path.is_file() or file_path.stat().st_size != int(row.get("file_bytes", -1)):
         raise HTTPException(status_code=409, detail="publish_prep receipt 與成品檔不一致")
     # 這是**發布資料庫**的 release 身分，跟 ADR-069 的 plan record id 是兩個識別

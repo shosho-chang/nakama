@@ -20,8 +20,10 @@ Release（draft），等文案（packaging 交接檔）、等排程、等修修�
 `<cut_id>_clean.mp4` 乾淨版供重燒）。CC 字幕直接用
 `highlights/srt/<cut_id>_tight_r*.srt` 最新版（已平移 0 起點）。
 
-完整版（`--cut full`）例外：落點是 `exports/<集數資料夾名>.mp4`，旁邊放同名的
-上傳字幕 `<集數資料夾名>.srt`＝Editorial Master `master.srt` 的逐位元組複本。
+完整版（`--cut full`）例外：落點是 `<episode>/final/<集數資料夾名>.mp4`（跟封面、標題同一個
+上傳包資料夾），旁邊放同名的
+上傳字幕 `<集數資料夾名>.srt`＝Editorial Master `master.srt` 的逐位元組複本，以及
+podcast 音檔 `<集數資料夾名>.mp3`（從完整版 mp4 抽音軌）。
 檔名規則的唯一來源是 `shared/export_paths.py`。
 
 執行環境同 longform-cut skill：Resolve Studio 開著、`py -3.10`。
@@ -59,11 +61,12 @@ from agents.usopp.publish_timeline import (  # noqa: E402
     verify_duration,
 )
 from shared.export_paths import (  # noqa: E402
-    EXPORTS_DIR,
     FULL_CUT_ID,
+    export_audio_path,
     export_media_path,
     export_stem,
     export_subtitle_path,
+    output_dir,
 )
 
 logger = logging.getLogger("publish_prep")
@@ -419,6 +422,39 @@ def _master_srt(episode_dir: Path) -> Path:
     return Path(episode_dir) / VERSION_RELATIVE / CANONICAL_ARTIFACTS["subtitles"]
 
 
+def _extract_podcast_mp3(video: Path, target: Path) -> Path:
+    """完整版 mp4 的音軌 → podcast mp3（320k／48 kHz／stereo，同 Kelly Tsai 集上架規格）。
+
+    不再叫 Resolve 另算純音訊：2026-11-13 20261111 李惠貞 先在 Resolve 算 Wave 之後，
+    render 格式卡在非 H264，Editorial Master seal 算出只有聲音的 master.mp4。
+    完整版 mp4 的混音就是 timeline 混音，直接抽最穩。
+    """
+    temporary = target.with_name(f".{target.name}.{os.getpid()}.tmp.mp3")
+    subprocess.run(
+        [
+            "ffmpeg",
+            "-v",
+            "error",
+            "-y",
+            "-i",
+            str(video),
+            "-vn",
+            "-c:a",
+            "libmp3lame",
+            "-b:a",
+            "320k",
+            "-ar",
+            "48000",
+            "-ac",
+            "2",
+            str(temporary),
+        ],
+        check=True,
+    )
+    os.replace(temporary, target)
+    return target
+
+
 def _copy_upload_srt(source: Path, target: Path) -> Path:
     """逐位元組複製，先寫暫存檔再 replace——不留半份字幕給上傳端撿。"""
     temporary = target.with_name(target.name + f".{os.getpid()}.tmp")
@@ -428,7 +464,7 @@ def _copy_upload_srt(source: Path, target: Path) -> Path:
 
 
 def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
-    """單支 cut：render → （短片燒字幕）→ exports/<stem>.mp4（stem 見 shared/export_paths）。"""
+    """單支 cut：render →（短片燒字幕）→ 成品（路徑與檔名見 shared/export_paths）。"""
     cid = cut["id"]
     is_full = cid == FULL_CUT_ID
     master_srt = _master_srt(episode_dir) if is_full else None
@@ -437,7 +473,7 @@ def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
         raise SystemExit(f"完整版缺上傳字幕來源 {master_srt}——Editorial Master 封存不完整，先修")
     timeline, label, plan_id = _pick_timeline(project, episode_dir, cut)
     project.SetCurrentTimeline(timeline)
-    out_dir = episode_dir / EXPORTS_DIR
+    out_dir = output_dir(episode_dir, cid)
     out_dir.mkdir(parents=True, exist_ok=True)
     stem = export_stem(episode_dir, cid)
     upload_srt: Path | None = None
@@ -471,6 +507,10 @@ def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
         _burn_short_subs(clean, out_dir / f"{cid}.srt", final)
 
     dur, size = _probe(final)
+    podcast_mp3: Path | None = None
+    if is_full:
+        podcast_mp3 = _extract_podcast_mp3(final, export_audio_path(episode_dir))
+        logger.info("%s: podcast 音檔 %s", cid, podcast_mp3.name)
     srt_path = upload_srt if is_full else _latest_tight_srt(episode_dir, cid)
     return {
         "cut_id": cid,
@@ -480,6 +520,7 @@ def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
         "duration_sec": round(dur, 2),
         "file_bytes": size,
         "cc_srt": str(srt_path) if srt_path else None,
+        "podcast_mp3": str(podcast_mp3) if podcast_mp3 else None,
         "timeline": label,
         # 這支成品是哪一版 plan record 的內容。重鑄一份 plan 可以不改變片長
         # （移一支 b-roll、拿掉另一支，長度分毫不差），長度護欄看不出差別；

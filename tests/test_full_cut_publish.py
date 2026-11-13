@@ -377,17 +377,27 @@ def _sealed_with_srt(tmp_path: Path, episode: str = "20261021 Kelly Tsai") -> Pa
 def test_full_cut_upload_pair_is_named_after_the_episode(tmp_path, monkeypatch):
     module = _load_publish_prep()
     monkeypatch.setattr(module, "_probe", lambda path: (6146.9, path.stat().st_size))
+    extracted: list[tuple[Path, Path]] = []
+
+    def fake_mp3(video: Path, target: Path) -> Path:
+        extracted.append((video, target))
+        target.write_bytes(b"mp3")
+        return target
+
+    monkeypatch.setattr(module, "_extract_podcast_mp3", fake_mp3)
     root = _sealed_with_srt(tmp_path)
     timeline = _Timeline(TIMELINE["name"])
     project = _Project(timeline)
 
     info = module.export_cut(_Resolve(), project, root, module.full_cut(root))
 
-    exports = root / "highlights" / "exports"
+    # 完整版上傳包跟封面、標題放同一個 final/（修修 2026-11-13）
+    exports = root / "final"
     media = exports / "20261021 Kelly Tsai.mp4"
     srt = exports / "20261021 Kelly Tsai.srt"
     assert project.settings["CustomName"] == root.name
     assert project.settings["TargetDir"] == str(exports)
+    assert not (root / "highlights" / "exports" / f"{root.name}.mp4").exists()
     # 燒 Shosho YT 字幕仍然是長片預設
     assert project.settings["ExportSubtitle"] is True
     assert project.settings["SubtitleFormat"] == "BurnIn"
@@ -397,6 +407,9 @@ def test_full_cut_upload_pair_is_named_after_the_episode(tmp_path, monkeypatch):
     assert info["cut_id"] == "full"
     assert info["file"] == str(media)
     assert info["cc_srt"] == str(srt)
+    # podcast 音檔從完整版 mp4 抽，同名放在 final/
+    assert extracted == [(media, exports / "20261021 Kelly Tsai.mp3")]
+    assert info["podcast_mp3"] == str(exports / "20261021 Kelly Tsai.mp3")
     assert not (exports / "full.mp4").exists()
     assert not list(exports.glob("*.tmp"))
 
@@ -427,4 +440,5 @@ def test_highlight_long_cut_keeps_the_cut_id_name(tmp_path, monkeypatch):
     assert project.settings["CustomName"] == "punch-L01"
     assert info["file"] == str(exports / "punch-L01.mp4")
     assert info["cc_srt"] is None  # 精華的 CC 仍是 tight SRT，這裡沒有就是 None
+    assert info["podcast_mp3"] is None
     assert not (exports / f"{root.name}.srt").exists()

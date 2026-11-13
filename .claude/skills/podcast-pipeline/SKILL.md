@@ -667,10 +667,19 @@ Editorial Master `verify --live` 通過後，**同一輪就跑**完整版 render
 E:\nakama\.venv-v2\Scripts\python.exe scripts\publish_prep.py "<episode>" --cut full
 ```
 
-產出兩個檔，**檔名＝episode 資料夾名＝Resolve project 名**（例：`20261021 Kelly Tsai`），不是 `full`：
+產出三個檔，**檔名＝episode 資料夾名＝Resolve project 名**（例：`20261021 Kelly Tsai`），不是 `full`，
+全部放在 **`<episode>\final\`**——跟封面 `cover-full.png`、`title-full.txt` 同一個上傳包資料夾
+（修修 2026-11-13：「為什麼會在 Highlights 裡面？應該在 Final 裡面才對」。2026-11-13 以前的集數在
+`highlights\exports\`，不搬，程式仍認得）：
 
-- `<episode>\highlights\exports\<episode>.mp4`——上傳用影片，Shosho YT 字幕樣式燒進畫面
-- `<episode>\highlights\exports\<episode>.srt`——上傳用 CC，與 `master.srt` byte-identical
+- `<episode>\final\<episode>.mp4`——上傳用影片，Shosho YT 字幕樣式燒進畫面
+- `<episode>\final\<episode>.srt`——上傳用 CC，與 `master.srt` byte-identical
+- `<episode>\final\<episode>.mp3`——podcast 平台音檔（320k／48 kHz／stereo），從上面的 mp4 抽音軌
+
+**不要為了 podcast 音檔另外叫 Resolve 算純音訊**（Deliver 的 Audio Only／Wave）：2026-11-13 這樣做之後
+render 格式卡在非 H264，Editorial Master seal 算出只有聲音的 master.mp4 被擋。修修急著要音檔時，
+等 seal 後的 `publish_prep --cut full` 一起出；真的要更早，用 ffmpeg 從 timeline 已有的素材處理，不動
+Resolve 的 render 設定。
 
 並登錄 draft Release（YouTube target draft）。這一步碰 Resolve：與 `--materialize`、ST1 重建等
 序列執行，不可並行。
@@ -768,7 +777,7 @@ Editorial Master 開得起來＝定稿是真的。開不起來就**立刻**回�
 Editorial Master 封存
  │
  ├─ [序列·Resolve] publish_prep.py --cut full —— 定稿後立刻出，不等任何人
- │     ⇒ highlights\exports\<episode>.mp4（Shosho YT 字幕燒入）＋ <episode>.srt（上傳 CC）
+ │     ⇒ final\<episode>.mp4（Shosho YT 字幕燒入）＋ <episode>.srt（上傳 CC）＋ <episode>.mp3（podcast）
  │
  ├─【平行】完整節目 packaging（S7P）—— 一路跑到 gate，中間不要停下來問
  │     title-brainstorm --cut-id full → emit_packages
