@@ -559,6 +559,22 @@ S3–S6 的 release 只涵蓋訪談本體，片頭片尾沒有字幕；這一步
    **不要再傳 `--add-cues`**：第一次重建後 live ST1 已含片頭片尾，同一份 cues 再加一次會被重疊檢查擋下。
    live 原文對不上也會擋（exit 2）——代表修修已經改過那句，先重讀現況再下修正。
 
+10. **seal 前必做：長句切分＋書名號**（修修 2026-11-13，20261111 李惠貞：「有一些句子太長，沒有分段好；
+    書名沒有用括號括起來」）。ADR-063 產線沒有任何一步切長句或補《》，Memo 的 cue 最長到 54 字；
+    這一步不做，修修就得自己在 Resolve 手切。
+
+    - **《》**：照 [[feedback_subtitle_house_style]]，只在提到書名本身時加（「並不是《成為自由人》」），
+      「成為自由人之後」這種當事件用的不加。先從本集 Vault 參考資料收書名清單，再掃 live ST1 文字＋
+      `這本／新書／叫做` 等語境找漏網的，用 `--fix` 補。
+    - **長句**：去空白後超過 18 字的 cue 都切。切點優先順序：兩人對話的 ` -` 換人處 → 原有空格（Memo
+      的停頓）→ jieba 詞邊界；一律挑**錄音裡真的有停頓**的位置（Qwen3-ForcedAligner 對該句原音做
+      forced alignment，revision 同 S5），且不可切開辭典詞（「公｜部門」「盡｜量」「中山女｜高」都是
+      2026-11-13 第一版切出來的錯）、不可切開英文專名（Shopping Design）、不可落在《》內。
+      切出的每段至少 0.5 秒。自動結果逐條人眼看過，不順的手動指定切法。
+    - 上軌用 `rebuild --split-file <splits.json>`：`{"timeline", "splits":[{"start","old",
+      "parts":[{"start","end","text"}]}]}`，parts 必須剛好鋪滿原句的起訖幀；同一句不可同時 `--fix`。
+      可和 `--add-cues`、`--fix` 同一次重建，一樣先 `--scratch`。
+
 **裁決規則**
 
 - 文字以 Memo bundled runner（large-v2）為底，逐句對照 faster-whisper large-v3 與講稿；來源打架的
