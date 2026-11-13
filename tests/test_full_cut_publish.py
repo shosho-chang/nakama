@@ -279,9 +279,10 @@ class _Item:
 
 
 class _Timeline:
-    def __init__(self, name: str, end: int = 9000):
+    def __init__(self, name: str, end: int = 9000, v1_end: int | None = None):
         self._name = name
         self._end = end
+        self._v1_end = end if v1_end is None else v1_end
         self.subtitle_enabled = {1: False}
 
     def GetName(self):  # noqa: N802
@@ -301,7 +302,7 @@ class _Timeline:
         return self._end
 
     def GetItemListInTrack(self, kind, index):  # noqa: N802
-        return [_Item(self._end)]
+        return [_Item(self._v1_end)]
 
     def GetTrackCount(self, kind):  # noqa: N802
         return len(self.subtitle_enabled) if kind == "subtitle" else 0
@@ -443,3 +444,28 @@ def test_highlight_long_cut_keeps_the_cut_id_name(tmp_path, monkeypatch):
     assert info["cc_srt"] is None  # 精華的 CC 仍是 tight SRT，這裡沒有就是 None
     assert info["podcast_mp3"] is None
     assert not (exports / f"{root.name}.srt").exists()
+
+
+def test_full_cut_renders_the_whole_timeline_past_the_last_picture_frame(tmp_path, monkeypatch):
+    """片尾配樂比最後一格畫面長（20261111 李惠貞：多 80 格）——完整版不可以把它切掉。"""
+    module = _load_publish_prep()
+    monkeypatch.setattr(module, "_probe", lambda path: (5674.77, path.stat().st_size))
+    monkeypatch.setattr(module, "_extract_podcast_mp3", lambda video, target: target)
+    root = _sealed_with_srt(tmp_path)
+    project = _Project(_Timeline(TIMELINE["name"], end=170243, v1_end=170163))
+
+    module.export_cut(_Resolve(), project, root, module.full_cut(root))
+
+    assert project.settings["MarkOut"] == 170243
+
+
+def test_highlight_long_cut_still_stops_at_the_last_picture_frame(tmp_path, monkeypatch):
+    module = _load_publish_prep()
+    monkeypatch.setattr(module, "_probe", lambda path: (600.0, path.stat().st_size))
+    root = _sealed_with_srt(tmp_path)
+    cut = {"id": "punch-L01", "format": "long", "rank": 1, "title": "x"}
+    project = _Project(_Timeline(module.timeline_label(cut), end=18002, v1_end=18000))
+
+    module.export_cut(_Resolve(), project, root, cut)
+
+    assert project.settings["MarkOut"] == 17999

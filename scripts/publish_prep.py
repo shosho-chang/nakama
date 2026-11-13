@@ -488,8 +488,16 @@ def export_cut(resolve, project, episode_dir: Path, cut: dict) -> dict:
         # 長片發布預設：DRT 攜帶 Shosho YT 樣式，Resolve 明確燒進成品。
         n = _set_subtitle_tracks(resolve, timeline, True)
         logger.info("%s: 長片——啟用 %d 條 Shosho YT 字幕軌並 Burn In", cid, n)
+        # 完整版是修修自己剪的 timeline，照整條算（同 Editorial Master seal）：片尾配樂本來就
+        # 比最後一格畫面長。2026-11-13 20261111 李惠貞 A2 的片尾音樂比 V1 多 80 格，收在主畫面
+        # 等於把音樂尾巴切掉 2.67 秒（Kelly Tsai 集同樣少 2.62 秒）。精華 cut 才收在主畫面。
         final = _render_master(
-            project, timeline, out_dir, stem, burn_subtitles=True, end_at_main_picture=True
+            project,
+            timeline,
+            out_dir,
+            stem,
+            burn_subtitles=True,
+            end_at_main_picture=not is_full,
         )
         if master_srt is not None:
             # 完整版上傳的是「<集數名>.mp4＋<集數名>.srt」這一對；字幕就是封存的
