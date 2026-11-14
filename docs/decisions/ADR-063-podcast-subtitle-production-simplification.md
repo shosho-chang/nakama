@@ -270,9 +270,10 @@ What it does not change:
   explicit `--subtitle-release-handoff` inside the episode directory) through the same
   `select_stage5_subtitle` the Resolve step uses. `plan` records the release's hash identity in
   `storyboard.subtitle-source.json`; `emit` refuses a storyboard planned on a different release. A
-  loose `transcript.srt` is still never a production input. How a video episode's `normalized.wav`
-  is prepared from `raw_recording.mp4` (`run_audio_prep.py` expects a podcast `Audio/` folder) is not
-  yet decided.
+  loose `transcript.srt` is still never a production input. Owner 2026-11-14：「影片集不用做音檔前處理」
+  — video episodes skip `run_audio_prep.py`／Auphonic. The release still takes a wav plus
+  `normalized-handoff.v1.json`; `podcast_subtitle_v2_evidence.py seal-normalized --audio <wav>` seals any
+  wav. That path has not yet been run on a video episode.
 
 ## Acceptance criteria
 

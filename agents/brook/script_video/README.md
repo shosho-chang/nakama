@@ -42,9 +42,10 @@ reopens the release, rejects a storyboard planned on a different release, and
 rejects anchor, timing, or cue-ID drift before writing FCPXML.
 
 release 由 `scripts/podcast_subtitle_release.py` 產（`.claude/skills/podcast-pipeline/SKILL.md`
-S3–S6），`--episode-root` 指到 `data/script_video/<episode-id>/`。注意：前段
-`scripts/run_audio_prep.py` 預設吃 podcast 的 `Audio/` 子資料夾，影片集的 `normalized.wav`
-怎麼從 `raw_recording.mp4` 準備，目前還沒有定案的流程。
+S3–S6），`--episode-root` 指到 `data/script_video/<episode-id>/`。影片集不做音檔前處理
+（修修 2026-11-14：不跑 `run_audio_prep.py`／Auphonic）；release 仍需要一份 wav 與
+`normalized-handoff.v1.json`，`scripts/podcast_subtitle_v2_evidence.py seal-normalized --audio <wav>`
+可以直接封存任一份 wav（影片集這條路還沒實跑過）。
 
 ## Bridge UI
 
