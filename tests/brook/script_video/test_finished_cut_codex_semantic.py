@@ -2,10 +2,8 @@ from __future__ import annotations
 
 import ast
 import json
-import subprocess
 from dataclasses import dataclass, replace
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
@@ -21,7 +19,6 @@ from agents.brook.script_video.finished_cut_production._codex_semantic import (
     CodexSemanticAdapter,
     NamedMedia,
     StagePacket,
-    SubprocessCodexProcessRunner,
 )
 from agents.brook.script_video.finished_cut_production._context import (
     CanonicalSection,
@@ -119,77 +116,6 @@ class _BoundaryRunner:
             output_path = Path(argv[argv.index("--output-last-message") + 1])
             output_path.write_text("{}", encoding="utf-8")
         return self._result
-
-
-def test_windows_codex_resolution_prefers_npm_cmd_over_windowsapps_shim() -> None:
-    observed: list[str] = []
-    npm_cmd = r"C:\Users\Shosho\AppData\Roaming\npm\codex.cmd"
-    windowsapps = r"C:\Program Files\WindowsApps\OpenAI.Codex.exe"
-
-    def _which(candidate: str) -> str | None:
-        observed.append(candidate)
-        return {
-            "codex.cmd": npm_cmd,
-            "codex.exe": windowsapps,
-            "codex": windowsapps,
-        }.get(candidate)
-
-    resolved = codex_semantic_module._resolve_codex_executable(
-        None,
-        platform_name="nt",
-        which=_which,
-    )
-
-    assert resolved == npm_cmd
-    assert observed == ["codex.cmd"]
-
-
-def test_windows_codex_resolution_uses_appdata_npm_when_path_omits_cmd(
-    tmp_path: Path,
-    monkeypatch,
-) -> None:
-    appdata = tmp_path / "AppData" / "Roaming"
-    npm_cmd = appdata / "npm" / "codex.cmd"
-    npm_cmd.parent.mkdir(parents=True)
-    npm_cmd.write_text("@echo off\n", encoding="utf-8")
-    monkeypatch.setenv("APPDATA", str(appdata))
-
-    resolved = codex_semantic_module._resolve_codex_executable(
-        None,
-        platform_name="nt",
-        which=lambda _candidate: None,
-    )
-
-    assert resolved == str(npm_cmd)
-
-
-def test_windows_codex_resolution_survives_denied_npm_metadata_probe(monkeypatch) -> None:
-    appdata = Path(r"C:\Users\operator\AppData\Roaming")
-    monkeypatch.setenv("APPDATA", str(appdata))
-
-    def _deny_metadata(_path: Path) -> bool:
-        raise PermissionError("sandbox denied metadata probe")
-
-    monkeypatch.setattr(Path, "is_file", _deny_metadata)
-
-    resolved = codex_semantic_module._resolve_codex_executable(
-        None,
-        platform_name="nt",
-        which=lambda _candidate: None,
-    )
-
-    assert resolved == str(appdata / "npm" / "codex.cmd")
-
-
-def test_windows_codex_resolution_rejects_only_windowsapps_candidates(monkeypatch) -> None:
-    monkeypatch.delenv("APPDATA", raising=False)
-
-    with pytest.raises(FileNotFoundError, match="safe Codex executable"):
-        codex_semantic_module._resolve_codex_executable(
-            None,
-            platform_name="nt",
-            which=lambda candidate: rf"C:\Program Files\WindowsApps\{candidate}",
-        )
 
 
 def _director_request() -> StageRequest:
@@ -342,7 +268,6 @@ def test_dp_packet_exposes_exact_event_scoped_cue_candidates_for_placement() -> 
         packet_materializer=_PacketMaterializer(
             StagePacket(stage="dp", payload={"catalog": catalog}, media=())
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -451,7 +376,6 @@ def test_director_dispatches_current_request_in_one_isolated_read_only_workspace
     adapter = CodexSemanticAdapter(
         process_runner=runner,
         packet_materializer=materializer,
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -462,12 +386,9 @@ def test_director_dispatches_current_request_in_one_isolated_read_only_workspace
     assert materializer.requests == [request]
     assert len(runner.calls) == 1
     call = runner.calls[0]
-    assert call.argv[:3] == ("codex-test", "exec", "--ignore-user-config")
-    assert ("--sandbox", "read-only") == (
-        call.argv[call.argv.index("--sandbox")],
-        call.argv[call.argv.index("--sandbox") + 1],
-    )
-    assert "--ephemeral" in call.argv
+    # 修修 2026-11-14：packet 只交給當下的 agent；argv 不指名任何可執行檔。
+    assert call.argv[0] == "host-agent-handoff"
+    assert not any("codex" in token.lower() for token in call.argv)
     assert "--add-dir" not in call.argv
     assert "--cd" not in call.argv
     schema_path = Path(call.argv[call.argv.index("--output-schema") + 1])
@@ -523,7 +444,6 @@ def test_director_rejects_materializer_metadata_before_codex_dispatch() -> None:
     adapter = CodexSemanticAdapter(
         process_runner=runner,
         packet_materializer=materializer,
-        codex_executable="codex-test",
     )
 
     outcome = adapter.dispatch(request)
@@ -546,7 +466,6 @@ def test_codex_rejects_a_caller_modified_format_policy_brief() -> None:
                 format_policy={"policy_id": "caller-controlled"},
             )
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -563,7 +482,6 @@ def test_director_requires_current_editorial_context_before_codex_dispatch() -> 
         packet_materializer=_PacketMaterializer(
             StagePacket(stage="director", payload={}, media=())
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -583,7 +501,6 @@ def test_director_rejects_editorial_context_for_a_different_cut() -> None:
         packet_materializer=_PacketMaterializer(
             StagePacket(stage="director", payload={}, media=())
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -619,7 +536,6 @@ def test_targeted_director_packet_contains_only_current_event_and_feedback() -> 
         packet_materializer=_PacketMaterializer(
             StagePacket(stage="director", payload={}, media=())
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -663,7 +579,6 @@ def test_dp_uses_current_director_events_and_only_neutral_catalog_metadata() -> 
         packet_materializer=_PacketMaterializer(
             StagePacket(stage="dp", payload={"catalog": catalog}, media=())
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -732,7 +647,6 @@ def test_dp_rejects_retired_supporting_title_response_and_never_advertises_it() 
                 media=(),
             )
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -766,7 +680,6 @@ def test_dp_rejects_editorial_context_that_belongs_only_to_director() -> None:
                 media=(),
             )
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -799,7 +712,6 @@ def test_dp_rejects_catalog_metadata_that_differs_from_current_request() -> None
                 media=(),
             )
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -832,7 +744,6 @@ def test_dp_rejects_path_shaped_catalog_reference_before_codex_dispatch() -> Non
                 media=(),
             )
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -867,7 +778,6 @@ def test_dp_rejects_absolute_episode_path_hidden_in_catalog_summary() -> None:
                 media=(),
             )
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -909,7 +819,6 @@ def test_visual_reviews_final_component_preview_bytes_not_source_self_descriptio
                 ),
             )
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -985,7 +894,6 @@ def test_visual_uses_final_asset_as_inspection_key_when_build_has_no_derivative(
                 ),
             )
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -1028,7 +936,6 @@ def test_visual_rejects_component_media_not_bound_to_current_core_build() -> Non
                 ),
             )
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -1047,7 +954,6 @@ def test_boolean_attempt_cannot_impersonate_the_current_integer_attempt() -> Non
         packet_materializer=_PacketMaterializer(
             StagePacket(stage="director", payload={}, media=())
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -1082,7 +988,6 @@ def test_wrong_envelope_extra_field_and_malformed_json_are_rejected(
         packet_materializer=_PacketMaterializer(
             StagePacket(stage="director", payload={}, media=())
         ),
-        codex_executable="codex-test",
     )
 
     proposal = adapter.proposal_for(request)
@@ -1112,7 +1017,6 @@ def test_process_failure_timeout_and_missing_output_never_redispatch_same_reques
     adapter = CodexSemanticAdapter(
         process_runner=runner,
         packet_materializer=materializer,
-        codex_executable="codex-test",
     )
 
     first = adapter.dispatch(request)
@@ -1146,7 +1050,6 @@ def test_process_failure_diagnostic_retains_stderr_head_and_tail() -> None:
         packet_materializer=_PacketMaterializer(
             StagePacket(stage="director", payload={}, media=())
         ),
-        codex_executable="codex-test",
     )
 
     outcome = adapter.dispatch(request)
@@ -1155,47 +1058,9 @@ def test_process_failure_diagnostic_retains_stderr_head_and_tail() -> None:
     assert len(outcome.diagnostic) <= 512
     # ADR-069：diagnostic 前面掛上診斷類別（以前它被編進 reason_code 裡），
     # 界線仍然守在 512——頭尾都要留住，中間才是被砍掉的那一段。
-    assert outcome.diagnostic.startswith("process_failed: Codex exit=2; stderr=stderr-head:")
+    assert outcome.diagnostic.startswith("process_failed: worker exit=2; stderr=stderr-head:")
     assert outcome.diagnostic.endswith(":stderr-tail")
     assert outcome.diagnostic == f"process_failed: {adapter.diagnostics[-1].detail}"
-
-
-def test_subprocess_runner_is_a_bounded_injected_codex_process_adapter(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    observed: dict[str, object] = {}
-
-    def fake_run(argv, **kwargs):
-        observed["argv"] = tuple(argv)
-        observed.update(kwargs)
-        return SimpleNamespace(
-            returncode=0,
-            stdout="s" * 10_000,
-            stderr="stderr-head:" + "e" * 10_000 + ":stderr-tail",
-        )
-
-    monkeypatch.setattr(subprocess, "run", fake_run)
-    runner = SubprocessCodexProcessRunner()
-
-    result = runner.run(
-        ("codex-test", "exec", "--ephemeral", "-"),
-        cwd=tmp_path,
-        prompt="bounded prompt",
-        timeout_sec=12.0,
-    )
-
-    assert result.returncode == 0
-    assert len(result.stdout) <= 4_096
-    assert len(result.stderr) <= 4_096
-    assert result.stderr.startswith("stderr-head:")
-    assert result.stderr.endswith(":stderr-tail")
-    assert observed["argv"] == ("codex-test", "exec", "--ephemeral", "-")
-    assert observed["cwd"] == tmp_path
-    assert observed["input"] == "bounded prompt"
-    assert observed["timeout"] == 12.0
-    assert observed["capture_output"] is True
-    assert observed["text"] is True
 
 
 def test_dispatch_diagnostics_are_bounded_and_never_become_a_receipt_log() -> None:
@@ -1205,7 +1070,6 @@ def test_dispatch_diagnostics_are_bounded_and_never_become_a_receipt_log() -> No
         packet_materializer=_PacketMaterializer(
             StagePacket(stage="director", payload={}, media=())
         ),
-        codex_executable="codex-test",
     )
 
     for index in range(40):
@@ -1227,12 +1091,10 @@ def test_fresh_adapter_dispatches_only_when_core_replays_an_outstanding_request(
     first = CodexSemanticAdapter(
         process_runner=first_runner,
         packet_materializer=_PacketMaterializer(packet),
-        codex_executable="codex-test",
     ).proposal_for(request)
     second = CodexSemanticAdapter(
         process_runner=second_runner,
         packet_materializer=_PacketMaterializer(packet),
-        codex_executable="codex-test",
     ).proposal_for(request)
 
     assert first is not None

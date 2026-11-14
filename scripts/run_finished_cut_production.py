@@ -42,12 +42,12 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--resolve-config", type=Path)
     parser.add_argument(
         "--semantic-worker",
-        choices=("codex", "handoff"),
-        default="codex",
+        choices=("handoff",),
+        default="handoff",
         help=(
-            "誰回答 Director/DP/visual_review 的 packet。"
-            "codex＝開 Codex 子行程（無人看管的 watcher 用）；"
-            "handoff＝停下來交給**當下正在跑的 agent**，packet 攤在 --handoff-root"
+            "誰回答 Director/DP/visual_review 的 packet：只有 handoff——停下來交給"
+            "**當下正在跑的 agent**，packet 攤在 --handoff-root。"
+            "codex 選項已於 2026-11-14 移除（修修裁決：語意工作只交給當下的 agent）"
         ),
     )
     parser.add_argument(
@@ -59,7 +59,7 @@ def _parser() -> argparse.ArgumentParser:
         "--handoff-wait-sec",
         type=float,
         help=(
-            "handoff 最多等 response.json 幾秒（預設跟 Codex 一樣 900）。等待時整集的 command "
+            "handoff 最多等 response.json 幾秒（預設 900）。等待時整集的 command "
             "lock 一直被握著；逾時會記成 failed，之後 retry-failed-dispatch 就能接回。"
             "不要從外面砍 process——那會讓 dispatch 卡在 claimed、無法復原"
         ),
@@ -95,18 +95,17 @@ def main(
     args = _parser().parse_args(argv)
     paths = ProductionPaths(args.runtime_root, args.episodes_root)
     factory = application_factory or build_production_application
-    factory_options: dict[str, object] = {}
-    if args.semantic_worker == "handoff":
-        # 這個接縫 library 一直都有（build_production_application 的 process_runner），
-        # 只是 CLI 沒把旋鈕拉出來，於是不管誰在跑都會去開 Codex。
-        from agents.brook.script_video.finished_cut_production._agent_handoff import (
-            AgentHandoffProcessRunner,
-        )
+    # 語意工作永遠交給當下正在跑的 agent；不再有開 Codex 子行程的選項。
+    from agents.brook.script_video.finished_cut_production._agent_handoff import (
+        AgentHandoffProcessRunner,
+    )
 
-        handoff_root = args.handoff_root or (args.runtime_root / "semantic-handoff")
-        factory_options["process_runner"] = AgentHandoffProcessRunner(
+    handoff_root = args.handoff_root or (args.runtime_root / "semantic-handoff")
+    factory_options: dict[str, object] = {
+        "process_runner": AgentHandoffProcessRunner(
             handoff_root, max_wait_sec=args.handoff_wait_sec
         )
+    }
     if args.resolve_config is not None:
         payload = json.loads(args.resolve_config.read_text(encoding="utf-8"))
         configuration = _resolve_configuration(payload)

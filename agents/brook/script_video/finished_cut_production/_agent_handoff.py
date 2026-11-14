@@ -1,8 +1,10 @@
 """把語意工作交給**當下正在跑的 agent**，而不是另外開一個供應商的子行程。
 
 `_composition.build_production_application` 早就留了 `process_runner` 參數，但
-`run_finished_cut_production.py` 從來不傳，於是永遠落到 `SubprocessCodexProcessRunner`
-——不管當下是誰在跑，Director / DP / visual_review 都會去開 Codex。修修講過很多次：
+`run_finished_cut_production.py` 以前不傳，於是永遠落到開 Codex 子行程的 runner
+——不管當下是誰在跑，Director / DP / visual_review 都會去開 Codex。
+那支 runner 已於 2026-11-14 移除（修修：「把指定 codex 全部都拿掉，只交給當下的
+agent」），這裡是語意工作唯一的執行方式。修修講過很多次：
 語意工作由當下執行的 agent 自己做，code 寫死供應商是 bug 不是指示
 （`memory/claude/feedback_semantic_work_runs_on_host_agent.md`）。
 
@@ -57,8 +59,8 @@ class HandoffPaths:
 class AgentHandoffProcessRunner:
     """Stop and let the running agent answer the semantic packet.
 
-    介面與 `SubprocessCodexProcessRunner` 相同，因此 `CodexSemanticAdapter` 不需要
-    知道自己被誰服務。
+    實作 `CodexProcessRunner` protocol（名稱是歷史遺留），因此 `CodexSemanticAdapter`
+    不需要知道自己被誰服務。
     """
 
     def __init__(
@@ -152,6 +154,34 @@ class AgentHandoffProcessRunner:
                     ),
                 )
             self._sleep(self._poll_sec)
+
+
+class UnassignedSemanticRunner:
+    """沒有指定當下 agent 時的預設 runner：不開任何子行程，直接回報失敗。
+
+    背景程式（`finished_review_watcher.py` 的常駐迴圈、Bridge）會組 application，
+    但它們身邊沒有對話中的 agent，不該推進語意 stage。萬一推進到了，這裡讓那一次
+    dispatch 記成 failed（可用 `retry-failed-dispatch` 接回），而不是偷偷去開別家
+    供應商的子行程。
+    """
+
+    def run(
+        self,
+        argv: tuple[str, ...],
+        *,
+        cwd: Path,
+        prompt: str,
+        timeout_sec: float,
+    ) -> CodexProcessResult:
+        del argv, cwd, prompt, timeout_sec
+        return CodexProcessResult(
+            returncode=1,
+            stderr=(
+                "沒有當下的 agent 接這份語意工作。請在對話中用 "
+                "run_finished_cut_production.py --semantic-worker handoff，或 "
+                "finished_review_watcher.py --host-agent 推進。"
+            ),
+        )
 
 
 def _handoff_name(cwd: Path, *, fallback: str) -> str:

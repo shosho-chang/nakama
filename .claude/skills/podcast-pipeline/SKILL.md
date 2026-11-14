@@ -807,7 +807,7 @@ Editorial Master 封存
  │
  ├─【平行準備】6 支 cut 的語意工作 ＋ carousel
  │     長片：**ADR-066**（`run_finished_cut_production.py --semantic-worker handoff`）
- │           手冊＝`longform-cut/SKILL.md`。⛔ 不是 `podcast_highlight_visual_orchestrator.py`
+ │           手冊＝`longform-cut/SKILL.md`。（ADR-065 的 `podcast_highlight_visual_orchestrator.py` 已刪除）
  │     短片：緊湊化複審／字卡企劃／素材選型（`shortform-director` / `shortform-dp`）
  │     carousel：見 `skills/ig-cards/SKILL.md`（不是 `.claude/skills/ig-cards/`，那只是入口）
  │  【序列上軌】每一支輪流進 Resolve
@@ -885,7 +885,7 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_podcast_carousel.py "<episode>
 
 > ## ⛔ 長片的視覺線走 ADR-066，不是本節底下那條 ADR-065 chain
 >
-> **`scripts/podcast_highlight_visual_orchestrator.py` 已停用，不要照著跑。**
+> **`scripts/podcast_highlight_visual_orchestrator.py` 已刪除（2026-11-14）。**
 > long 的生產唯一路線 = **ADR-066 Finished Cut Production**：
 > `scripts/run_finished_cut_production.py`，實跑手冊在
 > [`longform-cut/SKILL.md`](../longform-cut/SKILL.md) 的「ADR-066 實跑手冊」節
@@ -894,6 +894,9 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_podcast_carousel.py "<episode>
 > 語意工作用 `--semantic-worker handoff`：packet 攤在
 > `<runtime-root>/semantic-handoff/<request_id>/`，**停下來交給當下正在跑的 agent**。
 > 不要因為看到某段 code 寫死 Codex 就去派 Codex（`feedback_semantic_work_runs_on_host_agent`）。
+> 2026-11-14 起程式裡已經沒有開 Codex 的路徑：CLI 只剩 handoff；Bridge 存修改後背景
+> watcher 只登錄，推進由對話中的 agent 跑 `finished_review_watcher.py --host-agent`
+> （見 `longform-cut` 的「Bridge 存修改之後」節）。
 >
 > **2026-09-11 血淚（20260721 呂冠緯）**：`highlight-cut` 與 `longform-cut` 兩份 skill
 > 開頭都掛了這個 ⛔，唯獨本節沒有，於是 agent 照本節跑完了整條 ADR-065 chain——

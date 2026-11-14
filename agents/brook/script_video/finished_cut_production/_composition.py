@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Callable, Literal, Protocol
 
 from ._active_store import ActiveAssetStore
+from ._agent_handoff import UnassignedSemanticRunner
 from ._approved_cut import (
     ApprovedCutAuthority,
     ApprovedCutAuthorityContextResolver,
@@ -21,7 +22,6 @@ from ._brand_badge import BRAND_BADGE_SLUG_SECONDS
 from ._codex_semantic import (
     CodexProcessRunner,
     CodexSemanticAdapter,
-    SubprocessCodexProcessRunner,
 )
 from ._commands import CommandRejectedError
 from ._correction import RunInspection
@@ -705,7 +705,8 @@ def build_production_application(
     )
     semantic = DurableSemanticAdapter(
         worker=CodexSemanticAdapter(
-            process_runner=process_runner or SubprocessCodexProcessRunner(),
+            # 語意工作只交給當下的 agent（AgentHandoffProcessRunner）；沒指定就不推進。
+            process_runner=process_runner or UnassignedSemanticRunner(),
             packet_materializer=_CurrentRequestPacketMaterializer(
                 asset_resolver=assets,
                 previewer=previewer or StoredAssetPreviewer(),

@@ -61,6 +61,8 @@ python scripts/run_finished_cut_production.py ... advance <command_id>   # 反�
 
 `--semantic-worker handoff` 會把 packet 攤在 `<rt>/semantic-handoff/<request_id>/`
 然後**停下來等 `response.json`**——語意工作由當下這個 agent 自己做，不開 Codex。
+（2026-11-14 起 handoff 是 CLI 唯一的選項，也是預設；開 Codex 子行程的 runner 已刪除，
+修修原話：「把指定 codex 全部都拿掉，只交給當下的 agent」。）
 `media/` 子目錄裡是每個 component 的預覽畫格：**視覺審查一定要逐格看過再回答**。
 
 `intentional_aroll` 事件不會有畫格（刻意不上視覺），那一關直接放行是誠實的；
@@ -497,7 +499,31 @@ path escape、glob slug 或 hash drift 都 fail closed。只有通過後才能�
 唯一 authoritative verifier：從 current plan、materialization receipt、實檔 hash 與 events fresh rebuild，
 再和 manifest exact compare；不得只相信 manifest 自報的 `asset_category` 或 count。
 
+### Bridge 存修改（Save Draft）之後：由對話中的 agent 推進
+
+Thousand Sunny 開機帶起來的 `finished_review_watcher.py` 背景迴圈**只登錄**修改：
+Bridge 存下的 revision job 從 `queued` 變成 `registered`，Bridge 顯示「修改已登錄，
+等對話中的 agent 接手」。它**不推進** Director／DP／視覺審查——背景程式身邊沒有 agent，
+以前就是在這裡偷偷開 Codex（2026-11-14 移除）。
+
+修修在對話裡說要處理成片修改時，由當下的 agent 執行：
+
+```powershell
+& $resolvePy scripts/finished_review_watcher.py --episodes-root "G:\Footages" `
+  --host-agent --episode "<episode>"
+```
+
+它把已登錄的 revision 一路推進到 `preview_ready` 或 `needs_review`。每到語意 stage，
+packet 攤在 `<episode>/highlights/finished-cut-production-v1/runtime/semantic-handoff/<request_id>/`，
+agent 讀 `prompt.md`、照 `schema.json` 寫 `response.json` 後自動往下跑（建議用背景執行，
+邊等邊寫答案）。每行 stdout 是一筆 revision 的最終狀態 JSON。
+
 ### Finished revision 的 trusted Stock Video handoff
+
+> ⚠️ 2026-11-14 查證：下面三段用到的 `--reconcile-episode`、`--retry-episode`、
+> `--recover-episode` 等旗標，目前的 `scripts/finished_review_watcher.py` **沒有**
+> （它只有 `--episodes-root`、`--interval`、`--once`、`--recover-stalled`、`--host-agent`、
+> `--episode`、`--handoff-wait-sec`）。照抄會直接報錯；要用之前先問修修這段流程的現況。
 
 Stock Video 下載與授權證據收集是上游 acquisition worker 的工作；Finished Revision
 Agent 只生 plan，不得自報來源或授權。Acquisition 交付 `trusted_asset_sources.json`，
