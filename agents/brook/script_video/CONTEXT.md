@@ -2,20 +2,20 @@
 
 修修 talking head 影片的製作管線 context：RAW 錄影進、DaVinci 可剪的 timeline 出。
 創意分鏡層＝Director skill，機械層＝本目錄 pipeline 程式（ADR-050、ADR-051）。
-字幕 handoff 由 ADR-056 收緊：本 context 只消費 Podcast Subtitle V2 的 Verified Projection ID + manifest，不把裸 SRT 當文字真相。
+字幕 handoff：本 context 只消費新字幕程式（ADR-063 Memo Dual-Audit Release V1）的 Stage 5 handoff，不把裸 SRT 當文字真相。舊 Podcast Subtitle V2（ADR-056）已於 2026-11 移除。
 
 ## Language
 
-**Verified Projection handoff**:
-Stage 4 交給本管線的 content-addressed SRT projection 與 lineage manifest；已通過 exact-copy、speaker、duration、semantic split 與 generation gates。
-_Avoid_: raw.srt、corrected SRT、只傳 transcript.srt 路徑
+**Subtitle release handoff**:
+`subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json` — 新字幕程式 finalize 後交給本管線的 release.srt，與 release ledger、export manifest、episode id 互綁 hash。`plan` 把用了哪一份記進 `storyboard.subtitle-source.json`，`emit` 只接受同一份。
+_Avoid_: raw.srt、corrected SRT、只傳 transcript.srt 路徑、Verified Projection（舊 V2 用語）
 
 **Director**:
-分鏡創意層 — Claude 依 skill 手冊讀 Verified Projection、決定每個 beat 的 B-roll、取得外部素材、產 storyboard。
+分鏡創意層 — Claude 依 skill 手冊讀字幕 release、決定每個 beat 的 B-roll、取得外部素材、產 storyboard。
 _Avoid_: planner（那是 `plan` CLI 的單次 LLM 初稿工具）、分鏡師
 
 **Beat**:
-storyboard 的最小單位 — Verified Projection 上一段 exact-copy 連續引句（start/end quote 錨定）＋一個 B-roll 決策。
+storyboard 的最小單位 — 字幕 release 上一段 exact-copy 連續引句（start/end quote 錨定）＋一個 B-roll 決策。
 _Avoid_: scene、shot、片段
 
 **Storyboard**:
@@ -154,7 +154,7 @@ _Avoid_: 標題候選／封面候選（那是 package 成形前的中間產物�
 
 **Packaging gate**:
 穩態下唯一的人工介入點 —— 修修看 3 個 package 後 approve。字幕 QC／選段 veto／短片 cuts
-複審都不是穩態的人工 gate；Podcast Subtitle V2 的機械 Quality Gates 仍是每個 projection 的 fail-closed 前置條件。
+複審都不是穩態的人工 gate；新字幕程式（ADR-063）finalize 的機械 gates 仍是每份 release 的 fail-closed 前置條件。
 _Avoid_: review point（太泛）
 
 **archetype / playbook**:
@@ -164,8 +164,8 @@ _Avoid_: 範本、template（那是 composition）
 
 ## Relationships
 
-- **Verified Projection handoff** 來自 Stage 4 `PodcastSubtitleV2.project`；本管線先驗 manifest / generation hash 才讀 SRT
-- **Director** 與 **Beat** 只能 exact-copy Verified Projection；需要改字時退回 Stage 4 `resolve`，不得在 storyboard 或本管線內 correction
+- **Subtitle release handoff** 來自 `scripts/podcast_subtitle_release.py finalize`；本管線經 `select_stage5_subtitle` 驗完 hash 才讀 release.srt
+- **Director** 與 **Beat** 只能 exact-copy 字幕 release；需要改字時回新字幕程式修正、重新 finalize 出新 release 再重跑 `plan`，不得在 storyboard 或本管線內 correction
 - 一個 **Beat** 至多一個 **B-roll**；`asset` 類 beat 可帶多個**候選**
 - **Director** 產 **Storyboard**；**Bridge UI** 兩層審核（text / visual）後才 render/emit
 - **asset_requests** 由 **Director** 產出、下載方履約回 **asset_manifest**、Director 驗收後 storyboard 才算素材就緒
@@ -184,7 +184,7 @@ _Avoid_: 範本、template（那是 composition）
 > **Dev:** 「舊 revision 還留在硬碟，可以讓新 cut 沿用嗎？」
 > **修修:** 「不行。它只能在 **Forensic Archive** 明確還原供稽核；新的 **Finished Cut Release** 必須從目前 run、ADR-064 Editorial Master contract 與 **Active Asset Store** 產生。」
 > **Dev:** 「字幕有一個字錯了，可以直接改 storyboard quote 嗎？」
-> **修修:** 「不行。本管線只 exact-copy **Verified Projection handoff**；回 Podcast Subtitle V2 resolve 出新 Generation，再 project 一份新的 verified SRT。」
+> **修修:** 「不行。本管線只 exact-copy **Subtitle release handoff**；回新字幕程式修正、重新 finalize 一份 release，再重跑 plan。」
 
 ## Flagged ambiguities
 
@@ -199,4 +199,4 @@ _Avoid_: 範本、template（那是 composition）
   邊界規則（`shared/` 只收 2+ agent 共用）其實該住 Brook package。待本 grill 決定 code 落點後回收。
 - 「planner」曾泛指分鏡決策者 — 已解：Director 是決策者；planner 專指 `plan` CLI 的一次性 LLM 初稿工具。
 - 「舊版」曾混指可執行 ADR-065 流程、歷史 evidence、Short CLI 與相容 reader — 已解：可執行流程＝**Legacy Creative DAG**；歷史 evidence＝**Forensic Archive**；兩者都不是新 production adapter。
-- 「校正字幕」曾指任何看起來已修改過的 SRT — 已解：Stage 5 只承認帶 lineage manifest 的 **Verified Projection handoff**；裸檔不是可接受 input。
+- 「校正字幕」曾指任何看起來已修改過的 SRT — 已解：Stage 5 只承認 hash 互綁的 **Subtitle release handoff**；裸檔不是可接受 input。

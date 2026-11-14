@@ -264,6 +264,15 @@ What it does not change:
 - The standalone script-video line (ADR-062) is not retired. Owner 原話：「影片這條線之後會用到，而且會經過很大的修改，現在先不要動」。
   Its `plan`／`run`／`emit` consumed a Verified Projection, so they now stop with a clear
   “字幕來源待重做” message until the owner decides the new subtitle source during that redesign.
+- **2026-11-14 follow-up — the owner decided the video line's subtitle source.** Owner 原話：「你先把
+  YouTube 影片 pipeline，本來用到呼叫舊字幕的程式，改到呼叫新字幕程式。」`plan`／`run`／`emit` now
+  open this ADR's Stage 5 handoff (`subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json`, or an
+  explicit `--subtitle-release-handoff` inside the episode directory) through the same
+  `select_stage5_subtitle` the Resolve step uses. `plan` records the release's hash identity in
+  `storyboard.subtitle-source.json`; `emit` refuses a storyboard planned on a different release. A
+  loose `transcript.srt` is still never a production input. How a video episode's `normalized.wav`
+  is prepared from `raw_recording.mp4` (`run_audio_prep.py` expects a podcast `Audio/` folder) is not
+  yet decided.
 
 ## Acceptance criteria
 

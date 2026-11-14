@@ -1,16 +1,22 @@
 # `agents/brook/script_video/` — script-to-B-roll pipeline
 
-ADR-032 production agent. Production `plan` / `run` consume a fully reverified
-Podcast Subtitle V2 projection plus talking-head video, and produce a DaVinci
-Resolve-importable FCPXML timeline and individual B-roll mp4 clips.
+ADR-032 production agent. Production `plan` / `run` consume the same subtitle
+release the podcast line uses — ADR-063 Memo Dual-Audit Release V1 — plus
+talking-head video, and produce a DaVinci Resolve-importable FCPXML timeline and
+individual B-roll mp4 clips.
 
 ```
 data/script_video/<episode-id>/                ← INPUT + OUTPUT root
-├── episode.yaml                               ← metadata + immutable V2 handoff binding
+├── episode.yaml                               ← metadata
 ├── raw_recording.mp4                          ← talking head (already mistake-cleaned)
+├── subtitle-release/memo-dual-audit-v1/       ← 新字幕程式的 release（podcast_subtitle_release.py finalize）
+│   ├── STAGE5-HANDOFF.json                    ← plan/emit 預設讀這份
+│   ├── release.srt
+│   ├── release-ledger.json
+│   └── export-manifest.json
 ├── refs.yaml          (optional)              ← quote disambiguation map
 ├── storyboard.yaml    (generated)             ← planner output, UI edits in place
-├── storyboard.provenance.json (generated)     ← exact projection/generation/QC digests
+├── storyboard.subtitle-source.json (generated) ← plan 用的是哪一份 release（hash）
 └── out/                                       ← render artifacts
     ├── b_roll_<sha256[:16]>.mp4              ← individual B-roll clips, content-addressed (ADR-038 §D2)
     ├── episode.fcpxml                         ← ★ DaVinci import target
@@ -20,17 +26,25 @@ data/script_video/<episode-id>/                ← INPUT + OUTPUT root
 ## CLI
 
 ```bash
-python -m agents.brook.script_video --episode <id> plan      # Verified Projection → storyboard
+python -m agents.brook.script_video --episode <id> plan      # release.srt → storyboard
 python -m agents.brook.script_video --episode <id> render    # storyboard.yaml → b_roll_*.mp4
 python -m agents.brook.script_video --episode <id> emit      # → episode.fcpxml
 python -m agents.brook.script_video --episode <id> run       # plan + render + emit
 ```
 
-`plan` constructs a fresh V2 verifier, replays the stored generation, semantic
-projection, render, manifest, and Quality Report lineage, then gives the planner
-only the exact SRT bytes returned by that verifier. A local `transcript.srt` is
-never a production input. `emit` repeats verification and rejects provenance,
-anchor, timing, or cue-ID drift before writing FCPXML.
+`plan` opens `subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json` through
+the same `select_stage5_subtitle` the Resolve step uses (hash-binds release.srt,
+ledger, export manifest and episode id), gives the planner only those exact SRT
+bytes, and records the release identity in `storyboard.subtitle-source.json`.
+`--subtitle-release-handoff <relative path>` picks another handoff inside the
+episode directory. A local `transcript.srt` is never a production input. `emit`
+reopens the release, rejects a storyboard planned on a different release, and
+rejects anchor, timing, or cue-ID drift before writing FCPXML.
+
+release 由 `scripts/podcast_subtitle_release.py` 產（`.claude/skills/podcast-pipeline/SKILL.md`
+S3–S6），`--episode-root` 指到 `data/script_video/<episode-id>/`。注意：前段
+`scripts/run_audio_prep.py` 預設吃 podcast 的 `Audio/` 子資料夾，影片集的 `normalized.wav`
+怎麼從 `raw_recording.mp4` 準備，目前還沒有定案的流程。
 
 ## Bridge UI
 
@@ -53,12 +67,6 @@ id: N42-atomic-habits
 title: 原子習慣的核心概念
 target_duration_seconds: 720         # 12 min
 created_at: 2026-05-25
-subtitle_v2_handoff:
-  schema_version: 1
-  episode_root: ../../podcast_subtitles/N42-atomic-habits
-  projection_id: projection-<64 lowercase hex characters>
-  generation_id: generation-<64 lowercase hex characters>
-  projection_manifest_sha256: <64 lowercase hex characters>
 ```
 
 ### `refs.yaml` (optional)
@@ -147,7 +155,7 @@ Document outcome in PR-4 review comment.
 ## Pipeline invariants (from ADR-032)
 
 - **Talking head sacred for grade** — V1 raw_recording.mp4 referenced; broll pipeline never re-encodes. DaVinci does encode on final export (LUT / grade), but the source clip retains full grading latitude.
-- **Verified Projection is the timing source of truth** — no estimates; Podcast Subtitle V2 hands off a Projection ID + manifest whose SRT is an exact-copy display projection of the Canonical Transcript (ADR-056). During shadow migration, legacy `/transcribe` SRT remains V1-only input and is never treated as V2 canonical truth.
+- **The Memo Dual-Audit release is the timing source of truth** — no estimates; `release.srt` is hash-bound by `STAGE5-HANDOFF.json` (ADR-063). Podcast Subtitle V2 (ADR-056) was removed in 2026-11. A loose `transcript.srt` / legacy `/transcribe` SRT is never a production input.
 - **Mistake-cleanup 是同一條 line 的選配前置 stage**（ADR-050 D3 改寫原「out of scope」invariant）— `cleanup/` 拍掌 marker 偵測產 ripple-delete FCPXML；storyboard pipeline 仍假設進場的 SRT 已乾淨。
 - **`docs/design-system.md` is the only brand source** — planner loads at runtime, never duplicates tokens locally.
 

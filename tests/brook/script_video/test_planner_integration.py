@@ -11,17 +11,14 @@ from __future__ import annotations
 import argparse
 import logging
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 import yaml
 
-# 這四個測試驗的是 plan 的後續邏輯（planner → exact aligner → storyboard.yaml、
-# 時長警告），原本靠 monkeypatch `require_verified_projection` 才走得進去。
-# Subtitle V2 已移除、影片線字幕來源待重做，`_cmd_plan` 目前一律中止；
-# 重做時把下面的 seam fixture 改接新的字幕來源，再拿掉這個 skip。
-pytestmark = pytest.mark.skip(reason="影片線字幕來源待重做（Subtitle V2 已移除）")
+from tests.brook.script_video.test_verified_projection_handoff import (
+    _memo_dual_audit_release_fixture,
+)
 
 SYNTHETIC_SRT = """\
 1
@@ -45,7 +42,7 @@ SYNTHETIC_SRT = """\
 這個數字很驚人。
 """
 
-# Stage 5 receives the Verified Projection text byte-for-byte; no number or
+# Stage 5 receives the subtitle release text byte-for-byte; no number or
 # punctuation normalization is allowed after the handoff.
 _NORMALIZED_START = "今天我們要聊一個研究"
 _NORMALIZED_STAT_START = "研究追蹤了11,000名受試者長達20年"
@@ -96,41 +93,12 @@ def _canned_llm_text(beats: list[dict] | None = None) -> str:
 
 
 def _write_episode_fixture(ep_dir: Path) -> None:
+    """episode.yaml＋一份真的（hash 互綁的）Memo Dual-Audit release，內容是 SYNTHETIC_SRT。"""
     ep_dir.mkdir(parents=True)
-    (ep_dir / "transcript.srt").write_text(SYNTHETIC_SRT, encoding="utf-8")
     (ep_dir / "episode.yaml").write_text(
         "title: Test Episode\ntarget_duration: 30\n", encoding="utf-8"
     )
-
-
-@pytest.fixture(autouse=True)
-def _verified_projection_unit_seam(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Older planner tests stay unit-scoped; the disk-verifier tracer lives separately."""
-
-    digest = "a" * 64
-
-    def load_fixture(*, expected_episode_id: str, **_kwargs):
-        return SimpleNamespace(
-            episode_id=expected_episode_id,
-            projection_id="projection-" + digest,
-            generation_id="generation-" + digest,
-            projection_sha256=digest,
-            manifest_sha256=digest,
-            quality_report_sha256=digest,
-            srt_sha256=digest,
-            srt_bytes=SYNTHETIC_SRT.encode("utf-8"),
-            manifest=SimpleNamespace(
-                canonical_hash=digest,
-                profile_hash=digest,
-                token_sequence_hash=digest,
-                output_hash=digest,
-            ),
-        )
-
-    monkeypatch.setattr(
-        "agents.brook.script_video.subtitle_handoff.require_verified_projection",
-        load_fixture,
-    )
+    _memo_dual_audit_release_fixture(ep_dir, srt_text=SYNTHETIC_SRT)
 
 
 def test_plan_produces_valid_storyboard(tmp_path, monkeypatch, mock_llm_response):

@@ -11,10 +11,10 @@
 > `require_verified_projection`、`subtitle_v2_handoff` binding 與 `storyboard.provenance.json`
 > 的實作都已刪除。
 >
-> 影片線本身沒有退役——owner 原話：「影片這條線之後會用到，而且會經過很大的修改，現在先不要動」。目前
-> `agents/brook/script_video/pipeline.py` 的 `_require_subtitle_source` 一律以
-> 「影片線的字幕來源待重做」中止 `plan`／`run`／`emit`；新的字幕來源與 provenance 綁定由 owner
-> 在影片線重做時另行決定，屆時應開新的 ADR，而不是復活本文件。
+> 影片線本身沒有退役——owner 原話：「影片這條線之後會用到，而且會經過很大的修改，現在先不要動」。
+> 2026-11-14 owner 決定影片線改讀新字幕程式（ADR-063 Memo Dual-Audit Release V1）的 Stage 5
+> handoff，記在 ADR-063 的「2026-11-14 follow-up」；`storyboard.provenance.json` 由
+> `storyboard.subtitle-source.json` 取代。本文件維持歷史紀錄，不復活。
 
 ## Decision
 
