@@ -53,11 +53,24 @@ def set_auth_cookie(response, token: str) -> None:
     )
 
 
+OPEN_AUTH_ENV = "NAKAMA_ALLOW_OPEN_AUTH"
+
+
+def open_auth_allowed() -> bool:
+    """沒設 WEB_PASSWORD 時要不要放行——必須明確設 ``NAKAMA_ALLOW_OPEN_AUTH=1``。
+
+    以前「沒設密碼＝全站放行」是預設行為；VPS 的 .env 一旦漏了這個變數，Bridge 就整個
+    打開（2026-11 測試審計）。現在預設 fail closed，只有本機開發／測試明確 opt-in 才放行。
+    每次呼叫都讀環境變數，測試用 monkeypatch 就能切換。
+    """
+    return os.environ.get(OPEN_AUTH_ENV, "").strip().lower() in ("1", "true", "yes")
+
+
 def check_auth(auth_cookie: str | None) -> bool:
     if _DEV_AUTH_BYPASS:
         return True
     if not WEB_PASSWORD:
-        return True
+        return open_auth_allowed()
     if not auth_cookie:
         return False
     return hmac.compare_digest(auth_cookie, make_token(WEB_PASSWORD))
