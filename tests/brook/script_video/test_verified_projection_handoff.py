@@ -148,7 +148,11 @@ def _memo_dual_audit_release_fixture(
     nonmajor_retained_original_count: int = 2,
     episode_id: str | None = None,
     relative_root: str = "subtitle-release/memo-dual-audit-v1",
+    srt_text: str | None = None,
 ) -> Path:
+    """寫一份 hash 互綁的 Memo Dual-Audit release；``srt_text`` 給定時用它當 release.srt。"""
+    if srt_text is not None:
+        cue_count = actual_cue_count = srt_text.count(" --> ")
     episode_id = root.name if episode_id is None else episode_id
     actual_cue_count = cue_count if actual_cue_count is None else actual_cue_count
     major_audio_reviewed_count = (
@@ -168,7 +172,7 @@ def _memo_dual_audit_release_fixture(
             )
 
         blocks.append(f"{number}\n{stamp(start_ms)} --> {stamp(end_ms)}\nofficial cue {number}")
-    srt_bytes = ("\n\n".join(blocks) + "\n").encode()
+    srt_bytes = ("\n\n".join(blocks) + "\n").encode() if srt_text is None else srt_text.encode()
     srt_path = release_root / "release.srt"
     srt_path.write_bytes(srt_bytes)
     input_roles = {

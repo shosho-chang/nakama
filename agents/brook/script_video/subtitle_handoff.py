@@ -755,9 +755,9 @@ def select_stage5_subtitle(
 class VerifiedProjectionHandoffError(ValueError):
     """Video-line storyboard binding drifted from its subtitle source.
 
-    Subtitle V2 (ADR-056) was removed in 2026-11.  The name is retained only
-    because ``agents.brook.script_video.pipeline`` still raises it; the video
-    line's subtitle source is pending a redesign.
+    The video line now reads the Memo Dual-Audit release (ADR-063); ``emit``
+    raises this when a storyboard is not bound to the current release or its
+    anchors no longer align.  The V2-era name is kept for existing callers.
     """
 
 

@@ -3,7 +3,7 @@
 Subcommands:
 - cleanup: raw_recording.mp4 → 拍掌 marker 偵測 → out/cleanup.fcpxml
   ripple-delete timeline（選配前置 stage，ADR-050 D3）
-- plan: Verified Projection → storyboard.yaml (PR-3); ``--use-hints`` consumes
+- plan: Memo Dual-Audit release.srt → storyboard.yaml (PR-3); ``--use-hints`` consumes
   ``storyboard_hints.yaml`` if present (ADR-038 §D5)
 - hint-beats: raw_recording.mp4 → storyboard_hints.yaml via silencedetect
   (ADR-038 §D5 / PR-C)
@@ -18,22 +18,27 @@ Subcommands:
 Episode dirs require an ``episode.yaml``; every completed stage is stamped
 into its ``stages:`` map as provenance (ADR-050 D4).
 
-``plan`` / ``run`` / ``emit`` are production consumers: they require an exact
-Podcast Subtitle V2 ``subtitle_v2_handoff`` and never read a loose
-``transcript.srt``.  ``cleanup`` / ``correct-srt`` remain explicitly legacy
+``plan`` / ``run`` / ``emit`` are production consumers: they read the same
+subtitle release the podcast line uses (ADR-063 Memo Dual-Audit Release V1,
+``<episode>/subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json`` written by
+``scripts/podcast_subtitle_release.py finalize``) and never read a loose
+``transcript.srt``.  ``plan`` records which release it used in
+``storyboard.subtitle-source.json``; ``emit`` refuses a storyboard whose release
+has changed since.  ``cleanup`` / ``correct-srt`` remain explicitly legacy
 authoring tools and write ``legacy_transcript.srt`` by default.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import logging
 import subprocess
 import sys
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import NoReturn
 
 import yaml
 
@@ -63,7 +68,8 @@ def _require_episode(ep_dir: Path) -> dict:
             f"每個 episode 目錄必須有 episode.yaml（provenance anchor，ADR-050 D4）。建立方式：\n"
             f"  mkdir -p {ep_dir}/out\n"
             f"  printf 'id: {ep_dir.name}\\ntitle: \"<標題>\"\\n' > {episode_yaml}\n"
-            f"production 輸入：raw_recording.mp4 + episode.yaml 的 subtitle_v2_handoff"
+            f"production 輸入：raw_recording.mp4 + "
+            f"subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json"
         )
     return yaml.safe_load(episode_yaml.read_text(encoding="utf-8")) or {}
 
@@ -126,28 +132,94 @@ def _check_srt_mp4_duration(srt_cues: list, mp4_path: Path) -> None:
         )
 
 
+SUBTITLE_SOURCE_RECORD = "storyboard.subtitle-source.json"
+
+# 綁定比對只看內容雜湊與模式，不看絕對路徑——同一份 release 換台機器跑 emit 也要過。
+_SUBTITLE_BINDING_KEYS = (
+    "subtitle_mode",
+    "episode_id",
+    "subtitle_release_handoff_sha256",
+    "release_ledger_sha256",
+    "export_manifest_sha256",
+    "subtitle_srt_sha256",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class SubtitleSource:
+    """影片線 plan／emit 用的字幕：新字幕程式 release 的 exact bytes＋它的身分。"""
+
+    srt_bytes: bytes
+    binding: dict[str, object]
+
+
 def _require_subtitle_source(
     *,
     ep_dir: Path,
-    expected_episode_id: str,
-    episode_meta: dict,
-) -> NoReturn:
-    """影片線取得字幕來源的唯一接點——目前待重做，一律中止。
+    subtitle_release_handoff: str | None = None,
+) -> SubtitleSource:
+    """影片線取得字幕的唯一接點：讀新字幕程式（ADR-063 Memo Dual-Audit Release V1）的 release。
 
-    舊版在這裡呼叫 Podcast Subtitle V2 的 ``require_verified_projection``
-    （ADR-056／ADR-062，``episode.yaml`` 的 ``subtitle_v2_handoff``）。V2 已於
-    2026-11 移除；新的字幕來源由 owner 在影片線重做時決定，接回來時讓這個
-    函式回傳帶 ``srt_bytes`` 的物件即可，``plan``／``emit`` 的後續主體不用動。
+    跟 Podcast 線（Resolve 專案）走同一個 ``select_stage5_subtitle``：預設讀
+    ``<episode>/subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json``，handoff
+    會驗 release.srt／ledger／export manifest 的 hash 與 episode id 都對得上；
+    ``subtitle_release_handoff`` 可指定 episode 目錄內的另一份 handoff。
+    找不到或驗不過就中止，不會退回讀 ``transcript.srt``。
     """
-    raise SystemExit(
-        f"影片線的字幕來源待重做（episode: {expected_episode_id}）：舊 Podcast Subtitle V2"
-        "（episode.yaml 的 subtitle_v2_handoff）已於 2026-11 移除，"
-        "plan／run／emit 暫不可用。"
+    from agents.brook.script_video.subtitle_handoff import (
+        Stage5SubtitleContractError,
+        Stage5SubtitleRequest,
+    )
+
+    try:
+        selection = Stage5SubtitleRequest(subtitle_release_handoff=subtitle_release_handoff).open(
+            ep_dir
+        )
+    except Stage5SubtitleContractError as exc:
+        raise SystemExit(
+            f"影片線讀不到可用的字幕 release（episode: {ep_dir.name}）：{exc}\n"
+            "先對這個 episode 目錄跑新字幕程式，直到 "
+            "`scripts/podcast_subtitle_release.py finalize` 寫出 "
+            "subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json"
+            "（步驟見 .claude/skills/podcast-pipeline/SKILL.md 的 S3–S6）。"
+        ) from exc
+    identity = selection.identity()
+    srt_bytes = selection.srt_path.read_bytes()
+    # handoff 驗完到這裡讀檔之間檔案若被換掉，以實際讀到的 bytes 為準再對一次。
+    if hashlib.sha256(srt_bytes).hexdigest() != identity["subtitle_srt_sha256"]:
+        raise SystemExit(
+            f"字幕 release.srt 在驗證後被改動（episode: {ep_dir.name}），請重跑 finalize。"
+        )
+    binding = {key: identity[key] for key in _SUBTITLE_BINDING_KEYS}
+    return SubtitleSource(srt_bytes=srt_bytes, binding=binding)
+
+
+def _write_subtitle_source_record(ep_dir: Path, source: SubtitleSource) -> None:
+    record = {"schema_version": 1, "subtitle": source.binding}
+    (ep_dir / SUBTITLE_SOURCE_RECORD).write_text(
+        json.dumps(record, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
     )
 
 
+def _assert_storyboard_bound_to(ep_dir: Path, source: SubtitleSource) -> None:
+    """emit 前確認 storyboard 是用「現在這份」字幕 release 規劃的。"""
+    from agents.brook.script_video.subtitle_handoff import VerifiedProjectionHandoffError
+
+    record_path = ep_dir / SUBTITLE_SOURCE_RECORD
+    if not record_path.is_file():
+        raise VerifiedProjectionHandoffError(
+            f"{record_path.name} 不存在：storyboard 不是用新字幕程式的 release 規劃的，請重跑 plan"
+        )
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    if not isinstance(record, dict) or record.get("subtitle") != source.binding:
+        raise VerifiedProjectionHandoffError(
+            "字幕 release 在 plan 之後換過了（storyboard 綁的不是現在這份），請重跑 plan"
+        )
+
+
 def _cmd_plan(args: argparse.Namespace) -> int:
-    """Verified Projection → storyboard.yaml via LLM planner + exact aligner."""
+    """Memo Dual-Audit release.srt → storyboard.yaml via LLM planner + exact aligner."""
     from agents.brook.script_video.beat_aligner import AnchorNotFoundError, align_beat
     from agents.brook.script_video.planner import plan_episode
     from agents.brook.script_video.srt_flattener import flatten_cues, parse_srt
@@ -160,13 +232,12 @@ def _cmd_plan(args: argparse.Namespace) -> int:
 
     verified = _require_subtitle_source(
         ep_dir=ep_dir,
-        expected_episode_id=args.episode,
-        episode_meta=episode_meta,
+        subtitle_release_handoff=getattr(args, "subtitle_release_handoff", None),
     )
     try:
         srt_text = verified.srt_bytes.decode("utf-8")
-    except UnicodeDecodeError as exc:  # V2 renderer should make this unreachable
-        raise ValueError("verified projection SRT is not UTF-8") from exc
+    except UnicodeDecodeError as exc:  # release finalize writes UTF-8; defensive only
+        raise ValueError("subtitle release SRT is not UTF-8") from exc
     cues = parse_srt(srt_text)
     verified_flat, char_to_time, srt_line_id_to_char_range = flatten_cues(cues)
 
@@ -211,7 +282,7 @@ def _cmd_plan(args: argparse.Namespace) -> int:
             beat.srt_line_ids = result["srt_line_ids"]
         except AnchorNotFoundError as exc:
             raise ValueError(
-                f"beat {beat.beat_id} is not an exact copy of the Verified Projection"
+                f"beat {beat.beat_id} is not an exact copy of the subtitle release"
             ) from exc
 
     storyboard = [b.model_dump() for b in beats]
@@ -219,8 +290,7 @@ def _cmd_plan(args: argparse.Namespace) -> int:
         yaml.dump(storyboard, allow_unicode=True, default_flow_style=False, sort_keys=False),
         encoding="utf-8",
     )
-    # 影片線重做時：在這裡把 storyboard 綁回新的字幕來源（舊版寫
-    # storyboard.provenance.json 綁 Subtitle V2 projection，已隨 V2 移除）。
+    _write_subtitle_source_record(ep_dir, verified)
     logger.info("storyboard written to %s (%d beats)", out_path, len(beats))
     _record_stage(ep_dir, "plan")
     return 0
@@ -345,14 +415,12 @@ def _cmd_emit(args: argparse.Namespace) -> int:
     from agents.brook.script_video.subtitle_handoff import VerifiedProjectionHandoffError
 
     ep_dir = _episode_dir(args.episode)
-    episode_meta = _require_episode(ep_dir)
+    _require_episode(ep_dir)
     verified = _require_subtitle_source(
         ep_dir=ep_dir,
-        expected_episode_id=args.episode,
-        episode_meta=episode_meta,
+        subtitle_release_handoff=getattr(args, "subtitle_release_handoff", None),
     )
-    # 影片線重做時：在這裡驗 storyboard 仍綁著同一份字幕來源（舊版
-    # assert_storyboard_provenance 綁 Subtitle V2 projection，已隨 V2 移除）。
+    _assert_storyboard_bound_to(ep_dir, verified)
     storyboard = yaml.safe_load((ep_dir / "storyboard.yaml").read_text(encoding="utf-8"))
     if not isinstance(storyboard, list):
         raise VerifiedProjectionHandoffError("storyboard.yaml must contain a list of beats")
@@ -368,11 +436,11 @@ def _cmd_emit(args: argparse.Namespace) -> int:
         )
         if beat.timing is None or beat.timing.model_dump() != aligned["timing"]:
             raise VerifiedProjectionHandoffError(
-                f"storyboard beat {beat.beat_id} timing drifted from Verified Projection"
+                f"storyboard beat {beat.beat_id} timing drifted from the subtitle release"
             )
         if beat.srt_line_ids != aligned["srt_line_ids"]:
             raise VerifiedProjectionHandoffError(
-                f"storyboard beat {beat.beat_id} cue binding drifted from Verified Projection"
+                f"storyboard beat {beat.beat_id} cue binding drifted from the subtitle release"
             )
     fcpxml_path = emit(storyboard, ep_dir, fcpxml_version=args.fcpxml_version)
     logger.info("FCPXML emitted: %s", fcpxml_path)
@@ -642,7 +710,19 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--episode", required=True, help="episode id under data/script_video/")
     sub = p.add_subparsers(dest="cmd", required=True)
+
+    def add_subtitle_release_arg(parser: argparse.ArgumentParser) -> None:
+        parser.add_argument(
+            "--subtitle-release-handoff",
+            default=None,
+            help=(
+                "episode 目錄內的 STAGE5-HANDOFF.json 相對路徑（預設 "
+                "subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json）"
+            ),
+        )
+
     plan_sub = sub.add_parser("plan")
+    add_subtitle_release_arg(plan_sub)
     plan_sub.add_argument(
         "--use-hints",
         action="store_true",
@@ -708,8 +788,10 @@ def _build_parser() -> argparse.ArgumentParser:
     render_sub.set_defaults(fn=_cmd_render)
     emit_sub = sub.add_parser("emit")
     emit_sub.add_argument("--fcpxml-version", default="1.10", choices=["1.10", "1.11", "1.9"])
+    add_subtitle_release_arg(emit_sub)
     emit_sub.set_defaults(fn=_cmd_emit)
     run_sub = sub.add_parser("run")
+    add_subtitle_release_arg(run_sub)
     run_sub.add_argument("--concurrency", type=int, default=1)
     run_sub.add_argument("--fcpxml-version", default="1.10", choices=["1.10", "1.11", "1.9"])
     run_sub.add_argument(
