@@ -2,16 +2,22 @@
 name: audio-prep
 description: >
   Podcast/影片錄音的音檔前處理：episode 資料夾 → Auphonic normalization
-  （多帳號輪替 + 免費方案 Jingle 裁切）→ 頭尾靜音裁切 → normalized.wav +
-  prep_manifest.json。Use when the user says 「音檔前處理」「normalize 音檔」
-  「跑 audio-prep」「把 <episode> 的音檔準備好」, or points at a footage
-  episode folder (e.g. G:\footages\20260723 謝伯讓) asking to start the
-  subtitle pipeline. 這是字幕產線的第一段；後續接 subtitle-gen。
+  （多帳號輪替 + 免費方案 Jingle 裁切）→ normalized.wav + normalized-handoff.v1.json
+  + prep_manifest.json（頭尾靜音裁切是 opt-in，podcast 正式流程不開）。
+  Use when the user says 「音檔前處理」「normalize 音檔」「跑 audio-prep」
+  「把 <episode> 的音檔準備好」. 這是 podcast-pipeline 的 S2；要跑整集時由
+  podcast-pipeline 編排，下一段是 S3 Memo 辨識（不是 subtitle-gen）。
 ---
 
 # audio-prep — 音檔前處理
 
 `scripts/run_audio_prep.py`（repo：`E:\nakama`）的互動包裝。
+
+> **在 podcast 正式流程裡的位置**：podcast-pipeline 的 S2。完成後接 S3 Memo 辨識與
+> Memo Dual-Audit Release（ADR-063），**不接** `subtitle-gen`／`subtitle-correct`
+> （那兩個是 ADR-063 以前的舊字幕路線）。整集 E2E 請走 podcast-pipeline skill。
+> 正式流程**不得**加 `--trim-silence`；成功條件是 `normalized.wav` 與
+> `normalized-handoff.v1.json` 都在。
 
 ## Episode 資料夾慣例
 

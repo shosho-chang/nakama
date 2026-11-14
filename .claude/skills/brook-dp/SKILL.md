@@ -3,8 +3,8 @@ name: brook-dp
 description: >
   DP（Director of Photography）攝影指導手冊（ADR-051，修修裁決 A：意圖/實現分離）。
   Triggers: /brook-dp、「把 storyboard 落實成素材」、「跑 DP」、「找 B-roll 素材」。
-  讀 Director 產出的 visual_intent（standalone storyboard.yaml；Podcast Highlight v2
-  orchestrator payload；legacy ADR-065 才讀 DIRECTOR-PLAN.json）→ 逐 beat 決定具體實現
+  讀 Director 產出的 visual_intent（standalone storyboard.yaml；Podcast 長精華由
+  ADR-066 Finished Cut Production 的 semantic handoff 帶入）→ 逐 beat 決定具體實現
   （component/params/asset）→ 產詳細 stock 搜尋詞或 hyperframes render 規格 →
   素材獲取與驗收 → 填回 BRollSpec。創意實現在本手冊；schema/render/emit 契約歸
   agents/brook/script_video/ pipeline 程式，本 skill 只呼叫、不重新發明。
@@ -37,90 +37,17 @@ render 規格，因此使用平衡型 model：
 若 Director intent 本身含糊，DP 不升級 model 代猜；退回 Director。只有搜尋結果在兩個語意切面間難以
 判斷時，才把該 event 的 reasoning 提高一級，不把整輪 DP 升到 frontier model。
 
-## Long Highlight orchestrator v2（優先分流）
+## Podcast Long Highlight（ADR-066 Finished Cut Production）
 
-收到 payload 同時標示
-`long_highlight_contract.route="long_highlight_orchestrator_v2"` 與
-`long_highlight_contract.validation_profile="semantic_visual_minimal"` 時，本節優先於下方 ADR-065 legacy route。
-DP 只履行 Director 已定義的 visual intents：用 LLM 搜尋／挑選語意相符的 Stock 或規劃
-Hyperframes／composition，保留具體選擇理由；之後仍由 targeted visual agent 實看 selected 畫面，
-不能刪除 Director、DP 或 visual review 的語意工作。
-
-這條 v2 route 的外層 state 是 mutable draft。不得啟動
-`podcast_highlight_visual_orchestrator.py`／ADR-065 frozen revision DAG，不建立或驗證 immutable
-request、worker/session identity、execution receipt、hash／source lineage，也不要求 same-session
-Director audit 或全量 fresh verify。單一 event 搜尋失敗、語意不符或畫面不符時，只將該 event
-留 pending／交 targeted visual fix；不得重跑整輪 DP 或 Director。
-
-DP 不負責判定上游 source、range、片長、sections 或 chapter timestamp gates；chapter 沒有可靠
-cut-local／source／cue 時間時，由 orchestrator 的 upstream gate 處理，DP 不猜 0:00。在 v2 的
-Director → DP → visual／preview 段，selected footage 不可播放、targeted agent 判定 semantic／visual
-mismatch、Resolve mutation 會破壞既有 baseline，以及 preview 不存在、實際 <480 秒或時長未知，都會
-阻止往發布前進。DP 不新增來源、fingerprint 或 receipt 驗證；其他 schema 小漂移、缺 optional
-metadata、候選數不足或 reviewer 差異只記 warning／局部修正。
-
-## Legacy Podcast Highlight production adapter（ADR-065；僅限沒有 v2 marker）
-
-只有 payload 沒有上述 v2 route marker 時，才使用本節 frozen revision／receipt 流程；不得把 legacy
-要求帶進 `long_highlight_orchestrator_v2`。
-
-Podcast episode + cut ID 不讀 standalone `data/script_video/<ep>/storyboard.yaml`。唯一 truth是
-revision-aware DAG：
-
-```text
-<episode>/highlights/visual-pipeline/<cut-id>/
-  PENDING.json
-  CURRENT.json
-  revisions/<revision-id>/
-    DIRECTOR-WORK.json       podcast-highlight-visual-work-packet-v1
-    DIRECTOR-PLAN.json       podcast-highlight-director-plan-v1
-    DP-FULFILLMENT.json      podcast-highlight-dp-fulfillment-v1
-    SEMANTIC-AUDIT.json      podcast-highlight-visual-semantic-audit-v1
-```
-
-> ⛔ **已停用（ADR-066）**：`podcast_highlight_visual_orchestrator.py` 屬 ADR-065 revision-scoped
-> visual DAG，已被 Finished Cut Production 取代。long 的唯一生產路線是
-> `scripts/run_finished_cut_production.py`。下面的指令保留供讀舊 receipt 對照，不要執行。
-
-Production預設呼叫一次 trusted orchestrator；finished review revision必須傳 exact immutable request snapshot：
-
-```powershell
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_orchestrator.py "<episode>" `
-  --cut-id <cut-id> [--revision-request "<episode-local immutable request.json>"]
-```
-
-Claude Code手動/subagent route不得省略 accept順序。DP proposal只能寫 phase-local output；trusted host提供實際
-DP execution/session identity，不能從 proposal抄 worker欄位：
-
-```powershell
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py accept-dp "<episode>" --cut-id <cut-id> --revision-id <revision-id> --proposal "<dp-proposal.json>" --worker-id <trusted-dp-worker-id> --execution-id <trusted-dp-execution-id> --session-id <trusted-dp-session-id>
-# Resume original Director worker/session, never DP, for the semantic-audit proposal:
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py accept-audit "<episode>" --cut-id <cut-id> --revision-id <revision-id> --proposal "<semantic-audit-proposal.json>" --worker-id <same-trusted-director-worker-id> --execution-id <new-trusted-director-audit-execution-id> --session-id <same-trusted-director-session-id>
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py verify "<episode>" --cut-id <cut-id> --revision-id <revision-id>
-```
-
-1. Deterministic status/validator必須 fresh驗出 `awaiting_dp`；work packet、Director plan、Editorial
-   Master或 work packet綁定的 exact tight SRT任一 missing/stale/invalid就停，不得自行找 latest或修 receipt。
-2. Exact覆蓋 `DIRECTOR-PLAN.json` 的所有 events。每個 fulfillment保存 mode、`target_lane`、2–5 個不同
-   語意切面的 search queries、候選、selected candidate、選擇理由、negative checks及 source/license/hash；找不到就
-   明示 none/合法降級，不拿同主題 generic footage湊數。
-3. 畫面必須對應 event的 exact transcript quote，不只對應廣泛主題。來源可信、ffprobe/hash通過與至少
-   三支 Stock Video都是機械條件，不能替代語意證明。
-4. 產出 phase-local `podcast-highlight-dp-fulfillment-v1` proposal，只有 trusted `accept-dp`可寫
-   `revisions/<revision-id>/DP-FULFILLMENT.json`；不可直接手寫 canonical receipt或 production `_broll.json`。
-5. Fresh status必須前進到 `awaiting_semantic_audit`。交回 orchestrator，讓**原本同一個 Director
-   worker identity**做 semantic audit；該 identity必須不同於本 DP。DP不得自審或寫
-   `SEMANTIC-AUDIT.json`。
-
-Auditor exact覆蓋每個 selected materialization且全數 semantic match後，`accept-audit`才 pointer-last更新
-`CURRENT.json`，status成 `ready_to_materialize`。失敗的 PENDING不得破壞前一個 CURRENT。
-`scripts/run_short_broll.py`只是一個 **materializer**；它的成功不代表本 skill執行過，也不授權 DP
-在 renderer內臨時選片。普通 pending是 agent-owned next work，只有 authority、license或主觀語意真的
-ambiguity才是 HITL。Bridge只 read-only展示 fresh receipt與 audit，不新增正常人類 gate。
+Podcast 長精華的 DP 工作由 ADR-066 `run_finished_cut_production.py --semantic-worker handoff`
+交付：packet 攤在 `<runtime-root>/semantic-handoff/<request_id>/`，照 packet 內的契約與
+`response-schema.json` 交件（實跑見 `longform-cut` skill「ADR-066 實跑手冊」）。本手冊提供的是創意判準。
+舊的 Long Highlight orchestrator v2 payload 與 ADR-065 revision／receipt route（`DIRECTOR-PLAN.json`／
+`DP-FULFILLMENT.json`／`accept-dp`）都已停用，原文移到
+`docs/archive/2026-11-14-adr-065-skill-sections.md`，只供讀舊 receipt 對照。
 
 DP履約涵蓋所有 content visuals：Stock／Hero／keyword／quote／chapter／card，並同時產出 **B-roll 與 title implementations**。
 結構性 badge／camera correction／guest namecard維持各自 deterministic contract。
-`scripts/run_short_titles.py`也只是 materializer；不得在 receipt chain外另選 Hero text或落點。
 
 ### Podcast Long Highlight fulfillment 規則（2026-08-28）
 

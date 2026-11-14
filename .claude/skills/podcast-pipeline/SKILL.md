@@ -92,8 +92,10 @@ consumer 已切換；缺少／stale／tampered receipt 一律 fail closed，不�
 
 ### S0.0 — 工具鏈健檢（先做，不然會在半路才炸）
 
-整條線只有**一個**直譯器：`E:\nakama\.venv-v2\Scripts\python.exe`。精確版本釘在 repo 根目錄的
-`.python-version`；為什麼是這個版本、跟其他兩個桌機 Python 的分工，見
+整條線的主直譯器只有**一個**：`E:\nakama\.venv-v2\Scripts\python.exe`。精確版本釘在 repo 根目錄的
+`.python-version`。**唯一例外**是短片線補詞級時間戳的 `scripts/run_whisperx_words.py`：whisperx
+只裝在 3.10.6 那個舊直譯器（`.venv-v2` 沒有），用法見 `shortform-cut` 的「前置」——缺了
+`subs/words.json` 短片緊湊化**不會報錯**，只會靜靜地只切停頓。為什麼是這個版本、跟其他兩個桌機 Python 的分工，見
 [`docs/runbooks/desktop-python-interpreters.md`](../../../docs/runbooks/desktop-python-interpreters.md)——
 不要重新診斷一次，先讀那份文件。
 
@@ -905,7 +907,11 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_podcast_carousel.py "<episode>
 > 不要先去補那個前置條件。** 當時我去問修修「要不要補一個 Claude dispatcher」——
 > 正確的問題是「為什麼活的流程會要求一個死掉的供應商」，那一問就通到答案了。
 >
-> 以下 ADR-065 的描述**只保留給讀舊 receipt／舊 state 時對照**，不是操作指示。
+> ADR-065 的 Director／DP／semantic-audit receipt chain、materializer 指令與 finished review
+> 舊自動化原文已移到
+> [`docs/archive/2026-11-14-adr-065-skill-sections.md`](../../../docs/archive/2026-11-14-adr-065-skill-sections.md)，
+> 只供讀舊 receipt／舊 state 時對照。本節以下保留 tightening、guest identity placement 與機位導播；
+> 與 `longform-cut` 不一致時以 `longform-cut` 為準。
 
 對每個 long winner 依序跑 tightening，再封存 guest identity placement與機位／Timeline 導播。
 Tightening與所有視覺工作都只能使用 Editorial Master media/timebase：
@@ -925,77 +931,10 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_director.py "<episode>" 
 ```
 
 名稱邊界不可混淆：`run_short_director.py` = camera/Timeline director，**不代表 `brook-director` skill**
-execution；它只處理鏡位、構圖與 derived Timeline。完成後呼叫 trusted producer（base generation不帶
-request；finished-review revision必須傳該 job immutable `request.json`，不可推斷 latest）：
+execution；它只處理鏡位、構圖與 derived Timeline。
 
-```powershell
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_orchestrator.py "<episode>" `
-  --cut-id <winner-id> [--revision-request "<episode-local immutable request.json>"]
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py status "<episode>" --cut-id <winner-id>
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py verify "<episode>" --cut-id <winner-id>
-```
-
-Truth root是 `highlights/visual-pipeline/<winner-id>/`；`PENDING.json`指向工作中的 generation，
-`CURRENT.json`只在 semantic audit全數接受後 pointer-last切換，四份 canonical artifacts位於
-`revisions/<revision-id>/`。新 generation crash/invalid不得破壞上一 CURRENT；同一 immutable request retry
-必須 resume同一 revision。
-
-接著的 agent-owned receipt 順序固定為：
-
-```text
-revisions/<revision-id>/DIRECTOR-WORK.json
-  → dispatch subscription agent，完整讀取 brook-director skill
-  → DIRECTOR-PLAN.json (podcast-highlight-director-plan-v1)
-  → trusted accept-director（actual worker/execution/session identity）
-  → dispatch另一個 subscription agent，完整讀取 brook-dp skill
-  → DP-FULFILLMENT.json (podcast-highlight-dp-fulfillment-v1)
-  → trusted accept-dp（different worker + session）
-  → resume原 Director session做 second-pass semantic audit
-  → SEMANTIC-AUDIT.json (podcast-highlight-visual-semantic-audit-v1)
-  → trusted accept-audit → CURRENT pointer-last
-  → deterministic verify = ready_to_materialize
-```
-
-Codex orchestrator以 `codex exec --json`保存 Director session、另開 DP session，再用
-`codex exec resume <DIRECTOR_SESSION_ID>`做 audit；proposal自報 identity一律拒絕。Claude Code route則以
-兩個隔離 subagents完成相同順序並恢復原 Director handle；accept CLI exact flags以 `brook-director`／
-`brook-dp` skill為準，不能用一個 generic agent handwrite receipts或 `_broll.json`／`_titles.json`。
-
-Director 必須逐 event 綁 exact tight-SRT quote/time/hash、分類、描述與 negative constraints；DP 必須對每個
-event 保存 mode、`target_lane`、不同搜尋切面、候選、selected reason與 source/license/hash。這條 contract
-涵蓋**所有 content visuals**：Stock／Hero／keyword／quote／chapter／card，不是只管理 Stock Video。
-結構性 badge／camera correction／guest namecard可維持各自既有 deterministic contract，不冒充內容視覺。
-Semantic audit 必須 exact
-覆蓋所有 event，逐一判斷「畫面是否就是這句語意」，不能把檔案存在、來源可信或數量達標冒充語意通過。
-Semantic audit worker identity必須等於原 Director、且不同於 DP；由 Director回頭檢查 DP是否忠實實現
-原意圖，不是 DP自審。Missing coverage 或 mismatch 直接 invalid。
-
-只有 complete chain fresh 驗證成 `ready_to_materialize` 後才可執行：
-
-```powershell
-E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_broll.py "<episode>" --id <winner-id> --stills "<stills-dir>"
-E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_titles.py "<episode>" --id <winner-id>
-E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_sfx.py "<episode>" --id <winner-id>
-E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_review.py "<episode>" --id <winner-id>
-```
-
-`run_short_broll.py` = materializer，**不代表 `brook-dp` skill** execution；它不得搜尋、挑選、改寫 intent
-或為缺件補預設素材。缺少／stale／invalid 任一 receipt 就停在對應 agent-owned next work，不得用既有
-`_broll.json`、至少三支 Stock Video或 legacy v1 materialization receipt旁路。普通 pending 不是 human
-gate；agent應繼續完成下一份 receipt，**只有 ambiguity 才是 HITL**。`run_short_titles.py` = materializer，
-同樣只能 consume DP核准的 title implementation，不得自行發明 Hero/keyword文字或落點。
-
-Bridge finished review按「保存草稿」／request changes後的自動行為固定為：router把該 revision feedback與
-fresh preview/master/tighten identities封成 episode-local immutable `request.json` → watcher的 generic agent只
-能產非視覺 tightening input → `run_visual_pipeline(..., revision_request=context['request_path'])` dispatch
-Director/DP/audit → trusted `emit_audited_recipe`同時產 `_broll.json`與`_titles.json` → 兩份 recipe fresh
-preflight通過後才可開始 Resolve transaction → 重建 `nakama.finished_cut_review_manifest.v2`。Manifest cut row
-必須綁 Stock Video v2 receipt與 CURRENT visual DAG（pointer + work/Director/DP/audit identities）。任何 phase
-失敗會把 job標成 failed並保留上一 CURRENT／成片；不會進 Resolve，也不會默默沿用 generic agent手寫視覺。
-新版 preview成功後回到同一 finished review human gate，不新增中途 approval。
-部署時既有 `nakama.finished_cut_review_manifest.v1`只能作 legacy read-only preview：允許保存修改以觸發上述
-revision，但不得 approve／進 Packaging，也不得原地改 schema或重新簽名冒充 v2；新 revision成功重建 v2
-後才恢復核准。
+之後的 Director／DP／視覺審查／物化走 **ADR-066**：`run_finished_cut_production.py --semantic-worker handoff`，
+實跑手冊見 [`longform-cut/SKILL.md`](../longform-cut/SKILL.md)「ADR-066 實跑手冊」；SFX 與 QC 見同一份的 Step 10–11。
 
 `accept` 之前先 resolve `<winner-id>_tight_r*.srt` 中實際最新版的 exact path，再 dispatch 兩個互相隔離、
 不可讀彼此輸出的 subscription workers。兩者只讀同一 cut-specific SRT 與必要訪綱／前期資料，判斷
