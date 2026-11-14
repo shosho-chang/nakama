@@ -971,11 +971,11 @@ pid/start/deadline/exit receipt；child crash／逾時轉 failed 並允許 retry
 ## S10–S11 — packaging and publish
 
 Highlight shortlist 核准時，Bridge 只原子建立 video／Packaging 兩條 queued 工作並快速返回；不得在
-HTTP request 內同步跑 LLM。桌機 `scripts/render_watcher.py` 會自動認領 Packaging branch，使用 Codex
-平台的 `gpt-5.6-sol` 依序完整執行 `title-brainstorm`、`thumbnail-brainstorm`。worker 中斷時保留
-running state，重啟後從已存在且可驗證的 artifacts 續跑；同一 cut 的 live worker 不重複啟動，失敗明列
-failed 且不自動重試。只有 working／vault `packages.json`、三張 1280×720 PNG、schema 與 composition
-receipt 都通過，才可標 READY。
+HTTP request 內同步跑 LLM。**Packaging 由當下對話中的 agent 執行**（修修 2026-11-14 裁決；ADR-070
+〈修修裁決（2026-11-14）〉）：照 S8F 派工圖，在他說第二次「定稿」之後依序完整執行
+`title-brainstorm`、`thumbnail-brainstorm`。`scripts/render_watcher.py` 不再認領 Packaging branch、也不在
+背景另開 agent——它只負責存配方後的出圖。`packages.json` 出現該 cut 後，Bridge packaging 頁自動從
+queued 轉 ready；三張 1280×720 PNG、schema 與 composition receipt 仍要通過 skill 自己的驗收。
 
 長 highlight 縮圖中央必須是圖像素材，不是文字；人物／標題不得侵入保護區。到
 `/bridge/packaging/<episode-slug>` 給使用者選。
