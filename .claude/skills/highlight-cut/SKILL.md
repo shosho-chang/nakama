@@ -385,59 +385,13 @@ guest cue/card start 43.0 秒、card end 48.2 秒。
 不需新增視覺模板或一般 human gate。實際 production 順序固定為 camera/Timeline director →
 Director skill → DP skill → same-Director second-pass semantic audit → materializer → titles。
 
-## Step 3.2 — Podcast Highlight visual production truth（ADR-065）
-
-這是 Podcast derivative 的 mandatory adapter；不要拿 standalone Video Production Line 的
-`data/script_video/<ep>/storyboard.yaml` 代打。每個 cut 的 truth root 是：
-
-```text
-<episode>/highlights/visual-pipeline/<id>/
-  PENDING.json
-  CURRENT.json
-  revisions/<revision-id>/
-    DIRECTOR-WORK.json       podcast-highlight-visual-work-packet-v1
-    DIRECTOR-PLAN.json       podcast-highlight-director-plan-v1
-    DP-FULFILLMENT.json      podcast-highlight-dp-fulfillment-v1
-    SEMANTIC-AUDIT.json      podcast-highlight-visual-semantic-audit-v1
-```
+## Step 3.2 — 長片視覺製作 → ADR-066（`longform-cut`）
 
 `run_short_director.py` = camera/Timeline director，**不代表 `brook-director` skill** execution。
-它完成機位與 derived Timeline 後，deterministic runtime 才能以 Editorial Master、winner/materialization
-lineage與 preflight綁定的 exact tight SRT建立 work packet；agent不得自行找 mtime latest。接著由 subscription agent完整讀 `brook-director` skill產
-Director plan；另一個 agent完整讀 `brook-dp` skill履約；再把 fulfillment交回**同一個 Director worker**做
-exact event coverage與語意 audit（Director identity相同、DP identity不同）。普通 `awaiting_director`／`awaiting_dp`／
-`awaiting_semantic_audit` 是 agent-owned next work，只有 ambiguity 才是 HITL。
-
-`DIRECTOR-WORK.candidate.sections` 是上游完整論述地圖。Director 必須先讀它，再讀 tight SRT 校正原句錨點；
-transition event 以 `transition_before=true` 為候選，不是硬性全收。Director 的責任是決定畫面與精確落點，
-不是從零重做整支長 Highlight 的章節分析。
-
-只有 fresh status `ready_to_materialize` 才能把 validated selection轉成 canonical broll recipe。
-`run_short_broll.py` = materializer，**不代表 `brook-dp` skill** execution；它不得自行找素材、猜 intent、
-或用 legacy receipt補過。缺少／stale／invalid 任一 receipt fail closed；既有 `_broll.json` 或素材數量
-達標都不是旁路授權。`run_short_titles.py` = materializer，也只能 consume DP產的 title implementation。
-Contract涵蓋所有 content visuals：Stock／Hero／keyword／quote／chapter／card；結構性 badge／camera correction／guest namecard
-維持各自 deterministic contract。Bridge finished review只展示 fresh receipt
-lineage，不新增正常人類 gate。
-
-> ⛔ **已停用（ADR-066）**：`podcast_highlight_visual_orchestrator.py` 屬 ADR-065 revision-scoped
-> visual DAG，已被 Finished Cut Production 取代。long 的唯一生產路線是
-> `scripts/run_finished_cut_production.py`。下面的指令保留供讀舊 receipt 對照，不要執行。
-
-Codex production route的 exact command（base不帶 request；Save Draft/reject必帶 job內 immutable request）是：
-
-```powershell
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_orchestrator.py "<episode>" `
-  --cut-id <id> [--revision-request "<episode-local immutable request.json>"]
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py status "<episode>" --cut-id <id>
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py verify "<episode>" --cut-id <id>
-```
-
-Orchestrator固定執行 `init → Director proposal/accept-director → 不同 DP proposal/accept-dp →
-resume同一 Director session做 audit/accept-audit → verify`。Claude Code route也必須依同序 dispatch兩個隔離
-subagents，audit回到原 Director handle；accept commands需使用 host觀察到的 worker/execution/session identity，
-不可信任 proposal自報。Exact accept flags見 `brook-director`／`brook-dp`。`accept-audit`成功才切 CURRENT；
-新 PENDING crash/invalid保留上一 CURRENT，同 immutable request retry只 resume同 revision。
+長片的 Director／DP／視覺審查／物化唯一路線是 ADR-066
+`run_finished_cut_production.py --semantic-worker handoff`，實跑手冊見 `longform-cut` skill
+「ADR-066 實跑手冊」。ADR-065 的 revision-scoped visual DAG（`podcast_highlight_visual_orchestrator.py`）
+已停用，本節舊原文移到 `docs/archive/2026-11-14-adr-065-skill-sections.md`，只供讀舊 receipt 對照。
 
 ## Step 4 — 標題（長短片分流，修修 2026-07-26 二修裁決；ADR-054 D4/D13/D16）
 
@@ -483,8 +437,8 @@ critical 必修才能交付。修法：`line_moves_*.json` 支援三種操作—
 負責（開採出的長片 winners 也在這裡產生）；長片的緊湊化/導播/視覺語彙/
 SFX/QC 全部見 `.claude/skills/longform-cut/SKILL.md`。
 
-新交接由上方 Stage 5 orchestrator 的 mutable state 與 targeted visual review 管理。舊 ADR-065 chain
-只在明確採用 legacy adapter 時由該 adapter 自己處理，不是 orchestrator 的 outer gate。
+長片的語意製作走 ADR-066 Finished Cut Production（見 `longform-cut`「ADR-066 實跑手冊」）；
+上方停用的 Stage 5 orchestrator 與 ADR-065 chain 都不是現行路線。
 
 Script 層部分共用 `run_short_*.py`（`FORMAT_*` 參數表：`short` 欄／`long` 欄）
 ——改共用 script 時兩線測試都要跑。短片線自己的入口是 `run_shortform_*.py`

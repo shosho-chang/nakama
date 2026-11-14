@@ -12,23 +12,17 @@ from __future__ import annotations
 import json
 import os
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
-from PIL import Image
 
 from scripts.render_watcher import (
-    _validate_full_episode_layout,
-    dispatch_packaging_agent,
     filter_render_requests,
     find_packaging_dir,
     load_state,
     main,
-    pending_packaging_jobs,
     pending_requests,
     render_one,
-    run_packaging_job,
     save_state,
 )
 
@@ -248,7 +242,7 @@ def _neutralise_watcher_preflight(monkeypatch, tmp_path) -> None:
     monkeypatch.setattr("scripts.render_watcher.RENDER_REQUEST", request_stub)
 
 
-def test_render_requests_only_cli_skips_the_initial_packaging_job(monkeypatch, tmp_path):
+def test_render_requests_only_cli_still_filters_render_requests(monkeypatch, tmp_path):
     calls: list[tuple[str, str]] = []
     render_jobs = [
         {
@@ -264,18 +258,12 @@ def test_render_requests_only_cli_skips_the_initial_packaging_job(monkeypatch, t
             "key": "20260805-linzhichen/value-L01/r1",
         },
     ]
-    initial = {"key": "initial-packaging-job"}
     _neutralise_watcher_preflight(monkeypatch, tmp_path)
     monkeypatch.setattr("scripts.render_watcher.get_vault_path", lambda: tmp_path)
     monkeypatch.setattr("scripts.render_watcher.pending_requests", lambda vault, state: render_jobs)
-    monkeypatch.setattr("scripts.render_watcher.pending_packaging_jobs", lambda vault: [initial])
     monkeypatch.setattr(
         "scripts.render_watcher.render_one",
         lambda job, state, state_path, log_path: calls.append(("render", job["key"])),
-    )
-    monkeypatch.setattr(
-        "scripts.render_watcher.run_packaging_job",
-        lambda job, log_path=None: calls.append(("initial", job["key"])),
     )
     monkeypatch.setattr(
         "sys.argv",
@@ -300,8 +288,8 @@ def test_render_requests_only_cli_skips_the_initial_packaging_job(monkeypatch, t
     assert calls == [("render", "20260805-linzhichen/value-L01/r1")]
 
 
-def test_default_cli_still_runs_both_job_classes(monkeypatch, tmp_path):
-    """本來是三類，2026-09-15 Reject 拿掉之後只剩存配方 render 與初始 packaging。"""
+def test_default_cli_only_runs_render_requests(monkeypatch, tmp_path):
+    """本來是三類：2026-09-15 拿掉 Reject，2026-11-14 拿掉初始 packaging，只剩存配方 render。"""
     calls: list[str] = []
     _neutralise_watcher_preflight(monkeypatch, tmp_path)
     monkeypatch.setattr("scripts.render_watcher.get_vault_path", lambda: tmp_path)
@@ -317,15 +305,8 @@ def test_default_cli_still_runs_both_job_classes(monkeypatch, tmp_path):
         ],
     )
     monkeypatch.setattr(
-        "scripts.render_watcher.pending_packaging_jobs", lambda vault: [{"key": "initial"}]
-    )
-    monkeypatch.setattr(
         "scripts.render_watcher.render_one",
         lambda job, state, state_path, log_path: calls.append(job["key"]),
-    )
-    monkeypatch.setattr(
-        "scripts.render_watcher.run_packaging_job",
-        lambda job, log_path=None: calls.append(job["key"]),
     )
     monkeypatch.setattr(
         "sys.argv",
@@ -340,7 +321,7 @@ def test_default_cli_still_runs_both_job_classes(monkeypatch, tmp_path):
     )
 
     assert main() == 0
-    assert calls == ["render", "initial"]
+    assert calls == ["render"]
 
 
 def test_watcher_no_longer_knows_how_to_run_a_packaging_revision(tmp_path):
@@ -360,250 +341,25 @@ def test_watcher_no_longer_knows_how_to_run_a_packaging_revision(tmp_path):
         assert not hasattr(watcher, gone), gone
 
 
-def _queued_packaging_manifest(vault: Path) -> tuple[Path, Path]:
-    vault_ep = vault / "Attachments" / "packaging" / "20260721-zhengguowei"
-    manifest = {
-        "cuts": {
-            "full": {"emitted": "2026-08-26T00:00:00+00:00"},
-            "value-L01": {
-                "rank": 1,
-                "title": "Long 1 work name",
-                "selected_at": "2026-08-27T01:00:00+00:00",
-                "video": {"status": "ready"},
-                "packaging": {"status": "queued"},
-            },
-        }
-    }
-    (vault_ep / "manifest.json").write_text(
-        json.dumps(manifest, ensure_ascii=False), encoding="utf-8"
-    )
-    (vault_ep / "packages.json").write_text(
-        json.dumps({"episode": "episode name", "cuts": []}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    return vault_ep, vault_ep / "manifest.json"
+def test_watcher_no_longer_dispatches_a_packaging_agent():
+    """修修 2026-11-14 裁決：packaging 交給當下對話中的 agent，不在背景另開供應商。
 
+    以前 Highlight shortlist 一核准，watcher 就叫 Codex 在背景跑 title + thumbnail——
+    比 podcast-pipeline 派工圖裡「第二次定稿之後才做 packaging」早，而且會跟對話中的
+    agent 同時寫 packages.json。這些入口留著，某次重啟就會把 queued 的 cut 撿去跑。
+    """
+    import inspect
 
-def test_queued_initial_packaging_job_is_discovered_once(vault):
-    _queued_packaging_manifest(vault)
+    import scripts.render_watcher as watcher
 
-    jobs = pending_packaging_jobs(vault)
-
-    assert [(job["cut_id"], job["rank"]) for job in jobs] == [("value-L01", 1)]
-
-
-def test_running_initial_packaging_job_is_resumed_after_restart(vault):
-    _, manifest_path = _queued_packaging_manifest(vault)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["cuts"]["value-L01"]["packaging"] = {
-        "status": "running",
-        "worker_id": "interrupted-worker",
-        "attempt": 1,
-    }
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-
-    jobs = pending_packaging_jobs(vault)
-
-    assert len(jobs) == 1
-    assert jobs[0]["resume"] is True
-
-
-def test_running_initial_packaging_job_owned_by_live_worker_is_not_duplicated(vault):
-    import os
-    import socket
-
-    _, manifest_path = _queued_packaging_manifest(vault)
-    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-    manifest["cuts"]["value-L01"]["packaging"] = {
-        "status": "running",
-        "worker_host": socket.gethostname(),
-        "worker_pid": os.getpid(),
-        "attempt": 1,
-    }
-    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-
-    assert pending_packaging_jobs(vault) == []
-
-
-def test_ready_and_failed_initial_packaging_jobs_are_not_dispatched(vault):
-    _, manifest_path = _queued_packaging_manifest(vault)
-    for status in ("ready", "failed"):
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        manifest["cuts"]["value-L01"]["packaging"] = {"status": status}
-        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
-        assert pending_packaging_jobs(vault) == []
-
-
-def test_initial_packaging_dispatch_uses_sol_and_bounded_directories(tmp_path, monkeypatch):
-    job_dir = tmp_path / "job"
-    job_dir.mkdir()
-    captured: dict = {}
-
-    def fake_run(command, **kwargs):
-        captured["command"] = command
-        captured["kwargs"] = kwargs
-        return SimpleNamespace(returncode=0, stdout="done", stderr="")
-
-    monkeypatch.setattr("scripts.render_watcher._codex_command", lambda: "codex.exe")
-    monkeypatch.setattr("scripts.render_watcher.subprocess.run", fake_run)
-
-    dispatch_packaging_agent(
-        {
-            "cut_id": "value-L01",
-            "job_dir": str(job_dir),
-            "request_path": str(job_dir / "request.json"),
-            "working_packaging_dir": str(tmp_path / "episode" / "packaging"),
-            "working_episode_dir": str(tmp_path / "episode"),
-            "vault_packaging_dir": str(tmp_path / "vault-packaging"),
-            "vault_cutout_dir": str(tmp_path / "vault-cutouts"),
-        }
-    )
-
-    command = captured["command"]
-    assert command[command.index("--model") + 1] == "gpt-5.6-sol"
-    assert "--approve-for-me" in command
-    prompt = captured["kwargs"]["input"]
-    assert "title-brainstorm" in prompt
-    assert "thumbnail-brainstorm" in prompt
-    assert "value-L01" in prompt
-
-
-def test_initial_packaging_success_becomes_ready_and_failure_becomes_failed(vault, tmp_path):
-    vault_ep, manifest_path = _queued_packaging_manifest(vault)
-    episode = tmp_path / "episode"
-    working = episode / "packaging"
-    working.mkdir(parents=True)
-    (episode / "highlights").mkdir()
-    (episode / "highlights" / "winners.json").write_text("{}", encoding="utf-8")
-    initial_packages = {"episode": "episode name", "generated_at": None, "cuts": []}
-    for root in (working, vault_ep):
-        (root / "packages.json").write_text(
-            json.dumps(initial_packages, ensure_ascii=False) + "\n", encoding="utf-8"
-        )
-
-    def successful_agent(context: dict) -> SimpleNamespace:
-        packages = {
-            "episode": "episode name",
-            "generated_at": "2026-08-27T03:00:00+00:00",
-            "cuts": [
-                {
-                    "cut_id": "value-L01",
-                    "format": "long",
-                    "information_origin": "full_text",
-                    "visual_recipe": "podcast",
-                    "aspect": "16:9",
-                    "titles": [
-                        {
-                            "text": f"title {rank}",
-                            "archetype_id": "T-A3",
-                            "angle_combo": ["反直覺"],
-                            "payoff": "payoff",
-                            "cite": "highlights/winners.json#value-L01",
-                            "rank": rank,
-                            **({"panel_note": "not selected"} if rank >= 4 else {}),
-                        }
-                        for rank in range(1, 6)
-                    ],
-                    "packages": [
-                        {
-                            "title_rank": rank,
-                            "thumbnail_png": (
-                                "Attachments/packaging/20260721-zhengguowei/"
-                                f"pkg-value-L01-{rank}.png"
-                            ),
-                            "thumb_archetype_id": "T-V3",
-                            "joint_pairing_id": f"JP-{rank}",
-                            "host_cutout": "Attachments/cutouts/podcast/ep/host.png",
-                            "guest_cutout": "Attachments/cutouts/podcast/ep/guest.png",
-                        }
-                        for rank in range(1, 4)
-                    ],
-                    "citations": [],
-                    "brand_flags": [],
-                }
-            ],
-        }
-        payload = json.dumps(packages, ensure_ascii=False, indent=2) + "\n"
-        for root in (working, vault_ep):
-            (root / "packages.json").write_text(payload, encoding="utf-8")
-            for rank in range(1, 4):
-                Image.new("RGB", (1280, 720), "black").save(root / f"pkg-value-L01-{rank}.png")
-        return SimpleNamespace(returncode=0, stdout="done", stderr="")
-
-    monkeypatch_target = "scripts.render_watcher._validate_initial_packaging_outputs"
-    # This unit tests worker state transitions; composition geometry is covered by
-    # the production validator's own tests and is replaced with a deterministic seam.
-    from unittest.mock import patch
-
-    with patch(monkeypatch_target, return_value={"packages_sha256": "a" * 64}):
-        job = pending_packaging_jobs(vault)[0]
-        assert run_packaging_job(job, packaging_dir=working, agent_runner=successful_agent)
-    saved = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert saved["cuts"]["value-L01"]["packaging"]["status"] == "ready"
-    assert pending_packaging_jobs(vault) == []
-
-    saved["cuts"]["value-L02"] = {
-        "rank": 2,
-        "video": {"status": "queued"},
-        "packaging": {"status": "queued"},
-    }
-    manifest_path.write_text(json.dumps(saved), encoding="utf-8")
-    failed_job = pending_packaging_jobs(vault)[0]
-    assert not run_packaging_job(
-        failed_job,
-        packaging_dir=working,
-        agent_runner=lambda _context: SimpleNamespace(returncode=7, stdout="", stderr="boom"),
-    )
-    failed = json.loads(manifest_path.read_text(encoding="utf-8"))
-    assert failed["cuts"]["value-L02"]["packaging"]["status"] == "failed"
-    assert "exit 7" in failed["cuts"]["value-L02"]["packaging"]["error"]
-
-
-def test_full_episode_rejects_long_highlight_layout_and_tight_cutout(tmp_path):
-    packaging = tmp_path / "packaging"
-    vault = tmp_path / "vault"
-    cutouts = vault / "Attachments" / "cutouts"
-    packaging.mkdir()
-    cutouts.mkdir(parents=True)
-    Image.new("RGBA", (900, 900), "white").save(cutouts / "host.png")
-    Image.new("RGBA", (360, 720), "white").save(cutouts / "guest.png")
-    spec_path = packaging / "spec.json"
-    spec_path.write_text(
-        json.dumps(
-            {
-                "composition": "thumbnail_reaction",
-                "variables": {"title_lines": ["one", "two"]},
-                "images": {"book_cover_data_url": "book.png"},
-            }
-        ),
-        encoding="utf-8",
-    )
-    (packaging / "specs.json").write_text(
-        json.dumps([{"title_rank": 1, "thumbnail": "pkg.png", "render_spec": str(spec_path)}]),
-        encoding="utf-8",
-    )
-    package = SimpleNamespace(
-        title_rank=1,
-        thumbnail_png="Attachments/packaging/episode/pkg.png",
-        host_cutout="Attachments/cutouts/host.png",
-        guest_cutout="Attachments/cutouts/guest.png",
-    )
-    with pytest.raises(RuntimeError, match="thumbnail_full"):
-        _validate_full_episode_layout(
-            packaging_dir=packaging,
-            vault_root=vault,
-            cut=SimpleNamespace(packages=[package]),
-        )
-
-    spec = json.loads(spec_path.read_text(encoding="utf-8"))
-    spec["composition"] = "thumbnail_full"
-    spec_path.write_text(json.dumps(spec), encoding="utf-8")
-    with pytest.raises(RuntimeError, match="cutout 過窄"):
-        _validate_full_episode_layout(
-            packaging_dir=packaging,
-            vault_root=vault,
-            cut=SimpleNamespace(packages=[package]),
-        )
+    for gone in (
+        "pending_packaging_jobs",
+        "run_packaging_job",
+        "dispatch_packaging_agent",
+        "_codex_command",
+    ):
+        assert not hasattr(watcher, gone), gone
+    assert "codex" not in inspect.getsource(watcher).lower()
 
 
 def test_broken_approval_json_does_not_crash_the_loop(vault):

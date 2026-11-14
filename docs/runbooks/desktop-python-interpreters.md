@@ -17,7 +17,7 @@ scripting API、FastAPI 程式碼裡的 `datetime.UTC`。因為從來沒人把�
 |---|---|---|---|
 | **repo venv**（podcast pipeline、Resolve 自動化） | `E:\nakama\.venv-v2` | **3.12.10**（釘在 repo 根目錄的 `.python-version`） | 兩個獨立限制剛好都落在 cp312：① torch 2.11.0+cu128／faster-whisper／Qwen3-ASR 這套 Blackwell（sm_120）wheel 是對 cp312 建置的；② DaVinci Resolve 21.0.3 的 `fusionscript.dll` 也是 cp312——3.10 與 3.14 在 `import DaVinciResolveScript` 當下都會 ACCESS_VIOLATION 崩潰、沒有 traceback（2026-09-04 實測）。**只要換版本，兩邊都可能同時炸**，改動前兩邊都要重驗 |
 | **Bridge／FastAPI app server** | `C:\Python314` | 3.14.x（沒有精確釘版本，只要求 ≥3.11） | 程式碼用 `datetime.UTC`，需要 3.11+；PR #1232 選了當時桌機上已有的 3.14。這個選擇本身沒有下限以外的理由，未來要換版本風險較低（不像 `.venv-v2` 卡在 cp312 這個精確 ABI） |
-| **legacy／WhisperX**（ADR-063 之前的舊字幕路徑，已退役，只做 forensic） | `C:\Users\Shosho\AppData\Local\Programs\Python\Python310` | 3.10.6 | 歷史原因，不要用於任何新工作。ADR-063 後正式路徑是 Memo Dual-Audit，不經過這個直譯器 |
+| **legacy／WhisperX**（ADR-063 之前的舊字幕路徑已退役；**仍有一個現行用途**，見右欄） | `C:\Users\Shosho\AppData\Local\Programs\Python\Python310` | 3.10.6 | 字幕不再經過這個直譯器：ADR-063 後正式路徑是 Memo Dual-Audit。**唯一現行用途**是短片線補詞級時間戳 `scripts/run_whisperx_words.py`（產 `subs/words.json`，見 `shortform-cut` skill「前置」）——whisperx 只裝在這裡，`.venv-v2` 沒有（2026-11-14 實查）。除此之外不要用於新工作 |
 
 `.venv`（無 `-v2` 後綴）是更早的殘留，Python 3.10，只在復盤舊 commit 時有意義，新工作不要碰。
 

@@ -29,6 +29,15 @@ requires_canonical_transcribe_skill = pytest.mark.skipif(
     not CANONICAL_TRANSCRIBE_SKILL.is_file(),
     reason="canonical transcribe skill only exists on the local production host",
 )
+ADR_065_ARCHIVE = Path("docs/archive/2026-11-14-adr-065-skill-sections.md")
+# ADR-065 visual DAG 的可執行入口；ADR-066 之後只准出現在 archive，不准出現在 production skill。
+ADR_065_RUN_COMMANDS = (
+    'podcast_highlight_visual_orchestrator.py "<episode>"',
+    "podcast_highlight_visual_pipeline.py init",
+    "podcast_highlight_visual_pipeline.py accept-",
+    "podcast_highlight_visual_pipeline.py status",
+    "podcast_highlight_visual_pipeline.py verify",
+)
 ADR_063 = Path("docs/decisions/ADR-063-podcast-subtitle-production-simplification.md")
 ADR_064 = Path("docs/decisions/ADR-064-podcast-editorial-master-before-repurpose.md")
 
@@ -584,9 +593,7 @@ def test_identity_placement_route_is_quorum_bound_and_fail_closed() -> None:
         "podcast_identity_placement.py emit-event",
         "podcast_identity_placement.py verify",
         "run_short_director.py",
-        "run_short_broll.py",
-        "run_short_titles.py",
-        "run_short_review.py",
+        "run_finished_cut_production.py --semantic-worker handoff",
     )
     positions = [route.index(marker) for marker in ordered]
     assert positions == sorted(positions)
@@ -611,26 +618,49 @@ def test_identity_skill_command_paths_match_runtime_contract() -> None:
     assert "highlights/review/<winner-id>/subs.srt" not in production
 
 
-def test_podcast_visual_production_routes_agent_judgment_before_materializer() -> None:
+def test_long_visual_production_routes_to_adr_066_not_the_retired_adr_065_chain() -> None:
+    """ADR-066 Phase 6：production skills 不得再帶 ADR-065 的可執行指令。
+
+    2026-09-11 呂冠緯集就是照著 skill 裡殘留的 ADR-065 段落跑完整條舊 chain。
+    """
     podcast = SKILL.read_text(encoding="utf-8")
     highlight = HIGHLIGHT_SKILL.read_text(encoding="utf-8")
     director = Path(".claude/skills/brook-director/SKILL.md").read_text(encoding="utf-8")
     dp = Path(".claude/skills/brook-dp/SKILL.md").read_text(encoding="utf-8")
 
     route = podcast.split("## S9", maxsplit=1)[1].split("## S10", maxsplit=1)[0]
-    ordered = (
-        "DIRECTOR-WORK.json",
-        "brook-director",
-        "DIRECTOR-PLAN.json",
-        "brook-dp",
-        "DP-FULFILLMENT.json",
-        "SEMANTIC-AUDIT.json",
-        "ready_to_materialize",
-        "run_short_broll.py",
-    )
-    production_chain = route.split("接著的 agent-owned receipt 順序固定為", maxsplit=1)[1]
-    positions = [production_chain.index(marker) for marker in ordered]
-    assert positions == sorted(positions)
+    for text in (route, highlight, director, dp):
+        assert "run_finished_cut_production.py" in text
+        assert "--semantic-worker handoff" in text
+        assert ADR_065_ARCHIVE.as_posix() in text
+        for retired in ADR_065_RUN_COMMANDS:
+            assert retired not in text, f"retired ADR-065 command still in skill: {retired}"
+
+    for text in (podcast, highlight):
+        assert "run_short_director.py` = camera/Timeline director" in text
+        assert "不代表 `brook-director` skill" in text
+
+
+def test_visual_skill_contract_covers_every_content_visual_lane() -> None:
+    director = Path(".claude/skills/brook-director/SKILL.md").read_text(encoding="utf-8")
+    dp = Path(".claude/skills/brook-dp/SKILL.md").read_text(encoding="utf-8")
+
+    for text in (director, dp):
+        assert "所有 content visuals" in text
+        assert "Stock／Hero／keyword／quote／chapter／card" in text
+        assert "結構性 badge／camera correction／guest namecard" in " ".join(text.split())
+    assert "on_screen_text" in director
+    assert "`target_lane`" in dp
+    assert "B-roll 與 title implementations" in dp
+
+
+def test_adr_065_archive_preserves_the_moved_skill_text_verbatim() -> None:
+    """舊 receipt／舊 state 還要能對照，所以搬出去的原文不能遺失。"""
+    archive = ADR_065_ARCHIVE.read_text(encoding="utf-8")
+    combined = podcast = highlight = archive
+    after_director = archive.split("## 出處：brook-director", maxsplit=1)[1]
+    director = after_director.split("## 出處：", maxsplit=1)[0]
+    dp = archive.split("## 出處：brook-dp", maxsplit=1)[1]
 
     contracts = (
         "podcast-highlight-visual-work-packet-v1",
@@ -638,44 +668,8 @@ def test_podcast_visual_production_routes_agent_judgment_before_materializer() -
         "podcast-highlight-dp-fulfillment-v1",
         "podcast-highlight-visual-semantic-audit-v1",
     )
-    combined = "\n".join((route, highlight, director, dp))
     for contract in contracts:
-        assert contract in combined
-
-    for text in (podcast, highlight):
-        assert "run_short_director.py` = camera/Timeline director" in text
-        assert "run_short_broll.py` = materializer" in text
-        assert "不代表 `brook-director` skill" in text
-        assert "不代表 `brook-dp` skill" in text
-
-    assert "highlights/visual-pipeline/<winner-id>" in route
-    assert "缺少／stale／invalid" in route
-    assert "只有 ambiguity 才是 HITL" in route
-
-
-def test_visual_skill_contract_covers_every_content_visual_lane() -> None:
-    podcast = SKILL.read_text(encoding="utf-8")
-    highlight = HIGHLIGHT_SKILL.read_text(encoding="utf-8")
-    director = Path(".claude/skills/brook-director/SKILL.md").read_text(encoding="utf-8")
-    dp = Path(".claude/skills/brook-dp/SKILL.md").read_text(encoding="utf-8")
-    combined = "\n".join((podcast, highlight, director, dp))
-
-    assert "所有 content visuals" in combined
-    assert "Stock／Hero／keyword／quote／chapter／card" in combined
-    assert "on_screen_text" in director
-    assert "`target_lane`" in dp
-    assert "B-roll 與 title implementations" in dp
-    for text in (podcast, highlight):
-        assert "run_short_titles.py` = materializer" in text
-        assert "結構性 badge／camera correction／guest namecard" in text
-
-
-def test_visual_skills_name_exact_revision_commands_and_trusted_worker_order() -> None:
-    podcast = SKILL.read_text(encoding="utf-8")
-    highlight = HIGHLIGHT_SKILL.read_text(encoding="utf-8")
-    director = Path(".claude/skills/brook-director/SKILL.md").read_text(encoding="utf-8")
-    dp = Path(".claude/skills/brook-dp/SKILL.md").read_text(encoding="utf-8")
-    combined = "\n".join((podcast, highlight, director, dp))
+        assert contract in archive
 
     for marker in (
         "PENDING.json",
@@ -714,11 +708,11 @@ def test_visual_skills_name_exact_revision_commands_and_trusted_worker_order() -
     assert "generic agent handwrite receipts" in podcast
 
 
-def test_finished_save_draft_skill_routes_producer_before_resolve_and_manifest_v2() -> None:
-    podcast = SKILL.read_text(encoding="utf-8")
-    route = podcast.split("Bridge finished review按", maxsplit=1)[1].split(
-        "`accept` 之前", maxsplit=1
-    )[0]
+def test_archived_finished_save_draft_route_keeps_producer_before_resolve_order() -> None:
+    archive = ADR_065_ARCHIVE.read_text(encoding="utf-8")
+    route = archive.split("Bridge finished review按", maxsplit=1)[1].split("## 出處：", maxsplit=1)[
+        0
+    ]
     ordered = (
         "immutable `request.json`",
         "generic agent",

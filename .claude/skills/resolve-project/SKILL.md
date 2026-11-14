@@ -22,7 +22,9 @@ description: >
 3. episode 已完成 ADR-063 Memo Dual-Audit Release V1 的 `finalize`，
    `<episode>/subtitle-release/memo-dual-audit-v1/STAGE5-HANDOFF.json` 存在。build 會自己找到並
    驗證這份 handoff（hash／size／相對路徑互綁）；**fresh episode 不傳任何字幕 flag**
-4. ⚠️ 執行會**切換 Resolve 當前 project**——若修修正在別的 project 工作中，先問一聲
+4. 直譯器一定是 `E:\nakama\.venv-v2\Scripts\python.exe`（3.12）——3.10／3.14 會在
+   `import DaVinciResolveScript` 當下崩潰
+5. ⚠️ 執行會**切換 Resolve 當前 project**——若修修正在別的 project 工作中，先問一聲
 
 ## 執行
 
@@ -85,6 +87,9 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\build_resolve_project.py "<episode
 只換字幕軌不動其他（1.3 秒）。技術註記：Resolve media pool 依檔案路徑快取，
 所以每次匯入用 `subs/resolve_subs/transcript_rNNN.srt` 版本化複本——**這些複本
 不可刪**（media pool item 引用中）。
+
+Intro／Outro 剪進完整節目之後的字幕上軌（ST1 重建）不是這條，走 podcast-pipeline S7E 的
+`scripts/resolve_subtitle_rebuild.py`。
 
 ## 完成後回報
 
