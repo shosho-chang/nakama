@@ -315,8 +315,9 @@ LLM 用量最大的一塊；把 HITL 移到**排完之後、製作之前**幾乎
 
 ## Explicit legacy forensic inputs（不是 production default）
 
-ADR-056 Formal Subtitle V2 的 projection handoff、`--degraded-release-handoff` 與 `--legacy-v1` 只可在
-使用者明確要求調查歷史 artifact 時使用；不得出現在 fresh episode 的 commands，也不得 silent fallback。
+`--degraded-release-handoff` 與 `--legacy-v1` 只可在使用者明確要求調查歷史 artifact 時使用；不得出現在
+fresh episode 的 commands，也不得 silent fallback。ADR-056 Formal Subtitle V2 的 projection handoff
+（`--projection-id` 等）已於 2026-11-13 隨舊 V2 程式移除，不再是可用的輸入。
 
 ## Step 2.5 — 邊界打磨（物化前，必做）
 

@@ -17,6 +17,12 @@ from unittest.mock import patch
 import pytest
 import yaml
 
+# 這四個測試驗的是 plan 的後續邏輯（planner → exact aligner → storyboard.yaml、
+# 時長警告），原本靠 monkeypatch `require_verified_projection` 才走得進去。
+# Subtitle V2 已移除、影片線字幕來源待重做，`_cmd_plan` 目前一律中止；
+# 重做時把下面的 seam fixture 改接新的字幕來源，再拿掉這個 skip。
+pytestmark = pytest.mark.skip(reason="影片線字幕來源待重做（Subtitle V2 已移除）")
+
 SYNTHETIC_SRT = """\
 1
 00:00:00,000 --> 00:00:05,000
