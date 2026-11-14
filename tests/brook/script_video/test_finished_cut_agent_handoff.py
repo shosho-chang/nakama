@@ -184,3 +184,18 @@ def test_preview_media_directory_travels_to_the_agent(tmp_path):
     assert (
         root / "request-media" / "media" / "component-0001.png"
     ).read_bytes() == b"PNG-frame-bytes"
+
+
+def test_unassigned_runner_refuses_instead_of_spawning_a_provider(tmp_path: Path) -> None:
+    """沒指定當下 agent 時，語意 dispatch 直接記失敗，絕不偷開別家供應商的子行程。"""
+    from agents.brook.script_video.finished_cut_production._agent_handoff import (
+        UnassignedSemanticRunner,
+    )
+
+    result = UnassignedSemanticRunner().run(
+        ("host-agent-handoff", "-"), cwd=tmp_path, prompt="p", timeout_sec=1
+    )
+
+    assert result.returncode == 1
+    assert "--semantic-worker handoff" in result.stderr
+    assert list(tmp_path.iterdir()) == []

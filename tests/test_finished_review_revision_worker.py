@@ -286,3 +286,99 @@ def test_a_job_queued_before_the_rename_still_validates() -> None:
 
     assert validated["plan_id"] == "plan-af65a1d7a2ac611eb78be493"
     assert "release_id" not in validated
+
+
+# --- 修修 2026-11-14：「把指定 codex 全部都拿掉，只交給當下的 agent」 ----------
+
+
+def test_background_loop_registers_but_never_advances(tmp_path: Path) -> None:
+    """背景常駐沒有 agent 在旁邊：只登錄，不碰 Director／DP 這些語意 stage。"""
+    from scripts.finished_review_watcher import main
+
+    path = _write_feedback(tmp_path)
+    application = _Application(states=("preview_ready",))
+
+    assert (
+        main(
+            ["--episodes-root", str(tmp_path), "--once"],
+            application_factory=_Factory(application),
+        )
+        == 0
+    )
+
+    saved = _saved_job(path)
+    assert saved["status"] == "registered"
+    assert saved["command_id"] == _COMMAND_ID
+    assert application.advance_calls == []
+
+
+def test_background_loop_leaves_registered_jobs_for_the_host_agent(tmp_path: Path) -> None:
+    from scripts.finished_review_watcher import main
+
+    path = _write_feedback(tmp_path, job=_job(status="registered", command_id=_COMMAND_ID))
+    application = _Application(states=("preview_ready",))
+
+    main(["--episodes-root", str(tmp_path), "--once"], application_factory=_Factory(application))
+
+    assert _saved_job(path)["status"] == "registered"
+    assert application.advance_calls == []
+
+
+def test_host_agent_mode_drives_a_registered_revision_to_preview(tmp_path: Path, capsys) -> None:
+    from scripts.finished_review_watcher import main
+
+    path = _write_feedback(tmp_path)
+    application = _Application(states=("pending", "pending", "preview_ready"))
+
+    assert (
+        main(
+            ["--episodes-root", str(tmp_path), "--host-agent"],
+            application_factory=_Factory(application),
+        )
+        == 0
+    )
+
+    saved = _saved_job(path)
+    assert saved["status"] == "preview_ready"
+    assert application.advance_calls == [_COMMAND_ID] * 3
+    assert json.loads(capsys.readouterr().out)["status"] == "preview_ready"
+
+
+def test_host_agent_factory_hands_semantic_work_to_the_running_agent(
+    tmp_path: Path, monkeypatch
+) -> None:
+    import scripts.finished_review_watcher as watcher
+    from agents.brook.script_video.finished_cut_production import ProductionPaths
+    from agents.brook.script_video.finished_cut_production._agent_handoff import (
+        AgentHandoffProcessRunner,
+    )
+
+    captured: dict[str, object] = {}
+
+    def _fake_default(paths, episode_id, *, process_runner=None):
+        captured["runner"] = process_runner
+        return object()
+
+    monkeypatch.setattr(watcher, "default_application_factory", _fake_default)
+    watcher.host_agent_application_factory()(
+        ProductionPaths(tmp_path / "runtime", tmp_path), "episode-1"
+    )
+
+    assert isinstance(captured["runner"], AgentHandoffProcessRunner)
+
+
+def test_watcher_and_semantic_adapter_never_spawn_codex() -> None:
+    root = Path(__file__).resolve().parents[1]
+    sources = {
+        relative: (root / relative).read_text(encoding="utf-8")
+        for relative in (
+            "scripts/finished_review_watcher.py",
+            "scripts/run_finished_cut_production.py",
+            "agents/brook/script_video/finished_cut_production/_codex_semantic.py",
+            "agents/brook/script_video/finished_cut_production/_composition.py",
+        )
+    }
+    for relative, text in sources.items():
+        assert "SubprocessCodexProcessRunner" not in text, relative
+        assert "codex.cmd" not in text, relative
+        assert "import subprocess" not in text, relative

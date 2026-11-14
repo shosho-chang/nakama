@@ -187,6 +187,7 @@ def test_cli_passes_exact_resolve_configuration_to_composition(
         _episode_id,
         *,
         resolve_configuration: ProductionResolveConfiguration,
+        **_options,
     ):
         captured["configuration"] = resolve_configuration
         return application
@@ -250,7 +251,7 @@ def test_cli_registers_approved_cut_through_composition_interface(
             "--input",
             str(request),
         ],
-        application_factory=lambda _paths, _episode_id: application,
+        application_factory=lambda _paths, _episode_id, **_options: application,
     )
 
     assert exit_code == 0
@@ -276,7 +277,7 @@ def test_cli_advance_returns_typed_pending_status(tmp_path: Path, capsys) -> Non
             "advance",
             command_id,
         ],
-        application_factory=lambda _paths, _episode_id: application,
+        application_factory=lambda _paths, _episode_id, **_options: application,
     )
 
     assert exit_code == 0
@@ -307,7 +308,7 @@ def test_cli_status_is_read_only_typed_view(tmp_path: Path, capsys) -> None:
             "status",
             command_id,
         ],
-        application_factory=lambda _paths, _episode_id: application,
+        application_factory=lambda _paths, _episode_id, **_options: application,
     )
 
     assert exit_code == 0
@@ -331,7 +332,7 @@ def test_cli_requests_exact_current_targeted_revision(tmp_path: Path, capsys) ->
             "event-1",
             "Hero Title 請縮小。",
         ],
-        application_factory=lambda _paths, _episode_id: application,
+        application_factory=lambda _paths, _episode_id, **_options: application,
     )
 
     assert exit_code == 0
@@ -360,7 +361,7 @@ def test_cli_inspects_exact_pre_release_run(tmp_path: Path, capsys) -> None:
             "inspect-run",
             command_id,
         ],
-        application_factory=lambda _paths, _episode_id: application,
+        application_factory=lambda _paths, _episode_id, **_options: application,
     )
 
     assert exit_code == 0
@@ -388,7 +389,7 @@ def test_cli_emits_utf8_json_when_windows_stdout_uses_cp1252(
             "inspect-run",
             command_id,
         ],
-        application_factory=lambda _paths, _episode_id: application,
+        application_factory=lambda _paths, _episode_id, **_options: application,
     )
 
     assert exit_code == 0
@@ -413,7 +414,7 @@ def test_cli_requests_one_pre_release_event_correction(tmp_path: Path, capsys) -
             "event-1",
             "補上完整主詞。",
         ],
-        application_factory=lambda _paths, _episode_id: application,
+        application_factory=lambda _paths, _episode_id, **_options: application,
     )
 
     assert exit_code == 0
@@ -443,7 +444,7 @@ def test_cli_explicitly_recovers_one_failed_semantic_dispatch(tmp_path: Path, ca
             "retry-failed-dispatch",
             command_id,
         ],
-        application_factory=lambda _paths, _episode_id: application,
+        application_factory=lambda _paths, _episode_id, **_options: application,
     )
 
     assert exit_code == 0
@@ -489,6 +490,47 @@ def test_cli_rejects_stage_rows_in_approved_cut_registration(
                 "--input",
                 str(request),
             ],
-            application_factory=lambda _paths, _episode_id: application,
+            application_factory=lambda _paths, _episode_id, **_options: application,
         )
     assert application.registered is None
+
+
+def test_cli_always_hands_semantic_work_to_the_host_agent(tmp_path: Path) -> None:
+    """修修 2026-11-14：「把指定 codex 全部都拿掉，只交給當下的 agent」。
+
+    沒帶任何參數時，CLI 給引擎的 runner 必須是 handoff，不能是任何會開子行程的東西；
+    `--semantic-worker codex` 這個選項也不能再存在。
+    """
+    from agents.brook.script_video.finished_cut_production._agent_handoff import (
+        AgentHandoffProcessRunner,
+    )
+
+    application = _FakeApplication()
+    captured: dict[str, object] = {}
+
+    def factory(_paths, _episode_id, **options):
+        captured.update(options)
+        return application
+
+    base = [
+        "--runtime-root",
+        str(tmp_path / "runtime"),
+        "--episodes-root",
+        str(tmp_path / "episodes"),
+        "--episode-id",
+        "episode-1",
+    ]
+    assert (
+        cli.main(
+            [*base, "status", "approved-cut:0123456789abcdef0123456789abcdef"],
+            application_factory=factory,
+        )
+        == 0
+    )
+    assert isinstance(captured["process_runner"], AgentHandoffProcessRunner)
+
+    with pytest.raises(SystemExit):
+        cli.main(
+            [*base, "--semantic-worker", "codex", "status", "approved-cut:0"],
+            application_factory=factory,
+        )

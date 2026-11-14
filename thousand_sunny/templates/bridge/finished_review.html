@@ -120,7 +120,7 @@
   {% set revision_job = revision_jobs[0] if revision_jobs else none %}
   {% if revision_job and revision_job.status in ['queued', 'registered', 'pending'] %}
   <div class="finished-status finished-status--working" role="status" aria-live="polite">
-    <strong>Feedback 已保存為 REV {{ revision_count }}；Finished Cut revision {{ '正在推進' if revision_job.status != 'queued' else '已排入佇列' }}。</strong>
+    <strong>Feedback 已保存為 REV {{ revision_count }}；Finished Cut revision {{ {'queued': '已排入佇列', 'registered': '已登錄，等對話中的 agent 接手', 'pending': '正在推進'}[revision_job.status] }}。</strong>
     <p class="sho-mono">REQUEST {{ revision_job.request_id }}</p>
   </div>
   {% elif revision_job and revision_job.status == 'preview_ready' %}
@@ -367,7 +367,7 @@
       </div>
     </div>
     <div class="review-actions">
-      <output class="review-actions__status" id="review-status" aria-live="polite">{% if revision_job and revision_job.status == 'queued' %}Targeted revision 已排入佇列{% elif revision_job and revision_job.status in ['registered', 'pending'] %}Finished Cut Production 正在推進{% elif revision_job and revision_job.status == 'preview_ready' %}修正版 preview 已就緒{% elif revision_job and revision_job.status in ['needs_review', 'failed'] %}Targeted revision 需要人工處理{% elif saved %}Feedback 已保存{% else %}尚未儲存新的變更{% endif %}</output>
+      <output class="review-actions__status" id="review-status" aria-live="polite">{% if revision_job and revision_job.status == 'queued' %}Targeted revision 已排入佇列{% elif revision_job and revision_job.status == 'registered' %}修改已登錄，等對話中的 agent 接手{% elif revision_job and revision_job.status == 'pending' %}Finished Cut Production 正在推進{% elif revision_job and revision_job.status == 'preview_ready' %}修正版 preview 已就緒{% elif revision_job and revision_job.status in ['needs_review', 'failed'] %}Targeted revision 需要人工處理{% elif saved %}Feedback 已保存{% else %}尚未儲存新的變更{% endif %}</output>
       <button type="submit" class="review-button" data-submit-action="save_draft">依回饋修改</button>
       {% if review_format == 'long' %}
       <button type="submit" class="review-button review-button--approve" id="approve-cut" data-submit-action="approve_cut">核准這支</button>

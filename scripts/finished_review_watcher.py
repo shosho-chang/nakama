@@ -1,5 +1,16 @@
 #!/usr/bin/env python3
-"""Advance event-scoped Finished Cut Production revisions from Bridge feedback v3."""
+"""Register Finished Cut revisions from Bridge feedback v3; the host agent advances them.
+
+兩種模式（修修 2026-11-14：「把指定 codex 全部都拿掉，只交給當下的 agent」）：
+
+- **背景常駐**（Thousand Sunny 開機帶起來）：只把 Bridge 存下的修改登錄成 revision
+  command（queued → registered），**不推進**。推進會碰到 Director／DP／visual_review
+  這些語意 stage，背景程式身邊沒有 agent，以前就是在這裡偷偷開 Codex。
+- **`--host-agent`**（由對話中的 agent 執行）：把已登錄的 revision 一路推進到
+  preview_ready／needs_review；語意 packet 攤在
+  `<episode>/highlights/finished-cut-production-v1/runtime/semantic-handoff/<request_id>/`，
+  agent 寫 `response.json` 後自動往下跑。
+"""
 
 from __future__ import annotations
 
@@ -30,6 +41,12 @@ _FEEDBACK_FILE = "finished_review_feedback.v3.json"
 _FEEDBACK_SCHEMA = "nakama.finished_cut_review_feedback.v3"
 _JOB_CONTRACT = "finished-cut-production-revision.v3"
 _ACTIVE_STATUSES = frozenset({"queued", "registered", "pending"})
+# 背景迴圈只認領還沒登錄的修改；registered／pending 留給 --host-agent。
+_BACKGROUND_STATUSES = frozenset({"queued"})
+_IN_PROGRESS_STATUSES = frozenset({"registered", "pending"})
+# 一次 --host-agent 對單一 revision 最多推進幾步——引擎每步只走一個 stage，正常
+# 十步內就會到 preview_ready；上限只是防止狀態機異常時無限迴圈。
+_MAX_HOST_AGENT_STEPS = 64
 _JOB_STATUSES = frozenset(
     {
         *_ACTIVE_STATUSES,
@@ -320,7 +337,12 @@ def _production_paths(work: dict[str, object]) -> ProductionPaths:
     )
 
 
-def default_application_factory(paths: ProductionPaths, episode_id: str):
+def default_application_factory(
+    paths: ProductionPaths,
+    episode_id: str,
+    *,
+    process_runner: object | None = None,
+):
     """Compose the real application, Resolve authority included.
 
     The binding load belongs here rather than in ``run_revision_job``: a test (or
@@ -331,11 +353,35 @@ def default_application_factory(paths: ProductionPaths, episode_id: str):
     if not path.is_file():
         raise RuntimeError(f"Resolve binding is missing: {path} (schema {RESOLVE_BINDING_SCHEMA})")
     payload = json.loads(path.read_text(encoding="utf-8"))
+    options: dict[str, object] = {}
+    if process_runner is not None:
+        options["process_runner"] = process_runner
     return build_production_application(
         paths,
         episode_id,
         resolve_configuration=build_resolve_configuration(payload, episode_id),
+        **options,
     )
+
+
+def host_agent_application_factory(max_wait_sec: float | None = None) -> ApplicationFactory:
+    """Compose with the handoff runner: semantic packets wait for the running agent."""
+
+    from agents.brook.script_video.finished_cut_production._agent_handoff import (
+        AgentHandoffProcessRunner,
+    )
+
+    def factory(paths: ProductionPaths, episode_id: str):
+        return default_application_factory(
+            paths,
+            episode_id,
+            process_runner=AgentHandoffProcessRunner(
+                paths.runtime_root / "semantic-handoff",
+                max_wait_sec=max_wait_sec,
+            ),
+        )
+
+    return factory
 
 
 def _resolve_configuration(work: dict[str, object]) -> ProductionResolveConfiguration:
@@ -415,8 +461,12 @@ def run_revision_job(
     work: dict[str, object],
     *,
     application_factory: ApplicationFactory = default_application_factory,
+    advance: bool = True,
 ) -> bool:
-    """Register once, then advance only the durable targeted revision command."""
+    """Register once, then advance only the durable targeted revision command.
+
+    ``advance=False`` is the background mode: register a queued job and stop.
+    """
 
     _, job = _current_job(work)
     status = str(job["status"])
@@ -495,7 +545,11 @@ def run_revision_job(
             required_status="registering",
         )
         status = "registered"
+        if not advance:
+            return True
     else:
+        if not advance:
+            return False
         try:
             application = application_factory(_production_paths(work), str(work["episode_id"]))
         except Exception as error:
@@ -557,10 +611,45 @@ def run_revision_job(
     return True
 
 
+def drive_with_host_agent(
+    episodes_root: Path,
+    *,
+    application_factory: ApplicationFactory,
+    episode_id: str | None = None,
+) -> list[dict[str, object]]:
+    """Advance every active revision until it leaves registered/pending.
+
+    Run by the agent in the current conversation; each semantic stage blocks on
+    its handoff packet until that agent writes ``response.json``.
+    """
+
+    results: list[dict[str, object]] = []
+    for work in pending_revision_jobs(episodes_root):
+        if episode_id is not None and work["episode_id"] != episode_id:
+            continue
+        for _ in range(_MAX_HOST_AGENT_STEPS):
+            if not run_revision_job(work, application_factory=application_factory):
+                break
+            _, job = _current_job(work)
+            if job["status"] not in _IN_PROGRESS_STATUSES:
+                break
+        _, job = _current_job(work)
+        results.append(
+            {
+                "episode_id": work["episode_id"],
+                "request_id": job["request_id"],
+                "status": job["status"],
+                "reason_code": job.get("reason_code"),
+                "error": job.get("error"),
+            }
+        )
+    return results
+
+
 def main(
     argv: list[str] | None = None,
     *,
-    application_factory: ApplicationFactory = default_application_factory,
+    application_factory: ApplicationFactory | None = None,
 ) -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -575,16 +664,40 @@ def main(
         action="store_true",
         help="讓停在 needs_review 的修訂可以重新註冊（退休舊 claim ＋ 放回佇列）",
     )
+    parser.add_argument(
+        "--host-agent",
+        action="store_true",
+        help=(
+            "由對話中的 agent 執行：把已登錄的修改推進到 preview_ready／needs_review，"
+            "語意工作交給當下的 agent（handoff）。背景常駐模式不推進"
+        ),
+    )
+    parser.add_argument("--episode", help="--host-agent 只處理這一集")
+    parser.add_argument(
+        "--handoff-wait-sec",
+        type=float,
+        help="--host-agent 每份 packet 最多等 response.json 幾秒（預設 900）",
+    )
     args = parser.parse_args(argv)
     if args.recover_stalled:
         for request_id in recover_stalled_revisions(args.episodes_root):
             print(f"recovered {request_id}")
+    if args.host_agent:
+        factory = application_factory or host_agent_application_factory(args.handoff_wait_sec)
+        for result in drive_with_host_agent(
+            args.episodes_root,
+            application_factory=factory,
+            episode_id=args.episode,
+        ):
+            print(json.dumps(result, ensure_ascii=False))
+        return 0
     if args.interval <= 0:
         parser.error("--interval must be positive")
 
+    factory = application_factory or default_application_factory
     while True:
-        for work in pending_revision_jobs(args.episodes_root):
-            run_revision_job(work, application_factory=application_factory)
+        for work in pending_revision_jobs(args.episodes_root, statuses=_BACKGROUND_STATUSES):
+            run_revision_job(work, application_factory=factory, advance=False)
         if args.once:
             return 0
         time.sleep(args.interval)

@@ -1,20 +1,22 @@
-"""Isolated Codex worker Adapter for current Finished Cut stage requests."""
+"""Semantic worker Adapter for current Finished Cut stage requests.
+
+The worker is always the agent running the current conversation
+(`_agent_handoff.AgentHandoffProcessRunner`).  This module never spawns a
+provider subprocess: the Codex CLI runner was removed on 2026-11-14 (修修：
+「把指定 codex 全部都拿掉，只交給當下的 agent」).  The `Codex*` type names are
+historical and kept only to avoid churn across the ledger and tests.
+"""
 
 from __future__ import annotations
 
 import json
 import os
 import re
-import shutil
-import subprocess
 import tempfile
 from collections import deque
-from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, Protocol
-
-from shared.quiet_subprocess import quiet_kwargs
 
 from ._projection import _ACTIVE_COMPONENT_LANES, _ACTIVE_SEMANTIC_KINDS
 from ._records import (
@@ -41,6 +43,9 @@ _MAX_DIAGNOSTICS = 32
 _MAX_DIAGNOSTIC_DETAIL_CHARS = 512
 _MAX_PROCESS_OUTPUT_CHARS = 4_096
 _TRUNCATION_MARKER = "\n...[truncated]...\n"
+# argv[0] of the packet handed to the runner.  It names no executable: the
+# runner reads --output-schema / --output-last-message and never spawns argv.
+_HANDOFF_ARGV0 = "host-agent-handoff"
 DiagnosticCode = Literal[
     "packet_rejected",
     "process_failed",
@@ -78,108 +83,18 @@ class CodexProcessRunner(Protocol):
     ) -> CodexProcessResult: ...
 
 
-class SubprocessCodexProcessRunner:
-    """Production subprocess Adapter; it never chooses a workspace or retries."""
-
-    def run(
-        self,
-        argv: tuple[str, ...],
-        *,
-        cwd: Path,
-        prompt: str,
-        timeout_sec: float,
-    ) -> CodexProcessResult:
-        child_env = os.environ.copy()
-        for name in (
-            "CODEX_PERMISSION_PROFILE",
-            "CODEX_SANDBOX_NETWORK_DISABLED",
-            "CODEX_SESSION_ID",
-            "CODEX_THREAD_ID",
-        ):
-            child_env.pop(name, None)
-        try:
-            completed = subprocess.run(
-                argv,
-                input=prompt,
-                cwd=cwd,
-                capture_output=True,
-                text=True,
-                encoding="utf-8",
-                errors="replace",
-                timeout=timeout_sec,
-                check=False,
-                env=child_env,
-                **quiet_kwargs(),
-            )
-        except subprocess.TimeoutExpired as error:
-            return CodexProcessResult(
-                returncode=None,
-                timed_out=True,
-                stdout=_bounded_process_output(error.stdout),
-                stderr=_bounded_process_output(error.stderr),
-            )
-        return CodexProcessResult(
-            returncode=completed.returncode,
-            stdout=_bounded_process_output(completed.stdout),
-            stderr=_bounded_process_output(completed.stderr),
-        )
-
-
-def _resolve_codex_executable(
-    explicit: str | None,
-    *,
-    platform_name: str | None = None,
-    which: Callable[[str], str | None] | None = None,
-) -> str:
-    if explicit is not None:
-        normalized = explicit.strip()
-        if not normalized:
-            raise ValueError("explicit Codex executable cannot be empty")
-        return normalized
-    platform = platform_name or os.name
-    resolver = which or shutil.which
-    candidates = ("codex",)
-    if platform == "nt":
-        resolved_cmd = resolver("codex.cmd")
-        if resolved_cmd is not None and "windowsapps" not in resolved_cmd.lower():
-            return resolved_cmd
-        appdata = os.environ.get("APPDATA")
-        npm_cmd = Path(appdata) / "npm" / "codex.cmd" if appdata else None
-        if npm_cmd is not None:
-            try:
-                if npm_cmd.is_file():
-                    return str(npm_cmd)
-            except OSError:
-                # Sandboxed launchers may deny metadata probes while CreateProcess can
-                # still execute the explicitly named npm shim.
-                return str(npm_cmd)
-        candidates = ("codex.exe", "codex")
-    for candidate in candidates:
-        resolved = resolver(candidate)
-        if resolved is None:
-            continue
-        if platform == "nt" and "windowsapps" in resolved.lower():
-            continue
-        return resolved
-    if platform == "nt":
-        raise FileNotFoundError("no safe Codex executable is available on Windows")
-    return "codex"
-
-
 class CodexSemanticAdapter:
-    """Dispatch each current request at most once to one isolated Codex process."""
+    """Dispatch each current request at most once to the host-agent worker."""
 
     def __init__(
         self,
         *,
         process_runner: CodexProcessRunner,
         packet_materializer: WorkerPacketMaterializer,
-        codex_executable: str | None = None,
         timeout_sec: float = 900.0,
     ) -> None:
         self._process_runner = process_runner
         self._packet_materializer = packet_materializer
-        self._codex_executable = _resolve_codex_executable(codex_executable)
         self._timeout_sec = timeout_sec
         self._dispatched_request_ids: set[str] = set()
         self._requests_by_id: dict[str, StageRequest] = {}
@@ -246,7 +161,7 @@ class CodexSemanticAdapter:
                     "packet_rejected",
                     "stage packet violates its allowlist",
                 )
-            with tempfile.TemporaryDirectory(prefix="nakama-finished-cut-codex-") as temporary:
+            with tempfile.TemporaryDirectory(prefix="nakama-finished-cut-semantic-") as temporary:
                 workspace = Path(temporary).resolve()
                 packet_path = workspace / "packet.json"
                 schema_path = workspace / "response-schema.json"
@@ -294,13 +209,7 @@ class CodexSemanticAdapter:
                     encoding="utf-8",
                 )
                 argv = (
-                    self._codex_executable,
-                    "exec",
-                    "--ignore-user-config",
-                    "--sandbox",
-                    "read-only",
-                    "--ephemeral",
-                    "--skip-git-repo-check",
+                    _HANDOFF_ARGV0,
                     "--output-schema",
                     str(schema_path),
                     "--output-last-message",
@@ -317,19 +226,19 @@ class CodexSemanticAdapter:
                     return self._failure(
                         request,
                         "process_timeout",
-                        "Codex process timed out",
+                        "semantic worker timed out",
                     )
                 if result.returncode != 0:
                     return self._failure(
                         request,
                         "process_failed",
-                        f"Codex exit={result.returncode}; stderr={result.stderr}",
+                        f"worker exit={result.returncode}; stderr={result.stderr}",
                     )
                 if not output_path.is_file():
                     return self._failure(
                         request,
                         "output_missing",
-                        "Codex last-message output is missing",
+                        "worker response is missing",
                     )
                 try:
                     proposal = _parse_stage_proposal(
@@ -351,7 +260,7 @@ class CodexSemanticAdapter:
                     return self._failure(
                         request,
                         "output_invalid",
-                        "Codex last-message output is invalid: "
+                        "worker response is invalid: "
                         f"{type(error).__name__}: {error}; "
                         f"last-message={_bounded_process_output(_read_text(output_path))}",
                     )
