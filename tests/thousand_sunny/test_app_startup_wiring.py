@@ -515,18 +515,50 @@ def test_preflight_passes_when_both_credentials_set(monkeypatch):
         assert r.status_code != 500
 
 
-def test_preflight_skips_when_neither_credential_set(monkeypatch):
-    """No WEB_SECRET + no WEB_PASSWORD (dev/test mode) — preflight is silent."""
+def test_preflight_refuses_when_neither_credential_set_without_opt_in(monkeypatch):
+    """No WEB_SECRET + no WEB_PASSWORD and no explicit opt-in → refuse to start.
+
+    2026-11 審計：VPS 的 .env 一旦兩個都漏掉，以前會整站放行。
+    """
     monkeypatch.setenv("DISABLE_ROBIN", "1")
     monkeypatch.delenv("WEB_SECRET", raising=False)
     monkeypatch.delenv("WEB_PASSWORD", raising=False)
     monkeypatch.delenv("NAKAMA_DEV_AUTH_BYPASS", raising=False)
+    monkeypatch.delenv("NAKAMA_ALLOW_OPEN_AUTH", raising=False)
+
+    app_module = _reload_app_modules()
+
+    with pytest.raises(RuntimeError, match="WEB_PASSWORD is empty"):
+        with TestClient(app_module.app):
+            pass
+
+
+def test_preflight_starts_open_app_only_with_explicit_opt_in(monkeypatch):
+    """No credentials + NAKAMA_ALLOW_OPEN_AUTH=1 (local dev) — app starts."""
+    monkeypatch.setenv("DISABLE_ROBIN", "1")
+    monkeypatch.delenv("WEB_SECRET", raising=False)
+    monkeypatch.delenv("WEB_PASSWORD", raising=False)
+    monkeypatch.delenv("NAKAMA_DEV_AUTH_BYPASS", raising=False)
+    monkeypatch.setenv("NAKAMA_ALLOW_OPEN_AUTH", "1")
 
     app_module = _reload_app_modules()
 
     with TestClient(app_module.app) as client:
         r = client.get("/healthz")
         assert r.status_code != 500
+
+
+def test_check_auth_fails_closed_without_password_or_opt_in(monkeypatch):
+    import thousand_sunny.auth as auth_module
+
+    monkeypatch.setattr(auth_module, "_DEV_AUTH_BYPASS", False)
+    monkeypatch.setattr(auth_module, "WEB_PASSWORD", "")
+    monkeypatch.delenv("NAKAMA_ALLOW_OPEN_AUTH", raising=False)
+    assert auth_module.check_auth(None) is False
+    assert auth_module.check_auth("anything") is False
+
+    monkeypatch.setenv("NAKAMA_ALLOW_OPEN_AUTH", "1")
+    assert auth_module.check_auth(None) is True
 
 
 # ── Carousel autorun sweep (2026-09-10) ──────────────────────────────────────
