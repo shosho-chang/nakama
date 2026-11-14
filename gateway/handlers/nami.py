@@ -30,6 +30,7 @@ from claude_agent_sdk.types import HookMatcher
 
 from gateway.handlers.base import BaseHandler, Continuation, HandlerResponse
 from shared import agent_memory, google_calendar, google_gmail
+from shared import zoom as zoom_client
 from shared.agent_sdk import log_sdk_exception, log_sdk_message
 from shared.events import emit
 from shared.google_calendar import CalendarEvent, GoogleCalendarAuthError
@@ -390,6 +391,15 @@ NAMI_TOOLS: list[dict] = [
                 "force": {
                     "type": "boolean",
                     "description": "跳過衝突偵測強制建立，預設 false",
+                },
+                "zoom": {
+                    "type": "boolean",
+                    "description": (
+                        "是否同時建立 Zoom 會議，並把連結（含 passcode）寫進事件的描述與地點。"
+                        "只有使用者明確要求 Zoom 連結（『開 Zoom』『線上會議』『給我會議連結』）"
+                        "才設 true，預設 false。需要有明確起訖時間（不可整天事件）。"
+                        "Zoom 建立失敗時事件仍會建立，但沒有連結，回覆使用者時必須講明。"
+                    ),
                 },
                 "also_create_task": {
                     "type": "boolean",
@@ -1949,6 +1959,12 @@ class NamiHandler(BaseHandler):
         # 既沒有 projects: frontmatter、檔名也沒有「{專案} - 」前綴，因此永遠歸不到
         # 任何專案（實測 vault 26/26 皆如此）。補上與 create_task 同名的 project 參數。
         project = (input_.get("project") or "").strip() or None
+        use_zoom = bool(input_.get("zoom", False))
+        if use_zoom and "T" not in start:
+            return _ToolOutcome(
+                content="Zoom 會議需要明確的起訖時間（ISO 8601 含時分），整天事件不能附 Zoom。",
+                is_error=True,
+            )
 
         # Pre-check task 檔案不存在，避免 calendar 建完後 task 撞名產生孤兒 event
         task_rel_path: str | None = None
@@ -1997,18 +2013,9 @@ class NamiHandler(BaseHandler):
                     is_error=True,
                 )
 
-        result = google_calendar.create_event(
-            title=title,
-            start=start,
-            end=end,
-            description=description,
-            check_conflict=not force,
-        )
-
-        # 衝突 → result 是 list[CalendarEvent]，沒有建立
-        if isinstance(result, list):
+        def _conflict_outcome(conflicts: list[CalendarEvent]) -> _ToolOutcome:
             conflicts_desc = "、".join(
-                f"{_fmt_event_time(e.start, e.end)}「{e.title}」" for e in result[:3]
+                f"{_fmt_event_time(e.start, e.end)}「{e.title}」" for e in conflicts[:3]
             )
             return _ToolOutcome(
                 content=(
@@ -2017,6 +2024,45 @@ class NamiHandler(BaseHandler):
                 ),
                 is_error=True,
             )
+
+        # Zoom：先自己查衝突再建會議 —— 否則 create_event 撞到衝突不建事件時，
+        # 剛建好的 Zoom 會議就成了孤兒。
+        zoom_meeting: zoom_client.ZoomMeeting | None = None
+        zoom_error: str | None = None
+        event_location: str | None = None
+        if use_zoom:
+            if not force:
+                zoom_conflicts = google_calendar.find_conflicts(start, end)
+                if zoom_conflicts:
+                    return _conflict_outcome(zoom_conflicts)
+            try:
+                zoom_meeting = zoom_client.create_meeting(
+                    topic=title, start=start, end=end, agenda=description
+                )
+            except zoom_client.ZoomError as exc:
+                logger.warning(f"Zoom meeting create failed: {exc}")
+                zoom_error = str(exc)
+            if zoom_meeting is not None:
+                description = _append_zoom_block(description, zoom_meeting)
+                event_location = zoom_meeting.join_url
+
+        try:
+            result = google_calendar.create_event(
+                title=title,
+                start=start,
+                end=end,
+                description=description,
+                check_conflict=not force and not use_zoom,  # use_zoom 已在上面查過
+                **({"location": event_location} if event_location else {}),
+            )
+        except Exception:
+            self._discard_zoom_meeting(zoom_meeting)
+            raise
+
+        # 衝突 → result 是 list[CalendarEvent]，沒有建立
+        if isinstance(result, list):
+            self._discard_zoom_meeting(zoom_meeting)
+            return _conflict_outcome(result)
 
         event = result
         task_path_display = ""
@@ -2028,6 +2074,7 @@ class NamiHandler(BaseHandler):
                 logger.exception(
                     f"Task write failed after calendar create; rolling back event {event.id}"
                 )
+                self._discard_zoom_meeting(zoom_meeting)
                 try:
                     google_calendar.delete_event(event.id)
                 except Exception:
@@ -2059,10 +2106,21 @@ class NamiHandler(BaseHandler):
                 "改用預設（also_create_task=true）重排。"
             )
 
+        zoom_display = ""
+        if zoom_meeting is not None:
+            pass_part = f"（Passcode：{zoom_meeting.passcode}）" if zoom_meeting.passcode else ""
+            zoom_display = f"\n   🎥 Zoom：{zoom_meeting.join_url}{pass_part}"
+        elif zoom_error is not None:
+            zoom_display = (
+                f"\n   ⚠️ Zoom 會議沒建成：{zoom_error}"
+                "\n   事件已建立，但沒有會議連結。回覆使用者時必須註明這點。"
+            )
+
         summary = (
             f"📅 Calendar 事件已建立：{event.title}\n"
             f"   時間：{_fmt_event_time(event.start, event.end)}\n"
             f"   連結：{event.html_link}"
+            f"{zoom_display}"
             f"{task_path_display}"
         )
         return _ToolOutcome(
@@ -2076,10 +2134,21 @@ class NamiHandler(BaseHandler):
                     "end": event.end,
                     "html_link": event.html_link,
                     "task_path": task_rel_path if also_create_task else None,
+                    "zoom_meeting_id": zoom_meeting.id if zoom_meeting else None,
                 },
                 "log": event.title,
             },
         )
+
+    @staticmethod
+    def _discard_zoom_meeting(meeting: zoom_client.ZoomMeeting | None) -> None:
+        """rollback 用：刪掉剛建的 Zoom 會議。失敗只記 log（留孤兒會議比讓 rollback 崩掉好）。"""
+        if meeting is None:
+            return
+        try:
+            zoom_client.delete_meeting(meeting.id)
+        except Exception:
+            logger.exception(f"Rollback delete Zoom meeting {meeting.id} failed — orphan remains")
 
     def _write_calendar_linked_task(
         self,
@@ -3250,6 +3319,15 @@ def _to_vault_relative(path: Path) -> str:
             idx = parts.index(marker)
             return "/".join(parts[idx:])
     return path.name
+
+
+def _append_zoom_block(description: str, meeting: zoom_client.ZoomMeeting) -> str:
+    """把 Zoom 加入資訊接在事件描述後面（描述可能是空的）。"""
+    lines = ["🎥 Zoom 會議", f"連結：{meeting.join_url}", f"會議 ID：{meeting.id}"]
+    if meeting.passcode:
+        lines.append(f"Passcode：{meeting.passcode}")
+    block = "\n".join(lines)
+    return f"{description}\n\n{block}" if description else block
 
 
 def _fmt_event_time(start: str, end: str) -> str:
