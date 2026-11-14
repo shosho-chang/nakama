@@ -325,7 +325,9 @@ NAMI_TOOLS: list[dict] = [
     {
         "name": "delete_task",
         "description": (
-            "刪除現有 Task 檔案。呼叫前必須先用 ask_user 告知使用者將刪除哪個 task 並請確認。"
+            "刪除現有 Task 檔案（移到 vault 的 .trash/，救得回來）。兩步驟：先不帶 confirm_path "
+            "呼叫，工具只回報找到的檔案、不會刪；用 ask_user 跟使用者確認後，再帶工具回報的 "
+            "confirm_path 呼叫一次才會刪。"
         ),
         "input_schema": {
             "type": "object",
@@ -334,6 +336,13 @@ NAMI_TOOLS: list[dict] = [
                     "type": "string",
                     "description": "要刪除的任務標題（用來搜尋，不需完全符合）",
                 },
+                "confirm_path": {
+                    "type": "string",
+                    "description": (
+                        "使用者確認後才填：第一次呼叫時工具回報的檔案路徑，一字不差。"
+                        "沒填或對不上就不會刪。"
+                    ),
+                },
             },
             "required": ["title"],
         },
@@ -341,8 +350,9 @@ NAMI_TOOLS: list[dict] = [
     {
         "name": "delete_project",
         "description": (
-            "刪除 Project 檔案，可選擇一併刪除該 project 下的所有 tasks。"
-            "呼叫前必須先用 ask_user 列出將刪除的所有檔案並請使用者確認。"
+            "刪除 Project 檔案（移到 vault 的 .trash/，救得回來），可選擇一併刪除該 project "
+            "下的所有 tasks。兩步驟：先不帶 confirm_path 呼叫，工具只列出會刪的檔案、不會刪；"
+            "用 ask_user 跟使用者確認後，再帶工具回報的 confirm_path 呼叫一次才會刪。"
         ),
         "input_schema": {
             "type": "object",
@@ -354,6 +364,13 @@ NAMI_TOOLS: list[dict] = [
                 "include_tasks": {
                     "type": "boolean",
                     "description": "是否一併刪除該 project 下的所有 tasks（預設 true）",
+                },
+                "confirm_path": {
+                    "type": "string",
+                    "description": (
+                        "使用者確認後才填：第一次呼叫時工具回報的 project 檔案路徑，一字不差。"
+                        "沒填或對不上就不會刪。"
+                    ),
                 },
             },
             "required": ["title"],
@@ -1628,21 +1645,31 @@ class NamiHandler(BaseHandler):
         if not title:
             return _ToolOutcome(content="Missing task title", is_error=True)
 
-        found = self._find_task_by_title(title)
-        if not found:
+        matches = self._delete_candidates(TASK_DIR, title)
+        if not matches:
             return _ToolOutcome(
                 content=f"找不到標題含「{title}」的 task。請用 list_tasks 確認標題。",
                 is_error=True,
             )
+        if len(matches) > 1:
+            return _ambiguous_delete_outcome("task", title, matches)
 
-        rel_path, fm, _ = found
+        rel_path, fm = matches[0]
         matched_title = str(fm.get("title", title))
+        if str(input_.get("confirm_path") or "").strip() != rel_path:
+            return _ToolOutcome(
+                content=(
+                    f"還沒刪。找到的 task：{matched_title}（{rel_path}）。\n"
+                    "請先用 ask_user 跟使用者確認要刪的是這一個，確認後帶 "
+                    f"confirm_path={rel_path} 再呼叫一次 delete_task。"
+                )
+            )
         deleted = delete_page(rel_path)
         if not deleted:
             return _ToolOutcome(content=f"刪除失敗：檔案不存在（{rel_path}）", is_error=True)
 
         return _ToolOutcome(
-            content=f"🗑️ 已刪除 task：{matched_title}",
+            content=f"🗑️ 已刪除 task：{matched_title}（已移到 vault 的 .trash/，救得回來）",
             event={
                 "name": "task_deleted",
                 "payload": {"title": matched_title, "path": rel_path},
@@ -1657,26 +1684,48 @@ class NamiHandler(BaseHandler):
 
         include_tasks = input_.get("include_tasks", True)
 
-        found = self._find_project_by_title(title)
-        if not found:
+        matches = self._delete_candidates(PROJECT_DIR, title, use_stem=True)
+        if not matches:
             return _ToolOutcome(
                 content=f"找不到標題含「{title}」的 project。",
                 is_error=True,
             )
+        if len(matches) > 1:
+            return _ambiguous_delete_outcome("project", title, matches)
 
-        proj_rel, proj_fm = found
+        proj_rel, proj_fm = matches[0]
         matched_title = str(proj_fm.get("title", title))
+        member_tasks = self._find_tasks_by_project(matched_title) if include_tasks else []
+
+        if str(input_.get("confirm_path") or "").strip() != proj_rel:
+            task_lines = "".join(
+                f"\n  - {task_fm.get('title', task_rel)}（{task_rel}）"
+                for task_rel, task_fm in member_tasks
+            )
+            task_note = (
+                f"\n會一併刪除 {len(member_tasks)} 個 task：{task_lines}"
+                if member_tasks
+                else "\n不會刪任何 task。"
+            )
+            return _ToolOutcome(
+                content=(
+                    f"還沒刪。找到的 project：{matched_title}（{proj_rel}）。{task_note}\n"
+                    "請先用 ask_user 把上面要刪的檔案列給使用者確認，確認後帶 "
+                    f"confirm_path={proj_rel} 再呼叫一次 delete_project。"
+                )
+            )
 
         deleted_tasks: list[str] = []
-        if include_tasks:
-            for task_rel, task_fm in self._find_tasks_by_project(matched_title):
-                if delete_page(task_rel):
-                    deleted_tasks.append(str(task_fm.get("title", task_rel)))
+        for task_rel, task_fm in member_tasks:
+            if delete_page(task_rel):
+                deleted_tasks.append(str(task_fm.get("title", task_rel)))
 
         delete_page(proj_rel)
 
         task_summary = f"，含 {len(deleted_tasks)} 個 task" if deleted_tasks else ""
-        summary = f"🗑️ 已刪除 project：{matched_title}{task_summary}"
+        summary = (
+            f"🗑️ 已刪除 project：{matched_title}{task_summary}（已移到 vault 的 .trash/，救得回來）"
+        )
         return _ToolOutcome(
             content=summary,
             event={
@@ -1689,6 +1738,28 @@ class NamiHandler(BaseHandler):
                 "log": matched_title,
             },
         )
+
+    def _delete_candidates(
+        self, directory: str, title: str, *, use_stem: bool = False
+    ) -> list[tuple[str, dict]]:
+        """刪除用的比對：列出所有標題對得上的檔案（不像 _find_* 只拿第一個）。
+
+        有標題完全相同的就只留完全相同的；否則回傳全部子字串命中，交給呼叫端在
+        多於一個時停下來問，而不是默默刪第一個。
+        """
+        query = title.strip().lower()
+        hits: list[tuple[str, dict, str]] = []
+        for f in list_files(directory):
+            rel = f"{directory}/{f.name}"
+            content = read_page(rel)
+            if not content:
+                continue
+            fm = _extract_frontmatter(content)
+            cand = fm.get("title", f.stem) if use_stem else fm.get("title")
+            if _title_matches(query, cand):
+                hits.append((rel, fm, str(cand).strip().lower()))
+        exact = [(rel, fm) for rel, fm, cand in hits if cand == query]
+        return exact or [(rel, fm) for rel, fm, _ in hits]
 
     def _find_project_by_title(self, title: str) -> tuple[str, dict] | None:
         """以 title 搜尋 project 檔案，回傳 (relative_path, frontmatter) 或 None。"""
@@ -3209,6 +3280,17 @@ def _stringify_fm_dates(fm: dict) -> dict:
     return {
         k: v.isoformat() if isinstance(v, (_dt.date, _dt.datetime)) else v for k, v in fm.items()
     }
+
+
+def _ambiguous_delete_outcome(kind: str, title: str, matches: list[tuple[str, dict]]):
+    listing = "".join(f"\n  - {fm.get('title', rel)}（{rel}）" for rel, fm in matches)
+    return _ToolOutcome(
+        content=(
+            f"沒有刪。標題含「{title}」的 {kind} 有 {len(matches)} 個：{listing}\n"
+            "請問使用者要刪哪一個，再用完整標題呼叫。"
+        ),
+        is_error=True,
+    )
 
 
 def _title_matches(query_lower: str, candidate: object) -> bool:

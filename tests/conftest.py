@@ -15,6 +15,10 @@ import pytest
 # `shared.log` and triggers handler setup. Tests that exercise the handler
 # itself (`test_log_handler.py`) explicitly opt out via monkeypatch.
 os.environ.setdefault("NAKAMA_LOG_DB_DISABLE", "1")
+# 正式環境沒設 WEB_PASSWORD 會 fail closed（thousand_sunny.auth.open_auth_allowed）。大量
+# route 測試靠「不設密碼＝放行」直接打 handler，這裡統一 opt-in；測 fail closed 的測試自己
+# monkeypatch.delenv 掉。
+os.environ.setdefault("NAKAMA_ALLOW_OPEN_AUTH", "1")
 
 
 @pytest.fixture(autouse=True)
