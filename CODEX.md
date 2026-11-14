@@ -23,20 +23,26 @@ Forbidden in the main worktree unless the user explicitly authorizes this exact 
 - writing durable memory;
 - running implementation work.
 
-Any file-producing task must first create a task-specific sibling worktree:
+Any file-producing task must first create a task-specific worktree. **All worktrees live under `E:\nakama-worktrees\`** — never at the `E:\` root, never inside the main repo.
 
 ```powershell
 git switch main
 git fetch --prune
 git pull --ff-only
-git worktree add E:\nakama-<task-name> -b <branch-name> origin/main
+git worktree add E:\nakama-worktrees\<task-name> -b <branch-name> origin/main
 ```
 
 Examples:
 
-- `E:\nakama-N513-source-map-builder`
-- `E:\nakama-toast-inbox-importer`
-- `E:\nakama-memory-update`
+- `E:\nakama-worktrees\source-map-builder`
+- `E:\nakama-worktrees\toast-inbox-importer`
+- `E:\nakama-worktrees\memory-update`
+
+Drop the `nakama-` prefix from the folder name; the parent directory already says it.
+
+The old `E:\nakama-<task-name>` convention was retired on 2026-09-20 — it had accumulated 33 folders at the `E:\` root, mixed in with video footage and downloads. `E:\nakama\worktrees\` is retired for the same reason plus a sharper one: a repo full of copies of itself makes ripgrep, pytest and Syncthing recurse into them, and one `git clean -xdf` in the main repo wipes the lot. `E:\nakama\.claude\worktrees\` is managed automatically by the Claude Code desktop app — leave it alone, and do not put anything there by hand.
+
+Reclaim a worktree once its PR merges or closes: `git worktree remove <path>`. If the working tree still holds uncommitted work you are not ready to lose, commit it to a `wip/<topic>` branch and push before removing.
 
 Never use `git add .`. Stage explicit paths only.
 
