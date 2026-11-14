@@ -8,30 +8,19 @@ is moved to a neighbouring token edge, never through the token itself.
 
 from __future__ import annotations
 
-import argparse
 import difflib
 import hashlib
 import json
-import math
 import re
 import sys
 import unicodedata
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
-
-from agents.brook.podcast_subtitles.accurate_correction import (  # noqa: E402
-    AccurateCorrectionResult,
-    parse_accurate_correction_json,
-)
-from agents.brook.podcast_subtitles.episode_edits import (  # noqa: E402
-    EpisodeTranscriptEdit,
-    apply_episode_transcript_edits,
-)
 
 _SRT_TIME_RE = re.compile(r"^(\d{2,}):(\d{2}):(\d{2})[,.](\d{3})$")
 
@@ -491,171 +480,3 @@ def render_srt(cues: Sequence[ProjectedCue]) -> str:
         )
         + "\n"
     )
-
-
-def _load_episode_edits(path: Path) -> tuple[EpisodeTranscriptEdit, ...]:
-    raw = json.loads(path.read_text(encoding="utf-8"))
-    if not isinstance(raw, list):
-        raise ValueError("episode edits JSON root must be an array")
-    allowed = {"id", "start_ms", "end_ms", "current", "replacement", "evidence", "confidence"}
-    edits: list[EpisodeTranscriptEdit] = []
-    for index, item in enumerate(raw):
-        if not isinstance(item, dict) or set(item) - allowed:
-            raise ValueError(f"episode edit {index} does not match EpisodeTranscriptEdit schema")
-        edits.append(EpisodeTranscriptEdit(**item))
-    return tuple(edits)
-
-
-def _source_tokens(correction: AccurateCorrectionResult) -> tuple[SourceToken, ...]:
-    return tuple(
-        SourceToken(token.id, token.text, token.start_ms, token.end_ms)
-        for token in correction.tokens
-    )
-
-
-def _percentile_95(values: Sequence[int]) -> float:
-    if not values:
-        return 0.0
-    ordered = sorted(abs(value) for value in values)
-    return float(ordered[max(0, math.ceil(0.95 * len(ordered)) - 1)])
-
-
-def _build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--correction", type=Path, required=True)
-    parser.add_argument("--memo-srt", type=Path, required=True)
-    parser.add_argument("--output-srt", type=Path, required=True)
-    parser.add_argument("--output-json", type=Path, required=True)
-    parser.add_argument("--episode-edits-json", type=Path)
-    parser.add_argument("--boundary-edits-json", type=Path)
-    parser.add_argument("--min-boundary-retention", type=float, default=0.95)
-    parser.add_argument("--min-alignment-ratio", type=float, default=0.90)
-    return parser
-
-
-def main(argv: Sequence[str] | None = None) -> int:
-    args = _build_parser().parse_args(argv)
-    correction_payload = args.correction.read_bytes()
-    memo_payload = args.memo_srt.read_bytes()
-    correction = parse_accurate_correction_json(correction_payload)
-    original_text = correction.text
-    edits: tuple[EpisodeTranscriptEdit, ...] = ()
-    edits_hash: str | None = None
-    if args.episode_edits_json is not None:
-        edits_hash = _sha256_file(args.episode_edits_json)
-        edits = _load_episode_edits(args.episode_edits_json)
-        correction = apply_episode_transcript_edits(correction, edits)
-    tokens = _source_tokens(correction)
-    memo_cues = parse_srt(memo_payload.decode("utf-8-sig"))
-    raw_memo_cue_count = len(memo_cues)
-    boundary_edits: tuple[dict[str, object], ...] = ()
-    boundary_edits_hash: str | None = None
-    if args.boundary_edits_json is not None:
-        boundary_edits_hash = _sha256_file(args.boundary_edits_json)
-        boundary_edits = load_boundary_merge_proposals(args.boundary_edits_json)
-        memo_cues = apply_boundary_merge_proposals(memo_cues, boundary_edits)
-    result = project_tokens_to_memo_cues(
-        tokens,
-        memo_cues,
-        min_boundary_retention=args.min_boundary_retention,
-        min_alignment_ratio=args.min_alignment_ratio,
-    )
-    rendered = render_srt(result.cues).encode("utf-8")
-    args.output_srt.parent.mkdir(parents=True, exist_ok=True)
-    args.output_json.parent.mkdir(parents=True, exist_ok=True)
-    args.output_srt.write_bytes(rendered)
-    canonical_text = correction.text
-    sidecar = {
-        "schema_version": "memo-corrected-projection.v1",
-        "episode_id": correction.episode_id,
-        "normalized_audio_hash": correction.normalized_audio_hash,
-        "inputs": {
-            "correction": {
-                "path": str(args.correction.resolve()),
-                "sha256": _sha256_bytes(correction_payload),
-            },
-            "memo_srt": {
-                "path": str(args.memo_srt.resolve()),
-                "sha256": _sha256_bytes(memo_payload),
-            },
-            "episode_edits": {
-                "path": None
-                if args.episode_edits_json is None
-                else str(args.episode_edits_json.resolve()),
-                "sha256": edits_hash,
-                "count": len(edits),
-            },
-            "boundary_edits": {
-                "path": None
-                if args.boundary_edits_json is None
-                else str(args.boundary_edits_json.resolve()),
-                "sha256": boundary_edits_hash,
-                "count": len(boundary_edits),
-            },
-        },
-        "derived": {
-            "source_canonical_text_sha256": _sha256_bytes(original_text.encode("utf-8")),
-            "canonical_text_sha256": _sha256_bytes(canonical_text.encode("utf-8")),
-            "canonical_token_count": len(tokens),
-            "canonical_character_count": len(canonical_text),
-        },
-        "alignment": {
-            key: value
-            for key, value in asdict(result.alignment).items()
-            if key not in {"source_text", "target_text"}
-        },
-        "boundaries": {
-            "raw_memo_cue_count": raw_memo_cue_count,
-            "memo_cue_count_after_requested_merges": len(memo_cues),
-            "candidate_cue_count": len(result.cues),
-            "original_boundary_count": result.original_boundary_count,
-            "retained_boundary_count": result.retained_boundary_count,
-            "retention_ratio": result.boundary_retention_ratio,
-            "alignment_non_equal_boundary_count": result.alignment_non_equal_boundary_count,
-            "token_snap_boundary_count": result.token_snap_boundary_count,
-            "merged_boundary_count": result.merged_boundary_count,
-            "dropped_empty_cue_count": result.dropped_empty_cue_count,
-            "boundary_delta_ms_p95": _percentile_95(result.boundary_deltas_ms),
-        },
-        "qc": {
-            "exact_canonical_copy": "".join(cue.text for cue in result.cues) == canonical_text,
-            "single_line_cues": all(
-                "\n" not in cue.text and "\r" not in cue.text for cue in result.cues
-            ),
-            "empty_cues": sum(not cue.text for cue in result.cues),
-            "nonpositive_cues": sum(cue.end_ms <= cue.start_ms for cue in result.cues),
-            "overlapping_cues": sum(
-                result.cues[i].start_ms < result.cues[i - 1].end_ms
-                for i in range(1, len(result.cues))
-            ),
-            "split_source_tokens": False,
-            "max_characters_per_cue": max(len(cue.text) for cue in result.cues),
-        },
-        "outputs": {
-            "candidate_srt": {
-                "path": str(args.output_srt.resolve()),
-                "sha256": _sha256_bytes(rendered),
-            },
-        },
-        "cues": [asdict(cue) for cue in result.cues],
-    }
-    args.output_json.write_text(
-        json.dumps(sidecar, ensure_ascii=False, sort_keys=True, indent=2) + "\n",
-        encoding="utf-8",
-    )
-    print(
-        json.dumps(
-            {
-                "candidate_srt": str(args.output_srt),
-                "candidate_cues": len(result.cues),
-                "alignment_ratio": result.alignment.ratio,
-                "boundary_retention_ratio": result.boundary_retention_ratio,
-            },
-            ensure_ascii=False,
-        )
-    )
-    return 0
-
-
-if __name__ == "__main__":
-    raise SystemExit(main())

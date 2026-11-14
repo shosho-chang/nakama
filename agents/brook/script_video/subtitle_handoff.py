@@ -1,32 +1,13 @@
-"""Fail-closed Subtitle V2 handoff for Stage 5 video consumers."""
+"""Fail-closed subtitle release handoff for Stage 5 video consumers."""
 
 from __future__ import annotations
 
 import hashlib
 import json
-import os
 import re
-import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal
-
-from pydantic import BaseModel, Field, ValidationError
-
-from agents.brook.podcast_subtitles.handoff import (
-    ProjectionVerifierFactory,
-    open_verified_projection,
-)
-from agents.brook.podcast_subtitles.module import VerifiedProjection
-
-
-@dataclass(frozen=True, slots=True)
-class Stage5SubtitleHandoff:
-    """Exact verified subtitle bytes plus their persisted downstream receipt."""
-
-    srt_path: Path
-    receipt_path: Path
-    verified: VerifiedProjection
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,15 +46,11 @@ class Stage5MemoDualAuditReleaseHandoff:
 #: scope (`strip_fillers_srt_file`). Single source of truth for that subset so callers
 #: outside this module (e.g. `scripts/build_resolve_project.py`) don't hand-copy the
 #: list and risk drifting from it when a new mode is added here.
-HASH_BOUND_RELEASE_MODES = frozenset({"memo-dual-audit-v1", "verified-v2", "degraded-dual-asr-v1"})
+HASH_BOUND_RELEASE_MODES = frozenset({"memo-dual-audit-v1", "degraded-dual-asr-v1"})
 
 
 class Stage5SubtitleContractError(ValueError):
     """The Stage 5 caller omitted or mixed formal/legacy subtitle identity."""
-
-
-class Stage5SubtitleArtifactConflictError(Stage5SubtitleContractError):
-    """An immutable Stage 5 artifact path already contains different bytes."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,34 +59,17 @@ class Stage5SubtitleSelection:
 
     mode: Literal[
         "memo-dual-audit-v1",
-        "verified-v2",
         "legacy-v1",
         "degraded-dual-asr-v1",
     ]
     srt_path: Path
-    handoff: (
-        Stage5SubtitleHandoff
-        | Stage5DegradedReleaseHandoff
-        | Stage5MemoDualAuditReleaseHandoff
-        | None
-    )
+    handoff: Stage5DegradedReleaseHandoff | Stage5MemoDualAuditReleaseHandoff | None
 
     def identity(self) -> dict[str, object]:
         """Return serializable lineage without fabricating Verified Projection fields."""
 
         if self.handoff is None:
             return {"subtitle_mode": self.mode}
-        if isinstance(self.handoff, Stage5SubtitleHandoff):
-            verified = self.handoff.verified
-            return {
-                "subtitle_mode": self.mode,
-                "projection_id": verified.projection_id,
-                "generation_id": verified.generation_id,
-                "episode_id": verified.episode_id,
-                "projection_manifest_sha256": verified.manifest_sha256,
-                "subtitle_handoff_receipt": str(self.handoff.receipt_path),
-                "subtitle_srt_sha256": verified.srt_sha256,
-            }
         if isinstance(self.handoff, Stage5MemoDualAuditReleaseHandoff):
             release = self.handoff
             return {
@@ -145,51 +105,16 @@ class Stage5SubtitleRequest:
     legacy_v1: bool = False
     subtitle_release_handoff: str | Path | None = None
     degraded_release_handoff: str | Path | None = None
-    projection_id: str | None = None
-    expected_episode_id: str | None = None
-    expected_generation_id: str | None = None
-    expected_manifest_sha256: str | None = None
-    reference_manifest: str | Path | None = None
 
-    def open(
-        self,
-        episode_root: str | Path,
-        *,
-        factory: ProjectionVerifierFactory | None = None,
-    ) -> Stage5SubtitleSelection:
+    def open(self, episode_root: str | Path) -> Stage5SubtitleSelection:
         return select_stage5_subtitle(
             episode_root=episode_root,
             legacy_v1=self.legacy_v1,
             subtitle_release_handoff=self.subtitle_release_handoff,
             degraded_release_handoff=self.degraded_release_handoff,
-            projection_id=self.projection_id,
-            expected_episode_id=self.expected_episode_id,
-            expected_generation_id=self.expected_generation_id,
-            expected_manifest_sha256=self.expected_manifest_sha256,
-            reference_manifest=self.reference_manifest,
-            factory=factory,
         )
 
 
-def _write_immutable(path: Path, payload: bytes) -> None:
-    """Create one artifact exactly once; identical repeats are no-ops."""
-
-    try:
-        with path.open("xb") as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        return
-    except FileExistsError:
-        pass
-    if path.read_bytes() != payload:
-        raise Stage5SubtitleArtifactConflictError(
-            f"immutable Stage 5 artifact conflicts with verified bytes: {path}"
-        )
-
-
-_CURRENT_HANDOFF = Path(".stage5") / "verified-subtitle-handoff.v2.json"
-_CURRENT_CONTRACT = "podcast-subtitle-v2-stage5-handoff"
 _MEMO_DUAL_AUDIT_DEFAULT_HANDOFF = (
     Path("subtitle-release") / "memo-dual-audit-v1" / "STAGE5-HANDOFF.json"
 )
@@ -771,274 +696,20 @@ def _open_degraded_release_handoff(
     )
 
 
-def current_stage5_handoff_path(episode_root: str | Path) -> Path:
-    """Return the single episode-local persisted Verified Projection handoff."""
-
-    return Path(episode_root).resolve() / _CURRENT_HANDOFF
-
-
-def _relative_artifact(root: Path, path: Path) -> str:
-    try:
-        return path.resolve().relative_to(root).as_posix()
-    except ValueError as exc:
-        raise Stage5SubtitleContractError(
-            "Stage 5 handoff artifacts must remain inside the episode root"
-        ) from exc
-
-
-def _atomic_replace(path: Path, payload: bytes) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.is_file() and path.read_bytes() == payload:
-        return
-    descriptor, temporary_name = tempfile.mkstemp(
-        prefix=f".{path.name}.", suffix=".tmp", dir=path.parent
-    )
-    temporary = Path(temporary_name)
-    try:
-        with os.fdopen(descriptor, "wb") as stream:
-            stream.write(payload)
-            stream.flush()
-            os.fsync(stream.fileno())
-        os.replace(temporary, path)
-    finally:
-        temporary.unlink(missing_ok=True)
-
-
-def _persist_current_handoff(
-    root: Path,
-    handoff: Stage5SubtitleHandoff,
-    reference_manifest: str | Path | None,
-) -> None:
-    receipt_bytes = handoff.receipt_path.read_bytes()
-    reference_path: str | None = None
-    reference_sha256: str | None = None
-    if reference_manifest is not None:
-        resolved_reference = Path(reference_manifest).resolve()
-        try:
-            reference_bytes = resolved_reference.read_bytes()
-        except OSError as exc:
-            raise Stage5SubtitleContractError(
-                "reference manifest cannot be persisted into the Stage 5 handoff"
-            ) from exc
-        reference_path = str(resolved_reference)
-        reference_sha256 = _sha256(reference_bytes)
-    body: dict[str, object] = {
-        "schema_version": 2,
-        "contract": _CURRENT_CONTRACT,
-        "episode_id": handoff.verified.episode_id,
-        "generation_id": handoff.verified.generation_id,
-        "projection_id": handoff.verified.projection_id,
-        "projection_manifest_sha256": handoff.verified.manifest_sha256,
-        "reference_manifest_path": reference_path,
-        "reference_manifest_sha256": reference_sha256,
-        "srt_path": _relative_artifact(root, handoff.srt_path),
-        "srt_sha256": handoff.verified.srt_sha256,
-        "srt_size_bytes": len(handoff.verified.srt_bytes),
-        "projection_handoff_receipt_path": _relative_artifact(root, handoff.receipt_path),
-        "projection_handoff_receipt_sha256": _sha256(receipt_bytes),
-        "projection_handoff_receipt_size_bytes": len(receipt_bytes),
-    }
-    body["content_hash"] = _sha256(_canonical_json(body))
-    _atomic_replace(current_stage5_handoff_path(root), _canonical_json(body))
-
-
-def _strict_current_handoff(raw: bytes) -> dict[str, object]:
-    def strict_pairs(pairs: list[tuple[str, object]]) -> dict[str, object]:
-        result: dict[str, object] = {}
-        for key, value in pairs:
-            if key in result:
-                raise ValueError(f"duplicate key {key!r}")
-            result[key] = value
-        return result
-
-    try:
-        payload = json.loads(raw.decode("utf-8"), object_pairs_hook=strict_pairs)
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError) as exc:
-        raise Stage5SubtitleContractError("persisted Stage 5 handoff is not strict JSON") from exc
-    if not isinstance(payload, dict) or _canonical_json(payload) != raw:
-        raise Stage5SubtitleContractError("persisted Stage 5 handoff is not canonical exact bytes")
-    required = {
-        "schema_version",
-        "contract",
-        "episode_id",
-        "generation_id",
-        "projection_id",
-        "projection_manifest_sha256",
-        "reference_manifest_path",
-        "reference_manifest_sha256",
-        "srt_path",
-        "srt_sha256",
-        "srt_size_bytes",
-        "projection_handoff_receipt_path",
-        "projection_handoff_receipt_sha256",
-        "projection_handoff_receipt_size_bytes",
-        "content_hash",
-    }
-    if set(payload) != required or payload.get("schema_version") != 2:
-        raise Stage5SubtitleContractError("persisted Stage 5 handoff schema drift")
-    if payload.get("contract") != _CURRENT_CONTRACT:
-        raise Stage5SubtitleContractError("persisted Stage 5 handoff contract drift")
-    content_hash = payload.get("content_hash")
-    unsigned = {key: value for key, value in payload.items() if key != "content_hash"}
-    if content_hash != _sha256(_canonical_json(unsigned)):
-        raise Stage5SubtitleContractError("persisted Stage 5 handoff content hash mismatch")
-    return payload
-
-
-def _bound_local_path(root: Path, value: object, *, label: str) -> Path:
-    if not isinstance(value, str) or not value:
-        raise Stage5SubtitleContractError(f"persisted Stage 5 handoff lacks {label}")
-    path = (root / value).resolve()
-    try:
-        path.relative_to(root)
-    except ValueError as exc:
-        raise Stage5SubtitleContractError(
-            f"persisted Stage 5 handoff {label} escapes the episode root"
-        ) from exc
-    return path
-
-
-def _open_persisted_stage5_subtitle(
-    root: Path,
-    *,
-    factory: ProjectionVerifierFactory | None,
-) -> Stage5SubtitleHandoff:
-    current = current_stage5_handoff_path(root)
-    if not current.is_file():
-        raise Stage5SubtitleContractError(
-            "formal Stage 5 requires a persisted Verified Projection handoff; "
-            "run project/resolve once with explicit projection lineage"
-        )
-    payload = _strict_current_handoff(current.read_bytes())
-    srt_path = _bound_local_path(root, payload["srt_path"], label="srt_path")
-    receipt_path = _bound_local_path(
-        root,
-        payload["projection_handoff_receipt_path"],
-        label="projection_handoff_receipt_path",
-    )
-    try:
-        srt_bytes = srt_path.read_bytes()
-        receipt_bytes = receipt_path.read_bytes()
-    except OSError as exc:
-        raise Stage5SubtitleContractError(
-            "persisted Stage 5 handoff artifact is missing or unreadable"
-        ) from exc
-    if (
-        _sha256(srt_bytes) != payload["srt_sha256"]
-        or len(srt_bytes) != payload["srt_size_bytes"]
-        or _sha256(receipt_bytes) != payload["projection_handoff_receipt_sha256"]
-        or len(receipt_bytes) != payload["projection_handoff_receipt_size_bytes"]
-    ):
-        raise Stage5SubtitleContractError("persisted Stage 5 handoff artifact hash mismatch")
-    reference_manifest = payload["reference_manifest_path"]
-    if reference_manifest is not None:
-        if not isinstance(reference_manifest, str):
-            raise Stage5SubtitleContractError("persisted reference manifest path is invalid")
-        try:
-            current_reference_hash = _sha256(Path(reference_manifest).resolve().read_bytes())
-        except OSError as exc:
-            raise Stage5SubtitleContractError(
-                "persisted reference manifest is unavailable"
-            ) from exc
-        if current_reference_hash != payload["reference_manifest_sha256"]:
-            raise Stage5SubtitleContractError("persisted reference manifest bytes drifted")
-    handoff = open_stage5_subtitle(
-        episode_root=root,
-        projection_id=str(payload["projection_id"]),
-        expected_episode_id=str(payload["episode_id"]),
-        expected_generation_id=str(payload["generation_id"]),
-        expected_manifest_sha256=str(payload["projection_manifest_sha256"]),
-        reference_manifest=reference_manifest,
-        factory=factory,
-        persist_current=False,
-    )
-    if handoff.srt_path != srt_path or handoff.receipt_path != receipt_path:
-        raise Stage5SubtitleContractError("persisted Stage 5 handoff path lineage drift")
-    return handoff
-
-
-def open_stage5_subtitle(
-    *,
-    episode_root: str | Path,
-    projection_id: str,
-    expected_episode_id: str,
-    expected_generation_id: str,
-    expected_manifest_sha256: str,
-    reference_manifest: str | Path | None = None,
-    factory: ProjectionVerifierFactory | None = None,
-    persist_current: bool = True,
-) -> Stage5SubtitleHandoff:
-    """Verify one Projection and materialize only its exact SRT bytes for Stage 5."""
-
-    root = Path(episode_root).resolve()
-    verified = open_verified_projection(
-        episode_root=root,
-        projection_id=projection_id,
-        expected_episode_id=expected_episode_id,
-        expected_generation_id=expected_generation_id,
-        expected_manifest_sha256=expected_manifest_sha256,
-        reference_manifest=reference_manifest,
-        factory=factory,
-    )
-    out_dir = root / ".stage5" / "verified-projections" / verified.projection_id
-    out_dir.mkdir(parents=True, exist_ok=True)
-    srt_path = out_dir / "transcript.srt"
-    _write_immutable(srt_path, verified.srt_bytes)
-    receipt_path = out_dir / "handoff.json"
-    receipt = {
-        "schema_version": 1,
-        "episode_id": verified.episode_id,
-        "generation_id": verified.generation_id,
-        "manifest_sha256": verified.manifest_sha256,
-        "projection_id": verified.projection_id,
-        "srt_path": str(srt_path),
-        "srt_sha256": verified.srt_sha256,
-    }
-    receipt_bytes = (
-        json.dumps(receipt, ensure_ascii=False, indent=2, sort_keys=True) + "\n"
-    ).encode("utf-8")
-    _write_immutable(
-        receipt_path,
-        receipt_bytes,
-    )
-    handoff = Stage5SubtitleHandoff(
-        srt_path=srt_path,
-        receipt_path=receipt_path,
-        verified=verified,
-    )
-    if persist_current:
-        _persist_current_handoff(root, handoff, reference_manifest)
-    return handoff
-
-
 def select_stage5_subtitle(
     *,
     episode_root: str | Path,
     legacy_v1: bool = False,
     subtitle_release_handoff: str | Path | None = None,
     degraded_release_handoff: str | Path | None = None,
-    projection_id: str | None = None,
-    expected_episode_id: str | None = None,
-    expected_generation_id: str | None = None,
-    expected_manifest_sha256: str | None = None,
-    reference_manifest: str | Path | None = None,
-    factory: ProjectionVerifierFactory | None = None,
 ) -> Stage5SubtitleSelection:
     """Select official Memo Dual-Audit by default; legacy modes require opt-in."""
 
     root = Path(episode_root).resolve()
-    identities = {
-        "projection_id": projection_id,
-        "expected_episode_id": expected_episode_id,
-        "expected_generation_id": expected_generation_id,
-        "expected_manifest_sha256": expected_manifest_sha256,
-    }
-    supplied = [name for name, value in identities.items() if value is not None]
     if subtitle_release_handoff is not None:
-        if legacy_v1 or degraded_release_handoff is not None or supplied or reference_manifest:
+        if legacy_v1 or degraded_release_handoff is not None:
             raise Stage5SubtitleContractError(
-                "--subtitle-release-handoff cannot be combined with formal, degraded, "
-                "or legacy identity"
+                "--subtitle-release-handoff cannot be combined with degraded or legacy identity"
             )
         handoff = _open_memo_dual_audit_release_handoff(
             root,
@@ -1050,9 +721,9 @@ def select_stage5_subtitle(
             handoff=handoff,
         )
     if degraded_release_handoff is not None:
-        if legacy_v1 or supplied or reference_manifest is not None:
+        if legacy_v1:
             raise Stage5SubtitleContractError(
-                "--degraded-release-handoff cannot be combined with formal or legacy identity"
+                "--degraded-release-handoff cannot be combined with legacy identity"
             )
         handoff = _open_degraded_release_handoff(root, degraded_release_handoff)
         return Stage5SubtitleSelection(
@@ -1061,10 +732,6 @@ def select_stage5_subtitle(
             handoff=handoff,
         )
     if legacy_v1:
-        if supplied or reference_manifest is not None:
-            raise Stage5SubtitleContractError(
-                "--legacy-v1 cannot be combined with Verified Projection identity"
-            )
         srt_path = root / "transcript.srt"
         if not srt_path.is_file():
             raise FileNotFoundError(f"legacy transcript does not exist: {srt_path}")
@@ -1074,192 +741,32 @@ def select_stage5_subtitle(
             handoff=None,
         )
 
-    if not supplied and reference_manifest is None:
-        handoff = _open_memo_dual_audit_release_handoff(
-            root,
-            _MEMO_DUAL_AUDIT_DEFAULT_HANDOFF,
-        )
-        return Stage5SubtitleSelection(
-            mode="memo-dual-audit-v1",
-            srt_path=handoff.srt_path,
-            handoff=handoff,
-        )
-
-    missing = [name for name, value in identities.items() if not value]
-    if missing:
-        raise Stage5SubtitleContractError(
-            "formal Stage 5 requires Verified Projection identity: " + ", ".join(missing)
-        )
-    handoff = open_stage5_subtitle(
-        episode_root=root,
-        projection_id=projection_id or "",
-        expected_episode_id=expected_episode_id or "",
-        expected_generation_id=expected_generation_id or "",
-        expected_manifest_sha256=expected_manifest_sha256 or "",
-        reference_manifest=reference_manifest,
-        factory=factory,
+    handoff = _open_memo_dual_audit_release_handoff(
+        root,
+        _MEMO_DUAL_AUDIT_DEFAULT_HANDOFF,
     )
     return Stage5SubtitleSelection(
-        mode="verified-v2",
+        mode="memo-dual-audit-v1",
         srt_path=handoff.srt_path,
         handoff=handoff,
     )
 
 
-_SHA256_PATTERN = r"^[0-9a-f]{64}$"
-_GENERATION_PATTERN = r"^(?:generation-)?[0-9a-f]{64}$"
-_PROJECTION_PATTERN = r"^projection-[0-9a-f]{64}$"
-
-
 class VerifiedProjectionHandoffError(ValueError):
-    """The Stage 5 episode is not bound to one fully verified projection."""
+    """Video-line storyboard binding drifted from its subtitle source.
 
-
-class SubtitleV2HandoffBinding(BaseModel):
-    """Closed operator binding stored under ``episode.yaml``."""
-
-    model_config = {"extra": "forbid"}
-
-    schema_version: Literal[1] = 1
-    episode_root: Path
-    projection_id: str = Field(pattern=_PROJECTION_PATTERN)
-    generation_id: str = Field(pattern=_GENERATION_PATTERN)
-    projection_manifest_sha256: str = Field(pattern=_SHA256_PATTERN)
-    reference_manifest: Path | None = None
-
-
-class StoryboardProjectionProvenance(BaseModel):
-    """Exact immutable Stage 4 identity consumed to create a storyboard."""
-
-    model_config = {"extra": "forbid"}
-
-    schema_version: Literal[1] = 1
-    episode_id: str
-    projection_id: str = Field(pattern=_PROJECTION_PATTERN)
-    generation_id: str = Field(pattern=_GENERATION_PATTERN)
-    projection_sha256: str = Field(pattern=_SHA256_PATTERN)
-    projection_manifest_sha256: str = Field(pattern=_SHA256_PATTERN)
-    quality_report_sha256: str = Field(pattern=_SHA256_PATTERN)
-    srt_sha256: str = Field(pattern=_SHA256_PATTERN)
-    canonical_hash: str = Field(pattern=_SHA256_PATTERN)
-    profile_hash: str = Field(pattern=_SHA256_PATTERN)
-    token_sequence_hash: str = Field(pattern=_SHA256_PATTERN)
-    output_hash: str = Field(pattern=_SHA256_PATTERN)
-
-    @classmethod
-    def from_verified(
-        cls,
-        verified: VerifiedProjection,
-    ) -> StoryboardProjectionProvenance:
-        return cls(
-            episode_id=verified.episode_id,
-            projection_id=verified.projection_id,
-            generation_id=verified.generation_id,
-            projection_sha256=verified.projection_sha256,
-            projection_manifest_sha256=verified.manifest_sha256,
-            quality_report_sha256=verified.quality_report_sha256,
-            srt_sha256=verified.srt_sha256,
-            canonical_hash=verified.manifest.canonical_hash,
-            profile_hash=verified.manifest.profile_hash,
-            token_sequence_hash=verified.manifest.token_sequence_hash,
-            output_hash=verified.manifest.output_hash,
-        )
-
-
-def _resolve_from(base: Path, value: Path) -> Path:
-    return value.resolve() if value.is_absolute() else (base / value).resolve()
-
-
-def require_verified_projection(
-    *,
-    ep_dir: Path,
-    expected_episode_id: str,
-    episode_meta: dict,
-) -> VerifiedProjection:
-    """Parse the closed episode binding, then invoke the full V2 disk verifier."""
-
-    if episode_meta.get("id") != expected_episode_id or ep_dir.name != expected_episode_id:
-        raise VerifiedProjectionHandoffError(
-            "episode.yaml id, directory name, and requested episode must match"
-        )
-    raw_binding = episode_meta.get("subtitle_v2_handoff")
-    if raw_binding is None:
-        raise SystemExit(
-            "episode.yaml requires subtitle_v2_handoff; a bare transcript.srt is "
-            "legacy/unverified input and cannot enter Stage 5 production"
-        )
-    try:
-        binding = SubtitleV2HandoffBinding.model_validate(raw_binding)
-    except ValidationError as exc:
-        raise VerifiedProjectionHandoffError(
-            f"episode.yaml subtitle_v2_handoff is invalid: {exc}"
-        ) from exc
-    episode_root = _resolve_from(ep_dir, binding.episode_root)
-    if not episode_root.is_dir():
-        raise VerifiedProjectionHandoffError(
-            f"subtitle_v2_handoff episode_root is not a directory: {episode_root}"
-        )
-    reference_manifest = (
-        _resolve_from(episode_root, binding.reference_manifest)
-        if binding.reference_manifest is not None
-        else None
-    )
-    return open_verified_projection(
-        episode_root=episode_root,
-        projection_id=binding.projection_id,
-        expected_episode_id=expected_episode_id,
-        expected_generation_id=binding.generation_id,
-        expected_manifest_sha256=binding.projection_manifest_sha256,
-        reference_manifest=reference_manifest,
-    )
-
-
-def write_storyboard_provenance(ep_dir: Path, verified: VerifiedProjection) -> Path:
-    path = ep_dir / "storyboard.provenance.json"
-    provenance = StoryboardProjectionProvenance.from_verified(verified)
-    path.write_text(
-        json.dumps(
-            provenance.model_dump(mode="json"),
-            ensure_ascii=False,
-            sort_keys=True,
-            separators=(",", ":"),
-        ),
-        encoding="utf-8",
-    )
-    return path
-
-
-def assert_storyboard_provenance(ep_dir: Path, verified: VerifiedProjection) -> None:
-    path = ep_dir / "storyboard.provenance.json"
-    try:
-        payload = path.read_bytes()
-        stored = StoryboardProjectionProvenance.model_validate_json(payload)
-    except (OSError, ValidationError, ValueError) as exc:
-        raise VerifiedProjectionHandoffError(
-            f"storyboard provenance is missing or invalid: {path}"
-        ) from exc
-    expected = StoryboardProjectionProvenance.from_verified(verified)
-    if stored != expected:
-        raise VerifiedProjectionHandoffError(
-            "storyboard provenance drifted from the freshly verified projection handoff"
-        )
+    Subtitle V2 (ADR-056) was removed in 2026-11.  The name is retained only
+    because ``agents.brook.script_video.pipeline`` still raises it; the video
+    line's subtitle source is pending a redesign.
+    """
 
 
 __all__ = [
     "Stage5DegradedReleaseHandoff",
     "Stage5MemoDualAuditReleaseHandoff",
-    "Stage5SubtitleArtifactConflictError",
     "Stage5SubtitleContractError",
-    "Stage5SubtitleHandoff",
     "Stage5SubtitleRequest",
     "Stage5SubtitleSelection",
-    "StoryboardProjectionProvenance",
-    "SubtitleV2HandoffBinding",
     "VerifiedProjectionHandoffError",
-    "assert_storyboard_provenance",
-    "current_stage5_handoff_path",
-    "open_stage5_subtitle",
-    "require_verified_projection",
     "select_stage5_subtitle",
-    "write_storyboard_provenance",
 ]

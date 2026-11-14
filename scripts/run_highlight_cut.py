@@ -41,7 +41,6 @@ if hasattr(sys.stderr, "reconfigure"):
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from agents.brook.podcast_subtitles.handoff import ProjectionVerifierFactory  # noqa: E402
 from agents.brook.script_video.editorial_master import (  # noqa: E402
     EditorialMasterContractError,
     EditorialMasterRequest,
@@ -109,7 +108,6 @@ def _open_highlight_source(
     *,
     editorial_master_request: EditorialMasterRequest | None = None,
     subtitle_request: Stage5SubtitleRequest | None = None,
-    verifier_factory: ProjectionVerifierFactory | None = None,
 ) -> HighlightSource:
     """Open Editorial Master by default; Stage5-only access is explicit forensic legacy."""
 
@@ -119,7 +117,7 @@ def _open_highlight_source(
                 "Stage5-only Highlight source is forbidden; seal an Editorial Master "
                 "or explicitly request --legacy-v1 for forensic use"
             )
-        subtitle = subtitle_request.open(episode_dir, factory=verifier_factory)
+        subtitle = subtitle_request.open(episode_dir)
         return HighlightSource(
             srt_path=subtitle.srt_path,
             media_path=None,
@@ -447,7 +445,6 @@ def merge_miners(
     miner_paths: dict[str, Path] | None = None,
     editorial_master_request: EditorialMasterRequest | None = None,
     subtitle_request: Stage5SubtitleRequest | None = None,
-    verifier_factory: ProjectionVerifierFactory | None = None,
 ) -> dict:
     """Strictly merge three subscription-worker outputs into candidates.json."""
 
@@ -455,7 +452,6 @@ def merge_miners(
         episode_dir,
         editorial_master_request=editorial_master_request,
         subtitle_request=subtitle_request,
-        verifier_factory=verifier_factory,
     )
     hdir = episode_dir / HIGHLIGHTS_DIR
     paths = miner_paths or {role: hdir / f"miner-{role}.json" for role in MINER_ROLES}
@@ -512,7 +508,6 @@ def mining_input(
     *,
     editorial_master_request: EditorialMasterRequest | None = None,
     subtitle_request: Stage5SubtitleRequest | None = None,
-    verifier_factory: ProjectionVerifierFactory | None = None,
 ) -> dict:
     """Return the sole verified SRT source that highlight miners may read."""
 
@@ -520,7 +515,6 @@ def mining_input(
         episode_dir,
         editorial_master_request=editorial_master_request,
         subtitle_request=subtitle_request,
-        verifier_factory=verifier_factory,
     )
     return {
         "status": "mining-input",
@@ -535,14 +529,12 @@ def validate(
     *,
     editorial_master_request: EditorialMasterRequest | None = None,
     subtitle_request: Stage5SubtitleRequest | None = None,
-    verifier_factory: ProjectionVerifierFactory | None = None,
 ) -> dict:
     """候選正規化：吸附 cue 邊界、長度帶檢查、同格式重疊去重。原地改寫 candidates.json。"""
     source = _open_highlight_source(
         episode_dir,
         editorial_master_request=editorial_master_request,
         subtitle_request=subtitle_request,
-        verifier_factory=verifier_factory,
     )
     cand_path = episode_dir / HIGHLIGHTS_DIR / CANDIDATES_NAME
     data = json.loads(cand_path.read_text(encoding="utf-8"))
@@ -658,7 +650,6 @@ def materialize(
     dry_run: bool = False,
     editorial_master_request: EditorialMasterRequest | None = None,
     subtitle_request: Stage5SubtitleRequest | None = None,
-    verifier_factory: ProjectionVerifierFactory | None = None,
 ) -> dict:
     from build_resolve_project import _template_path, connect_resolve, find_main_video
 
@@ -666,7 +657,6 @@ def materialize(
         episode_dir,
         editorial_master_request=editorial_master_request,
         subtitle_request=subtitle_request,
-        verifier_factory=verifier_factory,
     )
     hdir = episode_dir / HIGHLIGHTS_DIR
     candidates_doc = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))
@@ -943,7 +933,6 @@ def refresh_subs(
     *,
     editorial_master_request: EditorialMasterRequest | None = None,
     subtitle_request: Stage5SubtitleRequest | None = None,
-    verifier_factory: ProjectionVerifierFactory | None = None,
 ) -> dict:
     """精華 timeline **只換字幕不動剪輯**（重上 receipt 綁定的 Master SRT）。
 
@@ -957,7 +946,6 @@ def refresh_subs(
         episode_dir,
         editorial_master_request=editorial_master_request,
         subtitle_request=subtitle_request,
-        verifier_factory=verifier_factory,
     )
     hdir = episode_dir / HIGHLIGHTS_DIR
     candidates_doc = json.loads((hdir / CANDIDATES_NAME).read_text(encoding="utf-8"))
@@ -1072,11 +1060,7 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="取證專用：明確使用舊 Stage5/raw source；production 禁止使用",
     )
-    parser.add_argument("--projection-id")
     parser.add_argument("--expected-episode-id")
-    parser.add_argument("--expected-generation-id")
-    parser.add_argument("--expected-manifest-sha256")
-    parser.add_argument("--reference-manifest")
     parser.add_argument(
         "--subtitle-release-handoff",
         help=(
@@ -1096,14 +1080,10 @@ def main(argv: list[str] | None = None) -> int:
     legacy_options = (
         args.subtitle_release_handoff,
         args.degraded_release_handoff,
-        args.projection_id,
-        args.expected_generation_id,
-        args.expected_manifest_sha256,
-        args.reference_manifest,
     )
     if not args.legacy_v1 and any(value is not None for value in legacy_options):
         parser.error(
-            "Stage5 handoff/projection options require explicit --legacy-v1; "
+            "Stage5 handoff options require explicit --legacy-v1; "
             "production Highlight uses Editorial Master"
         )
     subtitle_request = None
@@ -1112,11 +1092,6 @@ def main(argv: list[str] | None = None) -> int:
             legacy_v1=True,
             subtitle_release_handoff=args.subtitle_release_handoff,
             degraded_release_handoff=args.degraded_release_handoff,
-            projection_id=args.projection_id,
-            expected_episode_id=args.expected_episode_id,
-            expected_generation_id=args.expected_generation_id,
-            expected_manifest_sha256=args.expected_manifest_sha256,
-            reference_manifest=args.reference_manifest,
         )
     editorial_master_request = None
     if not args.legacy_v1:

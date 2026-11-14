@@ -33,6 +33,7 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import NoReturn
 
 import yaml
 
@@ -125,15 +126,31 @@ def _check_srt_mp4_duration(srt_cues: list, mp4_path: Path) -> None:
         )
 
 
+def _require_subtitle_source(
+    *,
+    ep_dir: Path,
+    expected_episode_id: str,
+    episode_meta: dict,
+) -> NoReturn:
+    """影片線取得字幕來源的唯一接點——目前待重做，一律中止。
+
+    舊版在這裡呼叫 Podcast Subtitle V2 的 ``require_verified_projection``
+    （ADR-056／ADR-062，``episode.yaml`` 的 ``subtitle_v2_handoff``）。V2 已於
+    2026-11 移除；新的字幕來源由 owner 在影片線重做時決定，接回來時讓這個
+    函式回傳帶 ``srt_bytes`` 的物件即可，``plan``／``emit`` 的後續主體不用動。
+    """
+    raise SystemExit(
+        f"影片線的字幕來源待重做（episode: {expected_episode_id}）：舊 Podcast Subtitle V2"
+        "（episode.yaml 的 subtitle_v2_handoff）已於 2026-11 移除，"
+        "plan／run／emit 暫不可用。"
+    )
+
+
 def _cmd_plan(args: argparse.Namespace) -> int:
     """Verified Projection → storyboard.yaml via LLM planner + exact aligner."""
     from agents.brook.script_video.beat_aligner import AnchorNotFoundError, align_beat
     from agents.brook.script_video.planner import plan_episode
     from agents.brook.script_video.srt_flattener import flatten_cues, parse_srt
-    from agents.brook.script_video.subtitle_handoff import (
-        require_verified_projection,
-        write_storyboard_provenance,
-    )
 
     ep_dir = _episode_dir(args.episode)
     episode_meta = _require_episode(ep_dir)
@@ -141,7 +158,7 @@ def _cmd_plan(args: argparse.Namespace) -> int:
     hints_path = ep_dir / "storyboard_hints.yaml"
     out_path = ep_dir / "storyboard.yaml"
 
-    verified = require_verified_projection(
+    verified = _require_subtitle_source(
         ep_dir=ep_dir,
         expected_episode_id=args.episode,
         episode_meta=episode_meta,
@@ -202,7 +219,8 @@ def _cmd_plan(args: argparse.Namespace) -> int:
         yaml.dump(storyboard, allow_unicode=True, default_flow_style=False, sort_keys=False),
         encoding="utf-8",
     )
-    write_storyboard_provenance(ep_dir, verified)
+    # 影片線重做時：在這裡把 storyboard 綁回新的字幕來源（舊版寫
+    # storyboard.provenance.json 綁 Subtitle V2 projection，已隨 V2 移除）。
     logger.info("storyboard written to %s (%d beats)", out_path, len(beats))
     _record_stage(ep_dir, "plan")
     return 0
@@ -324,20 +342,17 @@ def _cmd_emit(args: argparse.Namespace) -> int:
     from agents.brook.script_video.fcpxml_emitter import emit
     from agents.brook.script_video.schemas.storyboard import Beat
     from agents.brook.script_video.srt_flattener import flatten_cues, parse_srt
-    from agents.brook.script_video.subtitle_handoff import (
-        VerifiedProjectionHandoffError,
-        assert_storyboard_provenance,
-        require_verified_projection,
-    )
+    from agents.brook.script_video.subtitle_handoff import VerifiedProjectionHandoffError
 
     ep_dir = _episode_dir(args.episode)
     episode_meta = _require_episode(ep_dir)
-    verified = require_verified_projection(
+    verified = _require_subtitle_source(
         ep_dir=ep_dir,
         expected_episode_id=args.episode,
         episode_meta=episode_meta,
     )
-    assert_storyboard_provenance(ep_dir, verified)
+    # 影片線重做時：在這裡驗 storyboard 仍綁著同一份字幕來源（舊版
+    # assert_storyboard_provenance 綁 Subtitle V2 projection，已隨 V2 移除）。
     storyboard = yaml.safe_load((ep_dir / "storyboard.yaml").read_text(encoding="utf-8"))
     if not isinstance(storyboard, list):
         raise VerifiedProjectionHandoffError("storyboard.yaml must contain a list of beats")
