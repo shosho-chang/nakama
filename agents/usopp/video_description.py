@@ -254,17 +254,36 @@ def chosen_package(packages: dict, approval: dict, cut_id: str) -> dict:
 
 def find_packaging_dir(vault: Path, episode: str) -> Path:
     """episode 資料夾名 → packaging 目錄（slug 不可推導，scan packages.json 的
-    episode 欄位機器對應——「20260723 謝伯讓」↔「20260723-xieboran」）。"""
+    episode 欄位機器對應——「20260723 謝伯讓」↔「20260723-xieboran」）。
+
+    **兩個目錄宣稱同一集是壞掉，不是可以挑一個。** 舊版邊掃邊 return 第一個命中者，
+    而 `sorted()` 下半形空格 (0x20) 排在 `-` (0x2D) 前面，所以 CJK 名的目錄一定贏過
+    正確的 slug 目錄——2026-09-18 謝伯讓集就是這樣讓整條發布線（description、
+    approval.json）指到一份過期的交接檔，而且過程中一聲不吭。命中兩個時，「第一個」
+    是 byte order 的結果，不是哪一份比較對；沒有任何理由相信它。
+
+    生出重複目錄的那個洞已經在 `emit_packages.py` 補了（`episode_slug` 改必填），
+    這裡守的是讀取端：往後再有別的 writer 漏填，發布線會當場停，不會靜靜地讀錯。
+    """
     root = vault / "Attachments" / "packaging"
+    matches: list[Path] = []
     for d in sorted(root.iterdir()) if root.exists() else []:
         pj = d / "packages.json"
         if pj.exists():
             try:
                 if json.loads(pj.read_text(encoding="utf-8")).get("episode") == episode:
-                    return d
+                    matches.append(d)
             except (json.JSONDecodeError, OSError):
                 continue
-    raise ValueError(f"vault 找不到 episode「{episode}」的 packaging 交接檔（{root}）")
+    if not matches:
+        raise ValueError(f"vault 找不到 episode「{episode}」的 packaging 交接檔（{root}）")
+    if len(matches) > 1:
+        names = "、".join(f"「{d.name}」" for d in matches)
+        raise ValueError(
+            f"vault 有 {len(matches)} 個目錄都宣稱是 episode「{episode}」：{names}（{root}）。"
+            "留下正確的 ASCII slug 目錄、把多餘的移走再跑——本函式不替你猜哪一份是對的。"
+        )
+    return matches[0]
 
 
 def build_description(

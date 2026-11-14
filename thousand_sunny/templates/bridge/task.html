@@ -82,7 +82,7 @@
              so the body's own leading newline is preserved verbatim — no strip needed #}
           <textarea name="body" rows="14" class="tk-note-area" spellcheck="false"
                     placeholder="在這頁寫草稿／本週電子報…（Markdown；長文請移到 Obsidian 的寫作聖地）">
-  {{ task_body }}</textarea>
+{{ task_body }}</textarea>
           <div class="wk-wf-actions"><button class="sho-btn" type="submit">儲存筆記</button></div>
         </form>
       </section>
@@ -136,6 +136,8 @@
             {# running-only: finish-early (logs ACTUAL elapsed — A2) / abort (no log) #}
             <button type="button" class="pj-timer-secondary tk-finish is-hidden" data-timer-finish>完成·記一段</button>
             <button type="button" class="pj-timer-secondary tk-abort is-hidden" data-timer-abort>取消</button>
+            {# 計時記錄的結果（背景送出、不換頁——修修 2026-11-13：換頁會清掉沒存的筆記） #}
+            <span class="tk-dock-status" data-timer-status role="status" aria-live="polite" hidden></span>
 
             {# manual backup — log a full block done away from the browser. 補記日期 lets 修修
                backfill a block done on a PAST day; without it the block is stamped today and
@@ -160,7 +162,7 @@
             </form>
 
             <div class="pj-dock-rollup">
-              🍅 <span class="val">{{ actual_pom }}</span> /
+              🍅 <span class="val" data-tk-actual>{{ actual_pom }}</span> /
               <span class="muted">{{ task.est_pomodoros or '—' }}</span>
             </div>
           </div>
@@ -183,16 +185,16 @@
         <div class="tk-stats">
           {% if task.is_work %}
           <div class="tk-stat">
-            <span class="tk-stat-num">{{ actual_pom }}<span class="tk-stat-den">/{{ task.est_pomodoros or '—' }}</span></span>
+            <span class="tk-stat-num"><span data-tk-actual>{{ actual_pom }}</span><span class="tk-stat-den">/{{ task.est_pomodoros or '—' }}</span></span>
             <span class="tk-stat-lab"><span class="wk-tomato" aria-hidden="true">🍅</span> 實際 / 預估</span>
           </div>
           <div class="tk-stat">
-            <span class="tk-stat-num {{ 'tk-over' if task.est_pomodoros and accuracy_pct > 100 }}">{{ accuracy_pct if task.est_pomodoros else '—' }}{% if task.est_pomodoros %}<span class="tk-stat-den">%</span>{% endif %}</span>
+            <span class="tk-stat-num {{ 'tk-over' if task.est_pomodoros and accuracy_pct > 100 }}" data-tk-accuracy-box><span data-tk-accuracy>{{ accuracy_pct if task.est_pomodoros else '—' }}</span>{% if task.est_pomodoros %}<span class="tk-stat-den">%</span>{% endif %}</span>
             <span class="tk-stat-lab"><span class="wk-tomato" aria-hidden="true">🍅</span> 準確率</span>
           </div>
           {% endif %}
           <div class="tk-stat">
-            <span class="tk-stat-num">{{ task.ufo_total }}</span>
+            <span class="tk-stat-num" data-tk-ufo>{{ task.ufo_total }}</span>
             <span class="tk-stat-lab"><span aria-hidden="true">🤩</span> 超專注</span>
           </div>
         </div>
@@ -392,6 +394,34 @@
       runStartTs = 0;
       stopTicker();
     }
+    var statusEl = dock.querySelector('[data-timer-status]');
+    var statusTimer = null;
+    function showStatus(msg, isError) {
+      if (!statusEl) return;
+      statusEl.textContent = msg;
+      statusEl.classList.toggle('is-error', !!isError);
+      statusEl.hidden = false;
+      if (statusTimer) clearTimeout(statusTimer);
+      // errors stay until the next block starts — 修修 may be looking away
+      statusTimer = isError ? null : setTimeout(function () { statusEl.hidden = true; }, 8000);
+    }
+    function setAll(sel, val) {
+      document.querySelectorAll(sel).forEach(function (el) { el.textContent = String(val); });
+    }
+    function applyStats(d) {
+      if (typeof d.actual_pom === 'number') setAll('[data-tk-actual]', d.actual_pom);
+      if (typeof d.ufo_total === 'number') setAll('[data-tk-ufo]', d.ufo_total);
+      if (d.est_pomodoros) {
+        setAll('[data-tk-accuracy]', d.accuracy_pct);
+        var box = document.querySelector('[data-tk-accuracy-box]');
+        if (box) box.classList.toggle('tk-over', d.accuracy_pct > 100);
+      }
+    }
+    // 修修 2026-11-13 bug：計時到點原本 f.submit() 整頁送出 → 頁面重載，筆記框裡
+    // 還沒按「儲存筆記」的草稿被伺服器上的舊版蓋掉。改成 fetch 背景記錄，頁面不動。
+    // 記錄會改寫任務檔（timeEntries）→ 檔案 hash 變了；把筆記表單的 expected_token
+    // 一起送去，伺服器確認「檔案自載入後沒被別人動過」才回新 token，避免之後按
+    // 儲存被誤判成衝突（真的有 Obsidian 改動時就不回，衝突保護照舊）。
     function submitLog() {
       stopTicker();
       if (window.ShoFocusMusic) ShoFocusMusic.stop();
@@ -401,11 +431,32 @@
       // also clamps to [60, nominal*60], this just avoids sending an overshoot.
       var secs = Math.round(Math.min(nominalSec, elapsedSec()));
       elapsedBefore = 0; runStartTs = 0; started = false;
+      nominalSec = curMin() * 60;
+      render();
       var f = dock.querySelector('.tk-logform[data-mode="' + mode + '"]');
-      if (!f) { render(); return; }
+      if (!f) return;
       var inp = f.querySelector('input[name="elapsed_seconds"]');
       if (inp) inp.value = String(Math.max(0, secs));
-      f.submit();
+      var fd = new FormData(f);
+      var tokenInp = document.querySelector('.tk-noteform input[name="expected_token"]');
+      if (tokenInp) fd.append('expected_token', tokenInp.value);
+      showStatus('記錄中…', false);
+      fetch(f.action, {
+        method: 'POST', body: fd, credentials: 'same-origin',
+        headers: { 'Accept': 'application/json' }
+      }).then(function (r) {
+        return r.json().catch(function () { return { ok: false }; });
+      }).then(function (d) {
+        if (!d || !d.ok) {
+          showStatus('⚠ ' + ((d && d.error) || '記錄失敗') + '——請用 +1 手動補記。', true);
+          return;
+        }
+        if (d.token && tokenInp) tokenInp.value = d.token;
+        applyStats(d);
+        showStatus('✓ 已記錄 ' + d.minutes + ' 分專注。', false);
+      }).catch(function () {
+        showStatus('⚠ 記錄失敗（連線問題）——請用 +1 手動補記。', true);
+      });
     }
     function tick() {
       // wall-clock derived — correct even after the interval was throttled while hidden
@@ -422,6 +473,7 @@
         render(); return;
       }
       started = true; runStartTs = Date.now();
+      if (statusEl && statusEl.classList.contains('is-error')) statusEl.hidden = true;
       stopTicker(); ticker = setInterval(tick, 500);
       // 修修 (2026-08-25): 開始計時 → focus music（resume 續播暫停曲、否則隨機抽一首）
       if (window.ShoFocusMusic) ShoFocusMusic.resume();
@@ -539,6 +591,22 @@
         });
       }
     );
+  })();
+
+  /* 修修 2026-11-13：筆記有沒存的改動時，任何會換頁的動作（+1、改分類、排入、
+     打勾、回週看板…）都先跳瀏覽器的「離開網站？」確認，不再默默丟掉草稿。
+     按「儲存筆記」本身不擋。 */
+  (function () {
+    var area = document.querySelector('.tk-note-area');
+    var noteForm = document.querySelector('.tk-noteform');
+    if (!area || !noteForm) return;
+    var savingNote = false;
+    noteForm.addEventListener('submit', function () { savingNote = true; });
+    window.addEventListener('beforeunload', function (e) {
+      if (savingNote || area.value === area.defaultValue) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
   })();
 
   /* 補記日期 → 手動 +1 表單的 entry_date（修修 bug fix：手動補記過去某天的 block，否則

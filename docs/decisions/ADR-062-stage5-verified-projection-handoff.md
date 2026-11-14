@@ -1,9 +1,20 @@
 # ADR-062：Stage 5 Verified Projection handoff
 
-- Status: Accepted
+- Status: Retired（2026-11-13，owner 裁決）
 - Date: 2026-08-13
 - Pipeline anchor: Stage 4 Atomic Content → Stage 5 Production
 - Extends: ADR-032、ADR-050 D4、ADR-056
+
+> **Retired — historical record only.** 這份 ADR 把 Brook `script_video` 的 `plan`／`run`／`emit`
+> 綁在 Podcast Subtitle V2 的 Verified Projection 上。2026-11-13 owner 裁決把舊 Subtitle V2 程式直接
+> 移除（見 ADR-056 檔頭與 ADR-063「Amendment — 2026-11-13」），`open_verified_projection`、
+> `require_verified_projection`、`subtitle_v2_handoff` binding 與 `storyboard.provenance.json`
+> 的實作都已刪除。
+>
+> 影片線本身沒有退役——owner 原話：「影片這條線之後會用到，而且會經過很大的修改，現在先不要動」。目前
+> `agents/brook/script_video/pipeline.py` 的 `_require_subtitle_source` 一律以
+> 「影片線的字幕來源待重做」中止 `plan`／`run`／`emit`；新的字幕來源與 provenance 綁定由 owner
+> 在影片線重做時另行決定，屆時應開新的 ADR，而不是復活本文件。
 
 ## Decision
 

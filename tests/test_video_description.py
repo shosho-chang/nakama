@@ -454,3 +454,46 @@ def test_every_chapter_line_starts_with_its_timestamp():
     lines = [ln for ln in out.splitlines() if ln and ln[0].isdigit()]
 
     assert lines == ["00:00 開場", "05:18 第二章", "1:03:56 第三章"]
+
+
+class TestFindPackagingDir:
+    """vault 掃目錄找交接檔——命中兩個是壞掉，不是可以挑一個。"""
+
+    @staticmethod
+    def _plant(vault: Path, dirname: str, episode: str) -> Path:
+        d = vault / "Attachments" / "packaging" / dirname
+        d.mkdir(parents=True)
+        (d / "packages.json").write_text(
+            json.dumps({"episode": episode, "generated_at": "x", "cuts": []}, ensure_ascii=False),
+            encoding="utf-8",
+        )
+        return d
+
+    def test_it_finds_the_dir_whose_packages_claims_the_episode(self, tmp_path):
+        """slug 不可推導，靠 packages.json 的 episode 欄機器對應。"""
+        self._plant(tmp_path, "20260805-linzhichen", "20260805 林之晨")
+        want = self._plant(tmp_path, "20260723-xieboran", "20260723 謝伯讓")
+
+        assert vd.find_packaging_dir(tmp_path, "20260723 謝伯讓") == want
+
+    def test_two_dirs_claiming_the_same_episode_fail_loud(self, tmp_path):
+        """2026-09-18 謝伯讓集的實況：emit 漏填 episode_slug 生出第二個目錄。
+
+        舊版邊掃邊 return 第一個命中者，而半形空格 (0x20) 排在 `-` (0x2D) 前面——
+        CJK 名的那個一定贏，整條發布線靜靜地指到過期的交接檔。
+        """
+        self._plant(tmp_path, "20260723 謝伯讓", "20260723 謝伯讓")
+        self._plant(tmp_path, "20260723-xieboran", "20260723 謝伯讓")
+
+        with pytest.raises(ValueError) as exc:
+            vd.find_packaging_dir(tmp_path, "20260723 謝伯讓")
+
+        msg = str(exc.value)
+        # 錯誤訊息要點名兩個目錄，不然修修不知道該搬走哪一個
+        assert "20260723 謝伯讓" in msg and "20260723-xieboran" in msg
+
+    def test_an_unknown_episode_still_says_not_found(self, tmp_path):
+        self._plant(tmp_path, "20260723-xieboran", "20260723 謝伯讓")
+
+        with pytest.raises(ValueError, match="找不到"):
+            vd.find_packaging_dir(tmp_path, "20260901 蘇予昕")
