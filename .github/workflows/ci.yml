@@ -8,6 +8,7 @@ on:
       - '**.md'
       - 'memory/**'
       - '.github/ISSUE_TEMPLATE/**'
+      - 'video/compositions/**'
   pull_request:
     branches: [main]
     paths-ignore:
@@ -15,6 +16,7 @@ on:
       - '**.md'
       - 'memory/**'
       - '.github/ISSUE_TEMPLATE/**'
+      - 'video/compositions/**'
 
 # PR：同一條 branch 推新 commit／rebase 時取消舊的那輪（舊結果已無用，只會佔 runner）。
 # main push：group 帶 sha，每個 commit 各自一組、不互相取消（main 每一輪都要跑完）。
