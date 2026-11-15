@@ -16,6 +16,10 @@ name: CI (skip-pass)
 # Keep `paths` here in sync with ci.yml's `paths-ignore`. If they drift the
 # deadlock returns. See docs/research/2026-05-08-memory-system-redesign-v2.md
 # for context.
+#
+# `video/compositions/**`（HyperFrames 動畫原始檔，2026-11-15 修修同意走快速通道）：
+# CI 從不渲染動畫（ci.yml 的 npx hyperframes 只在本機跑），動畫的驗收是修修看渲染。
+# 只改動畫的 PR 不必等完整測試；動畫跟程式一起改的 PR 照樣跑完整 CI。
 
 on:
   push:
@@ -25,6 +29,7 @@ on:
       - '**.md'
       - 'memory/**'
       - '.github/ISSUE_TEMPLATE/**'
+      - 'video/compositions/**'
   pull_request:
     branches: [main]
     paths:
@@ -32,6 +37,7 @@ on:
       - '**.md'
       - 'memory/**'
       - '.github/ISSUE_TEMPLATE/**'
+      - 'video/compositions/**'
 
 jobs:
   lint-and-test:
