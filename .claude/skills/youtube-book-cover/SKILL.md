@@ -64,6 +64,9 @@ ImageGen 發想（不守品牌規則）。教訓見記憶 `feedback_design_itera
 
 只有**疊加**（`layout: overlay`）。滿版書封還沒設計，規劃表選了滿版會被擋下並回報。
 
+書封固定在右側，臉由 `youtube-reframe` 的 `left`（放大 1.4 倍、臉到左 1/3）讓位，
+跟書封同一秒開始、書封退場時同速退回。
+
 ## 怎麼跑
 
 ```bash
