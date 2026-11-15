@@ -409,6 +409,9 @@ class _ProductionRun:
     materialization_plan: MaterializationPlan | None = None
     correction: _PreReleaseCorrection | None = None
     policy_diagnostics: tuple[PolicyDiagnostic, ...] = ()
+    #: 被留在 `needs_review` 的理由，給人看的一句話。`None` 代表不是被退件留下的。
+    #: 沒有這一欄的時候，畫面上只有 `needs_review` 三個字，而觸發它的分支有三十幾個。
+    review_reason: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -421,3 +424,6 @@ class RunView:
     current_stage: StageName | None
     scope: RequestScope | None
     event_id: str | None
+    #: 被留在 `needs_review` 的理由，一句人話。這是**公開投影**，所以 CLI 與呼叫端
+    #: 讀得到——理由留在內部而外面看不到，等於沒說。
+    review_reason: str | None = None
