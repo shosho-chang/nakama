@@ -328,7 +328,11 @@
 - `## Outro` 的模糊 slide transition＋swoosh：去之前的版本把做法找出來（修修之後指派）。
 - `##` 章節卡、`###` 小標題這些自動產生的元素，要不要也以列的形式出現在規劃表上（推論：要，才能讓修修改字；尚未問）。
 - Director 手冊本身的判斷準則（第一版以分類清單的「什麼時候用」為主，Vox 的做法之後逐項加入）。
-- 分類清單檔與規劃表資料的檔案格式、存放位置（實作時定）。
+
+### 6.1a 已定（2026-11-15）
+
+- 每一集的資料夾跟 podcast 一樣放在 `G:\Footages`（修修：「跟 podcast 一樣放 G:\Footages」）。程式讀同一個設定 `PODCAST_EPISODES_ROOT`，不另開新設定。畫面規劃表是集數資料夾裡的 `visual_plan.json`。
+- 分類清單檔：`agents/brook/youtube_video/categories.yaml`（PR #1399）。
 
 ### 6.2 待下一集實錄驗證
 
