@@ -1,5 +1,6 @@
 # Memory Index
 
+- [feedback_content_design_uses_shosho_universe.md](feedback_content_design_uses_shosho_universe.md) — **內容設計（影片字卡、畫面元件）一律用 claude.ai 上的「張修修的不正常宇宙 Design System」**（修修 2026-11-15）：品牌手冊 Brand In Use 頁是原型；長精華的紙卡＋手繪橘線是舊系統、之後會改套新元件；Bridge 網頁仍是 docs/design-system.md
 - [feedback_explain_before_asking_options.md](feedback_explain_before_asking_options.md) — **長說明之後不要立刻跳選項框**（2026-09-15 修修：「我還沒有看清楚你的說明，就跳一個問題框出來，我根本沒辦法選擇」）：論述跟選項不要擠在同一個回合，選項寫進正文讓他自己回
 - [reference_no_jq_use_gh_builtin.md](reference_no_jq_use_gh_builtin.md) — **這台桌機沒有 `jq`**，Monitor 腳本 pipe 給 jq 會靜默空轉（兩個 monitor 跑滿 30 分鐘零事件）；用 `gh --jq`，且 `gh pr checks` 有 pending 時 exit 8 要 `|| true`。lint-and-test 正常就是 75–78 分鐘
 - [feedback_no_gemini_default_openai.md](feedback_no_gemini_default_openai.md) — **全面停用 Gemini，LLM 預設走 OpenAI**（修修 2026-08-17 裁決，除非 Google 出新 model）。三類依賴處置不同：生產路由直接換、音訊多模態（`ask_with_audio` 只有 Google 一家實作）結構性卡住要新開發、panel review 腳本另換
