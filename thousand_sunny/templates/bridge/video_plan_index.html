@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · 畫面規劃表</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-video-plan.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='') }}
+<header class="page-header vp-head">
+  <div class="nk-caps">/bridge/video-plan</div>
+  <h1 class="page-title">畫面規劃表 <span class="zh">YouTube 照稿影片</span></h1>
+</header>
+<main class="vp-main">
+  {% if episodes %}
+  <ul class="vp-episodes">
+    {% for episode in episodes %}
+    <li><a class="sho-lk" href="/bridge/video-plan/{{ episode|urlencode }}">{{ episode }}</a></li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <section class="vp-empty">
+    <p class="vp-empty-title">還沒有任何一集的畫面規劃表</p>
+  </section>
+  {% endif %}
+</main>
+</body>
+</html>
