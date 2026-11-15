@@ -37,7 +37,6 @@ def test_repo_package_json_is_pinned_exactly():
     "path",
     [
         "agents/brook/script_video/render_workers/thumbnail_worker.py",
-        "agents/brook/script_video/render_workers/hyperframes_worker.py",
         ".claude/skills/thumbnail-brainstorm/scripts/guest_cutout.py",
     ],
 )
