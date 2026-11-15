@@ -34,7 +34,7 @@
         <span>nakama · agent capability inventory</span>
       </div>
       <h1 class="page-title">
-        八個 agent ×<br>
+        七個 agent ×<br>
         <span class="page-title-2">functions · scripts · skills 盤點</span>
       </h1>
       <p class="page-subtitle">
@@ -59,7 +59,7 @@
   <section aria-labelledby="overview-heading">
     <div class="section-head">
       <div class="sho-kicker"><span class="sho-kicker-n">01</span><span>roster · 一覽</span></div>
-      <h2 class="section-title" id="overview-heading">八個 agent × 啟動方式 × skill 化</h2>
+      <h2 class="section-title" id="overview-heading">七個 agent × 啟動方式 × skill 化</h2>
     </div>
     <div class="table-wrap">
       <table class="matrix">
@@ -86,10 +86,6 @@
             <td>內容 repurpose / 撰稿 / 影片腳本</td><td>4 輸出</td>
             <td><code>python -m agents.brook.synthesize</code></td>
             <td><span class="cm ship">✓</span>article-compose</td></tr>
-          <tr><td class="row-label">Foundry<span class="sub">工坊 · 影像</span></td>
-            <td>B-roll storyboard → FCPXML</td><td>5 製作</td>
-            <td><code>python -m agents.brook.script_video</code></td>
-            <td><span class="cm ship">✓</span>brook-replan-beat</td></tr>
           <tr><td class="row-label">Usopp<span class="sub">狙擊手 · 發布</span></td>
             <td>發佈到 WordPress (HITL)</td><td>6 發布</td>
             <td><code>python -m agents.usopp</code> · systemd daemon</td>
@@ -288,51 +284,6 @@
         </div>
       </article>
 
-      <!-- Foundry -->
-      <article class="inv-agent">
-        <div class="inv-agent-head">
-          <h3 class="inv-agent-name">Foundry <span class="role">影像 · 工坊</span></h3>
-          <p class="inv-tagline">ADR-032：吃乾淨 SRT + 講者影片，產出 DaVinci Resolve 可匯入的 FCPXML timeline + content-addressed B-roll 片段。</p>
-          <span class="inv-skillflag has">1 skill</span>
-        </div>
-        <div class="inv-cli">python -m agents.brook.script_video --episode &lt;id&gt; {plan | hint-beats | render | emit | run | diff | replan-beat}</div>
-        <div class="inv-body">
-          <div class="inv-block inv-block--fns">
-            <p class="inv-block-label">核心功能模組</p>
-            <ul class="inv-fns">
-              <li><code>pipeline.py</code><span class="desc">編排：plan / render / emit / run / diff</span></li>
-              <li><code>planner.py</code><span class="desc">LLM 創意 planner（opus）→ beats</span></li>
-              <li><code>beat_aligner.py</code><span class="desc">確定性 substring 對齊（anchor 合約）</span></li>
-              <li><code>beat_editor.py</code><span class="desc">套用 11 種 BeatEdit ops</span></li>
-              <li><code>replan_agent.py</code><span class="desc">單 beat re-plan LLM tool agent</span></li>
-              <li><code>fcpxml_emitter.py</code><span class="desc">FCPXML 1.10 writer（V1/V2/A1）</span></li>
-              <li><code>render_dispatcher.py</code><span class="desc">內容定址輸出 + cache（ADR-038）</span></li>
-              <li><code>render_workers/</code><span class="desc">hyperframes / playwright / thumbnail</span></li>
-              <li><code>silence_detection.py</code><span class="desc">ffmpeg silencedetect → speaking spans</span></li>
-              <li><code>srt_flattener.py</code><span class="desc">SRT → flat prose + char↔time index</span></li>
-              <li><code>chinese_normalizer.py</code><span class="desc">全半形 / 中文數字正規化</span></li>
-              <li><code>storyboard_diff.py</code> · <code>export_hash.py</code> · <code>edit_log.py</code><span class="desc">diff / 內容定址 hash / re-plan 歷史</span></li>
-            </ul>
-          </div>
-          <div class="inv-block">
-            <p class="inv-block-label">用到的 scripts</p>
-            <div class="inv-chips">
-              <span class="inv-chip">align_srt.py</span>
-              <span class="inv-chip">analyze_srt_cuts.py</span>
-              <span class="inv-chip">compare_srt.py</span>
-              <span class="inv-chip">analyze_qwen_srt.py</span>
-            </div>
-          </div>
-          <div class="inv-block">
-            <p class="inv-block-label">已 skill 化</p>
-            <div class="inv-chips">
-              <span class="inv-chip skill">brook-replan-beat<span class="wrap">→ 單 beat re-plan 對話逃生口</span></span>
-            </div>
-            <p class="inv-empty" style="margin-top:8px">＊canonical 邏輯在 Python，skill 為 escape hatch</p>
-          </div>
-        </div>
-      </article>
-
       <!-- Usopp -->
       <article class="inv-agent">
         <div class="inv-agent-head">
@@ -457,7 +408,6 @@
           <tr><td class="row-label">keyword-research</td><td>Zoro</td><td><code>run_keyword_research.py</code></td><td><span class="skill-type thin">薄包 script</span></td></tr>
           <tr><td class="row-label">project-bootstrap</td><td>Nami</td><td><code>run_project_bootstrap.py</code></td><td><span class="skill-type thin">薄包 script</span></td></tr>
           <tr><td class="row-label">article-compose</td><td>Brook</td><td>互動式撰稿流程</td><td><span class="skill-type">純對話 wrapper</span></td></tr>
-          <tr><td class="row-label">brook-replan-beat</td><td>Brook</td><td>單 beat re-plan（escape hatch）</td><td><span class="skill-type">純對話 wrapper</span></td></tr>
         </tbody>
       </table>
     </div>

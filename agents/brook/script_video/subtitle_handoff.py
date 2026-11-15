@@ -752,21 +752,11 @@ def select_stage5_subtitle(
     )
 
 
-class VerifiedProjectionHandoffError(ValueError):
-    """Video-line storyboard binding drifted from its subtitle source.
-
-    Subtitle V2 (ADR-056) was removed in 2026-11.  The name is retained only
-    because ``agents.brook.script_video.pipeline`` still raises it; the video
-    line's subtitle source is pending a redesign.
-    """
-
-
 __all__ = [
     "Stage5DegradedReleaseHandoff",
     "Stage5MemoDualAuditReleaseHandoff",
     "Stage5SubtitleContractError",
     "Stage5SubtitleRequest",
     "Stage5SubtitleSelection",
-    "VerifiedProjectionHandoffError",
     "select_stage5_subtitle",
 ]
