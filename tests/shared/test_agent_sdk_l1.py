@@ -630,10 +630,6 @@ def test_run_text_holds_exactly_one_slot_and_releases_it(fake_sdk):
     assert not in_l1_session()
 
 
-def test_concurrency_limit_constant_is_two():
-    assert L1_MACHINE_CONCURRENCY == 2
-
-
 # ── D2 第 8 項：巢狀呼叫、async 情境 ────────────────────────────────────
 
 

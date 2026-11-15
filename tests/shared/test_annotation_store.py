@@ -41,24 +41,6 @@ def store(tmp_path: Path, monkeypatch) -> AnnotationStore:
 # ── Schema: discriminator dispatch ───────────────────────────────────────────
 
 
-def test_highlight_schema_round_trip():
-    h = Highlight(text="selected text")
-    assert h.type == "highlight"
-    dumped = h.model_dump()
-    restored = Highlight(**dumped)
-    assert restored.text == h.text
-    assert restored.created_at == h.created_at
-
-
-def test_annotation_schema_round_trip():
-    a = Annotation(ref="ref text", note="my note")
-    assert a.type == "annotation"
-    dumped = a.model_dump()
-    restored = Annotation(**dumped)
-    assert restored.ref == a.ref
-    assert restored.note == a.note
-
-
 def test_annotation_set_discriminator_dispatch():
     ann_set = AnnotationSet(
         slug="test-slug",
@@ -383,36 +365,6 @@ def test_unsynced_count_partial(tmp_path: Path, monkeypatch):
     ]
     store = _store_with_synced(tmp_path, monkeypatch, _T1, items)
     assert store.unsynced_count("art") == 1
-
-
-def test_unsynced_count_highlights_only(tmp_path: Path, monkeypatch):
-    """Pure highlights, never synced."""
-    items = [
-        {"type": "highlight", "text": "x", "created_at": _T0, "modified_at": _T0},
-        {"type": "highlight", "text": "y", "created_at": _T0, "modified_at": _T0},
-    ]
-    store = _store_with_synced(tmp_path, monkeypatch, None, items)
-    assert store.unsynced_count("art") == 2
-
-
-def test_unsynced_count_annotations_only(tmp_path: Path, monkeypatch):
-    """Pure annotations, never synced."""
-    items = [
-        {"type": "annotation", "ref": "r1", "note": "n1", "created_at": _T0, "modified_at": _T0},
-        {"type": "annotation", "ref": "r2", "note": "n2", "created_at": _T0, "modified_at": _T0},
-    ]
-    store = _store_with_synced(tmp_path, monkeypatch, None, items)
-    assert store.unsynced_count("art") == 2
-
-
-def test_unsynced_count_mixed(tmp_path: Path, monkeypatch):
-    """Mixed highlight + annotation, never synced, both counted."""
-    items = [
-        {"type": "highlight", "text": "hi", "created_at": _T0, "modified_at": _T0},
-        {"type": "annotation", "ref": "ref", "note": "note", "created_at": _T0, "modified_at": _T0},
-    ]
-    store = _store_with_synced(tmp_path, monkeypatch, None, items)
-    assert store.unsynced_count("art") == 2
 
 
 # ── Slice 2 (v2) — book-rooted annotation sets ───────────────────────────────

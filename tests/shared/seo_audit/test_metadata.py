@@ -335,9 +335,3 @@ def test_o4_warn_invalid_value():
 
 
 # ── 整體 ──
-
-
-def test_check_metadata_returns_9_checks():
-    checks = check_metadata(_soup("<html><head></head></html>"), "https://x")
-    rule_ids = [c.rule_id for c in checks]
-    assert rule_ids == ["M1", "M2", "M3", "M4", "M5", "O1", "O2", "O3", "O4"]

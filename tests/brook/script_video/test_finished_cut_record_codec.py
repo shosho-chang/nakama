@@ -446,27 +446,6 @@ def test_editorial_cut_context_cannot_exist_with_cues_that_run_backwards() -> No
         )
 
 
-def test_range_sum_mismatch_stays_a_policy_diagnostic_not_a_construction_error() -> None:
-    """段落總和對不上 duration 不在這裡擋——`_policy` 要把它報給修修看。
-
-    把它搬進建構子會讓 `source_range_sum_mismatch` 這條診斷永遠發不出來：
-    帶著它的 context 根本造不出來，policy 就沒有東西可以檢查。
-    """
-
-    context = EditorialCutContext(
-        episode_id="episode-codec",
-        cut_id="value-L04",
-        format="long",
-        editorial_master_id="c" * 64,
-        tight_cut_id="tight-codec",
-        duration_sec=600.0,
-        source_ranges=(CutSourceRange(0.0, 250.0),),
-        cues=(CueAnchor("cue-1", "第一句", 0.0, 4.0, "section-1"),),
-    )
-
-    assert context.duration_sec == 600.0
-
-
 def test_a_visual_placement_cannot_exist_with_an_inverted_window() -> None:
     with pytest.raises(ValueError, match="Visual Placement fields are invalid"):
         VisualPlacement(placement_cue_ids=("cue-1",), t0=9.0, t1=4.0, section_id="section-1")

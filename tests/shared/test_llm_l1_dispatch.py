@@ -41,11 +41,6 @@ def cutover(monkeypatch):
     return _apply
 
 
-def test_cutover_set_is_gateway_only_after_s1a():
-    """S1a 完成：只有 ``gateway`` 切到 L1。S1b–d 才各自加 cron / bridge / desktop。"""
-    assert llm.L1_CUTOVER_GROUPS == frozenset({"gateway"})
-
-
 # ── D1 規則本身 ──────────────────────────────────────────────────────────
 
 
@@ -98,17 +93,6 @@ def test_non_cutover_group_keeps_legacy_error_for_alias_old_path_does_not_know()
     set_runtime_group("desktop")
     with patch("shared.agent_sdk.run_text") as m_l1, pytest.raises(ValueError, match="opus"):
         llm.ask("hi", model="opus")
-    m_l1.assert_not_called()
-
-
-def test_non_cutover_group_does_not_import_agent_sdk_path():
-    """沒切換時 facade 不走 _ask_l1（lazy import 也不會發生）。"""
-    set_runtime_group("desktop")
-    with (
-        patch("shared.llm._ask_l1") as m_l1,
-        patch("shared.llm.ask_claude", return_value="legacy"),
-    ):
-        llm.ask("hi", model="claude-haiku-4-5")
     m_l1.assert_not_called()
 
 

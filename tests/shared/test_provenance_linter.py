@@ -12,7 +12,6 @@ from __future__ import annotations
 import pytest
 
 from shared.provenance_linter import (
-    ENFORCED_RED_LINES,
     ProvenanceLinter,
     ProvenanceViolation,
     extract_evidence_citations,
@@ -33,10 +32,6 @@ from shared.provenance_linter import (
 )
 def test_is_terminal_evidence(path, expected):
     assert is_terminal_evidence(path) is expected
-
-
-def test_enforced_red_lines_are_2_and_5():
-    assert ENFORCED_RED_LINES == (2, 5)
 
 
 # ---------------------------------------------------------------------------

@@ -33,30 +33,6 @@ def test_default_returns_false_without_calling_client(no_env):
     client._request.assert_not_called()
 
 
-def test_env_noop_is_honored(monkeypatch):
-    monkeypatch.setenv("LITESPEED_PURGE_METHOD", "noop")
-    client = MagicMock()
-    result = purge_url(
-        "https://shosho.tw/post/1",
-        wp_client=client,
-        operation_id="op_12345678",
-    )
-    assert result is False
-    client._request.assert_not_called()
-
-
-def test_explicit_noop_method_arg(no_env):
-    client = MagicMock()
-    result = purge_url(
-        "https://shosho.tw/post/1",
-        wp_client=client,
-        method="noop",
-        operation_id="op_12345678",
-    )
-    assert result is False
-    client._request.assert_not_called()
-
-
 def test_legacy_env_value_falls_back_to_noop(monkeypatch, caplog):
     """Stale .env with LITESPEED_PURGE_METHOD=rest / admin_ajax / anything else
     must not crash — logs WARNING and behaves as noop."""

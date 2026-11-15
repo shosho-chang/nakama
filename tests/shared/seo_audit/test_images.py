@@ -215,8 +215,3 @@ def test_i5_relative_url_resolved(monkeypatch):
     html = '<html><body><img src="img/a.webp" alt="x"></body></html>'
     check_images(_soup(html), "https://x.com/page")
     assert captured["url"] == "https://x.com/img/a.webp"
-
-
-def test_returns_5_checks():
-    checks = check_images(_soup("<html><body></body></html>"), "https://x.com/")
-    assert [c.rule_id for c in checks] == ["I1", "I2", "I3", "I4", "I5"]

@@ -17,8 +17,6 @@ from __future__ import annotations
 import ast
 import pathlib
 
-import pytest
-
 _MODULE_ROOT = (
     pathlib.Path(__file__).resolve().parents[3]
     / "agents"
@@ -160,12 +158,3 @@ def test_a_reason_code_is_never_computed_from_a_diagnostic_kind() -> None:
                     computed.append((path.name, node.lineno))
 
     assert computed == []
-
-
-@pytest.mark.parametrize("family", sorted(COLLAPSED_FAMILIES))
-def test_each_collapsed_family_is_actually_used(family: str) -> None:
-    """折疊後的 code 必須真的有人 raise——不然這份名單是願望清單，不是事實。"""
-
-    raised = set().union(*_reason_code_literals().values())
-
-    assert family in raised

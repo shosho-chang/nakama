@@ -30,7 +30,6 @@ from agents.brook.script_video.finished_cut_production._resolve import (
     TimelineIdentity,
     TimelineSnapshot,
     TimelineWorkspace,
-    _InMemoryResolveTransactionStore,
 )
 from agents.brook.script_video.finished_cut_production._resolve_davinci import (
     ResolveTimelineState,
@@ -133,10 +132,8 @@ def _key(transaction: ResolveTransaction) -> dict[str, str]:
     }
 
 
-@pytest.fixture(params=["memory", "atomic"])
-def store(request, tmp_path):
-    if request.param == "memory":
-        return _InMemoryResolveTransactionStore()
+@pytest.fixture
+def store(tmp_path):
     return AtomicResolveTransactionStore(tmp_path / "resolve-transactions")
 
 

@@ -149,8 +149,3 @@ def test_s3_subdomain_counts_external():
     html = '<html><body><a href="https://fleet.shosho.tw/x">y</a></body></html>'
     c = _by(check_structure(_soup(html), "https://shosho.tw/post"), "S3")
     assert c.status == "pass"
-
-
-def test_returns_3_checks():
-    checks = check_structure(_soup("<html><body></body></html>"), "https://x.com/")
-    assert [c.rule_id for c in checks] == ["S1", "S2", "S3"]

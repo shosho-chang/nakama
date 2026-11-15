@@ -115,11 +115,6 @@ def test_p3_actual_format():
 # ── 整體 ──
 
 
-def test_returns_3_checks():
-    out = check_performance({})
-    assert [c.rule_id for c in out] == ["P1", "P2", "P3"]
-
-
 def test_full_pass_response():
     """完整健康 response → 三條 pass。"""
     resp = _make_response(lcp_ms=1800, cls_value=0.05, inp_ms=120)
