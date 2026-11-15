@@ -156,7 +156,7 @@
 | # | 分類 | 說明 | 2026-11-15 查證 |
 |---|---|---|---|
 | 1 | 章節卡（滿版） | `##` 自動產生（§3.4） | 有：`video/compositions/transition_title` |
-| 2 | 重點概念 title | 修修強調的重要概念 | 有：`punch_card`（含 `_wide`） |
+| 2 | 重點概念 title | 修修強調的重要概念（卡上只放概念名稱，一行） | 已做好：`video/compositions/concept_title`、skill `youtube-concept-title`（2026-11-15 定版，張修修的不正常宇宙 design system） |
 | 3 | 人物彈入 | 講到人名 → 照片去背 → 動畫跳入。照片來源規則見 §3.8 | 有：`sticker_pair`（含 `_wide`） |
 | 4 | 書封 | 講到書名時由 Director 判斷要不要出現，**不限次數**。修修：「把書封只能出現一次這個限制拿掉好了」 | 有：`book_cover` |
 | 5 | 解釋動畫 | 較長的解釋段落（如六個階層），Director 寫 prompt，DP 用 HyperFrames 做 | 部分：`bigstat`、`concept_card` |
