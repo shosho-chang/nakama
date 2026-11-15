@@ -1,0 +1,96 @@
+<!doctype html>
+<!-- 第 4 類「書封」（YouTube 照稿影片）。修修 2026-11-15 定版：
+     - 書封正放，外圍一圈細橘框，框與書四邊間隔一樣（36px）。
+     - 框沿用《財富階梯》那集 YouTube 封面的書框：10px 邊框被「上下兩邊略斜」的四邊形裁切，
+       所以斜邊處線條漸細——修修要的就是這個粗細變化（換成等粗 SVG 描邊被否決）。
+     - 進場：兩筆同時起筆，一筆從右上角往下畫右邊再往左畫底邊，另一筆從左下角往上畫左邊再往右畫頂邊，
+       0.5 秒畫完；書封在框畫到一半時拍上。
+     - 不要：品牌碎片、斜線、光暈、書名字塊（都試過、被否決）。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"cover","type":"string","label":"書封圖（data URI 或相對路徑）","default":""},
+    {"id":"cover_ratio","type":"number","label":"書封寬高比（寬÷高）","default":0.7742},
+    {"id":"side","type":"string","label":"left|right","default":"right"},
+    {"id":"show_sec","type":"number","label":"停留秒數","default":3.5}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <style>
+      :root { --orange: #f57331; --gap: 36px; --frame: 10px;
+        /* 書封最大高度、最大寬度；中心高度；離畫面邊緣的距離 */
+        --max-h: 620px; --max-w: 560px; --center-y: 510px; --edge: 170px;
+        --skew: polygon(0% 0%, 100% 3.5%, 100% 100%, 0% 98.8%); }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+      /* group＝書封本身；框以書封為中心向外撐開 gap＋frame */
+      #group { position: absolute; width: var(--bw); height: var(--bh);
+        top: calc(var(--center-y) - var(--bh) / 2); }
+      .s-right #group { right: var(--edge); }
+      .s-left #group { left: var(--edge); }
+      #frame { position: absolute; inset: 0;
+        border: var(--frame) solid var(--orange); clip-path: var(--skew); }
+      /* 畫框：--p＝每一筆已畫的長度（px）。兩筆同時起：
+         筆一 右上角 → 右邊往下 → 底邊往左；筆二 左下角 → 左邊往上 → 頂邊往右。
+         四條邊各一層遮罩帶，寬度跟框線一樣，只蓋得到自己那條邊——起筆不會連帶露出相鄰邊的一截。 */
+      #frame-wrap { position: absolute; inset: calc(-1 * (var(--gap) + var(--frame)));
+        --W: calc(var(--bw) + 2 * (var(--gap) + var(--frame)));
+        --H: calc(var(--bh) + 2 * (var(--gap) + var(--frame)));
+        --p: 0px; --band: var(--frame);
+        --s1: clamp(0px, var(--p), var(--H));
+        --s2: clamp(0px, calc(var(--p) - var(--H)), var(--W));
+        --s3: clamp(0px, var(--p), var(--H));
+        --s4: clamp(0px, calc(var(--p) - var(--H)), var(--W));
+        --m: linear-gradient(#000, #000);
+        -webkit-mask-image: var(--m), var(--m), var(--m), var(--m);
+        mask-image: var(--m), var(--m), var(--m), var(--m);
+        -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+        -webkit-mask-position: right top, right bottom, left bottom, left top;
+        mask-position: right top, right bottom, left bottom, left top;
+        -webkit-mask-size: var(--band) var(--s1), var(--s2) var(--band), var(--band) var(--s3), var(--s4) var(--band);
+        mask-size: var(--band) var(--s1), var(--s2) var(--band), var(--band) var(--s3), var(--s4) var(--band); }
+      #book { position: absolute; inset: 0; }
+      #book img { display: block; width: 100%; height: 100%; object-fit: cover; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="book_cover_frame"
+      data-width="1920" data-height="1080" data-start="0" data-duration="8">
+      <div id="group">
+        <div id="frame-wrap"><div id="frame"></div></div>
+        <div id="book"><img id="img" alt="" /></div>
+      </div>
+    </div>
+    <script>
+      const v = (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const showSec = Number(v.show_sec ?? 3.5);
+      const ratio = Number(v.cover_ratio) > 0 ? Number(v.cover_ratio) : 0.7742;
+      const root = document.getElementById("root");
+      root.classList.add(v.side === "left" ? "s-left" : "s-right");
+      // 書封以高度 620 為準；太寬的書（寬高比大）改以寬度 560 為準，避免壓到臉
+      const css = getComputedStyle(document.documentElement);
+      const maxH = parseFloat(css.getPropertyValue("--max-h"));
+      const maxW = parseFloat(css.getPropertyValue("--max-w"));
+      const bh = Math.min(maxH, maxW / ratio);
+      const group = document.getElementById("group");
+      group.style.setProperty("--bw", `${Math.round(bh * ratio)}px`);
+      group.style.setProperty("--bh", `${Math.round(bh)}px`);
+      document.getElementById("img").src = v.cover || "";
+
+      const tl = gsap.timeline();
+      window.__timelines = window.__timelines || {};
+      // 框：兩筆同時起筆，各畫半圈（0.5s）；書封在框畫到一半時拍上（overshoot）
+      const fw = document.getElementById("frame-wrap");
+      const half = fw.offsetWidth + fw.offsetHeight;
+      tl.fromTo(fw, { "--p": "0px" }, { "--p": `${half}px`, duration: 0.5, ease: "power2.inOut" }, 0);
+      tl.fromTo("#book", { scale: 1.16, opacity: 0, y: 18 }, { scale: 1, opacity: 1, y: 0, duration: 0.26, ease: "back.out(1.7)" }, 0.22);
+      // 退場：書封先縮走，框跟著淡掉
+      const out = Math.max(1.0, showSec - 0.25);
+      tl.to("#book", { scale: 0.92, opacity: 0, duration: 0.14, ease: "power2.in" }, out + 0.04);
+      tl.to(fw, { opacity: 0, duration: 0.12 }, out + 0.08);
+      window.__timelines["book_cover_frame"] = tl;
+    </script>
+  </body>
+</html>
