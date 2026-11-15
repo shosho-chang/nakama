@@ -63,9 +63,9 @@ categories:
     number: 4
     name: 書封
     when: 講到書名時由 Director 判斷，不限次數
-    dp: HyperFrames（book_cover）
+    dp: HyperFrames（video/compositions/book_cover_frame）；skill youtube-book-cover
     kind: overlay
-    layout: either
+    layout: overlay
     required: [dp_instruction]
     readiness: ready
     auto: false
