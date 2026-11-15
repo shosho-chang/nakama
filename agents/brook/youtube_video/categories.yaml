@@ -36,10 +36,10 @@ categories:
   - id: concept_title
     number: 2
     name: 重點概念 title
-    when: 修修強調的重要概念
-    dp: HyperFrames（punch_card）
+    when: 修修強調的重要概念（卡上只放概念名稱本身，一行）
+    dp: HyperFrames（video/compositions/concept_title）；skill youtube-concept-title
     kind: overlay
-    layout: either
+    layout: overlay
     required: [onscreen_text]
     readiness: ready
     auto: false
