@@ -63,6 +63,7 @@ from thousand_sunny.routers import (  # noqa: E402
     publish_calendar,
     publish_review,
     repurpose,
+    video_plan,
     writing_assist,
     zoro,
 )
@@ -152,6 +153,7 @@ app.include_router(llm_lane.router)
 app.include_router(bridge_projects.page_router)
 app.include_router(packaging.page_router)
 app.include_router(highlight_review.page_router)
+app.include_router(video_plan.page_router)
 app.include_router(carousel_review.page_router)
 app.include_router(publish_calendar.page_router)
 app.include_router(publish_review.page_router)

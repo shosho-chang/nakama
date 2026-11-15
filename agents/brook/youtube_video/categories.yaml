@@ -1,0 +1,279 @@
+# YouTube 照稿影片的畫面分類清單——唯一來源。
+#
+# 規格：docs/plans/2026-11-15-youtube-script-video-rough-cut-and-director.md §3.3
+# 修修：「A，DP這 16 種功能，我每一個都會跟你合作討論一個 skill 出來……我希望這個DP
+# 可以動用到的 skill 是會越來越擴增的」——新增一類＝這裡加一筆＋做一個 DP 子 skill。
+#
+# 欄位：
+#   id        穩定代號（規劃表存這個，不要改）
+#   number    規格表上的編號；自動元素沒有編號
+#   name      Bridge 下拉顯示的名稱
+#   when      什麼時候用（Director 判斷依據）
+#   dp        DP 怎麼做
+#   kind      overlay＝疊在畫面上、不改時間；insert＝插入時間軸、把後面往後推
+#   layout    full＝固定滿版；overlay＝固定疊在畫面上；either＝由 Director 選；none＝不上畫面
+#   required  規劃表必填欄位（暫定，做各分類 skill 時再修）
+#   readiness ready＝做得出來；partial＝部分做得出來；unverified＝還沒查證；
+#             user＝由修修提供素材；future＝未來；none＝不需製作
+#   auto      true＝依稿上標記自動產生，Director 不能手選
+#   density   是否算進「每分鐘畫面數」（§3.7：只算 Director 主動選的畫面）
+#   covers    是否算「有畫面」（最長空白段的計算）
+
+categories:
+  - id: chapter_card
+    number: 1
+    name: 章節卡
+    when: 稿上每個 `##` 自動產生，Director 不判斷
+    dp: HyperFrames（video/compositions/transition_title）
+    kind: insert
+    layout: full
+    required: [onscreen_text]
+    readiness: ready
+    auto: true
+    density: false
+    covers: true
+
+  - id: concept_title
+    number: 2
+    name: 重點概念 title
+    when: 修修強調的重要概念
+    dp: HyperFrames（punch_card）
+    kind: overlay
+    layout: either
+    required: [onscreen_text]
+    readiness: ready
+    auto: false
+    density: true
+    covers: true
+
+  - id: person
+    number: 3
+    name: 人物彈入
+    when: 講到人名
+    dp: 照片去背 → 動畫跳入（sticker_pair）；照片來源規則見規格 §3.8
+    kind: overlay
+    layout: overlay
+    required: [dp_instruction]
+    readiness: ready
+    auto: false
+    density: true
+    covers: true
+
+  - id: book_cover
+    number: 4
+    name: 書封
+    when: 講到書名時由 Director 判斷，不限次數
+    dp: HyperFrames（book_cover）
+    kind: overlay
+    layout: either
+    required: [dp_instruction]
+    readiness: ready
+    auto: false
+    density: true
+    covers: true
+
+  - id: explainer
+    number: 5
+    name: 解釋動畫
+    when: 較長的解釋段落（如六個階層）
+    dp: Director 寫 prompt，DP 用 HyperFrames 做（bigstat、concept_card）
+    kind: overlay
+    layout: either
+    required: [description, dp_instruction]
+    readiness: partial
+    auto: false
+    density: true
+    covers: true
+
+  - id: stock
+    number: 6
+    name: Stock footage
+    when: 適合用實拍素材加強的段落
+    dp: Director 寫描述，DP 找素材
+    kind: overlay
+    layout: either
+    required: [dp_instruction]
+    readiness: unverified
+    auto: false
+    density: true
+    covers: true
+
+  - id: doc_highlight
+    number: 7
+    name: 論文／文件 highlighter
+    when: 引用論文、文件、報導
+    dp: 截圖＋螢光筆逐步劃
+    kind: overlay
+    layout: either
+    required: [dp_instruction, source]
+    readiness: unverified
+    auto: false
+    density: true
+    covers: true
+
+  - id: quote_card
+    number: 8
+    name: 金句卡
+    when: 整句原話
+    dp: HyperFrames（quote_card）
+    kind: overlay
+    layout: full
+    required: [onscreen_text]
+    readiness: ready
+    auto: false
+    density: true
+    covers: true
+
+  - id: own_material
+    number: 9
+    name: 修修自己的素材
+    when: 需要修修提供的畫面（例：課程畫面）
+    dp: 修修提供
+    kind: overlay
+    layout: either
+    required: [description]
+    readiness: user
+    auto: false
+    density: true
+    covers: true
+
+  - id: old_video
+    number: 10
+    name: 自家舊片導流
+    when: 提到自己做過的相關影片
+    dp: 舊片縮圖 inset
+    kind: overlay
+    layout: overlay
+    required: [dp_instruction]
+    readiness: unverified
+    auto: false
+    density: true
+    covers: true
+
+  - id: others_clip
+    number: 11
+    name: 他人影片引用
+    when: 介紹某人時引用他的訪談或演講
+    dp: 下載指定片段＋出處；上時間軸靜音、下載保留原聲
+    kind: overlay
+    layout: either
+    required: [dp_instruction]
+    readiness: unverified
+    auto: false
+    density: true
+    covers: true
+
+  - id: screen_recording
+    number: 12
+    name: 螢幕錄影
+    when: 示範操作
+    dp: 修修提供
+    kind: overlay
+    layout: either
+    required: [description]
+    readiness: user
+    auto: false
+    density: true
+    covers: true
+
+  - id: meme
+    number: 13
+    name: 梗圖
+    when: 需要幽默感的地方
+    dp: 梗圖 inset
+    kind: overlay
+    layout: overlay
+    required: [dp_instruction]
+    readiness: unverified
+    auto: false
+    density: true
+    covers: true
+
+  - id: aroll
+    number: 14
+    name: 不上畫面
+    when: 維持 A-roll
+    dp: 不需製作
+    kind: overlay
+    layout: none
+    required: []
+    readiness: none
+    auto: false
+    density: false
+    covers: false
+
+  - id: avatar
+    number: 15
+    name: Avatar 動畫
+    when: 未來
+    dp: 生成動畫模型
+    kind: overlay
+    layout: either
+    required: [dp_instruction]
+    readiness: future
+    auto: false
+    density: true
+    covers: true
+
+  - id: montage
+    number: 16
+    name: 關鍵字 montage
+    when: 一個關鍵字值得用很多人說它的片段來強調
+    dp: 搜 YouTube 字幕找關鍵字，每處下載 1–2 秒保留原聲，排序、前加 riser
+    kind: insert
+    layout: full
+    required: [dp_instruction]
+    readiness: unverified
+    auto: false
+    density: true
+    covers: true
+
+  - id: punch_in
+    number: 17
+    name: 推近（punch-in）
+    when: 露出來的跳接剪點（規格 §3.6）
+    dp: A-roll 放大，剪點前後空白約 3–4 frame（暫定）
+    kind: overlay
+    layout: none
+    required: []
+    readiness: unverified
+    auto: false
+    density: false
+    covers: false
+
+  # ── 依稿上標記自動產生（規格 §3.4、§3.5）────────────────────────────
+  - id: section_title
+    name: 小標題遮罩
+    when: 稿上每個 `###` 自動產生，放在該段第一句
+    dp: HyperFrames（transition_title_wide，style=scrim）
+    kind: overlay
+    layout: full
+    required: [onscreen_text]
+    readiness: ready
+    auto: true
+    density: false
+    covers: true
+
+  - id: channel_intro
+    name: 頻道動畫＋Jingle
+    when: 插在 Hook 與「嗨大家」頻道自介之間
+    dp: 修修提供（尚未提供）
+    kind: insert
+    layout: full
+    required: []
+    readiness: user
+    auto: true
+    density: false
+    covers: true
+
+  - id: outro_transition
+    name: Outro 轉場
+    when: 稿上 `## Outro`
+    dp: 模糊 slide transition＋swoosh（做法待從舊版本找出）
+    kind: overlay
+    layout: full
+    required: []
+    readiness: unverified
+    auto: true
+    density: false
+    covers: false
