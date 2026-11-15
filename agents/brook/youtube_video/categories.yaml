@@ -50,10 +50,10 @@ categories:
     number: 3
     name: 人物彈入
     when: 講到人名
-    dp: 照片去背 → 動畫跳入（sticker_pair）；照片來源規則見規格 §3.8
+    dp: HyperFrames（video/compositions/person_pop）；skill youtube-person；照片來源規則見規格 §3.8
     kind: overlay
     layout: overlay
-    required: [dp_instruction]
+    required: [source]
     readiness: ready
     auto: false
     density: true
