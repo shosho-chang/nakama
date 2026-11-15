@@ -1,5 +1,7 @@
 # Video Production Line（Brook）
 
+> **2026-11-15**：舊的照稿影片分鏡流程（`storyboard.yaml`、`plan`/`render`/`emit` CLI、Bridge `/brook/video`、拍手 cleanup）已整條刪除。下面的 Storyboard、Beat、Mistake removal / cleanup、Verified Projection handoff 等詞條只留作歷史；Finished Cut Production 與 Packaging 以下的詞條仍然有效。
+
 修修 talking head 影片的製作管線 context：RAW 錄影進、DaVinci 可剪的 timeline 出。
 創意分鏡層＝Director skill，機械層＝本目錄 pipeline 程式（ADR-050、ADR-051）。
 字幕 handoff 由 ADR-056 收緊：本 context 只消費 Podcast Subtitle V2 的 Verified Projection ID + manifest，不把裸 SRT 當文字真相。
