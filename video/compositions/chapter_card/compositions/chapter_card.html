@@ -1,0 +1,87 @@
+<!doctype html>
+<!-- 第 1 類「章節卡」（YouTube 照稿影片，滿版插入 2 秒）。修修 2026-11-15 定版：
+     - 框：品牌手冊 brand-identity.pdf 第 24 頁「影片開頭」的向量原稿——18 個橘色多邊形原樣放大到 1920×1080
+       （手冊座標 [320,70]–[755,315]，不重畫）。橘色大長方形從畫面四邊往內放射，連成一整圈框；中間灰底。
+       修修：「這個框框是由很多的矩形形成的」「你仔細看我 T 恤上面的樣式」「一整個矩形將畫面框起來」。
+     - 進場：每一塊沿「畫面中心 → 它的位置」方向從畫面外衝進來，順時針一塊接一塊（0.24s、略過衝），約 0.5 秒圍好；
+       接著標題一個字一個字浮現。修修：「讓這些 pattern 從外圍加到畫面的邊緣形成類似框框的樣子，然後 title 依序浮現」。
+     - 退場（最後 0.3 秒）＝炸開：標題放大淡掉，每一塊同時往外飛出畫面，灰底淡掉，露出底下下一段的錄影。
+       所以這是帶 alpha 的素材：前 1.7 秒滿版、最後 0.3 秒疊在下一段錄影上。
+     - 標題：黑色思源黑體 Black，正中一行；font_px 由程式依字數算（最大 136px）。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"title","type":"string","label":"章節標題（稿上 ## 的文字）","default":"到底該怎麼花錢？"},
+    {"id":"font_px","type":"number","label":"標題字級（px）","default":136}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <style>
+      @font-face { font-family: "Noto Sans TC Black"; font-weight: 900; font-display: block;
+        src: url("assets/fonts/noto-sans-tc/NotoSansTC-Black.woff2") format("woff2"); }
+      :root { --gray: #e1e1df; --orange: #f57331;
+        --font-display: "Noto Sans TC Black", "Noto Sans TC", "Source Han Sans TC", sans-serif; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+      #bg { position: absolute; inset: 0; background: var(--gray); }
+      svg { position: absolute; inset: 0; }
+      #title { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+        white-space: nowrap; font-family: var(--font-display); font-weight: 900;
+        line-height: 1; letter-spacing: -0.01em; color: #000; }
+      #title span { display: inline-block; white-space: pre; } /* 保留標題裡的空格 */
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="chapter_card"
+      data-width="1920" data-height="1080" data-start="0" data-duration="2">
+      <div id="bg"></div>
+      <svg id="frame" width="1920" height="1080" viewBox="0 0 1920 1080" aria-hidden="true"></svg>
+      <div id="title"></div>
+    </div>
+    <script>
+      // 手冊 p24 「影片開頭」的 18 個橘色多邊形，已換算成 1920×1080 座標
+      const POLYS = [[[-1.0,1080.1],[95.6,1080.1],[-1.0,997.0]],[[1683.5,751.5],[1920.1,845.5],[1920.1,661.9],[1733.5,598.4]],[[1663.3,508.9],[1920.1,687.4],[1920.1,461.8],[1775.5,377.7]],[[1838.3,433.1],[1920.1,539.4],[1920.1,382.3]],[[1399.4,959.4],[1542.0,1080.1],[1832.8,1080.1],[1479.8,831.0]],[[1626.0,860.3],[1782.6,1080.1],[1920.1,1080.1],[1920.1,973.8],[1808.7,780.6]],[[1267.7,1080.1],[1536.7,1080.1],[1279.5,1005.1]],[[255.9,0.9],[279.3,214.1],[431.6,178.7],[442.2,0.9]],[[-1.0,344.1],[253.5,446.3],[294.1,295.5],[-1.0,114.4]],[[-1.0,0.9],[-1.0,16.0],[233.6,322.1],[345.2,290.9],[212.9,0.9]],[[-1.0,532.1],[9.2,545.5],[120.9,514.3],[-1.0,247.1]],[[-1.0,792.3],[-1.0,860.6],[133.4,1080.1],[301.5,1080.1],[152.8,708.6]],[[422.5,0.9],[460.0,111.1],[686.5,2.8],[685.4,0.9]],[[1057.2,0.9],[1053.9,7.5],[1643.6,234.2],[1697.4,79.8],[1503.6,0.9]],[[989.7,0.9],[1297.1,215.5],[1386.4,78.5],[1279.8,0.9]],[[1427.7,0.9],[1427.4,117.8],[1920.1,89.5],[1920.1,0.9]],[[157.1,918.4],[333.2,1080.1],[600.2,1080.1],[285.1,797.1]],[[470.1,1073.2],[487.5,1080.1],[977.1,1080.1],[546.4,914.3]]];
+      const v = (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const svg = document.getElementById("frame");
+      const NS = "http://www.w3.org/2000/svg";
+      const shapes = POLYS.map((pts) => {
+        const el = document.createElementNS(NS, "polygon");
+        el.setAttribute("fill", "#f57331"); // SVG 屬性不吃 CSS 變數
+        el.setAttribute("points", pts.map(([x, y]) => x + "," + y).join(" "));
+        svg.appendChild(el);
+        const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+        const cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+        const dx = cx - 960, dy = cy - 540, len = Math.hypot(dx, dy) || 1;
+        return { el, ux: dx / len, uy: dy / len, ang: Math.atan2(dy, dx) };
+      });
+      const title = document.getElementById("title");
+      title.style.fontSize = Number(v.font_px ?? 136) + "px";
+      for (const ch of Array.from(v.title || "")) {
+        const s = document.createElement("span");
+        s.textContent = ch;
+        title.appendChild(s);
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["chapter_card"] = tl;
+      // 進場：順時針一塊接一塊從畫面外衝進來
+      [...shapes].sort((a, b) => a.ang - b.ang).forEach((s, k) => {
+        tl.fromTo(s.el, { x: s.ux * 520, y: s.uy * 520 },
+          { x: 0, y: 0, duration: 0.24, ease: "back.out(1.3)" }, k * 0.018);
+      });
+      tl.fromTo("#title span", { y: 24, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.22, ease: "back.out(1.8)", stagger: 0.05 }, 0.36);
+      // 退場（炸開）：最後 0.3 秒
+      const OUT = 1.7;
+      tl.to("#title", { scale: 1.15, opacity: 0, duration: 0.14, ease: "power2.in" }, OUT);
+      shapes.forEach((s) => {
+        tl.to(s.el, { x: s.ux * 700, y: s.uy * 700, duration: 0.24, ease: "power2.in" }, OUT + 0.04);
+      });
+      tl.to("#bg", { opacity: 0, duration: 0.2, ease: "power1.in" }, OUT + 0.08);
+      tl.to({}, { duration: 2 }, 0);
+    </script>
+  </body>
+</html>

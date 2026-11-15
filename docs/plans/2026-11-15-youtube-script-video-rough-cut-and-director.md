@@ -155,7 +155,7 @@
 
 | # | 分類 | 說明 | 2026-11-15 查證 |
 |---|---|---|---|
-| 1 | 章節卡（滿版） | `##` 自動產生（§3.4） | 有：`video/compositions/transition_title` |
+| 1 | 章節卡（滿版） | `##` 自動產生（§3.4） | 已做好：`video/compositions/chapter_card`、skill `youtube-chapter-card`（2026-11-15 定版：框取自品牌手冊 p24「影片開頭」原稿，碎片從外圍衝進來圍成框、標題逐字浮現、炸開退場；2 秒，最後 0.3 秒疊在下一段錄影上） |
 | 2 | 重點概念 title | 修修強調的重要概念（卡上只放概念名稱，一行） | 已做好：`video/compositions/concept_title`、skill `youtube-concept-title`（2026-11-15 定版，張修修的不正常宇宙 design system） |
 | 3 | 人物彈入 | 講到人名 → 照片去背 → 動畫跳入。照片來源規則見 §3.8 | 已做好：`video/compositions/person_pop`、skill `youtube-person`（2026-11-15 定版：比例照《財富階梯》剪輯夥伴的版本，人物臉跟主持人一樣大；從下方跳出、縱向 motion blur；左右兩側） |
 | 4 | 書封 | 講到書名時由 Director 判斷要不要出現，**不限次數**。修修：「把書封只能出現一次這個限制拿掉好了」 | 已做好：`video/compositions/book_cover_frame`、skill `youtube-book-cover`（2026-11-15 定版：書封＋粗細有變化的細橘框、兩角同時畫框；只做疊加、固定在右側） |

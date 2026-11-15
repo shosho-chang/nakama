@@ -24,7 +24,7 @@ categories:
     number: 1
     name: 章節卡
     when: 稿上每個 `##` 自動產生，Director 不判斷
-    dp: HyperFrames（video/compositions/transition_title）
+    dp: HyperFrames（video/compositions/chapter_card）；skill youtube-chapter-card
     kind: insert
     layout: full
     required: [onscreen_text]
