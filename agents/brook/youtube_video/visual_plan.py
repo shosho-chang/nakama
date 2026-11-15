@@ -1,7 +1,8 @@
 """畫面規劃表：資料格式、Bridge 上的修改規則、統計。
 
 規格 §4（`docs/plans/2026-11-15-youtube-script-video-rough-cut-and-director.md`）。
-一集一份 `visual_plan.json`，放在 `<YOUTUBE_VIDEO_EPISODES_ROOT>/<episode>/`。
+一集一份 `visual_plan.json`，放在 `<PODCAST_EPISODES_ROOT>/<episode>/`
+（跟 podcast 同一個根目錄，本機是 `G:/Footages`）。
 Director 寫入、修修在 Bridge 修改、agent 重排時只改標了「重排」的列。
 
 修修定下的規則（原話在規格裡）：

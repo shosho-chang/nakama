@@ -1,7 +1,8 @@
 """Bridge 畫面規劃表 — YouTube 照稿影片 Director 交出的畫面，由修修審。
 
 規格 §4：`docs/plans/2026-11-15-youtube-script-video-rough-cut-and-director.md`。
-集數資料夾在 `YOUTUBE_VIDEO_EPISODES_ROOT/<episode>/visual_plan.json`。
+集數資料夾跟 podcast 一樣在 `PODCAST_EPISODES_ROOT`（本機 `G:/Footages`）：
+`<root>/<episode>/visual_plan.json`。
 """
 
 from __future__ import annotations
@@ -25,7 +26,7 @@ page_router = APIRouter(prefix="/bridge/video-plan", tags=["bridge-video-plan"])
 _templates = Jinja2Templates(
     directory=str(Path(__file__).resolve().parent.parent / "templates" / "bridge")
 )
-ROOT_ENV = "YOUTUBE_VIDEO_EPISODES_ROOT"
+ROOT_ENV = "PODCAST_EPISODES_ROOT"
 
 FLAG_LABELS = {
     "replanning": "重排處理中",

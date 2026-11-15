@@ -128,7 +128,7 @@ FastAPI + Jinja2，部署為 systemd service（`thousand-sunny.service`）。
 - `zoro.py` / `bridge_zoro.py` — Keyword research
 - `brook.py` / `repurpose.py` — Article composition、多 channel render
 - `brook_video.py` — B-roll storyboard / FCPXML preview（Brook Video Production Line surface；route `/brook/video`，舊 `/foundry/*` 301 redirect，ADR-050）
-- `video_plan.py` — YouTube 照稿影片的畫面規劃表（`/bridge/video-plan`；Director 交件、修修審；資料在 `YOUTUBE_VIDEO_EPISODES_ROOT/<episode>/visual_plan.json`）
+- `video_plan.py` — YouTube 照稿影片的畫面規劃表（`/bridge/video-plan`；Director 交件、修修審；資料在 `PODCAST_EPISODES_ROOT/<episode>/visual_plan.json`，跟 podcast 共用 `G:/Footages`）
 - `franky.py` — `/healthz` 探針 + `/bridge/franky` 健康儀表板
 - `bridge*.py` — Bridge ops 主控台（weekly / projects / digests / models / cost / logs / memory）
 - `progress.py` / `architecture.py` / `inventory.py` — Ops 文件頁（chassis nav，cookie-authed）

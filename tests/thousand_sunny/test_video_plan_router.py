@@ -66,7 +66,7 @@ def episode_root(tmp_path):
 
 @pytest.fixture
 def client(monkeypatch, episode_root):
-    monkeypatch.setenv("YOUTUBE_VIDEO_EPISODES_ROOT", str(episode_root))
+    monkeypatch.setenv("PODCAST_EPISODES_ROOT", str(episode_root))
     monkeypatch.setenv("WEB_PASSWORD", "gate-password")
     monkeypatch.setenv("WEB_SECRET", "gate-secret")
     import thousand_sunny.auth as auth_module
@@ -163,5 +163,5 @@ def test_path_traversal_is_refused(client):
 
 
 def test_missing_root_env_is_a_503(client, monkeypatch):
-    monkeypatch.delenv("YOUTUBE_VIDEO_EPISODES_ROOT")
+    monkeypatch.delenv("PODCAST_EPISODES_ROOT")
     assert client.get(_url()).status_code == 503
