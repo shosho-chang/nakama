@@ -58,6 +58,14 @@ def overlay_window(plan: Mapping[str, Any], row: Mapping[str, Any]) -> tuple[flo
     return start, float(cues[-1]["end"]) - start
 
 
+def insert_point(plan: Mapping[str, Any], row: Mapping[str, Any]) -> float:
+    """插入類畫面（章節卡等）插在原始錄影的哪一秒之前＝它前面那句字幕的開頭。"""
+    if row.get("kind") != "insert":
+        raise DeliveryError(f"{row.get('id')}: 只有插入類畫面有插入點")
+    (cue,) = vp.cue_range(plan, row["before_cue"], row["before_cue"])
+    return float(cue["start"])
+
+
 def file_sha(path: Path) -> str:
     return hashlib.sha256(Path(path).read_bytes()).hexdigest()
 
@@ -107,7 +115,9 @@ def write_receipt(
     start_sec: float,
     duration_sec: float,
     sha: str,
+    extra: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """`extra`：這一類鋪時間軸要多知道的事（例：章節卡最後幾秒疊在下一段錄影上）。"""
     receipt = {
         "schema": RECEIPT_SCHEMA,
         "row_id": row["id"],
@@ -123,6 +133,7 @@ def write_receipt(
         "fps": FPS,
         "media": paths.media.name,
         "rendered_at": datetime.now(UTC).isoformat(timespec="seconds"),
+        **dict(extra or {}),
     }
     paths.receipt.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(dir=paths.receipt.parent, suffix=".tmp")
