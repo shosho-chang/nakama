@@ -129,7 +129,7 @@ def test_right_side_from_dp_instruction(tmp_path):
     [
         ("", "Nick", "等你提供素材"),
         ("C:/nope/x.png", "Nick", "找不到人物照片"),
-        (None, "Nick\nMaggiulli", "只能一行"),
+        (None, "Nick\nMaggiulli", "寫了 2 個名字"),
         (None, "這是一個非常非常非常長的人名名字", "太長"),
     ],
 )
@@ -171,3 +171,41 @@ def test_only_approved_people_are_built(tmp_path):
         dict(plan["rows"][0], id="row-c", category="book_cover"),
     ]
     assert [row["id"] for row in pp.approved_rows(plan)] == ["row-a"]
+
+
+def test_two_people_left_then_right(tmp_path):
+    a = _photo(tmp_path / "a.png", cut=True)
+    b = _photo(tmp_path / "b.jpg", cut=False)
+    plan = _plan(tmp_path, source=f"{a}\n{b}", name="Nick\nMorgan")
+    runner = FakeRunner()
+    variables, _, _ = pp.card_variables(
+        tmp_path / "ep", plan, plan["rows"][0], runner=runner, measure=fake_measure
+    )
+    assert variables["side"] == "left" and variables["name"] == "Nick"
+    assert variables["name2"] == "Morgan" and variables["delay2"] == pp.PAIR_DELAY_SEC
+    scale = pp.EYE_TO_CHIN / FACE.eye_to_chin
+    assert variables["photo2_x"] + FACE.eye_x * scale == pytest.approx(1920 - pp.EYE_X, abs=0.1)
+    # 只有第二張沒去背 → 去背存成 row-a-2.png
+    (call,) = runner.calls
+    assert Path(call[call.index("-o") + 1]) == pp.cutout_path(tmp_path / "ep", "row-a", 2)
+    slim = pp.receipt_variables(variables)
+    assert "base64" not in slim["photo"] and "base64" not in slim["photo2"]
+
+
+def test_three_people_are_refused(tmp_path):
+    paths = [_photo(tmp_path / f"{i}.png", cut=True) for i in range(3)]
+    plan = _plan(tmp_path, source="\n".join(map(str, paths)), name="")
+    with pytest.raises(delivery.DeliveryError, match="最多介紹兩個人"):
+        pp.card_variables(
+            tmp_path / "ep", plan, plan["rows"][0], runner=FakeRunner(), measure=fake_measure
+        )
+
+
+def test_two_long_names_would_collide(tmp_path):
+    a = _photo(tmp_path / "a.png", cut=True)
+    long_name = "一二三四五六七八九十一二"  # 各 12 個全形字，單獨不超過，加起來 24 > 22
+    plan = _plan(tmp_path, source=f"{a}\n{a}", name=f"{long_name}\n{long_name}")
+    with pytest.raises(delivery.DeliveryError, match="加起來太長"):
+        pp.card_variables(
+            tmp_path / "ep", plan, plan["rows"][0], runner=FakeRunner(), measure=fake_measure
+        )

@@ -13,6 +13,10 @@
 `<episode>/visuals/people/<row_id>.png`。
 
 名字＝「畫面上的字」；空的就不放字牌。左右：預設左側；「給 DP 的指示」寫「右側」就放右側。
+
+兩個人（修修 2026-11-15「直接做」）：「出處」寫兩行照片路徑、「畫面上的字」寫兩行名字（同順序）。
+第一個人在左、第二個人在右，晚 0.4 秒跳出來，一起退場。三個人以上不用人物彈入（會把主持人擠住），
+擋下來回報；兩個人在稿子裡相隔很久才提到，就拆成兩列（第二列寫「右側」）。
 時間：從這一列蓋住的第一句字幕開始，停留＝那幾句的總長，夾在 2–6 秒（暫定）。
 
 用法：
@@ -53,6 +57,9 @@ FRAME_W, FRAME_H = 1920, 1080
 MIN_SEC = 2.0
 MAX_SEC = 6.0
 MAX_NAME_UNITS = 14  # 52px 字牌，全形算 1、半形 0.55；放在 x=560 起，超過會壓到主持人
+MAX_PAIR_UNITS = 22  # 兩個人：兩個字牌各離邊緣 300px，加起來超過就會在中間撞在一起
+MAX_PEOPLE = 2
+PAIR_DELAY_SEC = 0.4
 IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg", ".webp")
 PEOPLE_DIR = "people"
 
@@ -81,29 +88,50 @@ def text_width_units(text: str) -> float:
     return sum(1.0 if unicodedata.east_asian_width(ch) in ("W", "F") else 0.55 for ch in text)
 
 
-def person_name(row: Mapping[str, Any]) -> str:
-    name = (row.get("onscreen_text") or "").strip()
-    if "\n" in name:
-        raise delivery.DeliveryError(f"{row['id']}: 名字只能一行：{name!r}")
-    if text_width_units(name) > MAX_NAME_UNITS:
-        raise delivery.DeliveryError(f"{row['id']}: 名字「{name}」太長，請在 Bridge 縮短")
-    return name
+def _lines(value: object) -> list[str]:
+    return [line.strip().strip('"') for line in str(value or "").splitlines() if line.strip()]
+
+
+def person_names(row: Mapping[str, Any], count: int) -> list[str]:
+    """每個人一行名字；全部空著＝不放字牌。"""
+    names = _lines(row.get("onscreen_text"))
+    if not names:
+        return [""] * count
+    if len(names) != count:
+        raise delivery.DeliveryError(
+            f"{row['id']}: 有 {count} 張照片但寫了 {len(names)} 個名字——每個人一行，順序對應照片"
+        )
+    for name in names:
+        if text_width_units(name) > MAX_NAME_UNITS:
+            raise delivery.DeliveryError(f"{row['id']}: 名字「{name}」太長，請在 Bridge 縮短")
+    if count == 2 and sum(text_width_units(n) for n in names) > MAX_PAIR_UNITS:
+        raise delivery.DeliveryError(f"{row['id']}: 兩個名字加起來太長，字牌會撞在一起，請縮短")
+    return names
 
 
 def side_for(row: Mapping[str, Any]) -> str:
     return "right" if "右側" in str(row.get("dp_instruction") or "") else "left"
 
 
-def photo_source(row: Mapping[str, Any]) -> Path:
-    source = str(row.get("source") or "").strip().strip('"')
-    if not source:
+def photo_sources(row: Mapping[str, Any]) -> list[Path]:
+    """「出處」每行一張照片（本機路徑），一到兩張。"""
+    sources = _lines(row.get("source"))
+    if not sources:
         raise delivery.DeliveryError(
             f"{row['id']}: 「出處」是空的——請填人物照片的本機路徑（等你提供素材）"
         )
-    path = Path(source)
-    if path.suffix.lower() not in IMAGE_SUFFIXES or not path.is_file():
-        raise delivery.DeliveryError(f"{row['id']}: 找不到人物照片：{source}")
-    return path
+    if len(sources) > MAX_PEOPLE:
+        raise delivery.DeliveryError(
+            f"{row['id']}: 一次最多介紹兩個人（寫了 {len(sources)} 張照片）"
+            "——三個人以上請改用別的畫面"
+        )
+    paths = []
+    for source in sources:
+        path = Path(source)
+        if path.suffix.lower() not in IMAGE_SUFFIXES or not path.is_file():
+            raise delivery.DeliveryError(f"{row['id']}: 找不到人物照片：{source}")
+        paths.append(path)
+    return paths
 
 
 def has_cutout(path: Path) -> bool:
@@ -118,8 +146,9 @@ def has_cutout(path: Path) -> bool:
         return sum(hist[:20]) >= 0.05 * img.width * img.height
 
 
-def cutout_path(episode_dir: Path, row_id: str) -> Path:
-    return Path(episode_dir) / delivery.VISUALS_DIR / PEOPLE_DIR / f"{row_id}.png"
+def cutout_path(episode_dir: Path, row_id: str, index: int = 1) -> Path:
+    name = f"{row_id}.png" if index == 1 else f"{row_id}-{index}.png"
+    return Path(episode_dir) / delivery.VISUALS_DIR / PEOPLE_DIR / name
 
 
 def ensure_cutout(source: Path, dest: Path, runner: Runner) -> Path:
@@ -192,24 +221,27 @@ def card_variables(
         raise delivery.DeliveryError(f"{row.get('id')}: 不是人物彈入")
     start, span = delivery.overlay_window(plan, row)
     seconds = show_seconds(span)
-    name = person_name(row)
-    side = side_for(row)
-    try:
-        photo = ensure_cutout(photo_source(row), cutout_path(episode_dir, row["id"]), runner)
-        place = layout(measure(photo), side)
-    except delivery.DeliveryError as exc:
-        msg = str(exc)
-        raise delivery.DeliveryError(
-            msg if msg.startswith(row["id"]) else f"{row['id']}: {msg}"
-        ) from None
-    data = base64.b64encode(photo.read_bytes()).decode("ascii")
-    variables = {
-        "photo": f"data:image/png;base64,{data}",
-        "name": name,
-        "side": side,
-        **place,
-        "show_sec": seconds,
-    }
+    sources = photo_sources(row)
+    names = person_names(row, len(sources))
+    sides = ["left", "right"] if len(sources) == 2 else [side_for(row)]
+    variables: dict[str, Any] = {}
+    for index, (source, name, side) in enumerate(zip(sources, names, sides), start=1):
+        try:
+            photo = ensure_cutout(source, cutout_path(episode_dir, row["id"], index), runner)
+            place = layout(measure(photo), side)
+        except delivery.DeliveryError as exc:
+            raise delivery.DeliveryError(f"{row['id']}: {exc}") from None
+        key = "photo" if index == 1 else "photo2"
+        data = base64.b64encode(photo.read_bytes()).decode("ascii")
+        variables[key] = f"data:image/png;base64,{data}"
+        variables["name" if index == 1 else "name2"] = name
+        if index == 1:
+            variables["side"] = side
+        for field, value in place.items():  # photo_x → photo2_x
+            variables[field.replace("photo", key, 1)] = value
+    if len(sources) == 2:
+        variables["delay2"] = PAIR_DELAY_SEC
+    variables["show_sec"] = seconds
     return variables, start, seconds
 
 
@@ -285,7 +317,9 @@ def _render(
 def receipt_variables(variables: Mapping[str, Any]) -> dict[str, Any]:
     """收據不存整張照片（太大）；照片內容已經算進 inputs_sha。"""
     slim = dict(variables)
-    slim["photo"] = f"<{len(variables['photo'])} chars data URI>"
+    for key in ("photo", "photo2"):
+        if key in slim:
+            slim[key] = f"<{len(variables[key])} chars data URI>"
     return slim
 
 
@@ -354,8 +388,9 @@ def main(argv: list[str] | None = None) -> int:
             print(f"✗ {exc}", file=sys.stderr)
             continue
         label = "渲好" if rendered else "沿用"
+        names = [receipt["variables"].get(k) for k in ("name", "name2")]
         print(
-            f"{label} {row['id']}：{receipt['variables']['name'] or '（不放名字）'}"
+            f"{label} {row['id']}：{'、'.join(n for n in names if n) or '（不放名字）'}"
             f" {receipt['variables']['side']} {receipt['start_sec']:.2f}s 起"
             f" {receipt['duration_sec']:.2f}s"
         )
