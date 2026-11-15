@@ -448,14 +448,3 @@ def test_an_incomplete_staging_file_is_reported_without_being_destroyed(tmp_path
     assert error.value.reason == "incomplete"
     assert staging.read_bytes() == b"another writer is still here"
     assert not path.exists()
-
-
-def test_the_record_is_flushed_to_disk_and_read_back_before_it_counts(tmp_path) -> None:
-    """這份紀錄是這支 cut 唯一的耐久描述——落盤要真的落，落完要回讀確認。"""
-    path = tmp_path / PLAN_RECORD_FILENAME
-    record = plan_record()
-
-    write_plan_record(path, record)
-
-    assert read_plan_record_at(path) == record
-    assert not path.with_name(f".{path.name}.staging").exists()

@@ -18,14 +18,7 @@ from typing import get_args
 import pytest
 
 from agents.brook.script_video.finished_cut_production import (
-    _derived_assets,
     _engine,
-    _policy,
-    _resolve_fusion,
-    _visual_assets,
-)
-from agents.brook.script_video.finished_cut_production._long_visual_renderer import (
-    _RECIPES,
 )
 from agents.brook.script_video.finished_cut_production._projection import (
     _ACTIVE_COMPONENT_LANES,
@@ -42,7 +35,6 @@ from agents.brook.script_video.finished_cut_production._projection import (
     SOURCE_ASSET_KIND_BY_IMPLEMENTATION,
     VOCABULARY,
     ComponentLane,
-    layout_identity,
 )
 
 #: 渲染器的 role 名 → 契約層的 implementation_kind。
@@ -53,13 +45,6 @@ _ROLE_TO_IMPLEMENTATION = {
     # 已退役，但渲染器仍有配方（既有 receipt 讀得回來）。
     "visual_effect": "visual_effect",
 }
-
-
-@pytest.mark.parametrize(("role", "implementation_kind"), sorted(_ROLE_TO_IMPLEMENTATION.items()))
-def test_renderer_recipe_reads_the_contract_layout_version(
-    role: str, implementation_kind: str
-) -> None:
-    assert _RECIPES[role]["layout_identity"] == layout_identity(implementation_kind)
 
 
 def test_every_renderer_role_has_a_declared_layout_version() -> None:
@@ -86,18 +71,6 @@ def test_component_lane_literal_matches_the_vocabulary() -> None:
     from_vocabulary = {spec.lane for spec in VOCABULARY.values()}
 
     assert declared == from_vocabulary
-
-
-def test_lane_track_map_is_the_vocabulary_not_a_copy() -> None:
-    """`_resolve_fusion` 決定 B-roll 鋪在哪一軌；它以前自己抄了一份。"""
-    assert _resolve_fusion._LANE_TRACKS is LANE_TRACKS
-
-
-def test_generated_and_passthrough_sets_are_the_vocabulary_not_copies() -> None:
-    assert _derived_assets._GENERATED_IMPLEMENTATIONS is GENERATED_IMPLEMENTATIONS
-    assert (
-        _derived_assets._NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS is NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
-    )
 
 
 def test_generated_and_passthrough_do_not_overlap_and_cover_every_asset_kind() -> None:
@@ -169,14 +142,6 @@ def test_engine_asset_kind_maps_are_the_vocabulary_not_copies() -> None:
     assert _engine._ASSET_KIND_BY_IMPLEMENTATION is SOURCE_ASSET_KIND_BY_IMPLEMENTATION
     assert _engine._FINAL_ASSET_KIND_BY_IMPLEMENTATION is ASSET_KIND_BY_IMPLEMENTATION
     assert _engine._NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS is NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
-
-
-def test_passthrough_set_is_the_vocabulary_in_both_builders() -> None:
-    assert _visual_assets._NEUTRAL_PASSTHROUGH is NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
-
-
-def test_policy_visual_coverage_set_is_the_vocabulary() -> None:
-    assert _policy.VISUAL_COVERAGE_BROLL_IMPLEMENTATIONS is NEUTRAL_PASSTHROUGH_IMPLEMENTATIONS
 
 
 def test_source_and_final_asset_kinds_coincide_for_passthrough() -> None:

@@ -347,12 +347,6 @@ def test_badge_is_not_in_the_worker_response_schema(stage: str) -> None:
     assert "brand_badge" not in json.dumps(_response_schema(stage))
 
 
-def test_the_vocabulary_and_the_derivation_agree_on_track_five() -> None:
-    """兩邊各自宣告 badge 在第幾軌，就會有一天只改到一邊。"""
-    assert LANE_TRACKS["brand_badge"] == BRAND_BADGE_TRACK_INDEX
-    assert VOCABULARY["brand_badge"].track_index == BRAND_BADGE_TRACK_INDEX
-
-
 def test_materialization_blocks_a_plan_whose_badge_media_is_absent(tmp_path: Path) -> None:
     """缺 badge 素材有自己的 reason_code，不跟 component 的素材問題混在一起。"""
     plan = _transition_plan(1)

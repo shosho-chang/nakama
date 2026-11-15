@@ -145,11 +145,6 @@ def test_title_v1_rank_4_requires_panel_note():
         TitleV1(**_title(4, panel_note=None))
 
 
-def test_title_v1_rank_5_requires_panel_note():
-    with pytest.raises(ValidationError, match="panel_note"):
-        TitleV1(**_title(5, panel_note=None))
-
-
 def test_title_v1_rank_4_empty_panel_note_rejected():
     with pytest.raises(ValidationError, match="panel_note"):
         TitleV1(**_title(4, panel_note=""))

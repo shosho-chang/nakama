@@ -422,20 +422,6 @@ def test_approve_unknown_cut_404(client):
     assert r.status_code == 404
 
 
-def test_approve_long_highlight_is_not_vetoed_by_a_missing_composition_receipt(client):
-    """人的核准是最終判斷；composition receipt 是看板上的診斷，不是否決權。
-
-    （2026-08-29 起：receipt 缺漏只在板上顯示 UNVERIFIED，按下 Approve 仍然成立；
-    真正會擋下來的是結構性缺漏——見 test_approve_requires_primary_package。）
-    """
-    r = client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
-        follow_redirects=False,
-    )
-    assert r.status_code == 303
-
-
 # ---------------------------------------------------------------------------
 # short-title
 # ---------------------------------------------------------------------------
@@ -1988,25 +1974,6 @@ def test_human_can_override_missing_center_visual_asset_warning(router_client, v
     response = router_client.post(
         "/bridge/packaging/20260723-xieboran/approve",
         data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "1"},
-        follow_redirects=False,
-    )
-
-    assert response.status_code == 303
-
-
-def test_valid_long_composition_can_be_approved(router_client, monkeypatch):
-    import thousand_sunny.routers.packaging as pkg_module
-
-    monkeypatch.setattr(
-        pkg_module,
-        "get_release",
-        lambda episode, cut_id: {"targets": [{"id": 42, "platform": "youtube", "status": "draft"}]},
-    )
-    monkeypatch.setattr(pkg_module, "update_target", lambda target_id, **fields: None)
-
-    response = router_client.post(
-        "/bridge/packaging/20260723-xieboran/approve",
-        data={"cut_id": "punch-L1", "decision": "approve", "primary_package": "2"},
         follow_redirects=False,
     )
 

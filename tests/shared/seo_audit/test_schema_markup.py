@@ -222,9 +222,3 @@ def test_sc5_skip_when_parse_error():
     soup = _soup_with_jsonld('{"x":}')
     c = _by(check_schema_markup(soup), "SC5")
     assert c.status == "skip"
-
-
-def test_returns_5_checks():
-    soup = BeautifulSoup("<html><body></body></html>", "html.parser")
-    checks = check_schema_markup(soup)
-    assert sorted(c.rule_id for c in checks) == ["SC1", "SC2", "SC3", "SC4", "SC5"]

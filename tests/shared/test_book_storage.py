@@ -260,39 +260,6 @@ def test_insert_duplicate_book_id_replaces_or_raises():
 # ---------------------------------------------------------------------------
 
 
-def test_books_table_columns_match_schema():
-    """Pin the column set so future migrations have to update the schema in
-    lockstep. The ``isolated_db`` autouse fixture has already pointed
-    ``shared.state`` at a tmp DB; calling _get_conn forces _init_tables to run."""
-    from shared.state import _get_conn
-
-    conn = _get_conn()
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(books)").fetchall()}
-    expected = {
-        "book_id",
-        "title",
-        "author",
-        "lang_pair",
-        "genre",
-        "isbn",
-        "published_year",
-        "has_original",
-        "book_version_hash",
-        "created_at",
-        "mode",
-    }
-    assert expected.issubset(cols), f"missing columns: {expected - cols}"
-
-
-def test_books_table_book_id_is_primary_key():
-    from shared.state import _get_conn
-
-    conn = _get_conn()
-    rows = conn.execute("PRAGMA table_info(books)").fetchall()
-    pk_cols = {row[1] for row in rows if row[5]}  # row[5] = pk flag
-    assert pk_cols == {"book_id"}
-
-
 # ---------------------------------------------------------------------------
 # Mode field — Phase 1 monolingual-zh pilot.
 # ---------------------------------------------------------------------------

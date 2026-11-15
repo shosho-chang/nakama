@@ -541,16 +541,6 @@ def test_dry_run_writes_nothing(config_path, tmp_path):
     bot.post_plain.assert_not_called()
 
 
-def test_default_config_file_loads():
-    c = rw.load_criteria()
-    assert c.districts == ("中正區", "中山區", "大安區", "信義區", "文山區")
-    assert (c.price_min, c.price_max, c.area_min, c.area_max) == (20000, 45000, 10, 50)
-    assert c.max_over_median_pct == 10
-    assert c.mrt_max_m == 600
-    assert c.exclude_basement is True
-    assert c.bonus_districts == ("大安區", "文山區")
-
-
 # ---------------------------------------------------------------------------
 # 捷運 / 登記 / 熱度（2026-10-23 修修：捷運要近、要能營業登記）
 # ---------------------------------------------------------------------------

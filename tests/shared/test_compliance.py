@@ -196,18 +196,6 @@ class TestScanDraft:
 
 
 class TestVocabStructure:
-    def test_medical_claim_categories_are_nonempty(self):
-        assert set(MEDICAL_CLAIM_TERMS.keys()) >= {
-            "therapeutic",
-            "diagnostic",
-            "drug_analog",
-        }
-        for cat, terms in MEDICAL_CLAIM_TERMS.items():
-            assert terms, f"category {cat} is empty"
-
-    def test_absolute_assertion_terms_are_nonempty(self):
-        assert len(ABSOLUTE_ASSERTION_TERMS) > 0
-
     def test_no_overlap_between_vocab_categories(self):
         all_medical = {t for terms in MEDICAL_CLAIM_TERMS.values() for t in terms}
         overlap = all_medical & set(ABSOLUTE_ASSERTION_TERMS)

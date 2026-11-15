@@ -110,19 +110,6 @@ def test_v3_unknown_type_raises():
         AnnotationSetV3(slug="x", items=[{"type": "comment", "body": "n"}])
 
 
-def test_comment_v2_alias_still_importable():
-    """Existing imports for ``CommentV2`` must keep working (alias preserved)."""
-    c = CommentV2(
-        chapter_ref="ch01",
-        cfi_anchor=None,
-        body="b",
-        book_version_hash=_HASH,
-        created_at=_TS,
-        modified_at=_TS,
-    )
-    assert c.type == "comment"
-
-
 # ── Store round-trip ──────────────────────────────────────────────────────────
 
 

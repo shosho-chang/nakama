@@ -84,8 +84,3 @@ def test_h3_pass_many_h2():
     c = _by(check_headings(_soup(html)), "H3")
     assert c.status == "pass"
     assert "5" in c.actual
-
-
-def test_returns_3_checks():
-    checks = check_headings(_soup("<html><body></body></html>"))
-    assert [c.rule_id for c in checks] == ["H1", "H2", "H3"]

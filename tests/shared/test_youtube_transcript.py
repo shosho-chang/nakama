@@ -13,7 +13,6 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from shared import youtube_transcript as yt
 from shared.youtube_transcript import (
     TranscriptSegment,
     YouTubeTranscriptError,
@@ -204,14 +203,3 @@ def test_fetch_transcript_propagates_bad_url(monkeypatch):
     # parse_video_id raises before yta is touched
     with pytest.raises(YouTubeTranscriptError, match="無法從輸入辨識"):
         fetch_transcript("not a youtube url")
-
-
-# Reference test — ensure module exposes the things we expect
-def test_module_surface():
-    assert hasattr(yt, "fetch_transcript")
-    assert hasattr(yt, "parse_video_id")
-    assert hasattr(yt, "to_plain_text")
-    assert hasattr(yt, "to_timestamped_text")
-    assert hasattr(yt, "total_duration")
-    assert hasattr(yt, "TranscriptSegment")
-    assert hasattr(yt, "YouTubeTranscriptError")

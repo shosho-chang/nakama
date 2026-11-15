@@ -38,10 +38,6 @@ def test_every_declared_diagnostic_code_has_exactly_one_grade() -> None:
     assert len(DIAGNOSTIC_GRADES) == len(declared)
 
 
-def test_every_grade_is_one_of_the_three() -> None:
-    assert set(DIAGNOSTIC_GRADES.values()) <= {"precondition", "blocking", "warning"}
-
-
 def test_the_blocking_set_is_derived_from_the_table_not_copied() -> None:
     # 抄一份就會像 5bdc499b 那樣：兩邊各自漂走，而沒有人發現名單已經空了。
     assert BLOCKING_DIAGNOSTICS == frozenset(

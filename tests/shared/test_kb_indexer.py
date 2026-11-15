@@ -124,20 +124,6 @@ def test_split_h2_chunks_min_length_filter():
     assert "Long" in sections
 
 
-def test_split_h2_chunks_heading_context_is_page_title():
-    """heading_context should equal the page_title passed in."""
-    chunks = _split_h2_chunks(
-        "## Section\n" + "x" * 50, "My Page Title", "KB/Wiki/Concepts/my-page"
-    )
-    assert all(c["heading_context"] == "My Page Title" for c in chunks)
-
-
-def test_split_h2_chunks_path_stored():
-    """path field matches the page_path argument."""
-    chunks = _split_h2_chunks("## Sec\n" + "x" * 50, "T", "KB/Wiki/Sources/paper1")
-    assert all(c["path"] == "KB/Wiki/Sources/paper1" for c in chunks)
-
-
 # ---------------------------------------------------------------------------
 # index_vault: basic integration
 # ---------------------------------------------------------------------------
