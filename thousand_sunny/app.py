@@ -48,7 +48,6 @@ from thousand_sunny.routers import (  # noqa: E402
     bridge_weekly,
     bridge_zoro,
     brook,
-    brook_video,
     carousel_review,
     centaur_zettel,
     crew,
@@ -160,8 +159,6 @@ app.include_router(bridge_weekly.page_router)
 app.include_router(focus_music.page_router)
 app.include_router(bridge_zoro.page_router)
 app.include_router(bridge_rental.page_router)
-app.include_router(brook_video.page_router)
-app.include_router(brook_video.legacy_router)
 app.include_router(repurpose.page_router)
 # Franky /healthz must be mounted unconditionally — UptimeRobot probes this regardless of
 # DISABLE_ROBIN or any other feature flag (ADR-007 §2).
