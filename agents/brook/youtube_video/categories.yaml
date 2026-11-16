@@ -101,12 +101,12 @@ categories:
   - id: doc_highlight
     number: 7
     name: 論文／文件 highlighter
-    when: 引用論文、文件、報導
-    dp: 截圖＋螢光筆逐步劃
+    when: 引用論文、文件、報導（出處填畫面上的資料來源；給 DP 的指示寫文件在哪、哪一頁）
+    dp: HyperFrames（video/compositions/doc_highlight），文件滿版＋黃色螢光筆隨旁白一步步劃；skill youtube-doc-highlight
     kind: overlay
-    layout: either
+    layout: full
     required: [dp_instruction, source]
-    readiness: unverified
+    readiness: ready
     auto: false
     density: true
     covers: true

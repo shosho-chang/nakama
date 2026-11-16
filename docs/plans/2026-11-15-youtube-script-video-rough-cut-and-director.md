@@ -161,7 +161,7 @@
 | 4 | 書封 | 講到書名時由 Director 判斷要不要出現，**不限次數**。修修：「把書封只能出現一次這個限制拿掉好了」 | 已做好：`video/compositions/book_cover_frame`、skill `youtube-book-cover`（2026-11-15 定版：書封＋粗細有變化的細橘框、兩角同時畫框；只做疊加、固定在右側） |
 | 5 | 解釋動畫 | 較長的解釋段落（如六個階層），Director 寫 prompt，DP 用 HyperFrames 做 | 部分：`bigstat`、`concept_card` |
 | 6 | Stock footage | Director 寫描述，DP 找素材 | 待查證 |
-| 7 | 論文／文件 highlighter | 截圖＋螢光筆逐步劃 | 待查證 |
+| 7 | 論文／文件 highlighter | 截圖＋螢光筆逐步劃 | 已做好：`video/compositions/doc_highlight`、skill `youtube-doc-highlight`（2026-11-16 定版：修修過去成片「截圖＋黃 highlight 隨旁白移動」配方，品牌冷灰滿版、白紙文件疊在左上右下 p24 碎片上、鏡頭推近到劃的地方；劃的位置用 PDF 文字層自動找，DP 寫 `visual_sources/<row_id>.json`） |
 | 8 | 金句卡 | 整句原話＋出處 | 已做好：`video/compositions/quote_dim`、skill `youtube-quote-card`（2026-11-16 定版：錄影壓暗、白色大字逐行滑入、橘色出處，右下角探進品牌手冊 p24 碎片；停留 4–9 秒，不插入時間。舊 `quote_card` 是長精華紙卡，不用） |
 | 9 | 修修自己的素材 | 修修提供 | 不需製作 |
 | 10 | 自家舊片導流 | 舊片縮圖 inset | 待查證 |

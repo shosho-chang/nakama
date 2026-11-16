@@ -61,6 +61,7 @@ bleach>=6.1               # HTML sanitize allowlist for vault-sourced markdown
 slack-bolt>=1.18.0
 slack-sdk>=3.27.0
 pypdf>=5.0             # Gateway: 讀 Gmail 轉 Slack 的信件 PDF 附檔
+pypdfium2>=4.30        # YouTube 文件螢光筆：PDF 渲染＋文字定位（Apache-2.0／BSD）
 
 # Nami: Google Calendar
 google-auth-oauthlib>=1.2.0        # OAuth consent flow（user-consent, not service account）

@@ -1,0 +1,161 @@
+<!doctype html>
+<!-- 第 7 類「論文／文件 highlighter」（YouTube 照稿影片，滿版疊在錄影上、不插入時間）。修修 2026-11-16 定版：
+     - 配方：修修過去成片「文獻＝截圖＋黃 highlight 隨旁白逐步移動」
+       （docs/research/editing-grammar/2026-07-18-shoshotw-editing-grammar.md）。
+       三款（滿版黃色螢光筆／人讓到左邊＋右側文件視窗／錄影壓暗＋聚光框）裡修修選滿版黃色螢光筆，
+       「出場的動畫以及在畫面上的顯示樣式，想要再有一些設計感」→ 三種（角落碎片／疊紙／掃描揭露）選角落碎片，
+       「讓文件疊在品牌的 pattern 上面，這樣不怕被遮到了」。
+     - 版面：品牌冷灰 #dddddb 滿版，沿碎片斜邊方向從右下刷進來；白紙文件浮上來；
+       左上、右下兩角探進品牌手冊 brand-identity.pdf 第 24 頁「影片開頭」右下 3 塊碎片
+       （跟小標題 section_title 同一組：右下原樣、左上沿畫面對角線翻面；原樣不重畫），碎片在紙的下面。
+       左下橘色「資料來源」字牌＋出處。
+     - 螢光筆：黃色 #ffe14a（multiply），一步一步劃（字左→右刷、整欄上→下刷），上一步的淡掉；
+       鏡頭推近到這一步劃的地方（最多 1:1，不放大到糊），劃整欄時退回看整張。
+     - 退場：show_sec − 0.6 秒起紙往下掉、碎片縮回角外，灰底斜著刷掉；最後一格前完全透明。
+     被否決過：人讓到左邊＋右側文件視窗、錄影壓暗＋聚光框；疊紙、掃描揭露；碎片蓋在紙上面。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"img","type":"string","label":"文件圖（data URI）","default":""},
+    {"id":"doc_w","type":"number","label":"文件圖寬（px）","default":1000},
+    {"id":"doc_h","type":"number","label":"文件圖高（px）","default":600},
+    {"id":"marks","type":"string","label":"螢光筆範圍 JSON：{名稱: [x, y, w, h, 種類]}，種類 text／column","default":"{}"},
+    {"id":"steps","type":"string","label":"步驟 JSON：[[秒數, [名稱…]]…]","default":"[]"},
+    {"id":"source","type":"string","label":"出處","default":""},
+    {"id":"show_sec","type":"number","label":"停留秒數","default":8}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <style>
+      @font-face { font-family: "Noto Sans TC Black"; font-weight: 900; font-display: block;
+        src: url("assets/fonts/noto-sans-tc/NotoSansTC-Black.woff2") format("woff2"); }
+      :root { --orange: #f57331; --gray: #dddddb; --ink: #282525; --marker: #ffe14a;
+        --font-display: "Noto Sans TC Black", "Noto Sans TC", "Source Han Sans TC", sans-serif; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden;
+        font-family: var(--font-display); font-weight: 900; color: var(--ink); }
+      #bg { position: absolute; inset: 0; background: var(--gray); }
+      svg { position: absolute; inset: 0; }
+      #sheet { position: absolute; left: 120px; top: 92px; width: 1680px; height: 840px; overflow: hidden; background: #fff; }
+      #cam { position: absolute; left: 0; top: 0; transform-origin: 0 0; background: #fff; }
+      #cam img { display: block; }
+      .hl { position: absolute; mix-blend-mode: multiply; border-radius: 6px; background: var(--marker); }
+      #src { position: absolute; left: 120px; top: 968px; display: flex; align-items: center; gap: 14px;
+        white-space: nowrap; font-size: 24px; }
+      #src b { flex: none; white-space: nowrap; color: #fff; background: var(--orange); padding: 6px 16px 7px;
+        clip-path: polygon(6% 0%, 100% 0%, 94% 100%, 0% 100%); font-size: 22px; font-weight: 900; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="doc_highlight"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60">
+      <div id="bg"></div>
+      <!-- 碎片在紙的下面：文件疊在品牌 pattern 上，碎片不會遮到文件 -->
+      <svg id="shards" width="1920" height="1080" viewBox="0 0 1920 1080" aria-hidden="true"></svg>
+      <div id="sheet"><div id="cam"><img id="img" alt="" /></div></div>
+      <div id="src"><b>資料來源</b><span id="srctext"></span></div>
+    </div>
+    <script>
+      // 手冊 p24 「影片開頭」右下角 3 塊（已換算成 1920×1080 座標；與小標題、章節卡 POLYS 第 1、4、5 塊相同）
+      const BR = [[[1683.5,751.5],[1920.1,845.5],[1920.1,661.9],[1733.5,598.4]],[[1399.4,959.4],[1542.0,1080.1],[1832.8,1080.1],[1479.8,831.0]],[[1626.0,860.3],[1782.6,1080.1],[1920.1,1080.1],[1920.1,973.8],[1808.7,780.6]]];
+      const PUSH_X = 160, PUSH_Y = PUSH_X * 0.68, FROM_X = 360, FROM_Y = 240; // 同小標題
+      const SHEET_W = 1680, SHEET_H = 840;
+      const V = { x: 34, y: 30, w: 1612, h: 780 }; // 紙裡鏡頭可用的範圍
+      const v = (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const DW = Number(v.doc_w ?? 1000), DH = Number(v.doc_h ?? 600);
+      const MARKS = JSON.parse(v.marks || "{}");
+      const STEPS = JSON.parse(v.steps || "[]");
+      const S = Number(v.show_sec ?? 8);
+      const OUT = S - 0.6;
+      const $ = (id) => document.getElementById(id);
+      const img = $("img");
+      img.src = v.img || ""; img.width = DW; img.height = DH;
+      const cam = $("cam");
+      cam.style.width = DW + "px"; cam.style.height = DH + "px";
+      $("srctext").textContent = String(v.source || "");
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["doc_highlight"] = tl;
+
+      // 鏡頭：把這一步劃的範圍放進 V，最多 1:1；劃整欄或沒有範圍時看整張
+      function camFor(names) {
+        let b = { x: 0, y: 0, w: DW, h: DH };
+        const ms = names.map((n) => MARKS[n]).filter(Boolean);
+        if (ms.length && !ms.some((m) => m[4] === "column")) {
+          const x0 = Math.min(...ms.map((m) => m[0])), y0 = Math.min(...ms.map((m) => m[1]));
+          const x1 = Math.max(...ms.map((m) => m[0] + m[2])), y1 = Math.max(...ms.map((m) => m[1] + m[3]));
+          const pad = 0.055 * DW;
+          b = { x: x0 - pad, y: y0 - pad * 1.6, w: x1 - x0 + pad * 2, h: y1 - y0 + pad * 3.2 };
+        }
+        const fit = Math.min(V.w / DW, V.h / DH);
+        const s = Math.max(fit, Math.min(V.w / b.w, V.h / b.h, 1));
+        let x = V.x + V.w / 2 - s * (b.x + b.w / 2), y = V.y + V.h / 2 - s * (b.y + b.h / 2);
+        const cl = (p, lo, hi) => Math.min(hi, Math.max(lo, p));
+        x = s * DW > V.w ? cl(x, V.x + V.w - s * DW, V.x) : V.x + (V.w - s * DW) / 2;
+        y = s * DH > V.h ? cl(y, V.y + V.h - s * DH, V.y) : V.y + (V.h - s * DH) / 2;
+        return { x, y, scale: s };
+      }
+      gsap.set(cam, camFor([]));
+
+      // 進場：冷灰沿碎片斜邊方向從右下刷進來 → 紙浮上來 → 碎片從角外探進來 → 出處
+      tl.fromTo("#bg", { clipPath: "polygon(130% 0%, 130% 0%, 100% 100%, 100% 100%)" },
+        { clipPath: "polygon(-30% 0%, 130% 0%, 100% 100%, 0% 100%)", duration: 0.45, ease: "power2.inOut" }, 0);
+      tl.fromTo("#sheet", { y: 90, opacity: 0 }, { y: 0, opacity: 1, duration: 0.45, ease: "power3.out" }, 0.2);
+      const NS = "http://www.w3.org/2000/svg";
+      const pieces = [];
+      const polygon = (pts) => {
+        const el = document.createElementNS(NS, "polygon");
+        el.setAttribute("fill", "#f57331"); // SVG 屬性不吃 CSS 變數
+        el.setAttribute("points", pts.map(([x, y]) => x + "," + y).join(" "));
+        $("shards").appendChild(el);
+        return el;
+      };
+      BR.forEach((pts) => {
+        const k = 3000 - pts.reduce((a, p) => a + p[0] + p[1], 0) / pts.length; // 越靠角落越先進場
+        pieces.push({ el: polygon(pts.map(([x, y]) => [1080 - y, 1920 - x])), d: -1, k }); // 左上：沿對角線翻面
+        pieces.push({ el: polygon(pts), d: 1, k });
+      });
+      // 「角外」那個位置右下第 2 塊的尖端其實還露在畫面裡（約 x 1834–1852、y 1071–1079），
+      // 所以進場前、退場後都把碎片藏起來，第一格和最後一格才會全透明
+      pieces.sort((a, b) => a.k - b.k).forEach((p, i) => {
+        const at = 0.32 + 0.03 * (i % 4);
+        gsap.set(p.el, { opacity: 0 });
+        tl.set(p.el, { opacity: 1 }, at);
+        tl.fromTo(p.el, { x: p.d * FROM_X, y: p.d * FROM_Y },
+          { x: p.d * PUSH_X, y: p.d * PUSH_Y, duration: 0.3, ease: "power3.out" }, at);
+        tl.to(p.el, { x: p.d * FROM_X, y: p.d * FROM_Y, duration: 0.22, ease: "power2.in" }, OUT);
+        tl.set(p.el, { opacity: 0 }, OUT + 0.22);
+      });
+      tl.fromTo("#src", { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.3, ease: "power3.out" }, 0.55);
+
+      // 螢光筆：一步一步劃，上一步的淡掉；鏡頭推近到這一步
+      const els = {};
+      const make = (name) => {
+        const [x, y, w, h, kind] = MARKS[name];
+        const d = document.createElement("div");
+        d.className = "hl";
+        d.style.cssText = `left:${x}px;top:${y}px;width:${w}px;height:${h}px;opacity:${kind === "column" ? 0.32 : 0.85}`;
+        cam.appendChild(d);
+        return { d, col: kind === "column" };
+      };
+      let active = [];
+      STEPS.forEach(([t, names]) => {
+        active.filter((n) => !names.includes(n)).forEach((n) => tl.to(els[n].d, { opacity: 0, duration: 0.25 }, t));
+        names.filter((n) => !active.includes(n)).forEach((n, k) => {
+          const e = (els[n] = els[n] || make(n));
+          tl.fromTo(e.d, { clipPath: e.col ? "inset(0 0 100% 0)" : "inset(0 100% 0 0)" },
+            { clipPath: "inset(0 0% 0% 0)", duration: e.col ? 0.45 : 0.35, ease: "power2.inOut" }, t + 0.12 + k * 0.18);
+        });
+        tl.to(cam, { ...camFor(names), duration: 0.6, ease: "power2.inOut" }, t);
+        active = names;
+      });
+
+      // 退場：紙往下掉、碎片縮回角外（上面），灰底斜著刷掉——最後一格前全透明
+      tl.to(["#sheet", "#src"], { y: 60, opacity: 0, duration: 0.3, ease: "power2.in" }, OUT);
+      tl.to("#bg", { clipPath: "polygon(-30% 0%, -30% 0%, 0% 100%, 0% 100%)", duration: 0.33, ease: "power2.in" }, S - 0.4);
+      tl.to({}, { duration: 60 }, 0);
+    </script>
+  </body>
+</html>
