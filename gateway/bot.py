@@ -229,6 +229,11 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
         if (not thread_ts or thread_ts == msg_ts or conv is None) and not is_dm:
             return
 
+        # 私訊先給 handler 攔截的機會（Sanji：會議紀錄核准／修改、行動項目「做完了」），
+        # 攔下來就不進多輪流程、也不當新請求
+        if is_dm and _preempt_dm(agent_name, event, say, conv):
+            return
+
         if conv is None:
             if not is_dm:
                 return
@@ -312,6 +317,28 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
             get_store().update(thread_ts, result.continuation.state)
 
     return _handle
+
+
+def _preempt_dm(agent_name: str, event: dict, say: Callable, conv) -> bool:
+    text = (event.get("text") or "").strip()
+    user_id = event.get("user", "")
+    if not text or not is_allowed(agent_name, user_id):
+        return False
+    handler = get_handler(agent_name)
+    if handler is None:
+        return False
+    in_flow = conv is not None and conv.agent_name == agent_name and conv.user_id == user_id
+    try:
+        result = handler.preempt_dm(text, user_id, in_flow=in_flow)
+    except Exception:  # noqa: BLE001 — 攔截失敗就照原本流程，不讓私訊沒回應
+        logger.exception(f"[{agent_name}] preempt_dm failed")
+        return False
+    if result is None:
+        return False
+    logger.info(f"[{agent_name}] DM preempted: user={user_id} text='{text[:50]}'")
+    fallback, blocks = format_agent_response(agent_name, result.text, "general")
+    say(text=fallback, blocks=blocks)
+    return True
 
 
 def _create_bot_app(agent_name: str, bot_token: str) -> App:
