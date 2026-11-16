@@ -115,7 +115,7 @@ categories:
     number: 8
     name: 金句卡
     when: 整句原話
-    dp: HyperFrames（quote_card）
+    dp: HyperFrames（video/compositions/quote_dim）；skill youtube-quote-card
     kind: overlay
     layout: full
     required: [onscreen_text]
