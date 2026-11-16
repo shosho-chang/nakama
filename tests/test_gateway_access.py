@@ -89,6 +89,7 @@ def _handler():
     h = MagicMock()
     h.handle.return_value = SimpleNamespace(text="ok", continuation=None)
     h.can_handle.return_value = True
+    h.preempt_dm.return_value = None
     return h
 
 

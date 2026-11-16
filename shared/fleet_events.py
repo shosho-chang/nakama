@@ -1,5 +1,9 @@
 """呼叫 freedom-fleet 的 ``python -m fleet.events``——Sanji 建活動／開會議的執行端。
 
+另有 ``minutes_dm``：私訊 Sanji 的話先問 ``fleet.minutes.tracker``，是不是會議紀錄審核
+（曉宣核准／要改）或行動項目（「1 做完了」）的事（2026-11-17，見 freedom-fleet
+``docs/runbooks/minutes-review.md``）。
+
 ADR-071 分工 B（2026-11-16 修修裁決）：nakama 只管 Slack 對話；開 Zoom、做封面、發待審核
 活動都在 freedom-fleet repo 執行。兩個 repo 在 VPS 上是同一台機器、同一個執行身分（root），
 所以用子行程呼叫，stdin/stdout 交換 JSON（契約見 freedom-fleet ``fleet/events/cli.py``）。
@@ -61,25 +65,37 @@ def run(command: str, payload: dict[str, Any]) -> dict[str, Any]:
     """執行 ``python -m fleet.events <command>``，回傳成功的輸出 JSON。失敗丟 FleetEventsError。"""
     if command not in TIMEOUTS_S:
         raise ValueError(f"unknown fleet.events command: {command}")
+    return _call(
+        "fleet.events",
+        command,
+        payload,
+        timeout=TIMEOUTS_S[command],
+        side_effect=command in _SIDE_EFFECT_COMMANDS,
+    )
+
+
+def _call(
+    module: str, command: str, payload: dict[str, Any], *, timeout: float, side_effect: bool
+) -> dict[str, Any]:
     root, python = _paths()
     if not root.is_dir():
         raise FleetEventsError(f"找不到 freedom-fleet 目錄：{root}（設定 FREEDOM_FLEET_DIR）")
 
     try:
         proc = subprocess.run(
-            [python, "-m", "fleet.events", command],
+            [python, "-m", module, command],
             input=json.dumps(payload, ensure_ascii=False),
             capture_output=True,
             text=True,
             encoding="utf-8",
             cwd=str(root),
             env=_child_env(),
-            timeout=TIMEOUTS_S[command],
+            timeout=timeout,
         )
     except subprocess.TimeoutExpired as exc:
         raise FleetEventsError(
-            f"freedom-fleet {command} 逾時（{TIMEOUTS_S[command]:.0f}s）",
-            maybe_done=command in _SIDE_EFFECT_COMMANDS,
+            f"freedom-fleet {command} 逾時（{timeout:.0f}s）",
+            maybe_done=side_effect,
         ) from exc
     except OSError as exc:  # 找不到 python 執行檔等：一定沒執行
         raise FleetEventsError(f"無法啟動 freedom-fleet：{exc}") from exc
@@ -91,10 +107,10 @@ def run(command: str, payload: dict[str, Any]) -> dict[str, Any]:
         out = None
     if not isinstance(out, dict):
         tail = (proc.stderr or "").strip()[-300:]
-        logger.error(f"fleet.events {command} bad output rc={proc.returncode} stderr={tail!r}")
+        logger.error(f"{module} {command} bad output rc={proc.returncode} stderr={tail!r}")
         raise FleetEventsError(
             f"freedom-fleet {command} 沒回傳結果（exit {proc.returncode}）",
-            maybe_done=command in _SIDE_EFFECT_COMMANDS,
+            maybe_done=side_effect,
         )
     if not out.get("ok"):
         raise FleetEventsError(
@@ -102,3 +118,27 @@ def run(command: str, payload: dict[str, Any]) -> dict[str, Any]:
             maybe_done=bool(out.get("maybe_created")),
         )
     return out
+
+
+MINUTES_DM_TIMEOUT_S = 20.0
+
+
+def minutes_dm(user_id: str, text: str, *, in_flow: bool) -> str | None:
+    """私訊 Sanji 的話是不是會議紀錄審核／行動項目的事（``fleet.minutes.tracker dm``）。
+
+    是 → 回 Sanji 要回的話；不是、或 freedom-fleet 出錯 → None（照原本流程處理，不擋聊天）。
+    """
+    try:
+        out = _call(
+            "fleet.minutes.tracker",
+            "dm",
+            {"user": user_id, "text": text, "in_flow": in_flow},
+            timeout=MINUTES_DM_TIMEOUT_S,
+            side_effect=True,
+        )
+    except FleetEventsError as exc:
+        logger.error(f"minutes dm check failed: {exc}")
+        return None
+    if not out.get("handled"):
+        return None
+    return str(out.get("reply") or "") or None

@@ -11,13 +11,16 @@ facade 依 MODEL_SANJI env 自動把 Sanji 路到 Grok（見 shared/llm_router.p
 - 開內部會議：含開會關鍵字（``sanji_meeting.TRIGGER_KEYWORDS``）→ ``sanji_meeting``
   （flow_name = ``internal_meeting``，只開 Zoom＋Slack 提醒）
 其他訊息照舊走聊天。
+
+私訊另外先問 freedom-fleet（``preempt_dm``）：會議紀錄送審中，核准人（曉宣）回「核准」或說要改哪裡；
+有行動項目的人回「1 做完了」「待辦」——這些由 freedom-fleet 記錄，Sanji 只轉回覆。
 """
 
 from __future__ import annotations
 
 from gateway.handlers import sanji_event, sanji_meeting
 from gateway.handlers.base import BaseHandler, HandlerResponse
-from shared import agent_memory
+from shared import agent_memory, fleet_events
 from shared.llm import ask
 from shared.llm_context import set_current_agent
 from shared.log import get_logger
@@ -65,6 +68,15 @@ class SanjiHandler(BaseHandler):
             reply = f"（抱歉，廚房臨時出狀況：{e}。稍後再試一次。）"
 
         return HandlerResponse(text=reply)
+
+    def preempt_dm(self, text: str, user_id: str, *, in_flow: bool) -> HandlerResponse | None:
+        """會議紀錄審核／行動項目的私訊先交給 freedom-fleet 判斷；建活動、開會議照原本流程。"""
+        if not text.strip():
+            return None
+        if sanji_event.is_event_request(text) or sanji_meeting.is_meeting_request(text):
+            return None
+        reply = fleet_events.minutes_dm(user_id, text, in_flow=in_flow)
+        return HandlerResponse(text=reply) if reply else None
 
     def continue_flow(
         self,

@@ -62,6 +62,13 @@ class BaseHandler(ABC):
             f"{self.__class__.__name__} does not implement continue_flow (flow_name={flow_name!r})"
         )
 
+    def preempt_dm(self, text: str, user_id: str, *, in_flow: bool) -> HandlerResponse | None:
+        """私訊進來時，先於多輪流程／新請求攔下來處理的機會。預設不攔。
+
+        ``in_flow``：這個人目前正在跟本 agent 走某個多輪流程。回 None = 照原本路由。
+        """
+        return None
+
     def suggest_redirect(self, intent: str) -> str | None:
         """此 agent 無法處理時，建議轉介給誰。"""
         from gateway.router import INTENT_TO_AGENT
