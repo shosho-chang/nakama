@@ -54,7 +54,11 @@
 
 修修：「可以」（沿用現有樣式）。
 
-- 用現有「Shosho YT」字幕樣式。Resolve 程式介面不能設字幕樣式，樣式靠 DRT 模板 `E:\nakama\data\resolve\subtitle-template.drt` 帶入（`resolve-project` skill「字幕樣式 preset」節）。
+- 用現有「Shosho YT」字幕樣式。Resolve 程式介面不能設字幕樣式，樣式靠 DRT 模板帶入（`resolve-project` skill「字幕樣式 preset」節）。
+  - **YouTube 用 29.97 的模板 `E:\nakama\data\resolve\subtitle-template-2997.drt`**，不能用 podcast 的 `subtitle-template.drt`：DRT 自帶幀率、匯入後改不動，podcast 那份是 30 fps，YouTube 錄影是 29.97 drop-frame——混用時畫面每秒漂千分之一、字幕到片尾晚 1 秒（2026-11-16《財富階梯》流程測試實測）。
+  - 29.97 模板做法：在 29.97 專案建空時間軸 → 放一句字幕 → Inspector 右上「⋯」→ Shosho YT → Load Preset → 刪掉那句 → `Timeline.Export(…, EXPORT_DRT)`。
+  - 專案幀率只能在全新專案、還沒匯入東西時設（之後鎖住）；播放幀率（Playback frame rate）程式介面設不進去，新專案要在專案設定手動改成 29.97。
+  - 程式：`agents/brook/youtube_video/timeline.py`（從初剪剪點建「v1 初剪」）。
 - 每一版時間軸都**從模板建立**；字幕軌只換內容、不可刪除重建（樣式掛在軌上）。
 
 ### 1.4 稿的快照
