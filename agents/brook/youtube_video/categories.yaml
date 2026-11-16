@@ -245,7 +245,7 @@ categories:
   - id: section_title
     name: 小標題遮罩
     when: 稿上每個 `###` 自動產生，放在該段第一句
-    dp: HyperFrames（transition_title_wide，style=scrim）
+    dp: HyperFrames（video/compositions/section_title）；skill youtube-section-title
     kind: overlay
     layout: full
     required: [onscreen_text]
