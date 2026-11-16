@@ -5,7 +5,7 @@
        （章節卡 POLYS 第 1、4、5 塊，原樣，不重畫）；左上＝同一組沿畫面對角線翻面，讓兩角方塊寬度、形狀一致。
        修修：「左上角的 pattern 跟右下角的 pattern，它的方塊寬度以及形狀是不一樣的，這樣會變得很奇怪」→ 選了翻面這版。
      - 兩團碎片停住時整團往各自的角外推 160px（橫）／109px（縱），只露一點。修修：「160 還不錯」。
-     - 動作：遮罩淡入、碎片從角外探進來，標題一個字一個字往上浮；2.2 秒起字先淡掉、碎片縮回角外、遮罩淡出。
+     - 動作：遮罩淡入、碎片從角外探進來，標題一個字一個字往上浮；2.2 秒起字先淡掉、碎片縮回角外、遮罩淡出；第一格與最後一格全透明。
      - 標題：白色思源黑體 Black 一行，水平置中、中心在 y=440；font_px 由程式依字數算（最大 96px）。
      被否決過：裁切／縮小／四角碎片、左上用 p24 自己的左上碎片（擠成一團）、扇形排開、轉 180°、轉 ±20°。 -->
 <html lang="zh-Hant"
@@ -77,6 +77,10 @@
       window.__timelines["section_title"] = tl;
       const OUT = 2.2;
       tl.fromTo("#scrim", { opacity: 0 }, { opacity: 1, duration: 0.18, ease: "power1.out" }, 0);
+      // 「角外」那個位置右下第 2 塊的尖端其實還露在畫面裡（約 x 1834–1852、y 1071–1079），
+      // 所以第一格（t=0）和退場縮回之後把碎片藏起來，首尾兩格才會全透明
+      pieces.forEach((p) => gsap.set(p.el, { opacity: 0 }));
+      tl.set(pieces.map((p) => p.el), { opacity: 1 }, 0.001);
       pieces.sort((a, b) => a.k - b.k).forEach((p, i) => {
         tl.fromTo(p.el, { x: p.d * FROM_X, y: p.d * FROM_Y },
           { x: p.d * PUSH_X, y: p.d * PUSH_Y, duration: 0.28, ease: "power3.out" }, 0.03 * (i % 4));
@@ -86,7 +90,9 @@
       // 退場：字先淡掉、碎片縮回角外、遮罩最後淡出
       tl.to("#title", { opacity: 0, duration: 0.14, ease: "power1.in" }, OUT);
       pieces.forEach((p) => tl.to(p.el, { x: p.d * FROM_X, y: p.d * FROM_Y, duration: 0.22, ease: "power2.in" }, OUT));
-      tl.to("#scrim", { opacity: 0, duration: 0.2, ease: "power1.in" }, OUT + 0.08);
+      tl.set(pieces.map((p) => p.el), { opacity: 0 }, OUT + 0.22);
+      // 遮罩在最後一格（2.469s）之前淡完
+      tl.to("#scrim", { opacity: 0, duration: 0.2, ease: "power1.in" }, OUT + 0.04);
       tl.to({}, { duration: 2.5 }, 0);
     </script>
   </body>
