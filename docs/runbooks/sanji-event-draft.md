@@ -37,6 +37,13 @@ nakama 的金鑰不會流過去。
 
 Slack 前提：Sanji app 要有 `files:read`（下載附圖）與 `chat:write`（排提醒），而且要在 #freedom-fleet 頻道裡。
 
+## 在 VPS 手動自測（不經 Slack）
+
+Sanji 在 gateway 裡的 Claude 呼叫走**訂閱額度**（Agent SDK）：`gateway/__main__.py` 啟動時
+`set_runtime_group("gateway")`，`shared/llm.py` 的 `L1_CUTOVER_GROUPS` 才會把呼叫切到 L1。
+自己寫腳本跑 `SanjiHandler` 時**一定要先** `set_runtime_group("gateway")`，否則會掉到 Anthropic API
+（按量計費）路徑。
+
 ## 安全設計
 
 - 文案逐字照抄：LLM 解析出的文案若不是使用者原文的片段，退回用原文。
@@ -51,7 +58,7 @@ Slack 前提：Sanji app 要有 `files:read`（下載附圖）與 `chat:write`�
 | --- | --- |
 | 「這則活動資訊我沒整理成功」 | LLM 呼叫失敗或沒回 JSON；看 gateway log `event_parse ask failed`。 |
 | 確認卡「預覽：這次沒產生成功」 | freedom-fleet `cover` 失敗；看訊息，常見是字型（VPS 要有 fonts-noto-cjk-extra）。 |
-| 封面沒有 AI 插畫 | freedom-fleet `.env` 沒有 `OPENAI_API_KEY`（2026-11-16 時 VPS 兩邊都沒設）。 |
+| 封面沒有 AI 插畫 | freedom-fleet `.env` 沒有 `OPENAI_API_KEY`（2026-11-16 已補上並實測生圖成功）；錯誤訊息會寫「缺 OpenAI API key」。 |
 | 「找不到 freedom-fleet 目錄」「無法啟動 freedom-fleet」 | `FREEDOM_FLEET_DIR` / `FREEDOM_FLEET_PYTHON` 錯。 |
 | 卡在「發待審核活動」，HTTP 403 | sanji 帳號缺 `fleet_community_events` 權限，或不是該 space 成員。 |
 | 內部會議卡在「排 Slack 提醒」，`not_in_channel` | Sanji bot 沒被加進提醒頻道。 |
