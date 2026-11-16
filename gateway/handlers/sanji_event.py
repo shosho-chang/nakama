@@ -80,6 +80,9 @@ _IMAGE_LINE_RE = re.compile(
 )
 
 _KINDS = ("book_club", "live", "meetup")
+# 活動網址（社群貼文＋活動內頁共用）預設「日期＋類型」，修修 2026-11-16 選定
+_KIND_SLUGS = {"book_club": "book-club", "live": "live", "meetup": "meetup"}
+_SLUG_MAX = 80
 _REQUIRED = ("title", "start", "description")
 _MISSING_LABELS = {
     "title": "活動名稱",
@@ -251,6 +254,23 @@ def cover_date_label(event: dict) -> str:
     return f"{place}・{when}" if place else when
 
 
+def clean_slug(value: Any) -> str:
+    """使用者指定的網址 → 小寫英數與 -；不合格回空字串（改用預設）。"""
+    s = re.sub(r"[^a-z0-9]+", "-", str(value or "").strip().lower()).strip("-")
+    return s[:_SLUG_MAX].strip("-")
+
+
+def event_slug(event: dict) -> str:
+    """實際要用的網址：使用者指定的優先，否則「YYYY-MM-DD-類型」。日期沒定就回空字串。"""
+    custom = clean_slug(event.get("slug"))
+    if custom:
+        return custom
+    start = _parse_dt(event.get("start"))
+    if start is None:
+        return ""
+    return f"{start.strftime('%Y-%m-%d')}-{_KIND_SLUGS.get(event.get('kind'), 'event')}"
+
+
 def _duration_min(event: dict) -> int:
     start = _parse_dt(event.get("start"))
     end = _parse_dt(event.get("end"))
@@ -419,6 +439,8 @@ def normalize_event(
         if kind == "book_club"
         else str(data.get("illustration_topic") or "").strip(),
         "send_announcement_email": data.get("send_announcement_email") is True,
+        # 只存使用者「明確指定」的網址；空字串＝用預設（日期＋類型，改日期會跟著變）
+        "slug": clean_slug(data.get("slug")),
         "missing": [m for m in _REQUIRED if m in missing],
         "description_fallback": desc_fallback,
     }
@@ -513,6 +535,7 @@ def build_card(state: dict) -> str:
         f"時間：{when}",
         f"形式：{where}",
         f"發在：{space_label or '（未設定，建不了）'}",
+        f"網址：{event_slug(event)}（要改就說「網址改成 xxx」，只能用英數和 -）",
         f"公告信：{announce}",
         "封面：",
         f"・小標：{event.get('cover_eyebrow')}",
@@ -761,6 +784,7 @@ def _post_payload(state: dict, space: str) -> dict:
         fe["address"] = event.get("address", "")
     return {
         "space": space,
+        "slug": event_slug(event),
         # 貼文本文 = 活動文案：待審核時管理者在動態上就讀得到內容
         "message": event["description"],
         "send_announcement_email": bool(event.get("send_announcement_email")),
