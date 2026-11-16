@@ -162,7 +162,7 @@
 | 5 | 解釋動畫 | 較長的解釋段落（如六個階層），Director 寫 prompt，DP 用 HyperFrames 做 | 部分：`bigstat`、`concept_card` |
 | 6 | Stock footage | Director 寫描述，DP 找素材 | 待查證 |
 | 7 | 論文／文件 highlighter | 截圖＋螢光筆逐步劃 | 待查證 |
-| 8 | 金句卡 | | 有：`quote_card` |
+| 8 | 金句卡 | 整句原話＋出處 | 已做好：`video/compositions/quote_dim`、skill `youtube-quote-card`（2026-11-16 定版：錄影壓暗、白色大字逐行滑入、橘色出處，右下角探進品牌手冊 p24 碎片；停留 4–9 秒，不插入時間。舊 `quote_card` 是長精華紙卡，不用） |
 | 9 | 修修自己的素材 | 修修提供 | 不需製作 |
 | 10 | 自家舊片導流 | 舊片縮圖 inset | 待查證 |
 | 11 | 他人影片引用 | 下載指定片段＋出處；**上時間軸靜音、下載保留原聲**。修修：「當然是靜音的，但是下載下來的時候，其實可以連聲音一起下載。」 | 待查證 |
