@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · 畫面規劃表 · {{ episode }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-video-plan.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll" data-filter="all">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='') }}
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="vp-i-undo" viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10a6 6 0 0 1 0 12h-3"/></symbol>
+  <symbol id="vp-i-trash" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M10 11v6M14 11v6"/><path d="M6 7l1 13h10l1-13"/><path d="M9 7V4h6v3"/></symbol>
+  <symbol id="vp-i-plus" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></symbol>
+  <symbol id="vp-i-minus" viewBox="0 0 24 24"><path d="M5 12h14"/></symbol>
+  <symbol id="vp-i-x" viewBox="0 0 24 24"><path d="M6 6l12 12M18 6 6 18"/></symbol>
+</svg>
+
+<header class="page-header vp-head">
+  <div class="nk-caps">/bridge/video-plan · {{ episode }}</div>
+  <h1 class="page-title">畫面規劃表 <span class="zh">{{ episode }}</span></h1>
+  {% if plan %}
+  <dl class="vp-meta" aria-label="規劃表概況">
+    <div><dt>已核准</dt><dd><span data-stat="approved">{{ stats.approved }}</span> / <span data-stat="total">{{ stats.total }}</span></dd></div>
+    <div><dt>待審</dt><dd data-stat="pending">{{ stats.pending }}</dd></div>
+    <div><dt>重排</dt><dd data-stat="rearrange" class="{% if stats.rearrange %}vp-warn{% endif %}">{{ stats.rearrange }}</dd></div>
+    <div><dt>每分鐘畫面</dt><dd>{{ stats.per_minute }}</dd></div>
+    <div><dt>最長空白</dt><dd>{% if longest_anchor %}<a class="sho-lk" href="#{{ longest_anchor }}" data-open-gap="{{ longest_anchor }}">{{ longest_label }}</a>{% else %}—{% endif %}</dd></div>
+  </dl>
+  <nav class="vp-tabs" aria-label="篩選">
+    <button type="button" class="vp-tab" data-filter="all" aria-pressed="true">全部</button>
+    <button type="button" class="vp-tab" data-filter="pending" aria-pressed="false">待審</button>
+    <button type="button" class="vp-tab" data-filter="rearrange" aria-pressed="false">重排</button>
+  </nav>
+  {% endif %}
+</header>
+
+<main class="vp-main">
+{% if not plan %}
+  <section class="vp-empty">
+    <p class="vp-empty-title">這一集還沒有畫面規劃表</p>
+    <p class="sho-mono">Director 交件後會出現在這裡</p>
+  </section>
+{% else %}
+  <ol class="vp-list">
+  {% for kind, item in entries %}
+    {% if kind == 'gap' %}
+    <li class="vp-gap-item">
+      <details class="vp-gap" id="gap-{{ item.gap.cue_ids[0] }}">
+        <summary>
+          <span class="vp-gap-time sho-mono">{{ item.label }}</span>
+          <span class="vp-gap-len">{{ '%.0f'|format(item.gap.seconds) }} 秒沒有畫面</span>
+          <svg class="vp-ic vp-gap-plus" aria-hidden="true"><use href="#vp-i-plus"/></svg>
+          <svg class="vp-ic vp-gap-minus" aria-hidden="true"><use href="#vp-i-minus"/></svg>
+        </summary>
+        <div class="vp-gap-body">
+          <ul class="vp-cues">
+          {% for cue in item.cues %}
+            <li><label><input type="checkbox" value="{{ cue.id }}"><span class="sho-mono">{{ fmt_time(cue.start) }}</span><span>{{ cue.text }}</span></label></li>
+          {% endfor %}
+          </ul>
+          <button type="button" class="sho-btn vp-add" disabled>加畫面</button>
+        </div>
+      </details>
+    </li>
+    {% else %}
+    {% set r = item.row %}
+    <li class="vp-row{% if r.status == 'approved' %} is-approved{% elif r.status == 'rearrange' %} is-rearrange{% endif %}"
+        id="row-{{ r.id }}" data-row-id="{{ r.id }}" data-status="{{ r.status or '' }}" data-kind="{{ r.kind }}">
+      <div class="vp-when">
+        <button type="button" class="vp-time sho-mono" data-time-edit
+                data-start="{{ r.start_cue if r.start_cue is not none else '' }}"
+                data-end="{{ r.end_cue if r.end_cue is not none else '' }}"
+                data-before="{{ r.before_cue if r.before_cue is not none else '' }}"
+                aria-label="改時間 {{ item.time_label }}">{{ item.time_label }}</button>
+        <span class="vp-span sho-mono" data-span>{{ item.span }}</span>
+        <blockquote class="vp-quote" data-quote>{{ item.covered_text }}</blockquote>
+        <div class="vp-flags" data-flags>
+          {% if r.origin == 'auto' %}<span class="lb lb-info">自動</span>{% elif r.origin == 'manual' %}<span class="lb lb-info">新增</span>{% endif %}
+          {% for flag, label in item.flags %}<span class="lb {% if flag == 'awaiting_material' %}lb-warn{% else %}lb-info{% endif %}">{{ label }}</span>{% endfor %}
+        </div>
+      </div>
+
+      <div class="vp-fields">
+        <div class="vp-line">
+          {% if r.origin == 'auto' %}
+            <span class="vp-cat-static">{{ item.category.label }}</span>
+          {% else %}
+          <label class="vp-field vp-field--cat">
+            <span class="vp-label">分類{% if 'category' in item.missing %}<em class="vp-req">必填</em>{% endif %}</span>
+            <select name="category">
+              {% if not r.category %}<option value="" selected disabled>—</option>{% endif %}
+              {% for c in (insert_categories if r.kind == 'insert' else overlay_categories) %}
+              <option value="{{ c.id }}"{% if c.id == r.category %} selected{% endif %}>{{ c.label }}{% if c.readiness in ('unverified', 'future') %}（待製作）{% endif %}</option>
+              {% endfor %}
+            </select>
+          </label>
+          {% endif %}
+          <fieldset class="vp-layout" data-layout {% if item.layout_fixed %}hidden{% endif %}>
+            <legend class="vp-label">版面</legend>
+            <label><input type="radio" name="layout-{{ r.id }}" value="full"{% if r.layout == 'full' %} checked{% endif %}>滿版</label>
+            <label><input type="radio" name="layout-{{ r.id }}" value="overlay"{% if r.layout == 'overlay' %} checked{% endif %}>疊在畫面上</label>
+          </fieldset>
+        </div>
+
+        {% if r.origin != 'auto' %}
+        {% for field in ['description', 'dp_instruction'] %}
+        <label class="vp-field">
+          <span class="vp-label">{{ field_labels[field] }}{% if field in item.missing %}<em class="vp-req">必填</em>{% endif %}</span>
+          <textarea name="{{ field }}" rows="2">{{ r[field] }}</textarea>
+        </label>
+        {% endfor %}
+        {% endif %}
+        <div class="vp-line vp-line--pair">
+          {% for field in (['onscreen_text'] if r.origin == 'auto' else ['onscreen_text', 'source']) %}
+          <label class="vp-field">
+            <span class="vp-label">{{ field_labels[field] }}{% if field in item.missing %}<em class="vp-req">必填</em>{% endif %}</span>
+            <input type="text" name="{{ field }}" value="{{ r[field] }}">
+          </label>
+          {% endfor %}
+        </div>
+
+        <div class="vp-decide">
+          <div class="vp-status" role="radiogroup" aria-label="狀態">
+            <button type="button" role="radio" class="vp-st vp-st--ok" data-status-btn="approved" aria-checked="{{ 'true' if r.status == 'approved' else 'false' }}">核准</button>
+            <button type="button" role="radio" class="vp-st vp-st--re" data-status-btn="rearrange" aria-checked="{{ 'true' if r.status == 'rearrange' else 'false' }}">重排</button>
+          </div>
+          <span class="vp-save sho-mono" data-save aria-live="polite"></span>
+          <div class="vp-acts">
+            {% if r.original %}<button type="button" class="vp-icon" data-restore aria-label="復原成 Director 原版" title="復原"><svg class="vp-ic"><use href="#vp-i-undo"/></svg></button>{% endif %}
+            {% if r.origin != 'auto' %}<button type="button" class="vp-icon vp-icon--danger" data-delete aria-label="刪除這一列" title="刪除"><svg class="vp-ic"><use href="#vp-i-trash"/></svg></button>{% endif %}
+          </div>
+        </div>
+        <label class="vp-field vp-note" {% if r.status != 'rearrange' %}hidden{% endif %}>
+          <span class="vp-label">修正意見</span>
+          <textarea name="note" rows="2" placeholder="重排原因">{{ r.note }}</textarea>
+        </label>
+      </div>
+    </li>
+    {% endif %}
+  {% endfor %}
+  </ol>
+{% endif %}
+</main>
+
+{% if plan %}
+<dialog class="vp-dialog" id="vp-time-dialog" aria-labelledby="vp-time-title">
+  <div class="vp-dialog-head">
+    <h2 id="vp-time-title">時間</h2>
+    <button type="button" class="vp-icon" data-dialog-close aria-label="關閉"><svg class="vp-ic"><use href="#vp-i-x"/></svg></button>
+  </div>
+  <ol class="vp-pick" data-pick></ol>
+  <div class="vp-dialog-foot">
+    <span class="sho-mono" data-pick-summary></span>
+    <button type="button" class="sho-btn" data-pick-ok disabled>確定</button>
+  </div>
+</dialog>
+<script type="application/json" id="vp-cues">{{ cues_json|safe }}</script>
+<script>window.VP_EPISODE = {{ episode|tojson }};</script>
+<script src="/static/shosho/bridge-video-plan.js?v={{ asset_version }}" defer></script>
+{% endif %}
+</body>
+</html>

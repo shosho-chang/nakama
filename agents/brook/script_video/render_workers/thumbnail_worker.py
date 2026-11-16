@@ -38,6 +38,8 @@ import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
+from shared.hyperframes_cli import npx_argv
+
 logger = logging.getLogger(__name__)
 
 _MEASUREMENT_SCHEMA = "nakama.thumbnail_composition_measurement.v1"
@@ -148,15 +150,14 @@ def _build_argv(
     composition: str,
     variables_file: Path,
     frames_dir: Path,
+    video_dir: Path = DEFAULT_VIDEO_DIR,
 ) -> list[str]:
-    """Construct the ``npx hyperframes render`` argv list.
+    """Construct the ``npx --yes hyperframes@<pinned> render`` argv list.
 
     Kept as a pure function so tests can assert the exact arg sequence without
-    actually spawning hyperframes.
+    actually spawning hyperframes. 版本鎖在 video/package.json（見 shared.hyperframes_cli）。
     """
-    return [
-        "npx",
-        "hyperframes",
+    return npx_argv(
         "render",
         composition,
         "--variables-file",
@@ -171,7 +172,8 @@ def _build_argv(
         "standard",
         "--quiet",
         "--no-browser-gpu",
-    ]
+        video_dir=video_dir,
+    )
 
 
 async def _render_still(
@@ -203,7 +205,7 @@ async def _render_still(
         receiver.__enter__()
     variables_file.write_text(json.dumps(variables, ensure_ascii=False), encoding="utf-8")
 
-    argv = _build_argv(composition, variables_file, frames_dir)
+    argv = _build_argv(composition, variables_file, frames_dir, video_dir)
     # Windows 的 npx 是 npx.cmd — CreateProcess 不吃 PATHEXT，spawn 前解析成完整路徑。
     argv[0] = shutil.which(argv[0]) or argv[0]
     logger.info(

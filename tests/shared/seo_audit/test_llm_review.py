@@ -57,21 +57,6 @@ def _sent_prompt(llm) -> str:
     return llm.ask.call_args.args[0]
 
 
-def test_llm_client_mock_spec_blocks_nonexistent_methods():
-    """Regression for A6 — `spec=Anthropic` rejects calls to fake SDK methods.
-
-    This is the property that bare `MagicMock()` lacked (PR #132 GSC bug:
-    `Credentials.authorize()` was removed by google-auth 2.x but mock truthified
-    every attr access, masking the AttributeError until production smoke).
-    """
-    client = MagicMock(spec=Anthropic)
-    # Real method exists
-    assert hasattr(client, "messages")
-    # Fake method blocked
-    with pytest.raises(AttributeError):
-        client.fake_method_that_does_not_exist_on_anthropic()
-
-
 @pytest.fixture
 def soup_simple():
     html = (

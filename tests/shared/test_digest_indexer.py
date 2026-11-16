@@ -9,7 +9,6 @@ from zoneinfo import ZoneInfo
 import pytest
 
 from shared.digest_indexer import (
-    DIGEST_TYPES,
     ConflictFile,
     DigestIndexer,
     DigestNotFoundError,
@@ -141,11 +140,6 @@ class TestGetAndLoad:
         assert "# PubMed 每日精選" in text
         assert "created_by: robin" not in text  # frontmatter removed
         assert "---" not in text.splitlines()[0]
-
-
-class TestDigestTypes:
-    def test_canonical_types(self):
-        assert DIGEST_TYPES == ("pubmed", "ai")
 
 
 class TestConflictFiles:

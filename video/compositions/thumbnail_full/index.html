@@ -105,11 +105,9 @@
       /* 書封模式參考作者訪談封面：中央文案必須壓在麥克風懸臂之上。
          人臉已經外移到左右邊緣，所以不會用文字蓋臉。 */
       #root.book-mode #text-block { z-index: 7; }
-      #root.book-mode #credit {
-        display: table; margin-left: auto; margin-right: auto;
-        padding: 5px 18px 9px; border-radius: 10px;
-        background: rgba(20,20,20,0.68);
-      }
+      /* 書封模式的 credit 不加黑底（修修 2026-11-13，20261111 李惠貞：「畫面已經夠暗了，
+         在來賓的 title 跟姓名後面不需要再加一個黑框」）。書封本來就壓暗當中景，
+         再墊一塊 rgba(20,20,20,0.68) 的圓角底是多的。 */
       #title {
         color: #FFFFFF;
         /* Bold(700) 而非 ExtraBold — 修修 2026-07-29：原本太粗 */
@@ -197,6 +195,8 @@
         "host_y_pct":            { "type": "number", "default": 0 },
         "guest_y_pct":           { "type": "number", "default": 0 },
         "title_max_width":       { "type": "number", "default": 580 },
+        "title_font_px":         { "type": "number", "default": 100 },
+        "title_font_weight":     { "type": "string", "default": "bold" },
         "text_center_pct":       { "type": "number", "default": 50 },
         "text_top_pct":          { "type": "number", "default": 44 },
         "palette":               { "type": "object", "default": {} }
@@ -306,10 +306,24 @@
         }
         titleEl.append(div);
       }
-      // 行寬超出即整塊縮字（不換行）
+      // 字重＝設計系統 LINE Seed TW 的四個 cut。實裝 TTF 的 family name 帶 _TTF
+      // 與字重後綴（見 html/body 的註解），所以字重要換整個 family，不能只改 weight。
+      // 必須在量行寬之前套上：字重不同，行寬就不同。
+      const TITLE_FONT_CUTS = {
+        thin: ["Thin", 100], regular: ["Regular", 400],
+        bold: ["Bold", 700], extrabold: ["ExtraBold", 800],
+      };
+      const [cutName, cutWeight] = TITLE_FONT_CUTS[vars.title_font_weight] || TITLE_FONT_CUTS.bold;
+      titleEl.style.fontFamily = `"LINE Seed TW_TTF ${cutName}", "LINE Seed TW_TTF", ` +
+        `"Noto Sans TC", "Microsoft JhengHei", sans-serif`;
+      titleEl.style.fontWeight = cutWeight;
+
+      // 字級＝title_font_px；行寬超出即整塊縮字（不換行）
+      const basePx = vars.title_font_px || 100;
+      titleEl.style.fontSize = basePx + "px";
       requestAnimationFrame(() => {
         const w = titleEl.scrollWidth;
-        if (w > maxW) titleEl.style.fontSize = Math.floor(100 * maxW / w) + "px";
+        if (w > maxW) titleEl.style.fontSize = Math.floor(basePx * maxW / w) + "px";
         fitHighlightPadding();
       });
 

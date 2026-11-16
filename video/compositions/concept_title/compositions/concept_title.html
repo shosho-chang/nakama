@@ -1,0 +1,97 @@
+<!doctype html>
+<!-- nakama:component concept_title（YouTube 照稿影片第 2 類「重點概念 title」，透明 overlay）
+
+     設計系統：張修修的不正常宇宙（claude.ai Design System，品牌識別手冊 0827）。
+     修修 2026-11-15 逐輪定版：
+       - 白色字牌、黑色思源黑體（Noto Sans TC）Black，字保持水平。
+       - 背後一條品牌碎片 pattern（橘底灰碎片，設計系統原圖 shards-gray-on-orange.png，不重畫）。
+       - 形狀語言「上下兩邊平行、左右兩邊各有一個斜度」（照他 T 恤上那塊），不是旋轉的長方形。
+       - 碎片條有四種形狀，每張卡隨機挑一種（shape 1–4；由程式依列 id 決定，同一列永遠同一種）。
+       - 動作照設計系統：碎片條刷開（snap）→ 字牌拍上（overshoot）→ 快速退場。
+     沒有陰影、沒有圓角、沒有漸層。 -->
+<html
+  lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"text","type":"string","label":"重點概念（一行）","default":"萬分之一法則"},
+    {"id":"shape","type":"number","label":"碎片條形狀 1-4","default":1},
+    {"id":"show_sec","type":"number","label":"顯示秒數","default":3.0},
+    {"id":"center_y","type":"number","label":"字牌中心 0-1","default":0.72},
+    {"id":"font_px","type":"number","label":"字級（px）","default":96}
+  ]'
+>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Noto Sans TC Black";
+        font-weight: 900;
+        font-display: block;
+        src: url("assets/fonts/noto-sans-tc/NotoSansTC-Black.woff2") format("woff2");
+      }
+      :root {
+        --white: #ffffff;
+        --ink-900: #000000;
+        --font-display: "Noto Sans TC Black", "Noto Sans TC", "Source Han Sans TC", sans-serif;
+      }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+      #wrap { position: absolute; left: 960px; }
+      #strip {
+        position: absolute; inset: -0.5em -0.9em;
+        background: url("assets/patterns/shards-gray-on-orange.png") 30% 50% / cover no-repeat;
+        transform-origin: 0% 50%;
+      }
+      /* 四種碎片條：上下平行，左右各一個斜度（左上、右上、右下、左下） */
+      .shape-1 #strip { clip-path: polygon(4% 0%, 100% 0%, 96% 100%, 0% 100%); }   /* / / 往右斜 */
+      .shape-2 #strip { clip-path: polygon(0% 0%, 96% 0%, 100% 100%, 4% 100%); }   /* \ \ 往左斜 */
+      .shape-3 #strip { clip-path: polygon(5% 0%, 95% 0%, 100% 100%, 0% 100%); }   /* 上窄下寬 */
+      .shape-4 #strip { clip-path: polygon(7% 0%, 100% 0%, 98.5% 100%, 0% 100%); } /* 一邊斜、一邊近直 */
+      #plate {
+        position: relative;
+        background: var(--white); color: var(--ink-900);
+        font-family: var(--font-display); font-weight: 900;
+        line-height: 1; letter-spacing: -0.01em; white-space: nowrap;
+        padding: 0.34em 0.62em 0.4em;
+        clip-path: polygon(2% 0%, 100% 0%, 98% 100%, 0% 100%);
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="concept_title"
+      data-width="1920" data-height="1080" data-start="0" data-duration="8">
+      <div id="wrap"><div id="strip"></div><div id="plate"></div></div>
+    </div>
+    <script>
+      const vars = (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const text = String(vars.text ?? "萬分之一法則");
+      const shape = [1, 2, 3, 4].includes(Number(vars.shape)) ? Number(vars.shape) : 1;
+      const showSec = Number(vars.show_sec ?? 3.0);
+      const centerY = Number(vars.center_y ?? 0.72);
+      const fontPx = Number(vars.font_px ?? 96);
+
+      document.getElementById("root").classList.add(`shape-${shape}`);
+      const wrap = document.getElementById("wrap");
+      wrap.style.top = `${centerY * 1080}px`;
+      wrap.style.fontSize = `${fontPx}px`;
+      document.getElementById("plate").textContent = text;
+      gsap.set(wrap, { xPercent: -50, yPercent: -50 });
+
+      const snap = "cubic-bezier(0.2, 0.9, 0.2, 1)";
+      const tl = gsap.timeline();
+      window.__timelines = window.__timelines || {};
+      // 進場：碎片條由左刷開（240ms snap）→ 字牌從微轉的角度拍上、落定水平（220ms overshoot）
+      tl.fromTo("#strip", { scaleX: 0 }, { scaleX: 1, duration: 0.24, ease: snap }, 0);
+      tl.fromTo("#plate", { scale: 1.25, rotation: 5, opacity: 0 },
+        { scale: 1, rotation: 0, opacity: 1, duration: 0.22, ease: "back.out(2.2)" }, 0.14);
+      // 退場：字牌縮掉（120ms）→ 碎片條往右收（140ms），收在 show_sec 之內
+      const out = Math.max(0.9, showSec - 0.2);
+      tl.to("#plate", { scale: 0.9, opacity: 0, duration: 0.12, ease: "power2.in" }, out);
+      tl.set("#strip", { transformOrigin: "100% 50%" }, out + 0.04);
+      tl.to("#strip", { scaleX: 0, duration: 0.14, ease: "power2.in" }, out + 0.04);
+      window.__timelines["concept_title"] = tl;
+    </script>
+  </body>
+</html>

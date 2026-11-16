@@ -1270,3 +1270,37 @@ def write_weekly(
 
     _write_weekly(path, fm, body)
     return weekly_file_token(vault_root, file_key)
+
+
+def delete_task(vault_root: Path, task_slug: str, *, recycle_bin_fn=None) -> bool:
+    """Delete one task: cancel its linked Google Calendar events best-effort,
+    then send the vault file to the recycle bin.
+
+    The single delete rule shared by the Weekly dashboard / task page and the
+    project page's 「刪除專案」 (which removes every member task the same way).
+    Returns True when the file is gone afterwards — False means the recycle-bin
+    call did not take (e.g. the file is locked) and the caller should say so.
+    """
+    from shared import google_calendar
+    from shared.discard_service import _send_to_recycle_bin
+    from shared.weekly_indexer import WeeklyIndexer
+
+    vault_root = Path(vault_root)
+    task_slug = unicodedata.normalize("NFC", task_slug)
+    task = WeeklyIndexer(vault_root).find_task(task_slug)
+    if task is not None:
+        for entry in task.plan:
+            if entry.is_linked:
+                try:
+                    google_calendar.delete_event(entry.event_id)
+                except Exception:  # noqa: BLE001 — vault delete proceeds regardless
+                    logger.warning(
+                        "delete_task: cal event %s not removed for task %s",
+                        entry.event_id,
+                        task_slug,
+                    )
+
+    path = _task_path(vault_root, task_slug)
+    if path.exists():
+        (recycle_bin_fn or _send_to_recycle_bin)(path)
+    return not path.exists()

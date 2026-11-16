@@ -1,6 +1,7 @@
 # ADR-056: Podcast Subtitle V2 — Memo-first production contract
 
-- Status: Superseded for production by ADR-063; retained as legacy forensic design
+- Status: Retired（2026-11-13，owner 裁決）— implementation removed from the repository;
+  superseded for production by ADR-063 since 2026-08-21
 - Date: 2026-08-16
 - Policy revision: 2026-08-19
 - Owners: Brook / Podcast production
@@ -8,12 +9,15 @@
 - Supersedes: ADR-056 revisions before 2026-08-16
 - Retains: ADR-032 exact-copy、ADR-050 D4 provenance
 - Superseded by: ADR-063 Memo Dual-Audit Release V1 (2026-08-21)
+- Retired: 2026-11-13 — see ADR-063「Amendment — 2026-11-13」
 
-> **Historical scope only.** The decision below documents the former Full Subtitle V2 production
-> contract. Podcast E2E must not call this checkpoint／Generation／Verified Projection route by default.
-> It remains readable only through an explicit `legacy-forensic` entry point. The active production
-> decision and migration gates are defined by ADR-063; until its implementation verification finishes,
-> documentation must not claim that the new cutover is already live.
+> **Retired — historical record only.** The decision below documents the former Full Subtitle V2
+> production contract. On 2026-11-13 the owner retired it outright: the checkpoint／Generation／
+> Verified Projection implementation (the deep modules under `agents/brook/podcast_subtitles/`, the
+> `python -m agents.brook.podcast_subtitles` CLI, and their tests) was deleted, and no
+> `legacy-forensic` entry point exists any more. Owner 原話：「這個舊字幕程式直接砍掉吧，現在既然都已經用新的字幕程式在跑，那舊的字幕留著幹嘛？」
+> The active production decision is ADR-063 (Memo Dual-Audit Release V1). Artifacts that old
+> episodes already wrote stay immutable on disk, but this repository can no longer re-verify them.
 
 ## Context
 

@@ -130,21 +130,20 @@
         slot.title = "這次部署讀不到 git commit；無法判斷程式碼是否為最新。";
         return;
       }
-      var uptime = describeUptime(build.uptime_seconds);
-      slot.textContent = build.commit_short + " · 已跑 " + uptime;
-      slot.title =
-        "執行中：" + build.commit + "（" + (build.branch || "?") + "）\n" +
-        "commit 時間：" + (build.committed_at || "?") + "\n" +
-        "啟動時間：" + build.started_at;
-      if (build.stale) {
-        slot.classList.add("is-stale");
-        slot.textContent = "⚠ 需重啟 · 已跑 " + uptime;
-        slot.title =
-          "磁碟上的程式碼已經更新，但這個服務還跑在舊版上。\n" +
-          "執行中：" + build.commit_short + "\n" +
-          "磁碟上：" + build.current_commit_short + "\n" +
-          "重啟 Nakama-ThousandSunny 才會套用。";
+      // 2026-11-12（修修）：commit 代號與「已跑 N 天」對使用者沒意義，平常不顯示。
+      // 只在服務落後磁碟程式碼時才出現「⚠ 需重啟」——那才是這顆晶片存在的理由。
+      if (!build.stale) {
+        slot.textContent = "";
+        return;
       }
+      var uptime = describeUptime(build.uptime_seconds);
+      slot.classList.add("is-stale");
+      slot.textContent = "⚠ 需重啟 · 已跑 " + uptime;
+      slot.title =
+        "磁碟上的程式碼已經更新，但這個服務還跑在舊版上。\n" +
+        "執行中：" + build.commit_short + "\n" +
+        "磁碟上：" + build.current_commit_short + "\n" +
+        "重啟 Nakama-ThousandSunny 才會套用。";
     })
     .catch(function () {
       // 這是輔助診斷資訊，失敗不該在 header 留一個壞掉的東西。

@@ -457,3 +457,116 @@ class TestEpisodeIsNotASlug:
 
         written = json.loads((tmp_path / "packages.json").read_text(encoding="utf-8"))
         assert written["episode"] == "20250604 Ray 不平等優勢"
+
+
+class TestAiSlopGate:
+    """修修 2026-11-13：「那筆帳」「算一筆帳」全都是 AI slop，嚴禁。panel 看不出來，emit 硬擋。"""
+
+    def test_emit_refuses_slop_title_and_writes_nothing(self, tmp_path):
+        payload = _long_input()
+        payload["titles"] = [dict(t) for t in _LONG_TITLES]
+        payload["titles"][0]["text"] = "不敢離職的人：她離職前算的那筆帳 ft. 李惠貞"
+        packaging_dir = tmp_path / "packaging"
+
+        with pytest.raises(ValueError, match="AI 腔"):
+            emit_mod.emit(payload, packaging_dir)
+        assert not (packaging_dir / "packages.json").exists()
+
+
+class TestReEmitKeepsCovers:
+    """2026-11-13 20261111 李惠貞：重跑標題不可以把已經配好的封面洗掉。"""
+
+    @staticmethod
+    def _package(rank: int) -> dict:
+        return {
+            "title_rank": rank,
+            "thumbnail_png": f"Attachments/packaging/20260723-xieboran/pkg-punch-L1-{rank}.png",
+            "thumb_archetype_id": "T-V4",
+            "joint_pairing_id": "self-pair-T-A1-T-V4",
+            "host_cutout": "Attachments/cutouts/podcast/20260723-xieboran/host-1-serious.png",
+            "guest_cutout": "Attachments/cutouts/podcast/20260723-xieboran/guest-1-serious.png",
+        }
+
+    def _emit_with_covers(self, tmp_path):
+        packaging_dir = tmp_path / "packaging"
+        emit_mod.emit(_long_input(), packaging_dir)
+        path = packaging_dir / "packages.json"
+        data = json.loads(path.read_text(encoding="utf-8"))
+        data["cuts"][0]["packages"] = [self._package(1), self._package(2)]
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return packaging_dir, path
+
+    def test_cover_stays_when_its_title_is_unchanged(self, tmp_path):
+        packaging_dir, path = self._emit_with_covers(tmp_path)
+
+        emit_mod.emit(_long_input(), packaging_dir)
+
+        packages = json.loads(path.read_text(encoding="utf-8"))["cuts"][0]["packages"]
+        assert [p["title_rank"] for p in packages] == [1, 2]
+
+    def test_cover_is_dropped_only_for_the_rank_whose_title_changed(self, tmp_path, capsys):
+        packaging_dir, path = self._emit_with_covers(tmp_path)
+        payload = _long_input()
+        payload["titles"] = [dict(t) for t in _LONG_TITLES]
+        payload["titles"][1]["text"] = "第 2 名換了一條新標題：封面要重配"
+
+        emit_mod.emit(payload, packaging_dir)
+
+        packages = json.loads(path.read_text(encoding="utf-8"))["cuts"][0]["packages"]
+        assert [p["title_rank"] for p in packages] == [1]
+        assert "rank 2 的標題換了" in capsys.readouterr().err
+
+
+class TestEpisodeSlugIsRequired:
+    """`episode_slug` 缺了要當場停，不可以拿 CJK 的 `episode` 頂上。
+
+    2026-07-29 謝伯讓集修過一次「emit 端沿用 episode」，但留了 `or episode` fallback，
+    caller 漏填時它原地復發——2026-09-18 完整版 packaging 又踩一次，vault 裡同一集長出
+    `20260723-xieboran` 與 `20260723 謝伯讓` 兩個目錄。而 `find_packaging_dir()` 掃目錄時
+    半形空格排在 `-` 前面，**錯的那個會贏**，整條發布線指到過期的交接檔。
+    """
+
+    def test_a_missing_episode_slug_is_refused(self, tmp_path):
+        mod = _load_emit_module()
+        payload = _long_input()
+        del payload["episode_slug"]
+
+        with pytest.raises(ValueError) as exc:
+            mod.emit(payload, tmp_path, vault_path=None)
+
+        assert "episode_slug" in str(exc.value)
+        # 失敗要在寫檔之前：半套的 packages.json 比沒有更難收拾
+        assert not (tmp_path / "packages.json").exists()
+
+    def test_an_empty_episode_slug_is_refused(self, tmp_path):
+        """空字串是「我沒填」，不是「落點就叫空字串」——舊 fallback 也是在這裡轉彎。"""
+        mod = _load_emit_module()
+
+        with pytest.raises(ValueError, match="episode_slug"):
+            mod.emit({**_long_input(), "episode_slug": "   "}, tmp_path, vault_path=None)
+
+        assert not (tmp_path / "packages.json").exists()
+
+    def test_a_cjk_episode_slug_is_refused(self, tmp_path):
+        """填進來的就是 footage 資料夾名——正是舊 fallback 會產生的那個值。"""
+        mod = _load_emit_module()
+        vault = tmp_path / "vault"
+
+        with pytest.raises(ValueError) as exc:
+            mod.emit(
+                {**_long_input(), "episode_slug": "20260723 謝伯讓"},
+                tmp_path / "work",
+                vault_path=vault,
+            )
+
+        assert "episode_slug" in str(exc.value)
+        # 擋下來就是連 vault 目錄都不該生出來
+        assert not (vault / "Attachments" / "packaging" / "20260723 謝伯讓").exists()
+
+    def test_a_real_slug_still_passes(self, tmp_path):
+        mod = _load_emit_module()
+        vault = tmp_path / "vault"
+
+        mod.emit(_long_input(), tmp_path / "work", vault_path=vault)
+
+        assert (vault / "Attachments" / "packaging" / "20260723-xieboran").is_dir()

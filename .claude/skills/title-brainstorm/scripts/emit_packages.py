@@ -7,7 +7,7 @@
 輸入 JSON (stdin):
     {
       "episode": "20260723 謝伯讓",      # footage 資料夾名，**不是** slug（見下）
-      "episode_slug": "20260723-xieboran",  # ASCII slug — vault 子目錄名
+      "episode_slug": "20260723-xieboran",  # ASCII slug — vault 子目錄名，**必填**
       "cut_id": "punch-L1",
       "format": "long" | "short",
       "information_origin": "full_text" | "one_liner",
@@ -55,6 +55,7 @@ _REPO_ROOT = _SCRIPT_DIR.parents[3]  # scripts/ → title-brainstorm/ → skills
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+from shared.ai_slop import slop_hits  # noqa: E402
 from shared.thumbnail_playbook import load_playbook_index  # noqa: E402
 
 try:
@@ -146,6 +147,40 @@ def _ensure_keywords_cache(packaging_dir: Path, input_data: dict) -> tuple[Path,
 _SLUG_SHAPED = re.compile(r"^\d{8}-[A-Za-z0-9._-]+$")
 
 
+def _carry_over_packages(old_cut: dict, new_cut: dict) -> None:
+    """重 emit 同一支長片的標題時，把已經配好的封面留下來。
+
+    2026-11-13 20261111 李惠貞：舊版整支換掉、`packages` 一律清空——重跑標題等於把
+    thumbnail-brainstorm 綁好的封面、連同修修在 gate 上存的配方一起洗掉。
+    留下的條件：**同一個 rank 的標題文字沒變**（封面是配那條標題的）。標題換了的
+    rank，封面就不再對得上，丟掉並印出來（PNG 還在磁碟上，沒有刪檔）。
+    候選池 `brainstorm` 與 `title_trace_ref` 跟標題文字無關，原樣帶過去。
+    """
+    old_text = {t.get("rank"): t.get("text") for t in old_cut.get("titles", [])}
+    new_text = {t.get("rank"): t.get("text") for t in new_cut.get("titles", [])}
+    kept, dropped = [], []
+    for package in old_cut.get("packages", []) or []:
+        rank = package.get("title_rank")
+        if rank in new_text and old_text.get(rank) == new_text[rank]:
+            kept.append(package)
+        else:
+            dropped.append(package)
+    new_cut["packages"] = kept
+    for key in ("brainstorm", "title_trace_ref"):
+        if old_cut.get(key) is not None and key not in new_cut:
+            new_cut[key] = old_cut[key]
+    if kept:
+        sys.stderr.write(
+            f"emit_packages: 保留 {len(kept)} 個已配好的封面"
+            f"（rank {sorted(p.get('title_rank') for p in kept)} 標題沒變）\n"
+        )
+    for package in dropped:
+        sys.stderr.write(
+            f"emit_packages: rank {package.get('title_rank')} 的標題換了，原本配它的封面"
+            f"（{package.get('thumbnail_png')}）已從 packages.json 拿掉，要重配\n"
+        )
+
+
 def _require_episode_name(episode: str) -> None:
     if _SLUG_SHAPED.match(episode.strip()):
         raise ValueError(
@@ -154,6 +189,36 @@ def _require_episode_name(episode: str) -> None:
             f"填錯會讓發布流程找不到 footage 目錄、composition receipt 對不上、"
             f"board 頁標題變成一串拼音。"
         )
+
+
+# 反方向的同一道閘：`episode_slug` 缺了不可以拿 `episode` 頂上。
+#
+# 2026-07-29 謝伯讓集修的是「emit 端沿用 episode」，但留了 `or episode` 當 fallback，
+# 於是 caller 漏填時它原地復發——2026-09-18 完整版 packaging 又踩了一次，vault 裡同一集
+# 長出 `20260723-xieboran`（對的）與 `20260723 謝伯讓`（多餘的）兩個目錄。
+#
+# 後果不只是多一個目錄。`agents/usopp/video_description.find_packaging_dir()` 掃 vault 找
+# 哪個目錄的 packages.json 宣稱這一集，而半形空格 (0x20) 排在 `-` (0x2D) 前面——**錯的目錄
+# 會贏**，description 與 approval.json 整條發布線都指到那份過期的交接檔。
+#
+# fallback 的本意是寬容，實際效果是把「caller 漏填」這件事變成靜默的、要三週後才在發布線上
+# 被看見的錯。缺了就當場停下來，代價只有重跑一次。用的是上面同一個 `_SLUG_SHAPED`：兩道閘
+# 對「長得像 slug」的定義只能有一個，分開寫遲早會漂移。
+def _require_episode_slug(episode_slug: object) -> str:
+    if not isinstance(episode_slug, str) or not episode_slug.strip():
+        raise ValueError(
+            "episode_slug 是必填的：vault 落點目錄名要 ASCII slug（例如 '20260723-xieboran'），"
+            "不能用 CJK 的 episode 頂上。缺了會讓同一集在 vault 生出第二個目錄，"
+            "而發布線掃目錄時錯的那個會贏。"
+        )
+    slug = episode_slug.strip()
+    if not _SLUG_SHAPED.match(slug):
+        raise ValueError(
+            f"episode_slug={episode_slug!r} 不是 ASCII slug，要的是 "
+            f"`<YYYYMMDD>-<拼音>`（例如 '20260723-xieboran'）。"
+            f"footage 資料夾名請放 episode。"
+        )
+    return slug
 
 
 def emit(
@@ -168,11 +233,10 @@ def emit(
     Raises ValueError on schema violations.
     """
     episode: str = input_data["episode"]
-    # vault 落點目錄名：ADR-054 D10 用 ASCII slug（`20260723-xieboran`），不是 CJK
-    # 的 `episode` 欄。attach_packages.py 一直吃 `--episode-slug`，emit 端卻沿用
-    # `episode` → 同一集會生出兩個 vault 目錄（2026-07-29 謝伯讓集實際踩到）。
-    episode_slug: str = input_data.get("episode_slug") or episode
     _require_episode_name(episode)
+    # vault 落點目錄名：ADR-054 D10 用 ASCII slug（`20260723-xieboran`），不是 CJK
+    # 的 `episode` 欄。attach_packages.py 一直吃 `--episode-slug`，emit 端必須給同一個值。
+    episode_slug: str = _require_episode_slug(input_data.get("episode_slug"))
     cut_id: str = input_data["cut_id"]
     fmt: str = input_data["format"]
     info_origin: str = input_data.get("information_origin", "full_text")
@@ -198,6 +262,16 @@ def emit(
         sys.stderr.write(
             f"emit_packages: D/F-grade archetype 已剔除 {rejected_ids} (brand credibility gate)\n"
         )
+
+    # AI 腔硬關卡（修修 2026-11-13）：LLM panel 看不出來，這裡 deterministic 擋。
+    slop = [
+        (raw.get("text", ""), hits)
+        for raw in accepted_raw
+        if (hits := slop_hits(str(raw.get("text", ""))))
+    ]
+    if slop:
+        detail = "；".join(f"{text!r} → {'、'.join(hits)}" for text, hits in slop)
+        raise ValueError(f"標題命中 AI 腔禁用清單（shared/ai_slop.py），重寫後再 emit：{detail}")
 
     # Validate each TitleV1 — pydantic raises ValidationError on bad shape
     titles: list[TitleV1] = []
@@ -280,6 +354,8 @@ def emit(
     cuts: list[dict] = list(existing.get("cuts", []))
     for i, c in enumerate(cuts):
         if c.get("cut_id") == cut_id:
+            if fmt == "long":
+                _carry_over_packages(c, new_cut)
             cuts[i] = new_cut
             break
     else:

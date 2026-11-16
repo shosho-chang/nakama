@@ -89,6 +89,18 @@ class Fix(NamedTuple):
     new: str
 
 
+class Split(NamedTuple):
+    """長句切分：起始幀上的 live 句（文字必須正好是 old）換成 parts 這幾句。
+
+    parts 必須照順序、彼此不重疊、第一句從原句起點開始、最後一句在原句終點結束——
+    切分只動句內的切點，不動原句佔用的時間範圍（修修 2026-11-13：長句沒分段好）。
+    """
+
+    start: int
+    old: str
+    parts: tuple[Cue, ...]
+
+
 @dataclass(frozen=True)
 class Piece:
     """V1 上某支來源檔的一段剪輯。
@@ -240,17 +252,96 @@ def apply_fixes(cues: Sequence[Cue], fixes: Sequence[Fix]) -> list[Cue]:
     return out
 
 
+def load_splits(path: Path, expected_timeline: str | None = None) -> list[Split]:
+    """讀 --split-file：{"timeline", "splits": [{"start", "old", "parts": [{start,end,text}]}]}。"""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8-sig"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise RebuildError(f"cannot read {path}: {exc}") from exc
+    if not isinstance(data, Mapping) or not isinstance(data.get("splits"), list):
+        raise RebuildError(f"{path}: expected an object with a 'splits' list")
+    timeline = data.get("timeline")
+    if expected_timeline is not None and timeline != expected_timeline:
+        raise RebuildError(f"{path} was built for timeline {timeline!r}, not {expected_timeline!r}")
+    splits = []
+    for index, raw in enumerate(data["splits"]):
+        label = f"{path.name} splits[{index}]"
+        if not isinstance(raw, Mapping) or not isinstance(raw.get("parts"), list):
+            raise RebuildError(f"{label}: expected an object with a 'parts' list")
+        try:
+            parts = tuple(
+                Cue(_strict_int(p["start"]), _strict_int(p["end"]), normalize_text(str(p["text"])))
+                for p in raw["parts"]
+            )
+            split = Split(_strict_int(raw["start"]), normalize_text(str(raw["old"])), parts)
+        except (KeyError, TypeError) as exc:
+            raise RebuildError(f"{label}: missing or malformed field ({exc})") from exc
+        splits.append(split)
+    return splits
+
+
+def apply_splits(cues: Sequence[Cue], splits: Sequence[Split]) -> list[Cue]:
+    """把 live 長句換成切好的幾句。對位規則同 apply_fixes：起始幀唯一、live 文字正好等於 old。"""
+    by_start: dict[int, list[int]] = {}
+    for position, cue in enumerate(cues):
+        by_start.setdefault(cue.start, []).append(position)
+    replaced: dict[int, tuple[Cue, ...]] = {}
+    for split in splits:
+        positions = by_start.get(split.start, [])
+        if len(positions) != 1:
+            raise RebuildError(
+                f"split frame {split.start}: {len(positions)} cues start there (expected exactly 1)"
+            )
+        if positions[0] in replaced:
+            raise RebuildError(f"more than one split for frame {split.start}")
+        live = cues[positions[0]]
+        if live.text != split.old:
+            raise RebuildError(
+                f"split frame {split.start}: expected {split.old!r}, live text is {live.text!r}"
+            )
+        parts = split.parts
+        if len(parts) < 2:
+            raise RebuildError(f"split frame {split.start}: needs at least 2 parts")
+        if parts[0].start != live.start or parts[-1].end != live.end:
+            raise RebuildError(
+                f"split frame {split.start}: parts must span exactly {live.start}-{live.end}, "
+                f"got {parts[0].start}-{parts[-1].end}"
+            )
+        for part in parts:
+            if part.end <= part.start or not part.text.strip():
+                raise RebuildError(f"split frame {split.start}: empty or non-positive part {part}")
+        for previous, current in zip(parts, parts[1:]):
+            if current.start < previous.end:
+                raise RebuildError(
+                    f"split frame {split.start}: parts overlap {previous} / {current}"
+                )
+        replaced[positions[0]] = parts
+    out: list[Cue] = []
+    for position, cue in enumerate(cues):
+        out.extend(replaced.get(position, (cue,)))
+    return out
+
+
 def build_plan(
     body: Sequence[Cue],
     added: Sequence[Cue],
     fixes: Sequence[Fix],
     *,
+    splits: Sequence[Split] = (),
     limit: int | None = None,
 ) -> list[Cue]:
-    """live ST1 → 套修正 → 併入新增字幕 → 驗證。沒有實際變更就拒絕（不白清一次軌）。"""
-    if not added and not fixes:
-        raise RebuildError("nothing to do: pass --add-cues and/or --fix")
-    plan = merge_cues(apply_fixes(body, fixes), added, limit=limit)
+    """live ST1 → 套修正 → 切長句 → 併入新增字幕 → 驗證。沒有實際變更就拒絕（不白清一次軌）。
+
+    同一句不可同時有 --fix 與 split：要改字就直接寫進 split 的 parts。
+    """
+    if not added and not fixes and not splits:
+        raise RebuildError("nothing to do: pass --add-cues, --fix and/or --split-file")
+    clash = {fix.start for fix in fixes} & {split.start for split in splits}
+    if clash:
+        raise RebuildError(
+            f"frame(s) {sorted(clash)} have both --fix and a split; fold the fix into the split"
+        )
+    plan = merge_cues(apply_splits(apply_fixes(body, fixes), splits), added, limit=limit)
     if plan == sorted(body):
         raise RebuildError("the plan is identical to live ST1; nothing to change")
     return plan
@@ -625,13 +716,14 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
     try:
         fixes = [parse_fix(spec) for spec in args.fix]
         added = load_add_cues(args.add_cues, args.timeline) if args.add_cues else []
+        splits = load_splits(args.split_file, args.timeline) if args.split_file else []
         resolve = _connect()
         manager, project = _current_project(resolve, args.project)
         original = _timeline_by_name(project, args.timeline)
         fps = _timeline_fps(original)
         limit = _timeline_limit(original)
         body = _snapshot_st1(original)
-        plan = build_plan(body, added, fixes, limit=limit)
+        plan = build_plan(body, added, fixes, splits=splits, limit=limit)
         srt_text = render_srt(plan, fps)
         if parse_srt(srt_text, fps) != plan:
             raise RebuildError("rendered SRT does not parse back to the plan (frame rounding?)")
@@ -639,8 +731,9 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
         print(f"ABORT (nothing changed): {exc}", file=sys.stderr)
         return EXIT_PRECONDITION
     print(
-        f"plan: live ST1 {len(body)} + added {len(added)} = {len(plan)} cues; "
-        f"{len(fixes)} text fix(es); fps {format_fps(fps)}"
+        f"plan: live ST1 {len(body)} + added {len(added)} "
+        f"+ split extra {sum(len(s.parts) - 1 for s in splits)} = {len(plan)} cues; "
+        f"{len(fixes)} text fix(es); {len(splits)} split(s); fps {format_fps(fps)}"
     )
 
     # 2. 備份／拋棄式副本。DuplicateTimeline 後 Resolve 可能把 current 換成副本
@@ -703,6 +796,10 @@ def cmd_rebuild(args: argparse.Namespace) -> int:
                 "backup_timeline": backup_name,
                 "added_cues": len(added),
                 "fixes": [fix._asdict() for fix in fixes],
+                "splits": [
+                    {"start": s.start, "old": s.old, "parts": [list(p) for p in s.parts]}
+                    for s in splits
+                ],
                 "plan_srt": srt_path.name,
                 "items": [list(cue) for cue in live],
             },
@@ -789,6 +886,12 @@ def _parse_args(argv: Sequence[str] | None) -> argparse.Namespace:
         default=[],
         metavar="FRAME=OLD=>NEW",
         help="replace the text of the live cue starting at FRAME (repeatable)",
+    )
+    rebuild.add_argument(
+        "--split-file",
+        type=Path,
+        help="JSON {timeline, splits:[{start, old, parts:[{start,end,text}]}]}: "
+        "replace a long live cue with several cues inside its original span",
     )
     rebuild.add_argument("--out-dir", required=True, type=Path)
     rebuild.add_argument(

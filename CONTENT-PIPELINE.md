@@ -29,7 +29,7 @@ Stage 4 的本質是產出一份 **canonical content 作為 Stage 5 fan-out 的 
 
 | Line | Atomic content 形式 | 產生方式 |
 |---|---|---|
-| Line 1 Podcast | **Canonical Transcript**（唯一文字真相）＋依版型衍生的 **Verified Projection**（SRT + manifest） | [Podcast Subtitle V2](docs/decisions/ADR-056-podcast-subtitle-v2.md)：Auphonic normalization → immutable Evidence → Correction Ledger → semantic projection → fail-closed gates；ASR / corrector / arbiter 是可替換 Adapter |
+| Line 1 Podcast | **Memo Dual-Audit release SRT**（字幕真值）→ 人工剪定後封存的 **Editorial Master**（`master.mp4` + `master.srt`，所有衍生的唯一 media/timebase） | [ADR-063](docs/decisions/ADR-063-podcast-subtitle-production-simplification.md) Memo Dual-Audit Release V1（2026-08-21 起 production）：Auphonic normalization → Memo 辨識 → 雙 text audit＋高風險段雙 ASR → release handoff；[ADR-064](docs/decisions/ADR-064-podcast-editorial-master-before-repurpose.md) Editorial Master。舊 [Podcast Subtitle V2](docs/decisions/ADR-056-podcast-subtitle-v2.md)（Canonical Transcript／Verified Projection）只剩 legacy forensic |
 | Line 2 讀書心得 | **修修在 Project 頁面手寫的心得文** | 修修本人手寫（可用 Reading Context Package / Writing Assist Surface 降低空白頁摩擦，但不由 LLM 代寫） |
 | Line 3 文獻科普 | LLM 輔助 outline + 修修加工的稿 | Robin 抽 KB → outline → Brook compose → 修修審稿 |
 
@@ -56,7 +56,8 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 | Channel | 製作工具 | 適用 line |
 |---|---|---|
-| 影片 | **Video Production Line**（Brook own — ADR-032 技術設計 + [ADR-050](docs/decisions/ADR-050-video-production-line-brook-ownership.md) 歸屬；`agents/brook/script_video/` + `video/` Hyperframes compositions；機器已自 `agents/foundry/` 遷入完成，ADR-050 PR-3） | Line 2 / Line 3 / Line 1 訪問新書作者 |
+| 影片（Podcast 衍生） | **Podcast 影片線**：Editorial Master 封存後出完整版上傳包（`publish_prep.py --cut full`）→ 選段（`highlight-cut`）→ 長精華 8–12min 橫式（`longform-cut`，[ADR-066](docs/decisions/ADR-066-finished-cut-production-and-legacy-retirement.md) Finished Cut Production）／短片直式 Shorts（`shortform-cut`，ADR-067）→ packaging → `publish_upload.py`。編排見 `podcast-pipeline` skill | Line 1 Podcast |
+| 影片（照稿） | **Video Production Line**（Brook own — ADR-032 技術設計 + [ADR-050](docs/decisions/ADR-050-video-production-line-brook-ownership.md) 歸屬；`agents/brook/script_video/` + `video/` Hyperframes compositions；機器已自 `agents/foundry/` 遷入完成，ADR-050 PR-3）。⏸ **凍結中**（修修 2026-11-13：之後重啟並大改，現在不動）；目前 `plan`／`run` 要求舊 Subtitle V2 projection 而跑不起來 | Line 2 / Line 3 / Line 1 訪問新書作者 |
 | 部落格 | Brook compose + Blog renderer | Line 1/2/3 |
 | FB post | Brook FB renderer（4 tonal variants） | Line 1/2/3 |
 | Social carousel | Podcast 採獨立 `/ig-cards` episode-first flow（ADR-064；Copy Spec → agent panel → 1080×1080 cross-platform square render → Web App review）；舊 5/7/5/10 `IGRenderer` 只保留 compatibility，不是 canonical Podcast flow | Line 1 Podcast；Line 2/3 待 Podcast tracer bullet 跑順後各自 fork template/schema |
@@ -73,7 +74,7 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 | Line | 1 收集 | 2 閱讀 | 3 整合 | 4 原子文章 | 6 發布 | 7 監控 |
 |---|---|---|---|---|---|---|
-| **Line 1a Podcast 一般訪談** | n/a (有錄音) | n/a | n/a | 🚧 Podcast Subtitle V2：Canonical Transcript → Verified Projection（V1 production / V2 shadow-run） | ✅ Long Highlight、Short 與 Carousel 已完成 Podcast YouTube／Instagram／Facebook supervised live probe；Short 未來 Campaign Anchor 會先 Native Arm YouTube／Facebook，Instagram 由桌機 Due Dispatcher 到點投遞；Outcome Reconciler 只以明確平台證據確認到點 native outcome；Publish Calendar 保留 per-platform truth 與兩個 worker 的獨立 health | ❌ YT/IG insights |
+| **Line 1a Podcast 一般訪談** | n/a (有錄音) | n/a | n/a | ✅ Memo Dual-Audit Release V1（ADR-063）→ Editorial Master（ADR-064） | ✅ Long Highlight、Short 與 Carousel 已完成 Podcast YouTube／Instagram／Facebook supervised live probe；Short 未來 Campaign Anchor 會先 Native Arm YouTube／Facebook，Instagram 由桌機 Due Dispatcher 到點投遞；Outcome Reconciler 只以明確平台證據確認到點 native outcome；Publish Calendar 保留 per-platform truth 與兩個 worker 的獨立 health | ❌ YT/IG insights |
 | **Line 1b Podcast 訪問新書作者** | n/a (有錄音 + 有書) | ⬜ Line 2 Reading Source + Reading Overlay | ⬜ Line 2 Source Promotion / annotation-only sync | 🚧 同上，另可 consume 書籍 refs 作 Evidence context | 同上 | 同上 |
 | **Line 2 讀書心得** | n/a (有書 / 文章 / web document) | ⬜ Reading Source + Reading Overlay（中/英/雙語閱讀） | ⬜ Source Promotion 或 annotation-only sync | ⬜ Reading Context Package → **修修 Project 頁面手寫** | ✅ WP only / ❌ 其他 channel | ❌ |
 | **Line 3 文獻科普** | ⬜ Zoro topic discovery | n/a | ⬜ 主題 retrieval → outline | ⬜ synthesize outline → 修修自寫（可用 Claude.ai 對話協助），LLM 不代寫正文（ADR-027） | ✅ WP only / ❌ 其他 channel | ✅ SEO 中控台 |
@@ -84,12 +85,12 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 每條 line 從 Stage 4 原子文章 fan out 成 4 channel，readiness 不一：
 
-| Line | 影片（script-driven video） | 部落格（Brook compose） | FB post（Brook FB renderer） | IG carousel |
+| Line | 影片 | 部落格（Brook compose） | FB post（Brook FB renderer） | IG carousel |
 |---|---|---|---|---|
-| **Line 1a 一般訪談** | n/a 或 theme video（待規劃） | ✅ ship | ✅ ship | ✅ Podcast Copy/Panel/1080×1080 Render/Review Web App 已實作並以 EP120 dogfood；Review correction job 可由目前的 Codex 或 Claude Code agent claim，不綁定外部模型 API |
-| **Line 1b 訪問新書作者** | 🚧 Slice 2-5 | ✅ ship | ✅ ship | ⬜ 先驗證 Podcast flow；書本介紹型 Carousel 不共用 Podcast schema |
-| **Line 2 讀書心得** | 🚧 Slice 2-5 | ✅ Brook compose | ✅ FB renderer | ⬜ Podcast flow 穩定後 fork 書本模板／語言 |
-| **Line 3 文獻科普** | 🚧 Slice 2-5（optional） | ✅ Brook compose | ✅ FB renderer | ⬜ Podcast flow 穩定後 fork 身心健康資訊模板／語言 |
+| **Line 1a 一般訪談** | ✅ Podcast 影片線：完整版上傳包＋長精華（ADR-066）＋短片（ADR-067），皆從 Editorial Master 衍生 | ✅ ship | ✅ ship | ✅ Podcast Copy/Panel/1080×1080 Render/Review Web App 已實作並以 EP120 dogfood；Review correction job 可由目前的 Codex 或 Claude Code agent claim，不綁定外部模型 API |
+| **Line 1b 訪問新書作者** | ✅ Podcast 影片線（同 1a）；照稿影片 ⏸ 凍結（2026-11-13） | ✅ ship | ✅ ship | ⬜ 先驗證 Podcast flow；書本介紹型 Carousel 不共用 Podcast schema |
+| **Line 2 讀書心得** | ⏸ 照稿影片線凍結（2026-11-13） | ✅ Brook compose | ✅ FB renderer | ⬜ Podcast flow 穩定後 fork 書本模板／語言 |
+| **Line 3 文獻科普** | ⏸ 照稿影片線凍結（2026-11-13，optional） | ✅ Brook compose | ✅ FB renderer | ⬜ Podcast flow 穩定後 fork 身心健康資訊模板／語言 |
 
 **讀法**：舊 `IGRenderer` 只有文字 JSON，不代表 Podcast Carousel。新的 channel-native Copy Spec、三方 agent panel、1080×1080 PNG renderer、逐卡文字／版面編輯與 page-based Review Gate 已由 EP120 r024 完成真實 dogfood，Stage 5 tracer bullet 已 ship。Stage 6 已有 approved-only Publish page、Short 原子 Target claim／stale checkpoint resume、YouTube／Facebook Native Arm、Instagram Due Dispatcher + heartbeat，以及 Carousel revision-bound agent-neutral job、capability/lease、IG／FB adapters 與 YouTube Community browser handoff。Due Dispatcher 不會自動重試 failed Target，永久啟動與後續真實 probe 留待獨立 supervised 操作。
 
@@ -97,8 +98,8 @@ Stage 5 從原子文章 fan out 成 4 個 channel，每個 channel 有自己的�
 
 **Line 1a 一般訪談**：
 - Stage 1-3 跳過（直接從錄音進 Stage 4）
-- Stage 4 = Podcast Subtitle V2 的 Canonical Transcript 當 atomic content；SRT 是通過 hard gates 的 Verified Projection，不是文字真相
-- Stage 5 走部落格 / FB / Social Carousel 三 channel；Podcast Carousel 的 square render、Review Gate 與卡片編輯已實作；影片 channel 視需要做 theme video（Line 1 補位專案）
+- Stage 4 = Memo Dual-Audit release 字幕（ADR-063）＋人工剪定後封存的 Editorial Master（ADR-064）當 atomic content；所有衍生只吃 Editorial Master
+- Stage 5 走影片 / 部落格 / FB / Social Carousel 四 channel；影片 = 完整版上傳包＋長精華（原「theme video」補位專案，已由 `longform-cut` 實現）＋短片；Podcast Carousel 的 square render、Review Gate 與卡片編輯已實作
 
 **Line 1b 訪問新書作者**（Line 1 + Line 2 混合）：
 - 訪談前修修先讀那本書 → 走 Line 2 Stage 2-3 流程（閱讀 + annotation + ingest）
@@ -193,8 +194,8 @@ Reader UI 已支援 `==highlight==` + `> [!annotation]` markup，但這些標註
 | Channel | 發布實作 | Line 用到 |
 |---|---|---|
 | WordPress blog | ✅ Usopp full HITL | Line 1/2/3 |
-| YouTube（影片） | ❌ 0 | **Script-Driven Video 主出口** |
-| YouTube（podcast theme video） | ❌ 0 | Line 1 補位 |
+| YouTube（Podcast 完整版／長精華／短片） | ✅ `publish_upload.py`（明確核准、OAuth preflight、resumable、縮圖、zh-TW CC）＋ `youtube_publish_reconcile.py` 回寫平台狀態 | Line 1 主出口 |
+| YouTube（照稿影片） | ⏸ 照稿影片線凍結（2026-11-13） | Script-Driven Video 主出口 |
 | IG carousel | 🚧 Stage 5 square asset + Review Gate 與 Stage 6 job／Meta adapter 已實作；supervised live publish 尚未執行 | Line 1 主出口之一 |
 | FB post | ❌ 0 | Line 1 主出口之一 |
 | Newsletter（Fluent CRM） | ❌ 0 | ADR-001 預留 |

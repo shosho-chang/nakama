@@ -92,8 +92,10 @@ consumer 已切換；缺少／stale／tampered receipt 一律 fail closed，不�
 
 ### S0.0 — 工具鏈健檢（先做，不然會在半路才炸）
 
-整條線只有**一個**直譯器：`E:\nakama\.venv-v2\Scripts\python.exe`。精確版本釘在 repo 根目錄的
-`.python-version`；為什麼是這個版本、跟其他兩個桌機 Python 的分工，見
+整條線的主直譯器只有**一個**：`E:\nakama\.venv-v2\Scripts\python.exe`。精確版本釘在 repo 根目錄的
+`.python-version`。**唯一例外**是短片線補詞級時間戳的 `scripts/run_whisperx_words.py`：whisperx
+只裝在 3.10.6 那個舊直譯器（`.venv-v2` 沒有），用法見 `shortform-cut` 的「前置」——缺了
+`subs/words.json` 短片緊湊化**不會報錯**，只會靜靜地只切停頓。為什麼是這個版本、跟其他兩個桌機 Python 的分工，見
 [`docs/runbooks/desktop-python-interpreters.md`](../../../docs/runbooks/desktop-python-interpreters.md)——
 不要重新診斷一次，先讀那份文件。
 
@@ -559,6 +561,22 @@ S3–S6 的 release 只涵蓋訪談本體，片頭片尾沒有字幕；這一步
    **不要再傳 `--add-cues`**：第一次重建後 live ST1 已含片頭片尾，同一份 cues 再加一次會被重疊檢查擋下。
    live 原文對不上也會擋（exit 2）——代表修修已經改過那句，先重讀現況再下修正。
 
+10. **seal 前必做：長句切分＋書名號**（修修 2026-11-13，20261111 李惠貞：「有一些句子太長，沒有分段好；
+    書名沒有用括號括起來」）。ADR-063 產線沒有任何一步切長句或補《》，Memo 的 cue 最長到 54 字；
+    這一步不做，修修就得自己在 Resolve 手切。
+
+    - **《》**：照 [[feedback_subtitle_house_style]]，只在提到書名本身時加（「並不是《成為自由人》」），
+      「成為自由人之後」這種當事件用的不加。先從本集 Vault 參考資料收書名清單，再掃 live ST1 文字＋
+      `這本／新書／叫做` 等語境找漏網的，用 `--fix` 補。
+    - **長句**：去空白後超過 18 字的 cue 都切。切點優先順序：兩人對話的 ` -` 換人處 → 原有空格（Memo
+      的停頓）→ jieba 詞邊界；一律挑**錄音裡真的有停頓**的位置（Qwen3-ForcedAligner 對該句原音做
+      forced alignment，revision 同 S5），且不可切開辭典詞（「公｜部門」「盡｜量」「中山女｜高」都是
+      2026-11-13 第一版切出來的錯）、不可切開英文專名（Shopping Design）、不可落在《》內。
+      切出的每段至少 0.5 秒。自動結果逐條人眼看過，不順的手動指定切法。
+    - 上軌用 `rebuild --split-file <splits.json>`：`{"timeline", "splits":[{"start","old",
+      "parts":[{"start","end","text"}]}]}`，parts 必須剛好鋪滿原句的起訖幀；同一句不可同時 `--fix`。
+      可和 `--add-cues`、`--fix` 同一次重建，一樣先 `--scratch`。
+
 **裁決規則**
 
 - 文字以 Memo bundled runner（large-v2）為底，逐句對照 faster-whisper large-v3 與講稿；來源打架的
@@ -617,7 +635,8 @@ E:\nakama\.venv-v2\Scripts\python.exe `
 **seal 前人工掃一次 `master.srt` 有沒有殘留標點**（2026-09-04 20260901 蘇予昕漏網：`inspect` 的
 `timing_qc` 只查時間軸——非正時長、超出 timeline、重疊——不查文字內容，house style「不留標點」
 沒有自動化把關）。4480 條 cue 裡 5 條連續 cue（01:23:42–01:24:04）用了半形逗號＋全形句號，明顯繞過
-了 Memo 文字風險掃描員（`agents/brook/podcast_subtitles/adapters/correction.py` 的 house style）該有
+了 Memo 文字風險掃描員（當時寫的是 `agents/brook/podcast_subtitles/adapters/correction.py` 的
+house style；該檔屬舊 Subtitle V2，已於 2026-11-13 移除）該有
 的清理，原因待查——這一集發生在使用者事後於 Resolve 手動補救／調整過的區段附近，懷疑跟繞過正常
 correction pass 的手動編輯有關。此集已 seal（ADR-064 不可變），這次先不補救；**換集時**：
 
@@ -651,10 +670,19 @@ Editorial Master `verify --live` 通過後，**同一輪就跑**完整版 render
 E:\nakama\.venv-v2\Scripts\python.exe scripts\publish_prep.py "<episode>" --cut full
 ```
 
-產出兩個檔，**檔名＝episode 資料夾名＝Resolve project 名**（例：`20261021 Kelly Tsai`），不是 `full`：
+產出三個檔，**檔名＝episode 資料夾名＝Resolve project 名**（例：`20261021 Kelly Tsai`），不是 `full`，
+全部放在 **`<episode>\final\`**——跟封面 `cover-full.png`、`title-full.txt` 同一個上傳包資料夾
+（修修 2026-11-13：「為什麼會在 Highlights 裡面？應該在 Final 裡面才對」。2026-11-13 以前的集數在
+`highlights\exports\`，不搬，程式仍認得）：
 
-- `<episode>\highlights\exports\<episode>.mp4`——上傳用影片，Shosho YT 字幕樣式燒進畫面
-- `<episode>\highlights\exports\<episode>.srt`——上傳用 CC，與 `master.srt` byte-identical
+- `<episode>\final\<episode>.mp4`——上傳用影片，Shosho YT 字幕樣式燒進畫面
+- `<episode>\final\<episode>.srt`——上傳用 CC，與 `master.srt` byte-identical
+- `<episode>\final\<episode>.mp3`——podcast 平台音檔（320k／48 kHz／stereo），從封存的 `master.mp4` 抽音軌（上傳版 mp4 算到主畫面為止，會少片尾音樂尾巴）
+
+**不要為了 podcast 音檔另外叫 Resolve 算純音訊**（Deliver 的 Audio Only／Wave）：2026-11-13 這樣做之後
+render 格式卡在非 H264，Editorial Master seal 算出只有聲音的 master.mp4 被擋。修修急著要音檔時，
+等 seal 後的 `publish_prep --cut full` 一起出；真的要更早，用 ffmpeg 從 timeline 已有的素材處理，不動
+Resolve 的 render 設定。
 
 並登錄 draft Release（YouTube target draft）。這一步碰 Resolve：與 `--materialize`、ST1 重建等
 序列執行，不可並行。
@@ -752,7 +780,7 @@ Editorial Master 開得起來＝定稿是真的。開不起來就**立刻**回�
 Editorial Master 封存
  │
  ├─ [序列·Resolve] publish_prep.py --cut full —— 定稿後立刻出，不等任何人
- │     ⇒ highlights\exports\<episode>.mp4（Shosho YT 字幕燒入）＋ <episode>.srt（上傳 CC）
+ │     ⇒ final\<episode>.mp4（Shosho YT 字幕燒入）＋ <episode>.srt（上傳 CC）＋ <episode>.mp3（podcast）
  │
  ├─【平行】完整節目 packaging（S7P）—— 一路跑到 gate，中間不要停下來問
  │     title-brainstorm --cut-id full → emit_packages
@@ -880,7 +908,11 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_podcast_carousel.py "<episode>
 > 不要先去補那個前置條件。** 當時我去問修修「要不要補一個 Claude dispatcher」——
 > 正確的問題是「為什麼活的流程會要求一個死掉的供應商」，那一問就通到答案了。
 >
-> 以下 ADR-065 的描述**只保留給讀舊 receipt／舊 state 時對照**，不是操作指示。
+> ADR-065 的 Director／DP／semantic-audit receipt chain、materializer 指令與 finished review
+> 舊自動化原文已移到
+> [`docs/archive/2026-11-14-adr-065-skill-sections.md`](../../../docs/archive/2026-11-14-adr-065-skill-sections.md)，
+> 只供讀舊 receipt／舊 state 時對照。本節以下保留 tightening、guest identity placement 與機位導播；
+> 與 `longform-cut` 不一致時以 `longform-cut` 為準。
 
 對每個 long winner 依序跑 tightening，再封存 guest identity placement與機位／Timeline 導播。
 Tightening與所有視覺工作都只能使用 Editorial Master media/timebase：
@@ -900,77 +932,10 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_director.py "<episode>" 
 ```
 
 名稱邊界不可混淆：`run_short_director.py` = camera/Timeline director，**不代表 `brook-director` skill**
-execution；它只處理鏡位、構圖與 derived Timeline。完成後呼叫 trusted producer（base generation不帶
-request；finished-review revision必須傳該 job immutable `request.json`，不可推斷 latest）：
+execution；它只處理鏡位、構圖與 derived Timeline。
 
-```powershell
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_orchestrator.py "<episode>" `
-  --cut-id <winner-id> [--revision-request "<episode-local immutable request.json>"]
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py status "<episode>" --cut-id <winner-id>
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py verify "<episode>" --cut-id <winner-id>
-```
-
-Truth root是 `highlights/visual-pipeline/<winner-id>/`；`PENDING.json`指向工作中的 generation，
-`CURRENT.json`只在 semantic audit全數接受後 pointer-last切換，四份 canonical artifacts位於
-`revisions/<revision-id>/`。新 generation crash/invalid不得破壞上一 CURRENT；同一 immutable request retry
-必須 resume同一 revision。
-
-接著的 agent-owned receipt 順序固定為：
-
-```text
-revisions/<revision-id>/DIRECTOR-WORK.json
-  → dispatch subscription agent，完整讀取 brook-director skill
-  → DIRECTOR-PLAN.json (podcast-highlight-director-plan-v1)
-  → trusted accept-director（actual worker/execution/session identity）
-  → dispatch另一個 subscription agent，完整讀取 brook-dp skill
-  → DP-FULFILLMENT.json (podcast-highlight-dp-fulfillment-v1)
-  → trusted accept-dp（different worker + session）
-  → resume原 Director session做 second-pass semantic audit
-  → SEMANTIC-AUDIT.json (podcast-highlight-visual-semantic-audit-v1)
-  → trusted accept-audit → CURRENT pointer-last
-  → deterministic verify = ready_to_materialize
-```
-
-Codex orchestrator以 `codex exec --json`保存 Director session、另開 DP session，再用
-`codex exec resume <DIRECTOR_SESSION_ID>`做 audit；proposal自報 identity一律拒絕。Claude Code route則以
-兩個隔離 subagents完成相同順序並恢復原 Director handle；accept CLI exact flags以 `brook-director`／
-`brook-dp` skill為準，不能用一個 generic agent handwrite receipts或 `_broll.json`／`_titles.json`。
-
-Director 必須逐 event 綁 exact tight-SRT quote/time/hash、分類、描述與 negative constraints；DP 必須對每個
-event 保存 mode、`target_lane`、不同搜尋切面、候選、selected reason與 source/license/hash。這條 contract
-涵蓋**所有 content visuals**：Stock／Hero／keyword／quote／chapter／card，不是只管理 Stock Video。
-結構性 badge／camera correction／guest namecard可維持各自既有 deterministic contract，不冒充內容視覺。
-Semantic audit 必須 exact
-覆蓋所有 event，逐一判斷「畫面是否就是這句語意」，不能把檔案存在、來源可信或數量達標冒充語意通過。
-Semantic audit worker identity必須等於原 Director、且不同於 DP；由 Director回頭檢查 DP是否忠實實現
-原意圖，不是 DP自審。Missing coverage 或 mismatch 直接 invalid。
-
-只有 complete chain fresh 驗證成 `ready_to_materialize` 後才可執行：
-
-```powershell
-E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_broll.py "<episode>" --id <winner-id> --stills "<stills-dir>"
-E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_titles.py "<episode>" --id <winner-id>
-E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_sfx.py "<episode>" --id <winner-id>
-E:\nakama\.venv-v2\Scripts\python.exe scripts\run_short_review.py "<episode>" --id <winner-id>
-```
-
-`run_short_broll.py` = materializer，**不代表 `brook-dp` skill** execution；它不得搜尋、挑選、改寫 intent
-或為缺件補預設素材。缺少／stale／invalid 任一 receipt 就停在對應 agent-owned next work，不得用既有
-`_broll.json`、至少三支 Stock Video或 legacy v1 materialization receipt旁路。普通 pending 不是 human
-gate；agent應繼續完成下一份 receipt，**只有 ambiguity 才是 HITL**。`run_short_titles.py` = materializer，
-同樣只能 consume DP核准的 title implementation，不得自行發明 Hero/keyword文字或落點。
-
-Bridge finished review按「保存草稿」／request changes後的自動行為固定為：router把該 revision feedback與
-fresh preview/master/tighten identities封成 episode-local immutable `request.json` → watcher的 generic agent只
-能產非視覺 tightening input → `run_visual_pipeline(..., revision_request=context['request_path'])` dispatch
-Director/DP/audit → trusted `emit_audited_recipe`同時產 `_broll.json`與`_titles.json` → 兩份 recipe fresh
-preflight通過後才可開始 Resolve transaction → 重建 `nakama.finished_cut_review_manifest.v2`。Manifest cut row
-必須綁 Stock Video v2 receipt與 CURRENT visual DAG（pointer + work/Director/DP/audit identities）。任何 phase
-失敗會把 job標成 failed並保留上一 CURRENT／成片；不會進 Resolve，也不會默默沿用 generic agent手寫視覺。
-新版 preview成功後回到同一 finished review human gate，不新增中途 approval。
-部署時既有 `nakama.finished_cut_review_manifest.v1`只能作 legacy read-only preview：允許保存修改以觸發上述
-revision，但不得 approve／進 Packaging，也不得原地改 schema或重新簽名冒充 v2；新 revision成功重建 v2
-後才恢復核准。
+之後的 Director／DP／視覺審查／物化走 **ADR-066**：`run_finished_cut_production.py --semantic-worker handoff`，
+實跑手冊見 [`longform-cut/SKILL.md`](../longform-cut/SKILL.md)「ADR-066 實跑手冊」；SFX 與 QC 見同一份的 Step 10–11。
 
 `accept` 之前先 resolve `<winner-id>_tight_r*.srt` 中實際最新版的 exact path，再 dispatch 兩個互相隔離、
 不可讀彼此輸出的 subscription workers。兩者只讀同一 cut-specific SRT 與必要訪綱／前期資料，判斷
@@ -1006,11 +971,11 @@ pid/start/deadline/exit receipt；child crash／逾時轉 failed 並允許 retry
 ## S10–S11 — packaging and publish
 
 Highlight shortlist 核准時，Bridge 只原子建立 video／Packaging 兩條 queued 工作並快速返回；不得在
-HTTP request 內同步跑 LLM。桌機 `scripts/render_watcher.py` 會自動認領 Packaging branch，使用 Codex
-平台的 `gpt-5.6-sol` 依序完整執行 `title-brainstorm`、`thumbnail-brainstorm`。worker 中斷時保留
-running state，重啟後從已存在且可驗證的 artifacts 續跑；同一 cut 的 live worker 不重複啟動，失敗明列
-failed 且不自動重試。只有 working／vault `packages.json`、三張 1280×720 PNG、schema 與 composition
-receipt 都通過，才可標 READY。
+HTTP request 內同步跑 LLM。**Packaging 由當下對話中的 agent 執行**（修修 2026-11-14 裁決；ADR-070
+〈修修裁決（2026-11-14）〉）：照 S8F 派工圖，在他說第二次「定稿」之後依序完整執行
+`title-brainstorm`、`thumbnail-brainstorm`。`scripts/render_watcher.py` 不再認領 Packaging branch、也不在
+背景另開 agent——它只負責存配方後的出圖。`packages.json` 出現該 cut 後，Bridge packaging 頁自動從
+queued 轉 ready；三張 1280×720 PNG、schema 與 composition receipt 仍要通過 skill 自己的驗收。
 
 長 highlight 縮圖中央必須是圖像素材，不是文字；人物／標題不得侵入保護區。到
 `/bridge/packaging/<episode-slug>` 給使用者選。
@@ -1033,8 +998,11 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\youtube_publish_reconcile.py --epi
 ## Explicit legacy forensic only
 
 ADR-056 Full Subtitle V2 的 checkpoint migration、526 correction packets、ordinary 10%／30% sampling、
-Canonical Generation、Semantic Units、Verified Projection 全部只屬 legacy forensic。預設 E2E 不得 import
-或呼叫 formal factory，也不得使用 `--degraded-release-handoff`。
+Canonical Generation、Semantic Units、Verified Projection 全部只屬 legacy forensic，而且**程式已於
+2026-11-13 依 owner 裁決從 repo 移除**（ADR-063「Amendment — 2026-11-13」）：沒有 formal factory、
+沒有 `python -m agents.brook.podcast_subtitles`、沒有 `--projection-id`，也沒有 `legacy-forensic` 入口。
+舊集數留下的 `.subtitle-v2/` checkpoint 與 evidence 檔案照舊不可改名、不可改寫，但這個 repo 已無法
+重驗它們。預設 E2E 不得使用 `--degraded-release-handoff`。
 
 抹布舊 bundle 如需 integrity check，只能明示：
 
@@ -1045,8 +1013,8 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_subtitle_release.py verify
   --status-output "<episode>/subtitle-v2/degraded-audio-release-v1/legacy-verification.json"
 ```
 
-這不會 promotion／rename 舊 artifact，也不構成新 production success。Formal、legacy/degraded 與
-`memo-dual-audit-v1` handoff routes 互斥；不可 silent fallback。
+這不會 promotion／rename 舊 artifact，也不構成新 production success。`verify-legacy` 不依賴已移除的
+V2 模組，照常可用。legacy/degraded 與 `memo-dual-audit-v1` handoff routes 互斥；不可 silent fallback。
 
 ## Stop and recovery policy
 

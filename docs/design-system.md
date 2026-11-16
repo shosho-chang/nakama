@@ -301,7 +301,9 @@ promotion_review,writing_assist,auth,franky}.py`。**第三個以上 surface 出
 
 | Pattern | 為什麼禁 |
 |---------|----------|
-| 大塊橘色 fill（>4% 面積） | 違反 strategy 1 — orange 是 line/dot/char 不是 block |
+| 大塊橘色 fill（>4% 面積） | 違反 strategy 1 — orange 是 line/dot/char 不是 block。**唯一例外**：任務 → 行事曆的任務格（修修 2026-11-12 選定）——重點＝實心 `--sho-accent` 配 `--sho-on-accent` 字、次要＝`--sho-accent-tint`；只限 `.wk-cal-block` / `.wk-cal-chip` |
+| 圓角有色卡片配左側粗彩條（`border-left: 3px solid` + 淺色底） | 最典型的 AI 生成痕跡，修修指出過多次。改用髮絲線分隔、顏色只上在標籤／標題／圓點 |
+| 填滿的圓角藥丸當分頁或篩選器 | 改用底線分頁（`border-bottom: 2px` + accent 字） |
 | Bolt 同頁出現 ≥ 2 次 | 違反 99/1 strategy 2 |
 | 把 `--sho-accent` 用在 body text | 對比 3.2:1，不合 AA |
 | 套 Inter / Roboto / system-ui default 取代 LINE Seed TW | 失去 brand voice |
@@ -338,3 +340,4 @@ Brook（handoff、projects review）、login、未來的 marketing landing。
 | 2026-05-19 | v2 | 加入 `--sho-*` Shosho CI namespace（三 namespace 並存章節）。 | Claude Design handoff `shosho-website-new-design` → PR #595–#608 |
 | 2026-05-21 | v3 | **單一 design system 重構**：`--brk-*`（Brook editorial）與 `--nk-*`（Bridge workshop）兩個 namespace 全面退役，整個 Nakama web UI 統一到 `--sho-*`。字族換成單一 LINE Seed TW（取代 Geist + Noto Sans TC + Geist Mono）。13 個 surface migration 完成（PR #631、#642–#651）。文件刪除 obsolete 的 `--brk-*` 章節。 | Claude Design handoff `shosho-website-new-design` Design System v0.1 |
 | 2026-05-21 | v3.1 | **統一 theme toggle**：新增 `static/shosho/theme.js` — 單一 light/dark/auto toggle 鋪到全部 36 個 web surface（34 個 app template 注入右下角浮動 pill；`/architecture`、`/progress` 保留 bespoke slider）。`data-theme` 從 `<body>` 遷到 `<html>`，token 選擇器改 `html[data-theme]`。退役 reader / book_reader / projects 三套 ad-hoc per-page toggle。 | 對話 UI 稽核 — 全站 L/D toggle 缺口 |
+| 2026-11-12 | v3.2 | 新增 `--sho-accent-tint` / `--sho-on-accent`（行事曆任務格）；禁用清單補「左側粗彩條卡片」「藥丸分頁」，並註明行事曆格子是大塊橘色的唯一例外。 | 對話：任務頁行事曆 view |

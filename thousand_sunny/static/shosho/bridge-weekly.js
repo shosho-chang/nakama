@@ -142,7 +142,9 @@
     var slug = p.get('cf_slug'),
         cdate = p.get('cf_date') || '', ctime = p.get('cf_time') || '',
         pom = p.get('cf_pom') || '', withTxt = p.get('cf_with') || '既有事件',
-        reason = p.get('cf_reason') || '', slots = p.get('cf_slots') || '';
+        reason = p.get('cf_reason') || '', slots = p.get('cf_slots') || '',
+        // 行事曆 drag to another day (修修 2026-11-12): 強排 must also retire the old day
+        fromDate = p.get('cf_from') || '';
     var esc = window.CSS && CSS.escape ? CSS.escape(slug) : slug;
     var row = document.querySelector('.wk-task-d[data-slug="' + esc + '"]');
     var form = row && row.querySelector('.wk-sched-form');
@@ -201,6 +203,11 @@
       setField('entry_time', ctime);
       setField('pomodoros', pom);
       if (reason) setField('reason', reason);
+      if (fromDate) {
+        var fd = form.querySelector('input[name="from_date"]');
+        if (!fd) { fd = document.createElement('input'); fd.type = 'hidden'; fd.name = 'from_date'; form.appendChild(fd); }
+        fd.value = fromDate;
+      }
       // requestSubmit (not submit) so the stay-in-place save-state submit handler fires
       // — form.submit() bypasses submit-event listeners, which made the view jump (v3-I.5).
       if (form.requestSubmit) form.requestSubmit(); else form.submit();
@@ -212,6 +219,8 @@
     bEdit.textContent = '改時間';
     bEdit.addEventListener('click', function () {
       close();
+      // On the 行事曆 tab the block is right there — just drag it again.
+      if (document.querySelector('.wk-tab.is-on[data-tab="cal"]')) return;
       if (row.tagName === 'DETAILS') row.open = true;
       setField('entry_date', cdate);
       setField('entry_time', ctime);

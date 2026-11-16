@@ -226,3 +226,55 @@ def test_editorial_master_seal_keeps_the_whole_timeline(tmp_path):
     _render_master(proj, FakeTimeline(v1_ends=(9000,), end=9300), out_dir, "master")
 
     assert proj.settings["MarkOut"] == 9300
+
+
+class StuckCodecProject(FakeProject):
+    """2026-11-13 20261111 李惠貞：算過純音訊後 mp4/H264 設定靜默失敗、codec 停在
+    APVYUV422_10，master.mp4 只剩聲音。載入 H.264 Master 後才設得上。"""
+
+    def __init__(self, *args, recovers: bool, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.recovers = recovers
+        self.preset_loaded = False
+
+    def SetCurrentRenderFormatAndCodec(self, fmt, codec):
+        self.calls.append(f"format {fmt}/{codec}")
+        return self.preset_loaded and self.recovers
+
+    def LoadRenderPreset(self, name):
+        self.calls.append(f"preset {name}")
+        self.preset_loaded = True
+        return True
+
+    def GetCurrentRenderFormatAndCodec(self):
+        return {"format": "mp4", "codec": "APVYUV422_10"}
+
+
+def test_render_resets_preset_when_h264_cannot_be_selected(tmp_path):
+    out_dir = tmp_path / "exports"
+    out_dir.mkdir()
+    proj = StuckCodecProject(
+        out_dir / "master.mp4",
+        job_status={"JobStatus": "Complete"},
+        writes_file=True,
+        recovers=True,
+    )
+
+    _render_master(proj, FakeTimeline(), out_dir, "master")
+
+    assert proj.calls[:3] == ["format mp4/H264", "preset H.264 Master", "format mp4/H264"]
+
+
+def test_render_refuses_when_h264_still_cannot_be_selected(tmp_path):
+    out_dir = tmp_path / "exports"
+    out_dir.mkdir()
+    proj = StuckCodecProject(
+        out_dir / "master.mp4",
+        job_status={"JobStatus": "Complete"},
+        writes_file=True,
+        recovers=False,
+    )
+
+    with pytest.raises(SystemExit, match="APVYUV422_10"):
+        _render_master(proj, FakeTimeline(), out_dir, "master")
+    assert not (out_dir / "master.mp4").exists()

@@ -31,6 +31,7 @@ from starlette.requests import Request
 
 from agents.usopp.publish_timeline import PublishTimelineError, plan_subtitle
 from shared.config import get_runtime_data_dir, get_vault_path
+from shared.export_paths import episode_dir_of_export
 from shared.log import get_logger
 from shared.publish_calendar import short_execution_readiness
 from shared.release_store import get_release, list_releases, update_target
@@ -137,9 +138,9 @@ def _yt_target(episode: str, cut_id: str) -> tuple[dict, dict]:
 
 
 def _episode_dir(rel: dict) -> Path:
-    """成品在 `<episode>/highlights/exports/<cut>.mp4`——往上三層＝episode 目錄
-    （與 publish_upload 推導 CC 來源的方式相同，不硬編磁碟位置）。"""
-    return Path(rel["file_path"]).parents[2]
+    """由成品路徑反推 episode 目錄：完整版在 `<episode>/final/`、精華在
+    `<episode>/highlights/exports/`（與 publish_upload 同一個函式，不硬編磁碟位置）。"""
+    return episode_dir_of_export(Path(rel["file_path"]))
 
 
 def _platform_targets(rel: dict) -> list[dict]:

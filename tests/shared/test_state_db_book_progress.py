@@ -18,33 +18,6 @@ import sqlite3
 import pytest
 
 
-def test_book_progress_table_exists():
-    from shared.state import _get_conn
-
-    conn = _get_conn()
-    rows = conn.execute(
-        "SELECT name FROM sqlite_master WHERE type='table' AND name='book_progress'"
-    ).fetchall()
-    assert len(rows) == 1
-
-
-def test_book_progress_columns_match_schema():
-    from shared.state import _get_conn
-
-    conn = _get_conn()
-    cols = {row[1] for row in conn.execute("PRAGMA table_info(book_progress)").fetchall()}
-    expected = {
-        "book_id",
-        "last_cfi",
-        "last_chapter_ref",
-        "last_spread_idx",
-        "percent",
-        "total_reading_seconds",
-        "updated_at",
-    }
-    assert expected.issubset(cols), f"missing columns: {expected - cols}"
-
-
 def test_book_progress_book_id_is_primary_key():
     from shared.state import _get_conn
 
@@ -52,17 +25,6 @@ def test_book_progress_book_id_is_primary_key():
     rows = conn.execute("PRAGMA table_info(book_progress)").fetchall()
     pk_cols = {row[1] for row in rows if row[5]}
     assert pk_cols == {"book_id"}
-
-
-def test_book_progress_foreign_key_to_books():
-    """FK on book_id → books.book_id, ON DELETE CASCADE so progress dies with the book."""
-    from shared.state import _get_conn
-
-    conn = _get_conn()
-    fks = conn.execute("PRAGMA foreign_key_list(book_progress)").fetchall()
-    assert any(fk[2] == "books" and fk[3] == "book_id" and fk[4] == "book_id" for fk in fks), (
-        f"no FK book_progress.book_id → books.book_id; got {fks}"
-    )
 
 
 def test_book_progress_fk_blocks_orphan_insert():

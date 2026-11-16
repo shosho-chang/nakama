@@ -1,16 +1,11 @@
 from __future__ import annotations
 
-from agents.brook.script_video.finished_cut_production._assets import (
-    AssetKind,
-    WorkerCatalogItem,
-)
 from agents.brook.script_video.finished_cut_production._context import (
     CueAnchor,
     CutSourceRange,
     EditorialCutContext,
 )
 from agents.brook.script_video.finished_cut_production._derived_assets import (
-    DerivedAssetBuildRequest,
     DerivedAssetGeometry,
     DerivedAssetInstruction,
 )
@@ -57,55 +52,3 @@ def test_instruction_show_sec_uses_core_visual_placement_not_semantic_span() -> 
 
     assert semantic.t1 - semantic.t0 == 60.0
     assert instruction.show_sec == 4.0
-
-
-def test_build_request_carries_the_neutral_catalog_context() -> None:
-    catalog_item = WorkerCatalogItem(
-        reference="asset-sha256:" + "a" * 64,
-        kind=AssetKind.PHOTO,
-        visual_summary="Headshot of the named guest on a neutral background",
-        width=1600,
-        height=1200,
-        duration_sec=None,
-    )
-    # 原本用 person_inset——它是唯一同時帶「來源素材」與「配方」的實作。ADR-069
-    # 階段 2 退役之後那個組合不存在了（`__post_init__` 會擋「passthrough 不得發明
-    # 配方」），所以這裡測的就是 passthrough 那一半：請求要帶著中性素材目錄。
-    # 「帶著 core 配方」那一半由上一條（identity_card）涵蓋。
-    geometry = DerivedAssetGeometry(
-        target_width=1920,
-        target_height=1080,
-        layout_identity="photo:v1",
-    )
-    instruction = DerivedAssetInstruction(
-        component_id="component:event-1",
-        event_id="event-1",
-        semantic_kind="b_roll",
-        implementation_kind="photo",
-        lane="b_roll",
-        display="簡立峰博士",
-        t0=12.0,
-        t1=18.0,
-        source_asset_ref=catalog_item.reference,
-        geometry=geometry,
-        recipe_identity=None,
-    )
-
-    request = DerivedAssetBuildRequest(
-        build_request_id="build-request-1",
-        run_id="run-1",
-        command_id="approved-cut:1",
-        episode_id="episode-1",
-        cut_id="punch-L04",
-        format="long",
-        dp_acceptance_id="acceptance-dp-1",
-        scope="full_stage",
-        event_id=None,
-        instructions=(instruction,),
-        worker_catalog_items=(catalog_item,),
-    )
-
-    assert request.instructions == (instruction,)
-    assert request.worker_catalog_items == (catalog_item,)
-    assert request.episode_id == "episode-1"
-    assert request.format == "long"

@@ -200,6 +200,28 @@ def set_project_status(vault_root: Path, name: str, status: str) -> None:
     _atomic_write(path, _render(fm, m.group(2)))
 
 
+def delete_project_file(vault_root: Path, name: str, *, recycle_bin_fn=None) -> None:
+    """Send ``Projects/{name}.md`` to the recycle bin (修修 2026-11-12：建錯的專案
+    要能刪). Member tasks are the caller's job — see the router's 刪除專案, which
+    removes them through the same ``weekly_writer.delete_task`` rule first.
+
+    Only a real ``type: project`` file is touched; anything else raises
+    :class:`ProjectError` (``missing``). ``delete_failed`` when the file is still
+    there afterwards (locked by Obsidian / sync), so the page never claims a
+    delete that did not happen."""
+    from shared.discard_service import _send_to_recycle_bin
+
+    name = unicodedata.normalize("NFC", str(name or "")).strip()
+    if not name or _FILENAME_UNSAFE.search(name):
+        raise ProjectError(f"找不到戰線「{name}」。", code="missing")
+    path = Path(vault_root) / PROJECTS_DIR / f"{name}.md"
+    if not path.is_file() or _entry_from_path(path) is None:
+        raise ProjectError(f"找不到戰線「{name}」。", code="missing")
+    (recycle_bin_fn or _send_to_recycle_bin)(path)
+    if path.exists():
+        raise ProjectError(f"「{name}」沒有刪除成功，檔案可能正被佔用。", code="delete_failed")
+
+
 def tasks_for(name: str, tasks: list["WeeklyTask"]) -> list["WeeklyTask"]:
     """Member tasks of one project — frontmatter canonical, prefix legacy fallback."""
     name = unicodedata.normalize("NFC", str(name or "")).strip()

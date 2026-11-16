@@ -622,6 +622,8 @@ def main() -> int:
                 "guest_x_pct": guest["x_pct"],
                 "guest_y_pct": guest["y_pct"],
                 "title_max_width": int(req.get("title_max_width") or 580),
+                "title_font_px": int(req.get("title_font_px") or 100),
+                "title_font_weight": req.get("title_font_weight") or "bold",
                 "logo_height_px": 92,
                 "text_center_pct": center,
                 "text_top_pct": float(req.get("text_top_pct") or 44),

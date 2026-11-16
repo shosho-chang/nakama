@@ -18,6 +18,7 @@ import re
 import threading
 from typing import TYPE_CHECKING, Callable
 
+from gateway.access import DENY_MESSAGE, is_allowed
 from gateway.conversation_state import get_store
 from gateway.formatters import format_agent_response
 from gateway.handlers import get_handler
@@ -43,6 +44,18 @@ def _get_allowed_channels() -> set[str]:
     cfg = load_config()
     channels = cfg.get("gateway", {}).get("slack", {}).get("channels", {})
     return {v for v in channels.values() if v}
+
+
+# 這些 agent 拿「使用者原文」（只去掉 <@bot> mention），不拿 router 處理過的 text。
+# router 會把整段裡所有 agent 別名刪掉（例如文案裡的「Sanji」），Sanji 建活動要逐字照抄文案。
+RAW_TEXT_AGENTS = {"sanji"}
+_MENTION_TOKEN_RE = re.compile(r"<@[A-Z0-9]+>")
+
+
+def _handler_text(agent_name: str, raw_text: str, route: RouteResult) -> str:
+    if agent_name in RAW_TEXT_AGENTS:
+        return _MENTION_TOKEN_RE.sub("", raw_text or "").strip()
+    return route.text
 
 
 def _register_continuation(
@@ -97,6 +110,10 @@ def _make_slash_command_handler() -> Callable:
         logger.info(f"Slash command: {cmd_name} '{text}' from {user_id}")
 
         route = route_slash_command(cmd_name, text)
+        if not is_allowed(route.agent, user_id):
+            logger.info(f"Slash command {cmd_name} denied for {user_id} (agent={route.agent})")
+            respond(DENY_MESSAGE)
+            return
         handler = get_handler(route.agent)
 
         if not handler:
@@ -105,6 +122,10 @@ def _make_slash_command_handler() -> Callable:
 
         if not handler.can_handle(route.intent):
             redirect = handler.suggest_redirect(route.intent)
+            if redirect and not is_allowed(redirect, user_id):
+                logger.info(f"Slash redirect to {redirect} denied for {user_id}")
+                respond(DENY_MESSAGE)
+                return
             if redirect:
                 redirect_handler = get_handler(redirect)
                 if redirect_handler:
@@ -135,6 +156,11 @@ def _make_mention_handler(agent_name: str) -> Callable:
 
         logger.info(f"[{agent_name}] Mention in {channel}: '{text}' from {user_id}")
 
+        if not is_allowed(agent_name, user_id):
+            logger.info(f"[{agent_name}] Mention denied for {user_id}")
+            say(DENY_MESSAGE, thread_ts=msg_thread_ts or event_ts)
+            return
+
         handler = get_handler(agent_name)
         if not handler:
             say(f"Agent `{agent_name}` 尚未上線。", thread_ts=msg_thread_ts)
@@ -144,7 +170,12 @@ def _make_mention_handler(agent_name: str) -> Callable:
         # intent="create_project" 進 bootstrap flow）；忽略 route.agent
         route = route_mention(text)
         # 附件信件（Gmail → Slack）在 routing 之後才接上，不讓信件內文影響分類
-        body = with_attachments(route.text, event, client)
+        body = with_attachments(
+            _handler_text(agent_name, text, route),
+            event,
+            client,
+            include_images=(agent_name == "sanji"),
+        )
         result = handler.handle(route.intent, body, user_id)
         fallback, blocks = format_agent_response(agent_name, result.text, route.intent)
 
@@ -207,6 +238,11 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
                 return
             logger.info(f"[{agent_name}] DM new conversation: user={user_id} text='{text[:50]}'")
 
+            if not is_allowed(agent_name, user_id):
+                logger.info(f"[{agent_name}] DM denied for {user_id}")
+                say(DENY_MESSAGE)
+                return
+
             handler = get_handler(agent_name)
             if handler is None:
                 return
@@ -216,7 +252,12 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
                 if text
                 else RouteResult(agent=agent_name, intent="general", text="", confidence="exact")
             )
-            body = with_attachments(route.text, event, client)
+            body = with_attachments(
+                _handler_text(agent_name, text, route),
+                event,
+                client,
+                include_images=(agent_name == "sanji"),
+            )
             if not body:
                 return
             result = handler.handle(route.intent, body, user_id)
@@ -237,6 +278,9 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
         if conv.agent_name != agent_name:
             # 其他 bot 的 thread，不要搶
             return
+        # 開串之後才被移出白名單的人，不再接續
+        if not is_allowed(agent_name, user_id):
+            return
 
         handler = get_handler(conv.agent_name)
         if handler is None:
@@ -247,7 +291,7 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
             f"[{agent_name}] Thread continuation: thread={thread_ts} flow={conv.flow_name} "
             f"user={user_id} text='{text[:50]}...'"
         )
-        text = with_attachments(text, event, client)
+        text = with_attachments(text, event, client, include_images=(agent_name == "sanji"))
 
         try:
             result = handler.continue_flow(conv.flow_name, conv.state, text, user_id)

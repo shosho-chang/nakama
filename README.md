@@ -16,7 +16,7 @@
 | [Nami](agents/nami/) | 航海士 | Secretary：整合當日產出、產出 Morning Brief、頻道數據追蹤 | 每天 07:00 | 🚧 待開發 |
 | [Zoro](agents/zoro/) | 劍士 | Scout：追蹤 Twitter KOL、PubMed 論文、Google Trends、GitHub | 每天 06:00 | 🚧 待開發 |
 | [Usopp](agents/usopp/) | 狙擊手 | Publisher：發布至 WordPress/YouTube/社群媒體；電子報管理（Fluent CRM） | Owner 核准後觸發 | 🚧 待開發 |
-| [Sanji](agents/sanji/) | 廚師 | Community Manager：Fluent Community 社群營運、成員互動、活動策劃 | 每小時 | 🚧 待開發 |
+| Sanji | 廚師 | Slack 人格；社群營運／遊戲化已移至獨立 repo `freedom-fleet`（private，ADR-071） | — | — |
 | [Franky](agents/franky/) | 船匠 | System Maintenance：套件更新、CVE 掃描、API key 驗證、健康檢查 | 每週一 | 🚧 待開發 |
 | [Brook](agents/brook/) | 音樂家 | Composer：將文章/影片腳本重組為各平台格式（Blog/YouTube/IG/Newsletter） | 手動觸發 | 🚧 待開發 |
 
@@ -32,7 +32,6 @@ nakama/                         ← 本 repo（部署於 VPS）
     nami/                       ← Secretary agent
     zoro/                       ← Scout agent
     usopp/                      ← Publisher agent
-    sanji/                      ← Community Manager agent
     franky/                     ← System Maintenance agent
     brook/                      ← Composer agent
   shared/                       ← 共用模組（API client、DB、記憶、事件、Obsidian writer）

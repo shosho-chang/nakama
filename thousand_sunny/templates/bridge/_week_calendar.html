@@ -1,0 +1,98 @@
+{# ── 任務 → 行事曆 tab (修修 2026-11-12) ─────────────────────────────────────────
+   Week time-grid over the same task plan[] the other tabs read (shared/weekly_calendar).
+   Cells carry only the task name — position = time, height = length. 重點（本週重要）
+   = solid accent, 其他 = accent tint, 已完成 = empty + struck. Drag a block to move it,
+   pull its bottom edge to resize (1 🍅 = 30 min); bridge-calendar.js posts the hidden
+   .wk-cal-form to /bridge/weekly/plan (from_date when the day changes). #}
+{% macro week_calendar(cal, view) %}
+{% set wk = view.week.file_key %}
+<div class="wk-cal" data-hour-start="{{ cal.hour_start }}" data-hour-end="{{ cal.hour_end }}"
+     data-today="{{ cal.today }}" data-week="{{ wk }}"
+     style="--cal-hs: {{ cal.hour_start }}; --cal-span: {{ cal.hour_end - cal.hour_start }};">
+
+  <div class="wk-cal-row wk-cal-head">
+    <span class="wk-cal-gutter" aria-hidden="true"></span>
+    {% for d in cal.days %}
+      <button type="button" class="wk-cal-dh{{ ' is-today' if d.is_today }}{{ ' is-weekend' if d.is_weekend }}"
+              data-date="{{ d.date }}" aria-label="週{{ d.weekday_zh }} {{ d.day }} 日{{ '（今天）' if d.is_today }}">
+        <span class="wk-cal-wd">{{ d.weekday_zh }}</span><span class="wk-cal-dn">{{ d.day }}</span>
+      </button>
+    {% endfor %}
+  </div>
+
+  <div class="wk-cal-row wk-cal-allday">
+    <span class="wk-cal-gutter wk-cal-adl">整天</span>
+    {% for d in cal.days %}
+      <div class="wk-cal-adcell{{ ' is-weekend' if d.is_weekend }}" data-date="{{ d.date }}"
+           data-weekend="{{ 1 if d.is_weekend else 0 }}">
+        {% for c in d.chips %}
+          <a class="wk-cal-chip{{ ' is-strong' if c.important }}{{ ' is-done' if c.done }}"
+             href="/bridge/weekly/task/{{ c.slug | urlencode }}?week={{ wk }}"
+             data-slug="{{ c.slug }}" data-date="{{ c.date }}" data-pom="{{ c.pomodoros }}"
+             {{ 'data-drag' if c.draggable and not c.done }}>{{ c.title }}</a>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+
+  <div class="wk-cal-row wk-cal-grid">
+    <div class="wk-cal-axis" aria-hidden="true">
+      {% for h in cal.hours %}
+        <span class="wk-cal-hl{{ ' is-odd' if h % 2 }}" style="--h: {{ loop.index0 }}">{{ '%02d' | format(h) }}</span>
+      {% endfor %}
+    </div>
+    {% for d in cal.days %}
+      <div class="wk-cal-col{{ ' is-today' if d.is_today }}{{ ' is-weekend' if d.is_weekend }}"
+           data-date="{{ d.date }}" data-weekend="{{ 1 if d.is_weekend else 0 }}">
+        {% for b in d.blocks %}
+          <a class="wk-cal-block{{ ' is-strong' if b.important }}{{ ' is-done' if b.done }}{{ ' is-short' if b.end_min - b.start_min < 45 }}"
+             href="/bridge/weekly/task/{{ b.slug | urlencode }}?week={{ wk }}"
+             data-slug="{{ b.slug }}" data-date="{{ b.date }}" data-pom="{{ b.pomodoros }}"
+             data-start="{{ b.start_min }}" data-end="{{ b.end_min }}"
+             style="--s: {{ b.start_min }}; --e: {{ b.end_min }}; --lane: {{ b.lane }}; --lanes: {{ b.lanes }};"
+             aria-label="{{ b.title }}，週{{ d.weekday_zh }} {{ b.start_label }}–{{ b.end_label }}{{ '，已完成' if b.done }}"
+             {{ 'data-drag' if not b.done }}>
+            <span class="wk-cal-bt">{{ b.title }}</span>
+            {% if not b.done %}<span class="wk-cal-grip" aria-hidden="true"></span>{% endif %}
+          </a>
+        {% endfor %}
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if cal.tray %}
+    <h3 class="wk-cal-grp">還沒排時間</h3>
+    <ul class="wk-cal-tray">
+      {% for t in cal.tray %}
+        <li class="wk-cal-trow" data-drag data-slug="{{ t.slug }}" data-pom="{{ t.pomodoros }}">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h.01M15 6h.01M9 12h.01M15 12h.01M9 18h.01M15 18h.01"/></svg>
+          <a href="/bridge/weekly/task/{{ t.slug | urlencode }}?week={{ wk }}">{{ t.title }}</a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <form class="wk-cal-form" method="post" action="/bridge/weekly/plan" hidden>
+    <input type="hidden" name="task_slug">
+    <input type="hidden" name="entry_date">
+    <input type="hidden" name="entry_time">
+    <input type="hidden" name="pomodoros">
+    <input type="hidden" name="from_date">
+    <input type="hidden" name="reason">
+    <input type="hidden" name="week" value="{{ wk }}">
+  </form>
+
+  {# Weekend placements need a reason (ADR-039 D9) — the same rule as 排入. #}
+  <dialog class="wk-cal-reason" aria-labelledby="wk-cal-reason-h">
+    <form method="dialog">
+      <h3 id="wk-cal-reason-h" class="wk-cal-reason-h">排到週末</h3>
+      <label class="wk-sched-lbl"><span class="wk-sched-cap">原因</span>
+        <input type="text" name="reason" maxlength="80" autocomplete="off" required></label>
+      <div class="wk-cal-reason-acts">
+        <button class="sho-btn sho-btn--ghost" value="cancel" formnovalidate>取消</button>
+        <button class="sho-btn" value="ok">排入</button>
+      </div>
+    </form>
+  </dialog>
+</div>
+{% endmacro %}

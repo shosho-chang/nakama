@@ -191,7 +191,7 @@ exhausted / openrouter_* ──(resets_at 到了且探針成功 / 修修按「�
 
 | 呼叫點 | 改法 |
 |---|---|
-| `scripts/render_watcher.py` packaging job | 改用 SDK agentic 呼叫，**`model="opus"`**（D-f）。能不能真的拿到最新版，靠 D10 的 SDK 自動升級。呼叫類別是 `batch`。<br>• 環境：`cwd=job_dir`；`add_dirs` 包含 working episode、vault packaging、vault cutout，以及 repo root（skill 要執行 repo 裡的 script）；`setting_sources=[]`，避免桌機 `~/.claude/settings.json` 和 repo `.claude/settings.json` 的 allow 規則蓋掉限制（F16）；`permission_mode` 明確指定。<br>• 寫入限制：用 **`PreToolUse` hook** 擋掉 Write / Edit 對這些路徑以外的寫入。允許寫入的清單是：`job_dir`、working episode 的 packaging、vault packaging、vault cutouts；repo root 只能讀。<br>• 已知限制：透過 Bash 執行的 script 自己寫檔擋不住，最後防線是既有的成功驗證（`_validate_initial_packaging_outputs`，`render_watcher.py:570`），加上 prompt 規則。<br>• wall-clock 上限 4 小時（沿用 `timeout=14400`），用 `anyio.fail_after` 實作。<br>• 記錄 `AssistantMessage.model`。<br>• `tests/test_render_watcher.py:437-468` 改鎖新的 model。 |
+| `scripts/render_watcher.py` packaging job | **2026-11-14 修訂：撤銷，不改走 L1，整個背景派工刪除**（見〈修修裁決（2026-11-14）〉）。以下為原決定，只留作紀錄。<br>~~改用 SDK agentic 呼叫，**`model="opus"`**（D-f）。能不能真的拿到最新版，靠 D10 的 SDK 自動升級。呼叫類別是 `batch`。<br>• 環境：`cwd=job_dir`；`add_dirs` 包含 working episode、vault packaging、vault cutout，以及 repo root（skill 要執行 repo 裡的 script）；`setting_sources=[]`，避免桌機 `~/.claude/settings.json` 和 repo `.claude/settings.json` 的 allow 規則蓋掉限制（F16）；`permission_mode` 明確指定。<br>• 寫入限制：用 **`PreToolUse` hook** 擋掉 Write / Edit 對這些路徑以外的寫入。允許寫入的清單是：`job_dir`、working episode 的 packaging、vault packaging、vault cutouts；repo root 只能讀。<br>• 已知限制：透過 Bash 執行的 script 自己寫檔擋不住，最後防線是既有的成功驗證（`_validate_initial_packaging_outputs`，`render_watcher.py:570`），加上 prompt 規則。<br>• wall-clock 上限 4 小時（沿用 `timeout=14400`），用 `anyio.fail_after` 實作。<br>• 記錄 `AssistantMessage.model`。<br>• `tests/test_render_watcher.py:437-468` 改鎖新的 model。~~ |
 | `.../finished_cut_production/_codex_semantic.py` | 改用 SDK 呼叫：開放 Read 工具讓它讀 `packet.json`（`:720`），或把 packet 直接放進 prompt。搭配 `output_format`，schema 從 2020-12（`:830`）轉成 draft-07（U10），`max_turns` 至少 3。 |
 | `scripts/podcast_highlight_visual_orchestrator.py` | 改用 SDK agentic 呼叫。沿用現有的 resume 契約：session id 要一致（`:197-203`），改用 SDK 的 `resume` / `session_id`，並固定 `cwd`（resume 必須在同一個 cwd）。 |
 | `scripts/dispatch_codex_playbook_audit.py` | 一次性腳本，在 D8 退役。 |
@@ -261,13 +261,13 @@ D4 拿掉了 `.env` 開關，等於放棄了「改一行 env 再重啟就能秒�
 | **S1 L1 核心** | `shared/agent_sdk.py` 補齊 D2 的 8 項職責；facade 依 model 字串分派；D9 context helper；D3 憑證合併（Q2 別名化**不在 S1**，改由 S1a–d 各自切換時做：舊路徑例如 OpenRouter transport 的 `_SLUG_MAP` 不認得別名）；`thousand_sunny/routers/bridge_models.py::_transport_for` 改用 D1 規則和 lane 狀態；**盤點並改寫 21 支綁著 `AUTH_*` / `LLM_TRANSPORT` / `subscription_*` 的測試檔**（清單列在 PR）。**只建模組，不切換任何 production 路徑** | S0 | 單元測試涵蓋：分派、憑證清理、timeout、機器層級 lease、async 情境、巢狀呼叫、用量紀錄、context 傳遞。`L1_CUTOVER_GROUPS` 為空時 production 行為不變 |
 | **S2 額度用完的處理** | D5 全部：偵測、per-family 阻擋、`allowed_warning` 讓批次讓路、Franky probe target、決策介面、OpenRouter 模式雙路由、每日 canary、`shared.llm_lane` 手動覆寫 CLI | S1 | 注入假的 `RateLimitEvent` 能走完整條狀態機；VPS 和桌機看到同一個狀態；Bridge 頁面合併前經 dev server + 瀏覽器實際操作過 |
 | **S1a–d 分批切換** | 依執行環境分批：**a** gateway（意圖分類、Sanji / Zoro handler、orchestrator、記憶抽取）→ **b** VPS cron（Robin、Franky、Zoro、memory-reflection）→ **c** Bridge（translator、digest、SEO、keyword、Usopp）→ **d** 桌機腳本（Brook repurpose、planner、`subtitle_correct`） | S2 | 每批上線後 72 小時內：本批呼叫點已改用別名（Q2）；`lane_actual` 全部是 `subscription`、沒有 `api`；journal 沒有新增 LLM 錯誤；PR 內文寫明回滾步驟 |
-| **S5 Codex → L1** | D7，**RenderWatcher 優先**（D-f） | S2 | 在桌機跑一次真的 packaging job，通過既有驗證；log 裡記到的 model 符合 Q5 |
+| **S5 Codex → L1** | D7（RenderWatcher 那一列已於 2026-11-14 撤銷、程式已刪；剩 `_codex_semantic.py` 等） | S2 | 剩餘呼叫點各自在桌機實跑一次，通過既有驗證；log 裡記到的 model 符合 Q5 |
 | **S4 tool-use 呼叫點** | Nami 預設走 SDK；merger 同樣改；`replan_agent` 改用 in-process MCP tools。**舊 loop 和 flag 等到 S6 才刪** | S1a | Nami golden path，含 ask_user 的暫停與恢復；merger 的 capture 契約測試 |
 | **S3 L2 自由選模型** | D6；Bridge model 面板接受任意 slug | S1 | 用一個不在舊白名單上的 slug 實際呼叫成功，並記到實際 cost |
 | **S7 SDK 自動升級** | D10：每週升級 workflow、CI 讀別名表步驟、自動合併、Franky 升級通知與落後偵測 | S1（精確釘版） | 手動觸發一次 workflow，確認會開 PR、CI 綠了自動合併、收到 DM |
 | **S6 清理** | D8 全部（**等 #1300 合併**）；刪掉 S4 留下的舊 loop 和 flag；修修從 VPS `.env` 移除退場的 key；ADR-026 / ADR-049 標記狀態；`CONTEXT-MAP.md` 更新 LLM Router / Auth policy / Fallback reason 詞條，並新增 lane 詞條；`docs/runbooks/openrouter-canary.md` 改寫或標記 deprecated | 以上全部 | 連續 7 天：`api_calls` 除了 `lane_actual` 兩種值以外沒有其他計費路徑，而且沒有 `agent="unknown"` |
 
-S5、S4 可以和 S1a–d 並行。S3 不依賴 S2，隨時可以做。S7 在 S1 之後隨時可以做，但要**排在 S5 之前**：RenderWatcher 要用到最新版 Opus，得先有 S7 把 SDK 升上來。
+S5、S4 可以和 S1a–d 並行。S3 不依賴 S2，隨時可以做。S7 在 S1 之後隨時可以做，但要**排在 S5 之前**：RenderWatcher 要用到最新版 Opus，得先有 S7 把 SDK 升上來。（2026-11-14：RenderWatcher 已不派 packaging，這條排序理由不再成立。）
 
 ## 修修要親手做的事
 
@@ -336,6 +336,15 @@ S5、S4 可以和 S1a–d 並行。S3 不依賴 S2，隨時可以做。S7 在 S1
 - **Q6 → 刪掉縮圖 playbook 建置流程**（D8）。產出的 playbook 保留。
 - **Q7 → (b) 分類別常備授權**（D5）：`interactive` 在額度用完時自動轉 OpenRouter，每日上限 US$5，事後通知；`batch` 等重置，或由修修在 Bridge 核准。
 - **Q8 → batch 每次核准的預設上限 US$20**，按的時候可以改。
+
+## 修修裁決（2026-11-14）：RenderWatcher 不再派 packaging
+
+修修在兩個選項之間（A 交給當下對話中的 agent；B 保留背景自動跑、改用 Claude）選了 **A**：「交給當下的 agent 跑」。
+
+- **D7 第一列撤銷**：`scripts/render_watcher.py` 的 packaging job 不改走 L1，而是整段刪除（`pending_packaging_jobs`、`run_packaging_job`、`dispatch_packaging_agent`、`_codex_command` 與驗證 helper）。watcher 只剩存配方出圖。
+- **理由**：① 語意工作由當下執行的 agent 做，不在背景另開供應商（`feedback_semantic_work_runs_on_host_agent`）；② Highlight shortlist 一核准就在背景做 packaging，比 `podcast-pipeline` S8F 派工圖的順序早——長片 packaging 排在 timeline review 第二次「定稿」之後；③ 背景與對話兩條路會同時寫 `packages.json`，S8F 把它列為併發紅線。
+- **Bridge 行為不變**：shortlist 核准照樣在 `manifest.json` 標 `packaging.status=queued`；對話中的 agent 跑完 title-brainstorm／thumbnail-brainstorm、`packages.json` 出現該 cut 後，`/bridge/packaging` 自動顯示 ready（`thousand_sunny/routers/packaging.py` 既有邏輯）。
+- D7 其餘列（`_codex_semantic.py` 等）不受影響。
 
 ## S0 取證結果（2026-09-25）
 

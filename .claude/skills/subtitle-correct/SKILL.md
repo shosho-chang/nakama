@@ -5,12 +5,19 @@ description: >
   參考資料 → transcript.srt + transcript.qc.md 校正報告。兩種模式自動選擇：
   refs 有完整逐字稿（script.* / 逐字稿*）→ difflib 對稿（零 LLM）；只有訪綱/
   報告 → 派 Opus subagent 分段校正（subscription quota，零 API 錢）。
-  Use when the user says 「校正字幕」「subtitle-correct」「校正這份 SRT」
-  「用訪綱/逐字稿修字幕」, or after subtitle-gen completes in the podcast
-  pipeline.
+  ⛔ 不是 podcast 訪談集的字幕路線：podcast 字幕校正自 ADR-063 起由
+  podcast-pipeline 的 Memo Dual-Audit Release（雙 text audit＋雙 ASR）負責。
+  只在使用者明確點名「subtitle-correct」或要校一份獨立的外部 SRT 時使用。
 ---
 
 # subtitle-correct — 字幕校正
+
+> ⛔ **Podcast 訪談集不要用。** 自 ADR-063（2026-08-21）起，podcast 字幕校正走
+> podcast-pipeline 的 S4–S6（Memo Dual-Audit Release），本 skill 產的 `transcript.srt`
+> 不會被任何 podcast 下游接受（Resolve、Editorial Master、選段都只認 Memo release handoff）。
+> 下方「scripted 模式（照稿錄的 YouTube 影片）」屬於照稿單人影片線，該線目前凍結
+> （修修 2026-11-13 裁決），重啟時字幕來源另行決定，不要先假設是本 skill。
+> 只有使用者明確點名，或要校一份與 podcast 正式流程無關的外部 SRT 時才執行。
 
 `scripts/run_subtitle_correct.py`（repo：`E:\nakama`）的互動包裝。
 核心在 `shared/subtitle_correct.py`。**成本原則：一切預設跑在 subscription

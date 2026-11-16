@@ -3,12 +3,19 @@ name: subtitle-gen
 description: >
   初始字幕產生：episode 的 normalized.wav → 本機 WhisperX large-v3 →
   subs/raw.srt（cue 級字幕）+ subs/words.json（字級 timestamps）。
-  Use when the user says 「產字幕」「跑 ASR」「subtitle-gen」「辨識字幕」,
-  or after audio-prep completes in the podcast pipeline. GPU 工作——
-  跑之前必讀本文的 GPU 注意事項。
+  ⛔ 不是 podcast 訪談集的字幕路線：podcast 字幕自 ADR-063 起一律走
+  podcast-pipeline 的 Memo Dual-Audit Release，audio-prep 之後不要接本 skill。
+  只在使用者明確點名「subtitle-gen」時使用。GPU 工作——跑之前必讀本文的 GPU 注意事項。
 ---
 
 # subtitle-gen — 初始字幕產生（GPU）
+
+> ⛔ **Podcast 訪談集不要用。** 自 ADR-063（2026-08-21）起，podcast 字幕唯一正式路線是
+> podcast-pipeline 的 S3–S6（Memo 辨識 → Memo Dual-Audit Release），本 skill 產的
+> `subs/raw.srt` 不會被任何 podcast 下游接受。短片需要的詞級時間戳 `subs/words.json`
+> 由 shortform-cut 用 `scripts/run_whisperx_words.py` 產，也不經過本 skill。
+> 照稿單人影片線目前凍結（修修 2026-11-13 裁決），重啟時字幕來源另行決定，不要先假設是本 skill。
+> 只有使用者明確點名要跑 subtitle-gen 時才執行。
 
 `scripts/run_subtitle_gen.py`（repo：`E:\nakama`）的互動包裝。
 

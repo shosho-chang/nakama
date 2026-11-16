@@ -77,16 +77,26 @@
           {%- if p.last %} · 最近活動 {{ p.last }}{% endif %}
         </p>
       </div>
-      <form method="post" action="/bridge/projects/{{ p.name | urlencode }}/status">
-        {% if p.status == 'archived' %}
-          <input type="hidden" name="status" value="active">
-          <button class="sho-btn sho-btn--ghost" type="submit">復原專案</button>
-        {% else %}
-          <input type="hidden" name="status" value="archived">
-          <button class="sho-btn sho-btn--ghost" type="submit"
-                  onclick="return confirm('封存「{{ p.name }}」？任務與紀錄不會消失，只是從進行中清單收起。')">封存專案</button>
-        {% endif %}
-      </form>
+      {# 修修 2026-11-12：建錯的專案要能刪。刪除跟封存並排但用紅色 hover 區分；
+         確認文字寫明會連同幾個任務一起刪（行事曆事件也會取消），都進資源回收筒。
+         確認走 data-confirm（JS 讀屬性），名字含引號也不會弄壞 onclick。 #}
+      <div class="pjd-head-acts">
+        <form method="post" action="/bridge/projects/{{ p.name | urlencode }}/status"
+              {%- if p.status != 'archived' %} data-confirm="封存「{{ p.name }}」？任務與紀錄不會消失，只是從進行中清單收起。"{% endif %}>
+          {% if p.status == 'archived' %}
+            <input type="hidden" name="status" value="active">
+            <button class="sho-btn sho-btn--ghost" type="submit">復原專案</button>
+          {% else %}
+            <input type="hidden" name="status" value="archived">
+            <button class="sho-btn sho-btn--ghost" type="submit">封存專案</button>
+          {% endif %}
+        </form>
+        <form method="post" action="/bridge/projects/{{ p.name | urlencode }}/delete"
+              data-confirm="確定要刪除專案「{{ p.name }}」？
+{%- if p.total_count %}底下 {{ p.total_count }} 個任務會一起刪除，已排入的 Google 行事曆事件也會取消。{% endif %}檔案會移到資源回收筒。">
+          <button class="sho-btn sho-btn--ghost pjd-del" type="submit">刪除專案</button>
+        </form>
+      </div>
     </header>
 
     {# ── 還剩多少 / 還差多久 ── #}
@@ -257,6 +267,13 @@
       if (btn) btn.click();
     }
   } catch (e) { /* private mode */ }
+
+  // 封存／刪除送出前再問一次（文字放在 data-confirm）
+  document.querySelectorAll('form[data-confirm]').forEach(function (f) {
+    f.addEventListener('submit', function (e) {
+      if (!window.confirm(f.getAttribute('data-confirm'))) e.preventDefault();
+    });
+  });
 
   // live count in the attach panel's footer
   var box = document.querySelector('.pjd-attach');

@@ -68,6 +68,10 @@
   --sho-accent-2:     oklch(0.66 0.155 38);
   --sho-accent-soft:  oklch(0.71 0.135 41 / 0.10);
   --sho-accent-line:  oklch(0.71 0.135 41 / 0.45);
+  /* 行事曆格子（修修 2026-11-12）：次要工作＝淺橘 tint、重點工作＝實心 accent 配深字。
+     這是 accent 唯一允許大面積上色的地方——見 docs/design-system.md 禁用清單的例外。 */
+  --sho-accent-tint:   oklch(0.71 0.135 41 / 0.20);
+  --sho-on-accent:     oklch(0.18 0.030 41);
 
   /* ── Semantic ───────────────────────────────────────────────────────── */
   --sho-success: oklch(0.58 0.115 150);
@@ -127,6 +131,7 @@
     --sho-accent-2:    oklch(0.83 0.135 52);
     --sho-accent-soft: oklch(0.78 0.130 48 / 0.14);
     --sho-accent-line: oklch(0.78 0.130 48 / 0.50);
+    --sho-accent-tint: oklch(0.78 0.130 48 / 0.24);
     --sho-logo-filter: invert(1) brightness(1.1);
     color-scheme: dark;
   }
@@ -145,6 +150,7 @@ html[data-theme="dark"] .sho {
   --sho-accent-2:    oklch(0.83 0.135 52);
   --sho-accent-soft: oklch(0.78 0.130 48 / 0.14);
   --sho-accent-line: oklch(0.78 0.130 48 / 0.50);
+  --sho-accent-tint: oklch(0.78 0.130 48 / 0.24);
   --sho-logo-filter: invert(1) brightness(1.1);
   color-scheme: dark;
 }

@@ -19,7 +19,7 @@ Owner（修修 · 船長）
   └── Manual / Bridge UI
            ├── Brook ──► blog / FB / IG / 電子報 各平台格式輸出
            │        └──► Video Production Line：B-roll storyboard → FCPXML（DaVinci）（原 Foundry，ADR-050 歸 Brook）
-           └── Sanji（社群 · 規劃中）
+           └── Sanji（Slack 人格；社群營運／遊戲化已移至 freedom-fleet repo，ADR-071）
 ```
 
 > **逐 agent 的功能模組 / 用到的 `scripts/` / 已 skill 化能力**，見 Bridge 內部頁
@@ -127,7 +127,7 @@ FastAPI + Jinja2，部署為 systemd service（`thousand-sunny.service`）。
 - `robin.py` — KB ingest UI、Reader、KB search（38 routes）
 - `zoro.py` / `bridge_zoro.py` — Keyword research
 - `brook.py` / `repurpose.py` — Article composition、多 channel render
-- `brook_video.py` — B-roll storyboard / FCPXML preview（Brook Video Production Line surface；route `/brook/video`，舊 `/foundry/*` 301 redirect，ADR-050）
+- `video_plan.py` — YouTube 照稿影片的畫面規劃表（`/bridge/video-plan`；Director 交件、修修審；資料在 `PODCAST_EPISODES_ROOT/<episode>/visual_plan.json`，跟 podcast 共用 `G:/Footages`）
 - `franky.py` — `/healthz` 探針 + `/bridge/franky` 健康儀表板
 - `bridge*.py` — Bridge ops 主控台（weekly / projects / digests / models / cost / logs / memory）
 - `progress.py` / `architecture.py` / `inventory.py` — Ops 文件頁（chassis nav，cookie-authed）

@@ -164,6 +164,24 @@ def _as_date(v: object) -> Optional[date]:
     return None
 
 
+def _iso_str(v: object) -> str:
+    """A plan entry's ``start``/``end`` as an ISO string with a ``T`` separator.
+
+    The writer emits ``2026-06-03T09:00:00+08:00``, but once a task file is re-dumped
+    (Obsidian, or our own yaml round-trip) the value is unquoted and ``safe_load``
+    hands back a ``datetime`` — whose ``str()`` uses a SPACE. Every consumer tells a
+    timed block from an all-day one by the ``T``, so a space silently turned real
+    timed blocks into 整天 (found 2026-11-12 on 「W46 電子報」)."""
+    if isinstance(v, datetime):
+        return v.isoformat()
+    if isinstance(v, date):
+        return v.isoformat()
+    s = str(v or "").strip()
+    if len(s) > 10 and s[10] == " ":
+        s = s[:10] + "T" + s[11:]
+    return s
+
+
 def _strip_wikilink(v: object) -> str:
     """Thin alias kept for this module's call sites — see
     :func:`shared.wikilink.strip_wikilink` for why there is only one parser."""
@@ -588,8 +606,8 @@ class WeeklyIndexer:
                         # `done` is a YAML bool — _as_int treats bool as 0 (for pomodoros),
                         # so parse truthiness directly, else the daily cross-out never shows.
                         done=1 if a.get("done") else 0,
-                        start=str(a.get("start") or ""),
-                        end=str(a.get("end") or ""),
+                        start=_iso_str(a.get("start")),
+                        end=_iso_str(a.get("end")),
                         event_id=str(a.get("calendar_event_id") or a.get("event_id") or "").strip(),
                     )
                 )

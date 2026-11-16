@@ -657,7 +657,13 @@ def test_delete_task_removes_file():
     iter_responses = [
         _fake_response(
             "tool_use",
-            [_tool_use_block("delete_task", {"title": "看牙醫"}, id_="toolu_dt1")],
+            [
+                _tool_use_block(
+                    "delete_task",
+                    {"title": "看牙醫", "confirm_path": "TaskNotes/Tasks/看牙醫.md"},
+                    id_="toolu_dt1",
+                )
+            ],
         ),
         _fake_response("end_turn", [_text_block("🗑️ 已刪除")]),
     ]
@@ -699,6 +705,126 @@ def test_delete_task_not_found():
     assert "找不到" in result.text
 
 
+def _run_delete_task(tool_input: dict, files: list, contents: dict):
+    """跑一次 delete_task，回傳 (tool_result 內容, delete_page mock)。"""
+    iter_responses = [
+        _fake_response("tool_use", [_tool_use_block("delete_task", tool_input, id_="toolu_dtx")]),
+        _fake_response("end_turn", [_text_block("ok")]),
+    ]
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses) as ask,
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.list_files", return_value=files),
+        patch("gateway.handlers.nami.read_page", side_effect=lambda p: contents.get(p)),
+        patch("gateway.handlers.nami.delete_page", return_value=True) as mock_del,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("delete_task", "刪 task", "U1")
+    tool_result = str(ask.call_args_list[1])
+    return tool_result, mock_del
+
+
+def _task_md(title: str) -> str:
+    return f"---\ntitle: {title}\n---\n\n"
+
+
+def test_delete_task_without_confirm_path_only_previews():
+    """沒帶 confirm_path：只回報找到哪個檔，不刪（2026-11 審計補的程式層二次確認）。"""
+    fake_file = SimpleNamespace(name="看牙醫.md", stem="看牙醫")
+    contents = {"TaskNotes/Tasks/看牙醫.md": _task_md("看牙醫")}
+
+    result, mock_del = _run_delete_task({"title": "看牙醫"}, [fake_file], contents)
+
+    mock_del.assert_not_called()
+    assert "還沒刪" in result
+    assert "confirm_path=TaskNotes/Tasks/看牙醫.md" in result
+
+
+def test_delete_task_wrong_confirm_path_does_not_delete():
+    fake_file = SimpleNamespace(name="看牙醫.md", stem="看牙醫")
+    contents = {"TaskNotes/Tasks/看牙醫.md": _task_md("看牙醫")}
+
+    _, mock_del = _run_delete_task(
+        {"title": "看牙醫", "confirm_path": "TaskNotes/Tasks/別的.md"}, [fake_file], contents
+    )
+
+    mock_del.assert_not_called()
+
+
+def test_delete_task_ambiguous_title_deletes_nothing():
+    """「牙醫」同時對到兩個 task：不挑第一個刪，列出來問。"""
+    files = [
+        SimpleNamespace(name="看牙醫.md", stem="看牙醫"),
+        SimpleNamespace(name="預約牙醫.md", stem="預約牙醫"),
+    ]
+    contents = {
+        "TaskNotes/Tasks/看牙醫.md": _task_md("看牙醫"),
+        "TaskNotes/Tasks/預約牙醫.md": _task_md("預約牙醫"),
+    }
+
+    result, mock_del = _run_delete_task(
+        {"title": "牙醫", "confirm_path": "TaskNotes/Tasks/看牙醫.md"}, files, contents
+    )
+
+    mock_del.assert_not_called()
+    assert "有 2 個" in result
+
+
+def test_delete_task_exact_title_wins_over_substring_hits():
+    files = [
+        SimpleNamespace(name="看牙醫.md", stem="看牙醫"),
+        SimpleNamespace(name="看牙醫-複診.md", stem="看牙醫-複診"),
+    ]
+    contents = {
+        "TaskNotes/Tasks/看牙醫.md": _task_md("看牙醫"),
+        "TaskNotes/Tasks/看牙醫-複診.md": _task_md("看牙醫-複診"),
+    }
+
+    _, mock_del = _run_delete_task(
+        {"title": "看牙醫", "confirm_path": "TaskNotes/Tasks/看牙醫.md"}, files, contents
+    )
+
+    mock_del.assert_called_once_with("TaskNotes/Tasks/看牙醫.md")
+
+
+def test_delete_project_without_confirm_path_lists_files_and_deletes_nothing():
+    iter_responses = [
+        _fake_response(
+            "tool_use",
+            [_tool_use_block("delete_project", {"title": "建立專案"}, id_="toolu_dp0")],
+        ),
+        _fake_response("end_turn", [_text_block("ok")]),
+    ]
+    proj_file = SimpleNamespace(name="建立專案.md", stem="建立專案")
+    task_file = SimpleNamespace(name="建立專案---Filming.md", stem="建立專案---Filming")
+    read_map = {
+        "Projects/建立專案.md": _task_md("建立專案"),
+        "TaskNotes/Tasks/建立專案---Filming.md": (
+            "---\ntitle: 建立專案 - Filming\nprojects:\n- '[[建立專案]]'\n---\n\n"
+        ),
+    }
+
+    def fake_list_files(dir_: str, suffix: str = ".md"):
+        return [proj_file] if "Projects" in dir_ else [task_file]
+
+    with (
+        patch("gateway.handlers.nami.ask_with_tools", side_effect=iter_responses) as ask,
+        patch("gateway.handlers.nami.set_current_agent"),
+        patch("gateway.handlers.nami.list_files", side_effect=fake_list_files),
+        patch("gateway.handlers.nami.read_page", side_effect=lambda p: read_map.get(p)),
+        patch("gateway.handlers.nami.delete_page", return_value=True) as mock_del,
+        patch("gateway.handlers.nami.emit"),
+        patch("gateway.handlers.nami.kb_log"),
+    ):
+        NamiHandler().handle("delete_project", "把建立專案給砍掉", "U1")
+
+    mock_del.assert_not_called()
+    tool_result = str(ask.call_args_list[1])
+    assert "還沒刪" in tool_result
+    assert "建立專案---Filming.md" in tool_result
+
+
 # ── Agent loop: delete_project tool ──────────────────────────────────
 
 
@@ -709,7 +835,11 @@ def test_delete_project_with_tasks():
             [
                 _tool_use_block(
                     "delete_project",
-                    {"title": "建立專案", "include_tasks": True},
+                    {
+                        "title": "建立專案",
+                        "include_tasks": True,
+                        "confirm_path": "Projects/建立專案.md",
+                    },
                     id_="toolu_dp1",
                 )
             ],

@@ -13,7 +13,7 @@ from pathlib import Path
 import pytest
 
 from scripts import resolve_subtitle_rebuild as rsr
-from scripts.resolve_subtitle_rebuild import Cue, Fix, Piece, RebuildError
+from scripts.resolve_subtitle_rebuild import Cue, Fix, Piece, RebuildError, Split
 
 NTSC_30 = Fraction(30000, 1001)
 
@@ -319,6 +319,106 @@ def test_build_plan_requires_a_real_change() -> None:
     with pytest.raises(RebuildError, match="identical"):
         rsr.build_plan(BODY, [], [Fix(4251, "海碩哥你還記得", "海碩哥你還記得")])
     assert rsr.build_plan(BODY, INTRO, [], limit=200_654) == sorted(BODY + INTRO)
+
+
+# ----------------------------------------------------------------------- splits
+
+LONG = Cue(61131, 61530, "很差 史地也不好 然後我那時候考大學的時候")
+
+
+def _split(*parts: tuple[int, int, str], start: int = LONG.start, old: str = LONG.text) -> Split:
+    return Split(start, old, tuple(Cue(*p) for p in parts))
+
+
+def test_apply_split_replaces_one_live_cue_inside_its_span() -> None:
+    live = [Cue(61100, 61131, "前一句"), LONG, Cue(61530, 61600, "後一句")]
+    out = rsr.apply_splits(
+        live,
+        [_split((61131, 61200, "很差 史地也不好"), (61200, 61530, "然後我那時候考大學的時候"))],
+    )
+    assert out == [
+        live[0],
+        Cue(61131, 61200, "很差 史地也不好"),
+        Cue(61200, 61530, "然後我那時候考大學的時候"),
+        live[2],
+    ]
+
+
+def test_apply_split_refuses_when_live_text_differs() -> None:
+    """修修在 Resolve 上改過那句 → 切分單是照舊快照寫的，不可蓋過去。"""
+    with pytest.raises(RebuildError, match="live text is"):
+        rsr.apply_splits(
+            [LONG._replace(text="改過了")],
+            [_split((61131, 61200, "a"), (61200, 61530, "b"))],
+        )
+
+
+@pytest.mark.parametrize(
+    "parts, message",
+    [
+        (((61131, 61530, "只有一句"),), "at least 2"),
+        (((61140, 61200, "a"), (61200, 61530, "b")), "span exactly"),
+        (((61131, 61200, "a"), (61200, 61520, "b")), "span exactly"),
+        (((61131, 61210, "a"), (61200, 61530, "b")), "overlap"),
+        (((61131, 61131, "a"), (61131, 61530, "b")), "non-positive"),
+        (((61131, 61200, " "), (61200, 61530, "b")), "empty"),
+    ],
+)
+def test_apply_split_rejects_parts_that_move_or_break_the_cue(parts, message) -> None:
+    with pytest.raises(RebuildError, match=message):
+        rsr.apply_splits([LONG], [_split(*parts)])
+
+
+def test_apply_split_refuses_missing_frame_and_duplicate_split() -> None:
+    good = _split((61131, 61200, "a"), (61200, 61530, "b"))
+    with pytest.raises(RebuildError, match="0 cues start there"):
+        rsr.apply_splits([LONG], [good._replace(start=1)])
+    with pytest.raises(RebuildError, match="more than one"):
+        rsr.apply_splits([LONG], [good, good])
+
+
+def test_build_plan_rejects_fix_and_split_on_the_same_cue() -> None:
+    with pytest.raises(RebuildError, match="both --fix and a split"):
+        rsr.build_plan(
+            [LONG],
+            [],
+            [Fix(LONG.start, LONG.text, "x")],
+            splits=[_split((61131, 61200, "a"), (61200, 61530, "b"))],
+        )
+
+
+def test_build_plan_accepts_split_only() -> None:
+    plan = rsr.build_plan([LONG], [], [], splits=[_split((61131, 61200, "a"), (61200, 61530, "b"))])
+    assert plan == [Cue(61131, 61200, "a"), Cue(61200, 61530, "b")]
+
+
+def test_load_splits_reads_shape_and_checks_timeline(tmp_path: Path) -> None:
+    path = tmp_path / "splits.json"
+    path.write_text(
+        json.dumps(
+            {
+                "timeline": "T",
+                "splits": [
+                    {
+                        "start": 61131,
+                        "old": LONG.text,
+                        "parts": [
+                            {"start": 61131, "end": 61200, "text": "很差 史地也不好"},
+                            {"start": 61200, "end": 61530, "text": "然後我那時候考大學的時候"},
+                        ],
+                    }
+                ],
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    splits = rsr.load_splits(path, "T")
+    assert splits == [
+        _split((61131, 61200, "很差 史地也不好"), (61200, 61530, "然後我那時候考大學的時候"))
+    ]
+    with pytest.raises(RebuildError, match="built for timeline"):
+        rsr.load_splits(path, "other")
 
 
 # ------------------------------------------------------------------------- diff

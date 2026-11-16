@@ -23,6 +23,9 @@
     {% if error_msg %}
       <div class="pj-toast" role="alert">⚠ {{ error_msg }}</div>
     {% endif %}
+    {% if saved_msg %}
+      <div class="pj-toast pjd-toast--ok" role="status">✓ {{ saved_msg }}</div>
+    {% endif %}
 
     <header class="pj-head">
       <div>

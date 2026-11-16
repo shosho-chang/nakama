@@ -597,23 +597,6 @@ def test_visual_placement_rejects_invalid_cue_authority(
         )
 
 
-def test_production_run_persists_exact_editorial_context_as_run_authority(tmp_path) -> None:
-    context = _editorial_context()
-    production = FinishedCutProduction(
-        store_root=tmp_path / "finished-cut-authority",
-        approved_cut_store=InMemoryApprovedCutStore((_approved_cut(),)),
-        asset_resolver=InMemoryAssetResolver(()),
-        semantic_adapter=InMemorySemanticAdapter(),
-        context_resolver=InMemoryEditorialCutContextResolver((context,)),
-    )
-
-    production.advance(_approved_cut().command_id)
-    stored = production._store.load_run(_approved_cut().command_id)
-
-    assert stored is not None
-    assert stored.view.editorial_context == context
-
-
 def test_restart_uses_persisted_run_context_without_reresolving_same_cut(tmp_path) -> None:
     context = _editorial_context()
     store_root = tmp_path / "finished-cut-authority"

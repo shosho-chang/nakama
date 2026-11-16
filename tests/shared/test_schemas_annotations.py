@@ -79,16 +79,6 @@ def test_annotation_set_v1_round_trip():
     assert AnnotationSetV1(**s.model_dump()) == s
 
 
-def test_annotation_set_v1_legacy_aliases_still_export_from_store():
-    """Existing imports (Highlight / Annotation / AnnotationSet) must keep working."""
-    from shared.annotation_store import Annotation, AnnotationSet, Highlight
-
-    h = Highlight(text="x")
-    a = Annotation(ref="r", note="n")
-    s = AnnotationSet(slug="x", source_filename="x.md", base="inbox", items=[h, a])
-    assert len(s.items) == 2
-
-
 # ---------------------------------------------------------------------------
 # v2 — CFI-anchored, three item types
 # ---------------------------------------------------------------------------

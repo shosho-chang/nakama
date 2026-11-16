@@ -172,6 +172,11 @@ body.sho .pjd-title {
   font-size: 26px; font-weight: 700; color: var(--sho-ink); margin: 0 0 3px;
 }
 body.sho .pjd-sub { font-size: 12px; margin: 0; }
+body.sho .pjd-head-acts { display: flex; gap: 8px; flex-wrap: wrap; }
+body.sho .pjd-head-acts form { margin: 0; }
+/* 刪除跟封存同一種 ghost 按鈕，只有 hover/focus 轉紅——destructive 但不搶版面 */
+body.sho .pjd-del:hover,
+body.sho .pjd-del:focus-visible { color: var(--sho-error); border-color: var(--sho-error); }
 
 /* ── the four "how much is left" readouts ── */
 body.sho .pjd-stats {

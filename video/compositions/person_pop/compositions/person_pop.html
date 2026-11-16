@@ -1,0 +1,146 @@
+<!doctype html>
+<!-- 第 3 類「人物彈入」（YouTube 照稿影片）。修修 2026-11-15 定版：
+     - 比例照《財富階梯》成片 50.5s（剪輯夥伴的版本）：去背頭肩照，人物的臉跟主持人的臉一樣大
+       （眼睛到下巴 218px），眼睛落在 (262, 607)；肩膀與胸口以下被畫面邊緣切掉。右側＝左右對稱。
+       照片的位置由程式依照片裡的臉算好，傳進 photo_x／photo_y／photo_w。
+     - 名字：白色字牌黑字（思源黑體 Black，同重點概念 title 的字牌），在照片靠畫面中間那一側、字幕上方。
+     - 動作：照片從畫面下方整張跳上來（0.3s，略過衝後落定），退場 0.2s 加速掉出畫面；
+       上下移動時有縱向 motion blur（模糊長度＝當下速度 × 1/60 秒快門）。修修：「跳出來的效果會比較好，
+       只是在跳出來的過程……要有縱向的 Motion Blur，下去的時候也是」。
+     - 兩個人（修修「直接做」）：第一個人在左、第二個人在右，晚 delay2（0.4s）跳出來，一起退場；
+       兩個名字字牌往各自的照片靠（離邊緣 300px），中間才不會撞在一起。
+     - 每一格的照片位置與模糊量都寫成 tl.set 關鍵影格：HyperFrames 逐格 seek，GSAP 的 seek 不觸發 onUpdate。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"photo","type":"string","label":"去背照片（data URI 或相對路徑）","default":""},
+    {"id":"name","type":"string","label":"名字","default":""},
+    {"id":"side","type":"string","label":"left|right（只有一個人時）","default":"left"},
+    {"id":"photo_x","type":"number","label":"照片左上角 x（px）","default":0},
+    {"id":"photo_y","type":"number","label":"照片左上角 y（px）","default":430},
+    {"id":"photo_w","type":"number","label":"照片寬（px）","default":800},
+    {"id":"photo2","type":"string","label":"第二個人的去背照片（空＝只有一個人）","default":""},
+    {"id":"name2","type":"string","label":"第二個人的名字","default":""},
+    {"id":"photo2_x","type":"number","default":1120},
+    {"id":"photo2_y","type":"number","default":430},
+    {"id":"photo2_w","type":"number","default":800},
+    {"id":"delay2","type":"number","label":"第二個人晚幾秒跳出來","default":0.4},
+    {"id":"show_sec","type":"number","label":"停留秒數","default":4}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <style>
+      @font-face {
+        font-family: "Noto Sans TC Black"; font-weight: 900; font-display: block;
+        src: url("assets/fonts/noto-sans-tc/NotoSansTC-Black.woff2") format("woff2");
+      }
+      :root {
+        --font-display: "Noto Sans TC Black", "Noto Sans TC", "Source Han Sans TC", sans-serif;
+        --plate-edge: 560px; /* 一個人：字牌靠畫面邊緣那一側離邊緣多遠（參考版名字的位置） */
+      }
+      .pair { --plate-edge: 300px; } /* 兩個人：字牌往各自的照片靠 */
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+      .photo { position: absolute; display: block; height: auto; }
+      .plate {
+        position: absolute; bottom: 150px;
+        background: #fff; color: #000; font-family: var(--font-display); font-weight: 900;
+        font-size: 52px; line-height: 1; white-space: nowrap; letter-spacing: -0.01em;
+        padding: 0.34em 0.62em 0.4em;
+        clip-path: polygon(2% 0%, 100% 0%, 98% 100%, 0% 100%);
+      }
+      .plate.left { left: var(--plate-edge); }
+      .plate.right { right: var(--plate-edge); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="person_pop"
+      data-width="1920" data-height="1080" data-start="0" data-duration="8">
+      <svg width="0" height="0" style="position:absolute" aria-hidden="true">
+        <filter id="vblur1" x="-5%" y="-40%" width="110%" height="180%">
+          <feGaussianBlur id="vblur1-amount" stdDeviation="0 0" />
+        </filter>
+        <filter id="vblur2" x="-5%" y="-40%" width="110%" height="180%">
+          <feGaussianBlur id="vblur2-amount" stdDeviation="0 0" />
+        </filter>
+      </svg>
+    </div>
+    <script>
+      const v = (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const showSec = Number(v.show_sec ?? 4);
+      const root = document.getElementById("root");
+      const FPS = 30000 / 1001;
+      const SHUTTER = 1 / 60; // 180° 快門
+      const outAt = Math.max(1.0, showSec - 0.25) + 0.04;
+      const pair = Boolean(v.photo2);
+      if (pair) root.classList.add("pair");
+
+      const people = [
+        { n: 1, photo: v.photo, name: v.name, side: pair ? "left" : (v.side === "right" ? "right" : "left"),
+          x: v.photo_x ?? 0, y: v.photo_y ?? 430, w: v.photo_w ?? 800, start: 0 },
+      ];
+      if (pair) people.push({ n: 2, photo: v.photo2, name: v.name2, side: "right",
+        x: v.photo2_x ?? 1120, y: v.photo2_y ?? 430, w: v.photo2_w ?? 800, start: Number(v.delay2 ?? 0.4) });
+
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["person_pop"] = tl;
+
+      for (const p of people) {
+        const photo = document.createElement("img");
+        photo.className = "photo";
+        photo.alt = "";
+        photo.src = p.photo || "";
+        photo.style.left = `${Number(p.x)}px`;
+        photo.style.top = `${Number(p.y)}px`;
+        photo.style.width = `${Number(p.w)}px`;
+        photo.style.filter = `url(#vblur${p.n})`;
+        root.appendChild(photo);
+        const blur = document.getElementById(`vblur${p.n}-amount`);
+
+        const drop = 1080 - Number(p.y); // 從這麼低的地方跳上來＝整張在畫面外
+        const segs = [
+          { start: p.start, dur: 0.3, from: drop, to: 0, ease: gsap.parseEase("back.out(1.4)") },
+          { start: outAt, dur: 0.2, from: 0, to: drop, ease: gsap.parseEase("power2.in") },
+        ];
+        // 某一刻照片的位移與速度（速度由緩動曲線的斜率算）
+        const photoAt = (t) => {
+          for (const s of segs) {
+            if (t < s.start) return { y: s.from, vel: 0 };
+            if (t <= s.start + s.dur) {
+              const q = (t - s.start) / s.dur, h = 0.002;
+              const lo = Math.max(0, q - h), hi = Math.min(1, q + h);
+              const vel = Math.abs((s.to - s.from) * (s.ease(hi) - s.ease(lo)) / (hi - lo)) / s.dur;
+              return { y: s.from + (s.to - s.from) * s.ease(q), vel };
+            }
+          }
+          return { y: drop, vel: 0 };
+        };
+        for (const s of segs) {
+          const n0 = Math.floor(s.start * FPS), n1 = Math.ceil((s.start + s.dur) * FPS) + 1;
+          for (let n = n0; n <= n1; n++) {
+            const t = n / FPS, at = Math.max(0, t - 1e-4);
+            const { y, vel } = photoAt(t);
+            tl.set(photo, { y }, at);
+            // 高斯模糊的 σ 取拖影長度的 0.35（接近等長方框模糊的觀感）
+            tl.set(blur, { attr: { stdDeviation: `0 ${(vel * SHUTTER * 0.35).toFixed(2)}` } }, at);
+          }
+        }
+        gsap.set(photo, { y: drop }); // 第 0 格：照片在畫面下方
+
+        if (p.name) {
+          const plate = document.createElement("div");
+          plate.className = `plate ${p.side}`;
+          plate.textContent = p.name;
+          root.appendChild(plate);
+          // 字牌：照片快到位時拍上；退場比照片早一點收
+          tl.fromTo(plate, { scale: 1.25, rotation: 5, opacity: 0 },
+            { scale: 1, rotation: 0, opacity: 1, duration: 0.22, ease: "back.out(2.2)" }, p.start + 0.2);
+          tl.to(plate, { scale: 0.9, opacity: 0, duration: 0.12, ease: "power2.in" }, outAt - 0.04);
+        }
+      }
+    </script>
+  </body>
+</html>

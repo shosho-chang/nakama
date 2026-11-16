@@ -311,8 +311,29 @@ def test_update_event_all_day_patches_date(monkeypatch):
     svc = _FakeService()
     monkeypatch.setattr(google_calendar, "_get_service", lambda: svc)
     google_calendar.update_event("evt1", start="2026-06-07", end="2026-06-08")
-    assert svc.patched["start"] == {"date": "2026-06-07"}
-    assert svc.patched["end"] == {"date": "2026-06-08"}
+    # dateTime/timeZone nulled: PATCH merges, so a timed → all-day switch must clear them
+    assert svc.patched["start"] == {"date": "2026-06-07", "dateTime": None, "timeZone": None}
+    assert svc.patched["end"] == {"date": "2026-06-08", "dateTime": None, "timeZone": None}
+
+
+def test_update_event_all_day_to_timed_clears_date(monkeypatch):
+    """整天 → 有時間：PATCH merges nested objects, so the old ``date`` must be
+    explicitly nulled — otherwise Google sees both date and dateTime and rejects
+    the update (Bridge showed「行事曆暫時無法連動」and the event stayed all-day)."""
+    from shared import google_calendar
+
+    svc = _FakeService()
+    monkeypatch.setattr(google_calendar, "_get_service", lambda: svc)
+    google_calendar.update_event(
+        "evt1", start="2026-11-09T10:00:00+08:00", end="2026-11-09T12:00:00+08:00"
+    )
+    assert svc.patched["start"] == {
+        "dateTime": "2026-11-09T10:00:00+08:00",
+        "timeZone": "Asia/Taipei",
+        "date": None,
+    }
+    assert svc.patched["end"]["date"] is None
+    assert svc.patched["end"]["dateTime"] == "2026-11-09T12:00:00+08:00"
 
 
 def test_is_date_only():
@@ -359,3 +380,37 @@ def test_find_free_slots_gaps_ordered_by_proximity(monkeypatch):
     assert slots[0] == ("2026-06-05T15:00:00+08:00", "2026-06-05T16:00:00+08:00")
     starts = {s for s, _ in slots}
     assert "2026-06-05T08:00:00+08:00" in starts and "2026-06-05T10:00:00+08:00" in starts
+
+
+def test_create_event_with_attendees_sends_invites(monkeypatch):
+    """2026-11-16（Sanji 內部會議）：帶 attendees 時加成與會者並 sendUpdates=all 寄邀請；
+    不帶時 insert 參數跟以前一樣（不寄信）。"""
+    from shared import google_calendar
+
+    calls = []
+
+    class _Svc:
+        def events(self):
+            return self
+
+        def insert(self, **kw):
+            calls.append(kw)
+            return _FakeExec({"id": "evt_new", **kw["body"]})
+
+    monkeypatch.setattr(google_calendar, "_get_service", lambda: _Svc())
+    google_calendar.create_event(
+        title="週會",
+        start="2026-11-16T14:00:00",
+        end="2026-11-16T14:30:00",
+        check_conflict=False,
+        attendees=["xs@example.com"],
+    )
+    google_calendar.create_event(
+        title="自己的事",
+        start="2026-11-16T15:00:00",
+        end="2026-11-16T15:30:00",
+        check_conflict=False,
+    )
+    assert calls[0]["sendUpdates"] == "all"
+    assert calls[0]["body"]["attendees"] == [{"email": "xs@example.com"}]
+    assert "sendUpdates" not in calls[1] and "attendees" not in calls[1]["body"]

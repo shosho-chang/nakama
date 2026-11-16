@@ -46,6 +46,7 @@ from shared.background_job import (
     new_job,
 )
 from shared.config import get_db_path, get_vault_path
+from shared.export_paths import export_roots
 from shared.log import get_logger
 from shared.release_store import ensure_target, get_release, register_release, update_target
 from shared.render_timeout import looks_like_render_timeout
@@ -1403,11 +1404,9 @@ def _release_from_receipt(episode: str, cut_id: str) -> dict | None:
         raise HTTPException(status_code=409, detail="publish_prep receipt 缺少唯一 cut")
     row = rows[0]
     file_path = Path(str(row.get("file", ""))).resolve()
-    exports_dir = (episode_dir / "highlights" / "exports").resolve()
-    try:
-        file_path.relative_to(exports_dir)
-    except ValueError as exc:
-        raise HTTPException(status_code=409, detail="publish_prep receipt 成品路徑越界") from exc
+    roots = [root.resolve() for root in export_roots(episode_dir)]
+    if not any(file_path.is_relative_to(root) for root in roots):
+        raise HTTPException(status_code=409, detail="publish_prep receipt 成品路徑越界")
     if not file_path.is_file() or file_path.stat().st_size != int(row.get("file_bytes", -1)):
         raise HTTPException(status_code=409, detail="publish_prep receipt 與成品檔不一致")
     # 這是**發布資料庫**的 release 身分，跟 ADR-069 的 plan record id 是兩個識別
@@ -2229,6 +2228,8 @@ def packaging_compose(
     big_text_3: str = Form("", max_length=40),
     highlight_text: str = Form("", max_length=40),
     title_max_width: int = Form(580, ge=300, le=1000),
+    title_font_px: int = Form(100, ge=60, le=200),
+    title_font_weight: Literal["thin", "regular", "bold", "extrabold"] = Form("bold"),
     guest_credit: str = Form("", max_length=40),
     book_cover: str = Form("", max_length=_EP_SLUG_MAX * 4),
     book_cover_opacity: float = Form(0.42, ge=0, le=1),
@@ -2408,6 +2409,8 @@ def packaging_compose(
             big_text=lines,
             highlight_text=hl,
             title_max_width=title_max_width,
+            title_font_px=title_font_px,
+            title_font_weight=title_font_weight,
             guest_credit=guest_credit.strip(),
             book_cover=book_cover.strip() or None,
             book_cover_opacity=book_cover_opacity,

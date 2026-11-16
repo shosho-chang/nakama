@@ -156,9 +156,13 @@ def create_event(
     description: str = "",
     check_conflict: bool = True,
     idempotency_key: str | None = None,
+    attendees: list[str] | None = None,
     location: str | None = None,
 ) -> CalendarEvent | list[CalendarEvent]:
     """建立事件。
+
+    ``attendees``（email 清單，選填）：加成與會者並請 Google 寄邀請信
+    （``sendUpdates="all"``；不帶與會者時維持原本行為，不寄任何信）。
 
     若 ``check_conflict=True`` 且時段有精確重疊的既有事件，**不建立**，改回傳
     衝突事件列表供呼叫端決定（問使用者或 force=True 重試）。
@@ -204,7 +208,11 @@ def create_event(
         body["end"] = {"dateTime": _ensure_tz_iso(end), "timeZone": TIMEZONE}
     if idempotency_key is not None:
         body["extendedProperties"] = {"private": {IDEMPOTENCY_PROP: idempotency_key}}
-    created = service.events().insert(calendarId="primary", body=body).execute()
+    insert_kwargs: dict = {"calendarId": "primary", "body": body}
+    if attendees:
+        body["attendees"] = [{"email": e} for e in attendees]
+        insert_kwargs["sendUpdates"] = "all"  # Google 預設不寄信；帶與會者時要寄邀請
+    created = service.events().insert(**insert_kwargs).execute()
     return _parse_event(created)
 
 
@@ -231,6 +239,18 @@ def list_events(
     return [_parse_event(e) for e in result.get("items", [])]
 
 
+def _patch_time_field(value: str) -> dict:
+    """PATCH body for an event's ``start`` / ``end``.
+
+    Google's PATCH **merges** nested objects, so sending only ``{"dateTime": ...}``
+    to an all-day event keeps its old ``date`` — the event then has both and the
+    API rejects it (整天 → 有時間 改期失敗，Bridge 顯示「行事曆暫時無法連動」).
+    Explicitly null the other representation so the switch works both ways."""
+    if _is_date_only(value):
+        return {"date": value, "dateTime": None, "timeZone": None}
+    return {"dateTime": _ensure_tz_iso(value), "timeZone": TIMEZONE, "date": None}
+
+
 def update_event(
     event_id: str,
     *,
@@ -254,17 +274,9 @@ def update_event(
     if description is not None:
         body["description"] = description
     if start is not None:
-        body["start"] = (
-            {"date": start}
-            if _is_date_only(start)
-            else {"dateTime": _ensure_tz_iso(start), "timeZone": TIMEZONE}
-        )
+        body["start"] = _patch_time_field(start)
     if end is not None:
-        body["end"] = (
-            {"date": end}
-            if _is_date_only(end)
-            else {"dateTime": _ensure_tz_iso(end), "timeZone": TIMEZONE}
-        )
+        body["end"] = _patch_time_field(end)
     if idempotency_key is not None:
         body["extendedProperties"] = {"private": {IDEMPOTENCY_PROP: idempotency_key}}
     updated = service.events().patch(calendarId="primary", eventId=event_id, body=body).execute()

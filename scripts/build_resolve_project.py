@@ -36,7 +36,6 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from agents.brook.podcast_subtitles.handoff import ProjectionVerifierFactory  # noqa: E402
 from agents.brook.script_video.subtitle_handoff import (  # noqa: E402
     HASH_BOUND_RELEASE_MODES,
     Stage5SubtitleContractError,
@@ -421,11 +420,9 @@ def build_project(
     subtitle: Path | None = None,
     dry_run: bool = False,
     subtitle_request: Stage5SubtitleRequest | None = None,
-    verifier_factory: ProjectionVerifierFactory | None = None,
 ) -> dict:
     subtitle = (subtitle_request or Stage5SubtitleRequest()).open(
         episode_dir,
-        factory=verifier_factory,
     )
     project_name = episode_dir.name
     srt_path = subtitle.srt_path
@@ -623,12 +620,10 @@ def refresh_subtitles(
     episode_dir: Path,
     *,
     subtitle_request: Stage5SubtitleRequest | None = None,
-    verifier_factory: ProjectionVerifierFactory | None = None,
 ) -> dict:
     """把 timeline 的字幕軌整個換成最新的 transcript.srt（QC 裁決迭代用）。"""
     subtitle = (subtitle_request or Stage5SubtitleRequest()).open(
         episode_dir,
-        factory=verifier_factory,
     )
     project_name = episode_dir.name
     srt_path = subtitle.srt_path
@@ -824,13 +819,8 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser.add_argument(
         "--legacy-v1",
         action="store_true",
-        help="明確使用 episode/transcript.srt；正式 V2 流程禁止使用",
+        help="明確使用 episode/transcript.srt；正式流程禁止使用",
     )
-    parser.add_argument("--projection-id")
-    parser.add_argument("--expected-episode-id")
-    parser.add_argument("--expected-generation-id")
-    parser.add_argument("--expected-manifest-sha256")
-    parser.add_argument("--reference-manifest")
     parser.add_argument(
         "--subtitle-release-handoff",
         help=(
@@ -867,11 +857,6 @@ def _parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         legacy_v1=args.legacy_v1,
         subtitle_release_handoff=args.subtitle_release_handoff,
         degraded_release_handoff=args.degraded_release_handoff,
-        projection_id=args.projection_id,
-        expected_episode_id=args.expected_episode_id,
-        expected_generation_id=args.expected_generation_id,
-        expected_manifest_sha256=args.expected_manifest_sha256,
-        reference_manifest=args.reference_manifest,
     )
     return args
 

@@ -315,7 +315,26 @@
               <input class="sho-input" id="tw-{{ cut.cut_id }}" name="title_max_width"
                      type="number" step="10" min="300" max="1000"
                      value="{{ req.title_max_width if req else 580 }}">
+              {#-- 字級本身只靠滾輪調（跟人物大小同一套操作），不另開格子讓他打數字。
+                   修修 2026-10-27：「我想要像 Cutout 一樣，可以用上下滾動來調大小」。 --#}
+              <input type="hidden" name="title_font_px"
+                     value="{{ req.title_font_px if req else 100 }}">
             </div>
+            {#-- 字重：設計系統只有 LINE Seed TW 一個字族、四個 cut，可選的「字型」就是
+                 這四個（修修 2026-11-06：「我希望字型也可以改」）。每個選項用自己的字重
+                 顯示，看字就知道粗細，不用記 Th/Rg/Bd/Eb。 --#}
+            {% set weight = req.title_font_weight if req else 'bold' %}
+            <fieldset class="field pkg-weight">
+              <legend class="field-label">大字字重</legend>
+              <div class="pkg-weight-options">
+                {% for value, label in [('thin', '細'), ('regular', '標準'), ('bold', '粗'), ('extrabold', '特粗')] %}
+                <label class="pkg-weight-option" data-weight="{{ value }}">
+                  <input type="radio" name="title_font_weight" value="{{ value }}"{% if weight == value %} checked{% endif %}>
+                  <span>{{ label }}</span>
+                </label>
+                {% endfor %}
+              </div>
+            </fieldset>
             <div class="field">
               <label class="field-label" for="gc-{{ cut.cut_id }}">來賓抬頭</label>
               <input class="sho-input" id="gc-{{ cut.cut_id }}" name="guest_credit" maxlength="40"
@@ -815,6 +834,23 @@
   }
   .pkg-compose-text { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 12px; }
   .pkg-fontsize { color: var(--sho-muted); font-variant-numeric: tabular-nums; }
+  .pkg-weight { border: 0; padding: 0; margin: 0; min-width: 0; }
+  .pkg-weight-options { display: flex; flex-wrap: wrap; gap: var(--sho-s-2); }
+  .pkg-weight-option {
+    position: relative; display: inline-flex; align-items: center; justify-content: center;
+    min-width: 64px; min-height: 40px; padding: 0 var(--sho-s-3);
+    border: 1px solid var(--sho-line-2); border-radius: var(--sho-r-2);
+    cursor: pointer; font-size: 18px; color: var(--sho-text);
+    transition: border-color var(--sho-t-fast) var(--sho-ease);
+  }
+  .pkg-weight-option input { position: absolute; opacity: 0; pointer-events: none; }
+  .pkg-weight-option:hover { border-color: var(--sho-accent-line); }
+  .pkg-weight-option:has(input:checked) { border-color: var(--sho-accent); background: var(--sho-accent-soft); }
+  .pkg-weight-option:has(input:focus-visible) { box-shadow: var(--sho-focus); }
+  .pkg-weight-option[data-weight="thin"] { font-weight: 100; }
+  .pkg-weight-option[data-weight="regular"] { font-weight: 400; }
+  .pkg-weight-option[data-weight="bold"] { font-weight: 700; }
+  .pkg-weight-option[data-weight="extrabold"] { font-weight: 800; }
   .pkg-cutout-set { margin-bottom: 14px; }
   .pkg-pool { margin-bottom: 14px; }
   .pkg-pool-list { list-style: none; padding: 0; margin: 8px 0; display: grid; gap: 6px; }
@@ -1208,6 +1244,12 @@
     for (let i = 1; i <= 3; i += 1) setValue(`big_text_${i}`, recipe?.big_text?.[i - 1] ?? "");
     setValue("highlight_text", recipe?.highlight_text ?? "");
     setValue("title_max_width", recipe?.title_max_width ?? 580);
+    setValue("title_font_px", recipe?.title_font_px ?? 100);
+    // radio 不能走 setValue：querySelector 會拿到第一顆、把它的 value 改掉。
+    const weight = recipe?.title_font_weight ?? "bold";
+    for (const radio of form.querySelectorAll('input[name="title_font_weight"]')) {
+      radio.checked = radio.value === weight;
+    }
     setValue("guest_credit", recipe?.guest_credit ?? "");
     setValue("book_cover", recipe?.book_cover ?? "");
     setValue("book_cover_opacity", recipe?.book_cover_opacity ?? 0.42);
@@ -1443,20 +1485,63 @@
     fitStageTitle(stage);
   }
 
-  // 跟 composition 同一條規則：行寬超出 title_max_width 就整塊縮字（不換行）。
-  // 少了這段預覽會騙人——修修 2026-08-15 的 7 字大字在 gate 上是 100px，
-  // 實際出圖是 82px，他以為字被裁掉，其實是縮完之後兩端跑到臉底下。
+  // 跟 composition 同一條規則：字級＝title_font_px，行寬超出 title_max_width
+  // 就整塊縮字（不換行）。少了這段預覽會騙人——修修 2026-08-15 的 7 字大字在
+  // gate 上是 100px，實際出圖是 82px，他以為字被裁掉，其實是縮完之後兩端跑到臉底下。
+  function titleFontPx(form) {
+    return parseInt(form.querySelector('[name="title_font_px"]')?.value, 10) || 100;
+  }
+
+  // 跟 composition 的 TITLE_FONT_CUTS 同一張表。預覽多一個 "LINE Seed TW"
+  // （tokens.css 的 woff2，以 weight 對應 cut）當備援：不在出圖那台機器上看 gate 時，
+  // 本機沒裝 TTF 也照樣是 LINE Seed、粗細正確。
+  const TITLE_FONT_CUTS = {
+    thin: ["Thin", 100], regular: ["Regular", 400],
+    bold: ["Bold", 700], extrabold: ["ExtraBold", 800],
+  };
+  function applyTitleWeight(form, box) {
+    const picked = form.querySelector('input[name="title_font_weight"]:checked')?.value;
+    const [cutName, cutWeight] = TITLE_FONT_CUTS[picked] || TITLE_FONT_CUTS.bold;
+    box.style.fontFamily = `"LINE Seed TW_TTF ${cutName}", "LINE Seed TW_TTF", "LINE Seed TW", ` +
+      `"Noto Sans TC", "Microsoft JhengHei", sans-serif`;
+    box.style.fontWeight = cutWeight;
+  }
+
   function fitStageTitle(stage) {
     const form = stage.closest("form");
     const box = stage.querySelector(".st-title");
     const maxW = parseInt(form.querySelector('[name="title_max_width"]')?.value, 10) || 580;
+    const base = titleFontPx(form);
+    applyTitleWeight(form, box);
     stage.querySelector(".st-text").style.width = maxW + "px";
-    box.style.fontSize = "100px";
+    box.style.fontSize = base + "px";
     const w = box.scrollWidth;
-    const size = w > maxW ? Math.floor((100 * maxW) / w) : 100;
-    if (size < 100) box.style.fontSize = size + "px";
+    const size = w > maxW ? Math.floor((base * maxW) / w) : base;
+    if (size < base) box.style.fontSize = size + "px";
     const label = form.querySelector(".pkg-fontsize");
-    if (label) label.textContent = `（字級 ${size}px${size < 100 ? "，已自動縮小" : ""}）`;
+    if (label) label.textContent = `（字級 ${size}px${size < base ? "，已自動縮小" : ""}）`;
+    return size;
+  }
+
+  // 滾輪調大字＝調字級，從「畫面上現在的字級」起跳，不是從存的上限起跳：
+  // 被寬度縮過的長大字（上限 100、實際 82）往上滾一格應該是 84，不是跳到 102。
+  // 字變寬就把寬度框一起撐開（最寬 1000），否則滾上去馬上又被縮回原樣，
+  // 看起來跟沒反應一樣——這正是只有寬度旋鈕時的毛病。
+  const TITLE_FONT_MIN = 60, TITLE_FONT_MAX = 200, TITLE_WIDTH_MAX = 1000;
+  function wheelStageTitle(stage, deltaY) {
+    const form = stage.closest("form");
+    const fontField = form.querySelector('input[name="title_font_px"]');
+    const widthField = form.querySelector('input[name="title_max_width"]');
+    if (!fontField || !widthField) return;
+    const shown = fitStageTitle(stage);
+    const next = Math.min(TITLE_FONT_MAX, Math.max(TITLE_FONT_MIN, shown + (deltaY < 0 ? 2 : -2)));
+    fontField.value = next;
+    const box = stage.querySelector(".st-title");
+    box.style.fontSize = next + "px";
+    const natural = box.scrollWidth;
+    const maxW = parseInt(widthField.value, 10) || 580;
+    if (natural > maxW) widthField.value = Math.min(TITLE_WIDTH_MAX, Math.ceil(natural / 10) * 10);
+    fitStageTitle(stage);
   }
 
   // 換臉時預覽跟著換（radio 的 value 是 vault 相對路徑，取檔名即可）
@@ -1638,12 +1723,9 @@
     e.preventDefault();
     const stage = person.closest(".pkg-stage");
     if (person.dataset.role === "text") {
-      const field = stage.closest("form").querySelector('input[name="title_max_width"]');
-      if (field) {
-        const current = parseInt(field.value, 10) || 580;
-        field.value = Math.min(1000, Math.max(300, current + (e.deltaY < 0 ? 8 : -8)));
-        fitStageTitle(stage);
-      }
+      // 以前這裡改的是 title_max_width：只縮不放的規則下，短大字怎麼滾都不會變
+      // （修修 2026-10-27）。現在改字級 title_font_px，寬度框跟著撐開。
+      wheelStageTitle(stage, e.deltaY);
       return;
     }
     if (person.dataset.role === "book") {
@@ -1701,7 +1783,9 @@
     if (e.target.matches('input[name^="big_text"], input[name="highlight_text"], input[name="guest_credit"]')) {
       syncStageText(stage);
     }
-    if (e.target.matches('input[name="title_max_width"]')) fitStageTitle(stage);
+    if (e.target.matches('input[name="title_max_width"], input[name="title_font_weight"]')) {
+      fitStageTitle(stage);
+    }
   });
   document.addEventListener("change", (e) => {
     if (!e.target.matches('input[name$="_cutout"]')) return;

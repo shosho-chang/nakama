@@ -12,7 +12,7 @@ presentation layer（Web UI）。
 - **Robin** — Knowledge Base：吸收 source（article / paper / book / podcast）→ 抽 concept / entity → 寫 wiki page
 - **Nami** — Secretary：行事曆、Email triage、task 排程、daily briefing
 - **Zoro** — Scout（**向外搜尋**）：keyword research、SERP / Trends / Reddit / YouTube 偵察 — 從外部世界拉情報回來
-- **Sanji** — Community Manager：Fluent Community 社群營運、會員問答
+- **Sanji** — Slack 人格（`gateway/handlers/sanji.py`、`prompts/sanji/persona.md`）。Community Manager 的社群營運／遊戲化已於 2026-11-09 移至獨立 repo `shosho-chang/freedom-fleet`（private，ADR-071），nakama 只留 Slack 群聊人格
 - **Brook** — Composer（**對內加工**）：將素材 compose 成各平台格式（Blog / IG / YouTube / Newsletter）+ Podcast Subtitle V2 + 既有部落格 SEO audit / enrich — 處理「已知/已存在」的內容；Podcast 字幕子 context 見 [agents/brook/podcast_subtitles/CONTEXT.md](agents/brook/podcast_subtitles/CONTEXT.md)，repurpose 詞彙見 [agents/brook/CONTEXT.md](agents/brook/CONTEXT.md)
 - **Franky** — System Maintenance：套件更新、CVE 掃描、health check、news digest
 - **Usopp** — Publisher：發布到 WordPress / YouTube / Fluent CRM；core community publisher 待開
@@ -26,10 +26,10 @@ presentation layer（Web UI）。
 
 - 每個 Agent context 透過 `shared/anthropic_client.ask_claude()` 呼叫 LLM；token cost 記入 `state.db`
 - 每個 Agent context 透過 `shared/events.py` 互發事件（如 Robin → Nami briefing 注入）
-- 每個**已落地** Agent context 暴露 web 表面透過 `thousand_sunny/routers/<agent>.py`（Robin / Zoro / Brook / Franky 已落地；Nami / Sanji / Usopp / Chopper 未落地，dashboard 顯示為 disabled card）
+- 每個**已落地** Agent context 暴露 web 表面透過 `thousand_sunny/routers/<agent>.py`（Robin / Zoro / Brook / Franky 已落地；Nami / Sanji / Usopp / Chopper 未落地，dashboard 顯示為 disabled card；Sanji 的社群營運已移至 freedom-fleet repo，不在 nakama 的 web 表面內）
 - **Brook ← Zoro** (`SEOContextV1`)：Zoro 跑 keyword-research + seo-keyword-enrich 產出 SEO context block，Brook compose 時 consume
 - **Robin ← Brook** (KB lookup)：Brook compose 時可呼叫 KB search 拉素材
-- **Usopp ← Brook + Sanji**：Brook 產長文輸出、Sanji 產社群素材，Usopp 排程發布；含 ADR-006 HITL approval gate
+- **Usopp ← Brook**：Brook 產長文輸出，Usopp 排程發布；含 ADR-006 HITL approval gate
 - **Brook Podcast Subtitle V2 → Brook video line**（ADR-056）：Stage 4 的 `PodcastSubtitleV2` 以 Canonical Transcript 保存唯一文字真相，並輸出 content-addressed Verified Projection；Stage 5 只收 Projection ID + manifest，不收裸 SRT path
 - **Brook video line ↔ video subproject**（ADR-032/ADR-050/ADR-056）：pipeline 驗證 Verified Projection lineage → LLM planner 產 `storyboard.yaml`（projection exact-copy anchor + 兩層 HITL approve）→ render_dispatcher 呼叫 `video/compositions/` Hyperframes render per-beat B-roll mp4（headless Chrome）→ Python 端 emit FCPXML 1.10（V1 talking head + lane-1 B-roll）；DaVinci import 後修修微調 → YT；選配前置：拍掌 marker `cleanup` stage（ADR-050 D3）
 - **Brook video line ← Robin**（Phase 1.5，read-only）：`refs.yaml` 的 `book_slug_robin` 對 Robin Reader URL scheme，書內引用 B-roll 走 reader-playwright 錄真實書頁（ADR-032 Phase 1.5 接通）

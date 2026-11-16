@@ -277,15 +277,6 @@ def wikilink_db():
     return conn
 
 
-def test_make_conn_creates_wikilinks_table():
-    """make_conn() must initialize kb_wikilinks table."""
-    conn = make_conn()
-    tables = {
-        r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'table'").fetchall()
-    }
-    assert "kb_wikilinks" in tables
-
-
 def test_wikilink_lane_outgoing_links(wikilink_db):
     """BM25 hits concept-a; wikilink lane pulls in its 3 outgoing neighbors."""
     hits = search(

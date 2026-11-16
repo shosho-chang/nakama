@@ -4,8 +4,8 @@ description: >
   Director 分鏡導演手冊（ADR-051）。Triggers: /brook-director、「劃分鏡」、
   「幫這集排 B-roll」、「跑 Director」。讀校正後字幕（transcript.srt）→ 分型 →
   逐 beat 分鏡判斷。Standalone Video Production Line 產 storyboard.yaml；Podcast
-  Highlight v2 讀 orchestrator payload、回傳 Director events，再交 brook-dp；只有 legacy
-  ADR-065 route 讀 DIRECTOR-WORK.json、產 DIRECTOR-PLAN.json。
+  長精華由 ADR-066 Finished Cut Production 的 semantic handoff 帶入本手冊、回傳 Director
+  events，再交 brook-dp。
   創意判斷在本手冊；驗證／素材履約／render/emit契約歸
   agents/brook/script_video/ pipeline 程式，本 skill 只呼叫、不重新發明。
 ---
@@ -23,101 +23,18 @@ v2.0 2026-07-18 四支成片拆解＋Ali/Jeff 對照的剪輯文法入冊；
 發明者。素材的具體實現（component/params/asset、詳細搜尋詞、render prompt）已正式屬
 **DP（brook-dp skill）**職掌；不得再由 Director 兼任。
 
-## Long Highlight orchestrator v2（優先分流）
+## Podcast Long Highlight（ADR-066 Finished Cut Production）
 
-收到 payload 同時標示
-`long_highlight_contract.route="long_highlight_orchestrator_v2"` 與
-`long_highlight_contract.validation_profile="semantic_visual_minimal"` 時，本節優先於下方 ADR-065 legacy route。
-Director 只做 LLM 擅長的完整逐字稿／section 語意理解，產出 chapter、Hero、Stock、人物
-inset 等 visual intents；後續仍保留 DP fulfillment 與 targeted visual agent 實看成品，不能刪除
-或改成機械關鍵字比對。
-
-這條 v2 route 的外層 state 是 mutable draft。不得啟動
-`podcast_highlight_visual_orchestrator.py`／ADR-065 frozen revision DAG，不建立或驗證 immutable
-request、worker/session identity、execution receipt、hash／source lineage，也不要求 same-session
-Director audit 或全量 fresh verify。單一 event 語意或畫面不符時，只退回該 event 給 DP／targeted
-visual fix，不得重跑整支 Director。
-
-Director 不負責判定上游 source、range、片長、sections 或 chapter timestamp gates；chapter 沒有可靠
-cut-local／source／cue 時間時，由 orchestrator 的 upstream gate 處理，Director 不猜 0:00。在 v2 的
-Director → DP → visual／preview 段，selected footage 不可播放、targeted agent 判定 semantic／visual
-mismatch、Resolve mutation 會破壞既有 baseline，以及 preview 不存在、實際 <480 秒或時長未知，都會
-阻止往發布前進。這些條件由各自下游 stage 回報；Director 不新增來源驗證。其他 schema 小漂移、缺
-optional metadata 或 reviewer 差異只記 warning／局部修正。
-
-## Legacy Podcast Highlight production adapter（ADR-065；僅限沒有 v2 marker）
-
-只有 payload 沒有上述 v2 route marker 時，才使用本節 frozen revision／receipt 流程；不得把 legacy
-要求帶進 `long_highlight_orchestrator_v2`。
-
-當輸入是 Podcast episode + cut ID，唯一 production truth root 是 revision-aware DAG：
-
-```text
-<episode>/highlights/visual-pipeline/<cut-id>/
-  PENDING.json
-  CURRENT.json
-  revisions/<revision-id>/
-    DIRECTOR-WORK.json       podcast-highlight-visual-work-packet-v1
-    DIRECTOR-PLAN.json       podcast-highlight-director-plan-v1
-    DP-FULFILLMENT.json      podcast-highlight-dp-fulfillment-v1
-    SEMANTIC-AUDIT.json      podcast-highlight-visual-semantic-audit-v1
-```
-
-> ⛔ **已停用（ADR-066）**：`podcast_highlight_visual_orchestrator.py` 屬 ADR-065 revision-scoped
-> visual DAG，已被 Finished Cut Production 取代。long 的唯一生產路線是
-> `scripts/run_finished_cut_production.py`。下面的指令保留供讀舊 receipt 對照，不要執行。
-
-Production 預設由 trusted orchestrator執行；base generation不得帶 `--revision-request`，finished review重做則
-必須傳該 job的 immutable `request.json`，不得找 mtime latest或讀會繼續 append的 feedback JSON：
-
-```powershell
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_orchestrator.py "<episode>" `
-  --cut-id <cut-id> [--revision-request "<episode-local immutable request.json>"]
-```
-
-這個 command固定完成 `init → Director proposal → accept-director → 不同 DP proposal → accept-dp →
-同一 Director session semantic audit → accept-audit → verify`。Codex runtime的 Director首輪是
-`codex exec --json`，audit必須 `codex exec resume <DIRECTOR_SESSION_ID>`；DP另開不同 session。Agent只可寫
-phase-local proposal，trusted host從實際 process/session產生 worker identity與execution receipt，再呼叫 accept；
-不得採信 proposal自報的 worker/session，也不得讓 agent寫 canonical receipts。
-
-Claude Code沒有呼叫上述 Codex worker orchestrator時，必須以兩個隔離 subagents維持相同順序；保存原 Director
-subagent/session handle並在 audit階段恢復它，DP必須是另一個 handle。Deterministic CLI sequence的 accept參數是：
-
-```powershell
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py init "<episode>" --cut-id <cut-id> [--revision-request "<immutable request.json>"]
-# Director writes a phase-local proposal, then trusted host supplies actual execution identity:
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py accept-director "<episode>" --cut-id <cut-id> --revision-id <revision-id> --proposal "<director-proposal.json>" --worker-id <trusted-director-worker-id> --execution-id <trusted-director-execution-id> --session-id <trusted-director-session-id>
-E:\nakama\.venv-v2\Scripts\python.exe scripts\podcast_highlight_visual_pipeline.py status "<episode>" --cut-id <cut-id>
-```
-
-1. 先用 status/validator fresh重驗 PENDING revision內的 `DIRECTOR-WORK.json`。它必須綁 exact episode/cut、
-   Editorial Master、winner/materialization lineage、tight SRT與 exact revision request；不要搜尋另一份字幕。
-2. 先讀 `DIRECTOR-WORK.candidate.sections` 的完整論述地圖，再完整讀 work packet 指定的 tight SRT，
-   以 exact cue quote/time/hash校正 section 錨點並建立每個 visual event。`transition_before=true` 是
-   highlight-cut 的語意候選：逐項接受、移動或否決，不得忽略後從零平均撒 TR。
-3. 只寫意圖：category、form/description、必要 `on_screen_text`（保留人工換行）、negative constraints與
-   broad source hint。
-   不搜尋具體候選、不選 asset、不填 license、不寫 `_broll.json`。
-4. 產出 phase-local `podcast-highlight-director-plan-v1` proposal；只有 trusted `accept-director`可寫
-   `revisions/<revision-id>/DIRECTOR-PLAN.json`。不可直接覆寫 canonical receipt或即席新增欄位。
-5. Fresh status必須前進到 `awaiting_dp`。交回 orchestrator dispatch一個不同 agent完整執行
-   `brook-dp`；Director不得冒充 DP。DP完成後，orchestrator必須把 fulfillment交回**同一個 Director
-   worker identity**做 semantic audit，再接受 `SEMANTIC-AUDIT.json`。
-
-Semantic audit是 Director對照自己原意圖、exact transcript quote與 DP實現的第二次獨立判斷：worker identity
-必須等於 `DIRECTOR-PLAN.json` 的 Director，且不得等於 DP。逐 event exact coverage；任一 mismatch就
-invalid，不可為了進 materializer改成 pass。只有 trusted `accept-audit`全數通過時才 pointer-last切換
-`CURRENT.json`；pending generation crash/invalid必須保留前一個 CURRENT，重跑同一 immutable request只 resume
-同一 revision，不得另造 generation。
-
-Podcast route沒有 standalone `/brook/video/<ep>` text approval中繼 gate。普通
-`awaiting_director` 是 agent-owned next work；只有 transcript／authority／創意意圖真正歧義才升級 HITL。
-Bridge `/bridge/highlights/<episode>/finished` 只在成片 review時 read-only展示 fresh receipts。
+Podcast 長精華的 Director 工作由 ADR-066 `run_finished_cut_production.py --semantic-worker handoff`
+交付：packet 攤在 `<runtime-root>/semantic-handoff/<request_id>/`，照 packet 內的契約與
+`response-schema.json` 交件（實跑見 `longform-cut` skill「ADR-066 實跑手冊」）。本手冊提供的是創意判準。
+舊的 Long Highlight orchestrator v2 payload 與 ADR-065 revision／receipt route（`DIRECTOR-WORK.json`／
+`DIRECTOR-PLAN.json`／`accept-director`）都已停用，原文移到
+`docs/archive/2026-11-14-adr-065-skill-sections.md`，只供讀舊 receipt 對照。packet 或 code 回報
+「legacy route」時先停下來查是不是走錯線，不要去補舊路線的前置條件。
 
 名稱紅線：`scripts/run_short_director.py` 是 **camera/Timeline director**，只做機位、構圖與 Resolve
-derived Timeline；它的成功**不代表本 skill執行過**。既有 `_broll.json`、Stock Video數量或舊
-materialization receipt也不能替代 `DIRECTOR-WORK.json` → `DIRECTOR-PLAN.json`。
+derived Timeline；它的成功**不代表本 skill執行過**。
 
 Director plan涵蓋所有 content visuals：Stock／Hero／keyword／quote／chapter／card；結構性
 badge／camera correction／guest namecard由各自 deterministic contract處理，不為了湊coverage重複規劃。
