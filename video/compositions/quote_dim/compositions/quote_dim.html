@@ -1,0 +1,98 @@
+<!doctype html>
+<!-- 第 8 類「金句卡」（YouTube 照稿影片，疊在錄影上、不插入時間）。修修 2026-11-16 定版：
+     - 底：整個錄影壓暗（rgba(40,37,37,0.84)）。來自修修過去成片的金句卡配方「畫面壓暗＋白色大字逐行滑入」
+       （docs/research/editing-grammar/2026-07-18-shoshotw-editing-grammar.md），先不用 stock 底。
+       三款（手冊橘色字牌／錄影壓暗／品牌灰底逐字）裡修修選「錄影壓暗」。
+     - 字：左上一個橘色引號，白色思源黑體 Black 96px 靠左（x=240），一行一行從左滑入；下方橘色出處。
+     - 品牌元素：修修「想要增添一點點品牌的元素」→ 選「底邊碎片」→ 排法選「只在右下」：
+       品牌手冊 brand-identity.pdf 第 24 頁「影片開頭」右下角貼著底邊的 3 塊橘色碎片（章節卡 POLYS 第 4、5、6 塊，原樣不重畫），
+       從畫面下方探進來、整團往下推 110px 只露一截。
+     - 退場：show_sec − 0.4 秒起字淡掉、碎片縮回下方、壓暗淡出。
+     被否決過：橘色字牌疊錄影、品牌灰底逐字打出；出處橘色字牌、品牌碎片細條；底邊碎片照 p24 原排、左右對稱、整排重複。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"lines","type":"string","label":"金句（一行一行，以換行分開）","default":"致富跟你聰不聰明無關，\n跟你的行為有關。"},
+    {"id":"who","type":"string","label":"出處（可留空）","default":"Morgan Housel《致富心態》"},
+    {"id":"show_sec","type":"number","label":"顯示秒數","default":5}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <style>
+      @font-face { font-family: "Noto Sans TC Black"; font-weight: 900; font-display: block;
+        src: url("assets/fonts/noto-sans-tc/NotoSansTC-Black.woff2") format("woff2"); }
+      :root { --orange: #f57331; --ink: rgba(40, 37, 37, 0.84);
+        --font-display: "Noto Sans TC Black", "Noto Sans TC", "Source Han Sans TC", sans-serif; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden;
+        font-family: var(--font-display); font-weight: 900; line-height: 1; }
+      #bg { position: absolute; inset: 0; background: var(--ink); }
+      svg { position: absolute; inset: 0; }
+      .line { position: absolute; white-space: pre; font-size: 96px; color: #fff; }
+      #mark { position: absolute; color: var(--orange); font-size: 220px; line-height: 1; }
+      #who { position: absolute; white-space: nowrap; font-size: 40px; color: var(--orange); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="quote_dim"
+      data-width="1920" data-height="1080" data-start="0" data-duration="9">
+      <div id="bg"></div>
+      <svg id="frame" width="1920" height="1080" viewBox="0 0 1920 1080" aria-hidden="true"></svg>
+      <div id="mark">“</div>
+      <div id="who"></div>
+    </div>
+    <script>
+      // 手冊 p24 「影片開頭」右下角貼著底邊的 3 塊（已換算成 1920×1080 座標；與章節卡 POLYS 第 4、5、6 塊相同）
+      const SHARDS = [[[1399.4,959.4],[1542.0,1080.1],[1832.8,1080.1],[1479.8,831.0]],[[1626.0,860.3],[1782.6,1080.1],[1920.1,1080.1],[1920.1,973.8],[1808.7,780.6]],[[1267.7,1080.1],[1536.7,1080.1],[1279.5,1005.1]]];
+      const DOWN = 110, FROM = 420; // 停住時往下推 110px；進場起點／退場終點在畫面下方
+      const LH = 132, X = 240;      // 行距、字的左緣
+      const v = (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const lines = String(v.lines ?? "").split("\n").filter((t) => t.length);
+      const OUT = Math.max(1.5, Number(v.show_sec ?? 5) - 0.4);
+      const root = document.getElementById("root");
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["quote_dim"] = tl;
+
+      const top0 = 540 - (lines.length * LH) / 2;
+      gsap.set("#mark", { left: X - 12, top: top0 - 190 });
+      tl.fromTo("#bg", { opacity: 0 }, { opacity: 1, duration: 0.24, ease: "power1.out" }, 0);
+      tl.fromTo("#mark", { opacity: 0, y: 20 }, { opacity: 1, y: 0, duration: 0.24, ease: "power3.out" }, 0.1);
+      // 金句：一行一行從左滑入
+      lines.forEach((t, i) => {
+        const el = document.createElement("div");
+        el.className = "line";
+        el.textContent = t;
+        root.appendChild(el);
+        gsap.set(el, { left: X, top: top0 + i * LH });
+        tl.fromTo(el, { x: -60, opacity: 0 }, { x: 0, opacity: 1, duration: 0.36, ease: "power3.out" }, 0.22 + i * 0.36);
+      });
+      // 出處（可留空）
+      const who = document.getElementById("who");
+      const whoText = String(v.who ?? "").trim();
+      if (whoText) {
+        who.textContent = "— " + whoText;
+        gsap.set(who, { left: X, top: top0 + lines.length * LH + 36 });
+        tl.fromTo(who, { opacity: 0, x: -30 }, { opacity: 1, x: 0, duration: 0.3, ease: "power3.out" },
+          0.22 + lines.length * 0.36 + 0.1);
+      }
+      // 右下角碎片：從畫面下方探進來，只露一截
+      const NS = "http://www.w3.org/2000/svg";
+      SHARDS.forEach((pts) => {
+        const el = document.createElementNS(NS, "polygon");
+        el.setAttribute("fill", "#f57331"); // SVG 屬性不吃 CSS 變數
+        el.setAttribute("points", pts.map(([x, y]) => x + "," + y).join(" "));
+        document.getElementById("frame").appendChild(el);
+        const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+        tl.fromTo(el, { y: FROM }, { y: DOWN, duration: 0.3, ease: "power3.out" }, 0.04 + (Math.abs(cx - 960) / 960) * 0.12);
+        tl.to(el, { y: FROM, duration: 0.22, ease: "power2.in" }, OUT);
+      });
+      // 退場：字淡掉、碎片縮回下方、壓暗淡出
+      tl.to("#root > *:not(#bg):not(svg)", { opacity: 0, duration: 0.16, ease: "power1.in" }, OUT);
+      tl.to("#bg", { opacity: 0, duration: 0.24, ease: "power1.in" }, OUT + 0.1);
+      tl.to({}, { duration: 9 }, 0);
+    </script>
+  </body>
+</html>
