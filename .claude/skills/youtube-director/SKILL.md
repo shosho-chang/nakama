@@ -1,0 +1,101 @@
+---
+name: youtube-director
+description: >
+  YouTube 照稿影片的 Director：讀校對後的字幕（transcript.srt，時間＝初剪時間軸）與稿的快照，
+  一次排出整集的畫面規劃表（visual_plan.json）交 Bridge 給修修審。自動列（章節卡、小標題、頻道動畫）
+  由程式依稿上標記產生；Director 判斷其餘每一個畫面：哪一類、蓋哪幾句、給 DP 的指示、畫面上的字、出處。
+  Triggers: /youtube-director、「排畫面」「幫這集排畫面規劃表」「跑 Director」「重排好了」。
+  不用在：Podcast 長精華（brook-director）、短片（shortform-director）、DP 素材製作（各分類 youtube-* skill）。
+---
+
+# youtube-director — YouTube 照稿影片 Director
+
+**版本：v0.1（2026-11-16，第一版：判斷準則以分類清單的「什麼時候用」為主）**
+
+規格：`docs/plans/2026-11-15-youtube-script-video-rough-cut-and-director.md` §3（Director）、§4（規劃表）。
+修修 2026-11-14：「只交給當下的 agent」——Director 就是對話中的 agent，不開背景程式、不走 API key。
+
+## 輸入（修修：「Director 的輸入就是這兩個東西，沒錯。」）
+
+1. 集數資料夾的 `transcript.srt`：校對後的字幕，時間＝初剪時間軸時間（`timeline.py` 建「v1 初剪」用的同一份）。
+2. 稿：`##`／`###` 是章節結構，`## Reference` 是出處參考（不唸）。
+
+## 流程
+
+```bash
+# 1. 建表：存稿的快照、字幕變句子、自動列（章節卡／小標題／頻道動畫）
+python -m agents.brook.youtube_video.plan_build init "G:/Footages/<ep>" --script "<稿.md>"
+# 2. Director 寫 rows.json（格式見下），加進表（全部合格才寫，不合格會說哪一列哪裡錯）
+python -m agents.brook.youtube_video.plan_build add "G:/Footages/<ep>" rows.json
+# 3. 看密度與最長空白
+python -m agents.brook.youtube_video.plan_build stats "G:/Footages/<ep>"
+```
+
+`init` 會印出每個標題對到哪一句字幕與信心分數：低於 0.55 的列在備註寫「請確認位置」。
+**自己逐個看過**：標題錨點要在段落第一句；修修有把標題唸出來時，要在唸標題那一句（程式會往前找 3 句）。
+
+然後請修修到 Bridge（`/bridge/video-plan/<集數資料夾名>`）審。修修標「重排」並說「重排好了」→
+只重做標重排的列與待補指示的新增列（規格 §4.4）。**全部核准才交 DP**（`youtube-dp`）。
+
+## rows.json 格式
+
+一個陣列，一個畫面一筆；時間用字幕的 `id`（`init` 後 `visual_plan.json` 的 `cues`）。
+
+```json
+[
+  {"ref": "書封-開場", "category": "book_cover", "start_cue": 7, "end_cue": 9,
+   "description": "《財富階梯》書封從右側出現", "dp_instruction": "《財富階梯》"},
+  {"ref": "主計總處表6", "category": "doc_highlight", "start_cue": 130, "end_cue": 145,
+   "description": "表 6 滿版，跟著講到的數字劃", 
+   "dp_instruction": "https://www.stat.gov.tw/News_Content.aspx?n=2777&s=233116 附件 111年新聞稿.pdf 第 15 頁表 6（淨值那半）；依序劃：第 5 欄、第 1 欄、222、260、405、77、5,133、2,959",
+   "source": "行政院主計總處〈111年國富統計及110年家庭財富分配統計結果〉表6，110年底（2021年）"}
+]
+```
+
+- 疊加類（overlay）：`start_cue`、`end_cue`（同一句就一樣）；插入類（insert，如關鍵字 montage）：`before_cue`。
+- `layout`：分類固定版面的不用填；「either」的分類要填 `full`（滿版）或 `overlay`（疊在畫面上）。
+- 必填欄位照 `agents/brook/youtube_video/categories.yaml` 的 `required`，空的會被擋。
+- `ref` 只給自己看（錯誤訊息會用它指出是哪一列），不寫進表。
+
+## 判斷準則（第一版）
+
+**分類**：照 `categories.yaml` 每一類的 `when`。全部開放——做不出來的類別也可以選，Bridge 會標「待製作」。
+目前做得出來的（readiness: ready）：重點概念 title、人物彈入、書封、論文／文件 highlighter、金句卡、重點條列；
+自動：章節卡、小標題。
+
+**單位與時間**（§3.2）：一列＝一個畫面想法，可以跨好幾句字幕；畫面從某句開頭出現、到某句結尾消失（整句精度）。
+
+**密度**（§3.7）：每分鐘 4.5–5.5 個畫面（只算 Director 選的，不算章節卡、小標題、推近）——只提醒、不硬擋。
+`stats` 會顯示最長一段沒有畫面的長度；修修過去成片的「節拍器」是任何 20 秒內都有視覺事件
+（`docs/research/editing-grammar/2026-07-18-shoshotw-editing-grammar.md` §六）。
+
+**修修過去成片的觸發規則**（同一份研究 §六，2024 年舊片 4 支分析；當參考不是硬規定）：
+- 人名 → 人物彈入；概念名詞 → 重點概念 title；金句 → 首次唸到就上金句卡（6–10 秒）。
+- 研究／報告／數據引用 → 論文／文件 highlighter（7–10 秒；一路唸數字的段落可以更長）。
+- 一條一條講的總結或步驟 → 重點條列（講「第一」「第二」……時最對時）。
+- 數字論證 → 解釋動畫（實數字、實年份）；畫面感強的句子 → stock（逐名詞、單鏡 ≤3 秒、只蓋那個詞）。
+- 書封：前 60 秒至少出現 2 次；之後講到書名由你判斷，**不限次數**（修修：「把書封只能出現一次這個限制拿掉好了」）。
+
+**各分類的交接規則**（DP 會照這些做，Director 要給齊）：
+- 書封：「給 DP 的指示」寫《書名》；「出處」可填書庫資料夾名。
+- 人物：「出處」寫人名（DP 照 §3.8 找照片：Wikimedia 商用授權 → 官方 → 本人公開大頭照；找不到標等素材）。
+- 文件 highlighter：「給 DP 的指示」寫文件網址或檔名、第幾頁，**照講的順序列出要劃的字或數字**；
+  「出處」寫觀眾看的名稱（機構〈報告〉表號、年份；不放網址——印在畫面上）。
+- 金句卡：「畫面上的字」＝原話（最多 3 行，每行約 15 字）；「出處」＝說這句話的人／書。
+- 重點條列：「畫面上的字」一行一條、照講的順序、寫精簡重點不是逐字稿；蓋的字幕從「再整理一下重點」那句到最後一條講完。
+- 重點概念 title：卡上只放概念名稱本身，一行。
+
+**開場、推廣段、片尾**（§3.5）：
+- 開場＝「嗨大家」頻道自介之前；頻道動畫＋Jingle 由程式自動插在自介前（素材修修提供，尚未提供，不可拿 `E:\data\animation` 代用）。
+- 課程推廣段：認出來就在「畫面描述」標「推廣段」，必有課程名稱 title、折扣碼文字卡（以稿上寫法為準，附「連結在說明欄」）；課程畫面是第 9 類修修提供。
+- 片尾結語交給 Director 判斷；不沿用舊的固定片尾 CTA、不預留 YouTube 結束畫面。
+
+**跳接**（§3.6）：露出來的剪點（沒被畫面蓋住的）由 Director 決定用推近（第 17 類）、剪點一開始蓋滿版畫面、
+或之後的第二機——第一版初剪用 B 版剪點重建時，剪點不一定是修修最後的版本，先不排推近。
+
+## 交件前自檢
+
+1. `add` 沒有 ✗；`stats` 的密度大約在 4.5–5.5／分鐘，最長空白有沒有異常長。
+2. 自動列的位置逐個看過（`init` 的輸出）。
+3. 每一列的「畫面描述」是給修修看的：一句話講觀眾會看到什麼。
+4. 不確定的事實（人名拼法、書名、數字出處）不要猜——寫在「備註」請修修確認。
