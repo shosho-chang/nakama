@@ -312,7 +312,12 @@ def anchor_for(timeline, move: Move, fps: float = FPS, track: int = 1) -> Anchor
     if item is None:
         raise ReframeError(f"{move.kind}@{move.start}：V1 這一秒沒有片段")
     path = item.GetMediaPoolItem().GetClipProperty("File Path")
-    src_start = (item.GetLeftOffset() + frame - item.GetStart()) / fps
+    # 不用 GetLeftOffset：drop-frame 錄影它回的是另一套格數（約多千分之一，片尾差到 1.5 秒）；
+    # GetSourceStartFrame 是原始錄影的實際格數（Resolve 21 實測，差 1 格內）
+    src_first = item.GetSourceStartFrame() if hasattr(item, "GetSourceStartFrame") else None
+    if src_first is None:
+        src_first = item.GetLeftOffset()
+    src_start = (src_first + frame - item.GetStart()) / fps
     return detect_anchor(path, src_start, min(move.finish, move.end) - move.start)
 
 

@@ -239,16 +239,16 @@ def _import(media_pool: Any, path: Path) -> Any:
     return items[0]
 
 
-def _new_timeline(pool: Any) -> Any:
+def _new_timeline(pool: Any, name: str = V1_NAME) -> Any:
     """從 29.97 字幕樣式模板長出一條（沒有模板就建空的、字幕沒有樣式）；幀率不是 29.97 就停。"""
     template = _template()
     if template is not None:
         timeline = pool.ImportTimelineFromFile(str(template), {})
         if timeline is None:
             raise TimelineError(f"字幕樣式模板匯入失敗：{template}")
-        timeline.SetName(V1_NAME)
+        timeline.SetName(name)
     else:
-        timeline = pool.CreateEmptyTimeline(V1_NAME)
+        timeline = pool.CreateEmptyTimeline(name)
         if timeline is None:
             raise TimelineError("時間軸建不起來")
     if not _is_2997(timeline.GetSetting("timelineFrameRate")):
