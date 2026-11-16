@@ -21,6 +21,7 @@ import os
 import re
 from datetime import datetime, timedelta
 
+from gateway.handlers import sanji_calendar as cal
 from gateway.handlers import sanji_event as ev
 from gateway.handlers.base import Continuation, HandlerResponse
 from shared import fleet_events
@@ -134,10 +135,24 @@ def build_card(state: dict) -> str:
             f"時間：{when}",
             "形式：只開 Zoom，不會發到社群",
             f"提醒：{remind_line}",
+            *cal.card_lines(state.get("calendar"), state.get("force_calendar", False)),
             "",
-            "沒問題就回「確認」，我去開 Zoom；要改就直接說；不開了就回「取消」。",
+            "沒問題就回「確認」，我去開 Zoom、寫進你的 Google 行事曆；要改就直接說；"
+            "不開了就回「取消」。",
         ]
     )
+
+
+def _span(m: dict) -> tuple[datetime, datetime] | None:
+    start, end = ev._parse_dt(m.get("start")), ev._parse_dt(m.get("end"))
+    return (start, end) if start and end else None
+
+
+def _card(state: dict) -> HandlerResponse:
+    """資料齊了就先查行事曆衝突（跟 Nami 同一套），再出確認卡。"""
+    span = None if state["meeting"].get("missing") else _span(state["meeting"])
+    state["calendar"] = cal.check(*span) if span else None
+    return _respond(state, build_card(state))
 
 
 def _respond(state: dict, text: str) -> HandlerResponse:
@@ -159,7 +174,7 @@ def start_flow(text: str, user_id: str) -> HandlerResponse:
         )
     state = {"version": 1, "meeting": meeting, "progress": {}}
     logger.info(f"internal_meeting start: user={user_id} title={meeting['title']!r}")
-    return _respond(state, build_card(state))
+    return _card(state)
 
 
 def continue_flow(state: dict, text: str, user_id: str) -> HandlerResponse:
@@ -178,9 +193,19 @@ def continue_flow(state: dict, text: str, user_id: str) -> HandlerResponse:
         )
         return HandlerResponse(text="好，這場會議先不開了。" + extra)
 
+    if reply in cal.FORCE_WORDS and not state["meeting"].get("missing"):
+        state["force_calendar"] = True
+        return execute(state, user_id)
+
     if reply in ev.CONFIRM_WORDS:
         if state["meeting"].get("missing"):
             return _respond(state, build_card(state))
+        if cal.blocked(state.get("calendar"), state.get("force_calendar", False)):
+            return _respond(
+                state,
+                "這個時段跟你的行事曆衝突，我先不排。\n"
+                + "\n".join(cal.card_lines(state["calendar"], False)),
+            )
         return execute(state, user_id)
 
     if not body:
@@ -194,7 +219,8 @@ def continue_flow(state: dict, text: str, user_id: str) -> HandlerResponse:
     if zoom and zoom.get("key") != _zoom_key(state["meeting"]):
         # Zoom 已開好又改時間／主題：不重開，提醒手動調整
         state["progress"]["zoom_stale"] = True
-    return _respond(state, build_card(state))
+    state["force_calendar"] = False  # 改了時間要重新看衝突
+    return _card(state)
 
 
 # ── 執行 ────────────────────────────────────────────────────────────────
@@ -247,6 +273,16 @@ def execute(state: dict, user_id: str) -> HandlerResponse:
         if "reminder" not in progress:
             step = "排 Slack 提醒"
             progress["reminder"] = _schedule_reminder(m, progress["zoom"]["join_url"])
+
+        if "calendar" not in progress and _span(m):
+            start, end = _span(m)
+            progress["calendar"] = cal.add(
+                title=m["title"],
+                start=start,
+                end=end,
+                description=f"Zoom：{progress['zoom']['join_url']}\n（Sanji 開的內部會議）",
+                key=f"sanji-meeting-{progress['zoom']['id']}",
+            )
     except Exception as e:
         logger.error(f"internal_meeting failed at {step!r} user={user_id}: {e}", exc_info=True)
         lines = [f"會議還沒處理完，卡在「{step}」：{e}"]
@@ -270,6 +306,11 @@ def execute(state: dict, user_id: str) -> HandlerResponse:
         lines.append(f"提醒：{remind.strftime('%H:%M')} 會在 <#{_channel()}> 貼出。")
     else:
         lines.append("離開會不到 15 分鐘，沒有另外排提醒。")
+    added = progress.get("calendar") or {}
+    if added.get("ok"):
+        lines.append("行事曆：已寫進你的 Google 行事曆。")
+    elif added:
+        lines.append(f"行事曆：沒寫進去（{added.get('error')}），請手動加。")
     if progress.get("zoom_stale"):
         lines.append("注意：Zoom 是用改之前的時間／主題開的，記得到 Zoom 後台手動調整。")
     return HandlerResponse(text="\n".join(lines))
