@@ -241,6 +241,19 @@ categories:
     density: false
     covers: false
 
+  - id: side_bullets
+    number: 18
+    name: 重點條列
+    when: 一條一條講的總結或步驟（例：《財富階梯》最後的五個重點）；畫面上的字一行一條
+    dp: HyperFrames（video/compositions/side_bullets），臉由畫面搬移讓到左 1/3；skill youtube-side-bullets
+    kind: overlay
+    layout: overlay
+    required: [onscreen_text]
+    readiness: ready
+    auto: false
+    density: true
+    covers: true
+
   # ── 依稿上標記自動產生（規格 §3.4、§3.5）────────────────────────────
   - id: section_title
     name: 小標題遮罩

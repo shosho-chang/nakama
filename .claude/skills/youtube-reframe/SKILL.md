@@ -37,6 +37,7 @@ description: >
 | 疊加畫面 | 畫面在哪 | 搬移 |
 |---|---|---|
 | 書封（`youtube-book-cover`） | 固定右側 | `left`，跟書封同一秒開始 |
+| 重點條列（`youtube-side-bullets`） | 側欄固定右側 | `left`，跟側欄同一秒開始 |
 
 新增一類固定在某一側的疊加畫面，就在 `reframe.py` 的 `OVERLAY_MOVES` 加一筆。
 `moves_for_receipts(<episode>)` 會依 `visuals/*.json` 收據排出搬移（原始錄影的秒數；
