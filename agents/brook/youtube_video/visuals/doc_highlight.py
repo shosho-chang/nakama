@@ -249,7 +249,9 @@ def source_text(row: Mapping[str, Any]) -> str:
     if "\n" in text:
         raise DocError(f"{row['id']}: 出處只能一行")
     if text.lower().startswith(("http://", "https://")):
-        raise DocError(f"{row['id']}: 出處會印在畫面上，請寫機構／報告名稱，不要放網址")
+        raise DocError(
+            f"{row['id']}: 出處會印在畫面上，請寫機構／報告名稱；網址寫進「給 DP 的指示」"
+        )
     units = sum(1.0 if unicodedata.east_asian_width(c) in "WF" else 0.55 for c in text)
     if units > MAX_SOURCE_UNITS:
         raise DocError(f"{row['id']}: 出處太長，請縮短（約 60 個全形字以內）")
