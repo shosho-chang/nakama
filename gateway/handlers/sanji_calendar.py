@@ -77,8 +77,19 @@ def blocked(cal: dict | None, forced: bool) -> bool:
     return bool(cal and cal.get("ok") and cal.get("conflicts") and not forced)
 
 
-def add(*, title: str, start: datetime, end: datetime, description: str, key: str) -> dict:
-    """寫進行事曆。回 ``{"ok", "id", "link", "error"}``；失敗不丟例外（呼叫端只提醒）。"""
+def add(
+    *,
+    title: str,
+    start: datetime,
+    end: datetime,
+    description: str,
+    key: str,
+    attendees: list[str] | None = None,
+) -> dict:
+    """寫進行事曆。回 ``{"ok", "id", "link", "error"}``；失敗不丟例外（呼叫端只提醒）。
+
+    ``attendees``（email）：加成與會者，Google 會寄邀請信給他們。
+    """
     try:
         ev = _gc().create_event(
             title=title,
@@ -87,6 +98,7 @@ def add(*, title: str, start: datetime, end: datetime, description: str, key: st
             description=description,
             check_conflict=False,
             idempotency_key=f"{key}@{start.date().isoformat()}",
+            attendees=attendees or None,
         )
         return {"ok": True, "id": ev.id, "link": ev.html_link, "error": ""}
     except Exception as e:

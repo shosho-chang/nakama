@@ -190,3 +190,34 @@ def test_meeting_conflict_blocks_then_force(ext):
     assert "先不排" in resp2.text and ext.calls == []
     resp3, _ = _cont(resp2.continuation.state, "照排")
     assert len(ext.calls) == 1 and resp3.continuation is None
+
+
+# ── 與會者（2026-11-16：行事曆邀請＋提醒 @）──────────────────────────────
+
+
+def test_attendees_parsing_skips_bad_entries(monkeypatch):
+    monkeypatch.setenv(
+        "SANJI_MEETING_ATTENDEES", "曉宣|xs@example.com|U123; 壞的|no-email|U9 ;; 小明|m@x.com|U456"
+    )
+    got = sanji_meeting.attendees()
+    assert [a["name"] for a in got] == ["曉宣", "小明"]
+    assert got[0] == {"name": "曉宣", "email": "xs@example.com", "slack": "U123"}
+
+
+def test_attendees_invited_and_mentioned(ext, monkeypatch):
+    monkeypatch.setenv("SANJI_MEETING_ATTENDEES", "曉宣|xs@example.com|U123")
+    resp = _start([_llm()])
+    assert "與會者：曉宣" in resp.text and "寄 Google 行事曆邀請" in resp.text
+    resp2, _ = _cont(resp.continuation.state, "確認")
+    assert ext.gcal.created[0]["attendees"] == ["xs@example.com"]
+    assert ext.client.chat_scheduleMessage.call_args.kwargs["text"].startswith("<@U123> ⏰")
+    assert "寄邀請給 曉宣" in resp2.text
+
+
+def test_no_attendees_configured(ext, monkeypatch):
+    monkeypatch.delenv("SANJI_MEETING_ATTENDEES", raising=False)
+    resp = _start([_llm()])
+    assert "與會者：（沒設定" in resp.text
+    _cont(resp.continuation.state, "確認")
+    assert ext.gcal.created[0]["attendees"] is None
+    assert ext.client.chat_scheduleMessage.call_args.kwargs["text"].startswith("⏰")
