@@ -61,8 +61,8 @@
   - book_club → `Captain's Book Club`
   - live → `Live Room`；使用者有給主題標籤（例如「五月主題」）時寫成 `Live Room・五月主題`
   - meetup → `Fleet Meetup`
-- `cover_headline_lines`：從 `title` 濃縮出 1–2 行大字，每行最多 7 個中文字。讀書會常見寫法如「六月選書」。只能用 title 裡已經有的資訊，不准加入 title 沒有的事實。
-- `illustration_topic`：只有 live / meetup 才填，用一句簡短英文描述適合當封面插畫的場景（例如 "a cozy online study room at night with warm lamps"）。不要放人名、不要放文字。
+- `cover_headline_lines`：從 `title` 濃縮出 1–2 行大字，每行最多 7 個中文字。**大字寫「主題」，不寫活動形式**：「直播」「讀書會」「講座」「分享會」「小聚」「聚會」「線上」「實體」這類字不要放進大字（小標已經標示活動類型）。例如 title「五月主題直播：睡眠的科學方法」→ `["睡眠的科學方法"]`。讀書會沒有書名或主題可寫時，才用「六月選書」這種寫法。只能用 title 裡已經有的資訊，不准加入 title 沒有的事實。
+- `illustration_topic`：只有 live / meetup 才填，用一句簡短英文描述**活動主題本身**的畫面，不是活動形式。例如主題是睡眠 → "a person sleeping peacefully in bed under a soft blanket"；主題是理財 → "a hand dropping a coin into a piggy bank"。**不要**畫直播、麥克風、筆電、鏡頭、講台、聚會場地這些「形式」的東西，除非主題本身就是在講它們。不要放人名、不要放文字。
 - `start` / `end`：一定要帶 `+08:00`。只講「晚上 8 點」→ 20:00。只有日期沒有時間 → `start` 填 null 並把 `start` 放進 `missing`。
 - `location` / `address`：使用者把場地和地址寫在一起（例如「測試咖啡館（台北市測試路 1 號）」）時，場地名稱放 `location`、地址放 `address`；分不出來就整段放 `location`、`address` 留空。
 - `send_announcement_email`：只有使用者**明確**要寄公告信／通知信給全體成員時才填 true（例如「要寄公告信」「寄信通知大家」）；沒提到就 false。修改模式下使用者說「不要寄」就改回 false，沒提到就原樣保留。

@@ -38,6 +38,7 @@ from zoneinfo import ZoneInfo
 
 import httpx
 
+from gateway.handlers import sanji_calendar as cal
 from gateway.handlers.base import Continuation, HandlerResponse
 from shared import fleet_events
 from shared.llm import ask
@@ -549,6 +550,7 @@ def build_card(state: dict) -> str:
         lines.append(f"・預覽：這次沒產生成功（{state['cover_error']}），確認時我會再試一次")
     if cover_fresh and cover.get("note"):
         lines.append(f"・備註：{cover['note']}")
+    lines += cal.card_lines(state.get("calendar"), state.get("force_calendar", False))
 
     zoom = progress.get("zoom")
     if zoom and zoom.get("key") != _zoom_key(event):
@@ -584,7 +586,18 @@ def _card_response(state: dict, user_id: str) -> HandlerResponse:
         except Exception as e:  # 預覽失敗不擋確認卡；確認時會再試
             logger.warning(f"event_draft: cover preview failed user={user_id}: {e}")
             state["cover_error"] = str(e)[:200]
+    # 跟 Nami 同一套：先查修修的 Google 行事曆有沒有衝突（2026-11-16 修修要求）
+    span = None if state["event"].get("missing") else _event_span(state["event"])
+    state["calendar"] = cal.check(*span) if span else None
     return _respond(state, build_card(state))
+
+
+def _event_span(event: dict) -> tuple[datetime, datetime] | None:
+    start = _parse_dt(event.get("start"))
+    if start is None:
+        return None
+    end = _parse_dt(event.get("end")) or start + timedelta(minutes=_duration_min(event))
+    return start, end
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -643,9 +656,19 @@ def continue_flow(state: dict, text: str, user_id: str) -> HandlerResponse:
     if not body:  # 只補一張圖（沒打字）→ 換圖後重出確認卡
         return _card_response(state, user_id)
 
+    if reply in cal.FORCE_WORDS and not state["event"].get("missing"):
+        state["force_calendar"] = True
+        return execute(state, user_id)
+
     if reply in CONFIRM_WORDS:
         if state["event"].get("missing"):
             return _respond(state, build_missing_prompt(state["event"]))
+        if cal.blocked(state.get("calendar"), state.get("force_calendar", False)):
+            return _respond(
+                state,
+                "這個時段跟你的行事曆衝突，我先不建。\n"
+                + "\n".join(cal.card_lines(state["calendar"], False)),
+            )
         return execute(state, user_id)
 
     state["sources"].append(body)
@@ -658,6 +681,7 @@ def continue_flow(state: dict, text: str, user_id: str) -> HandlerResponse:
             "抱歉，這個修改我沒看懂。可以換個說法再講一次嗎？"
             "（例如「時間改成 8 點」「地點改成台北」）不做了就回「取消」。",
         )
+    state["force_calendar"] = False  # 改了內容要重新看衝突
     return _card_response(state, user_id)
 
 
@@ -813,6 +837,11 @@ def _success_text(state: dict, created: dict) -> str:
     ]
     if event.get("send_announcement_email"):
         lines.append("公告信會在核准後約 5 分鐘寄給這個 space 的全部成員。")
+    added = progress.get("calendar") or {}
+    if added.get("ok"):
+        lines.append("已寫進你的 Google 行事曆。")
+    elif added:
+        lines.append(f"行事曆沒寫進去（{added.get('error')}），請手動加。")
     return "\n".join(lines)
 
 
@@ -886,4 +915,17 @@ def execute(state: dict, user_id: str) -> HandlerResponse:
             )
         return _respond(state, text)
 
+    # 寫進修修的 Google 行事曆（失敗不擋，成功訊息裡提醒手動加）
+    span = _event_span(event)
+    if span:
+        desc = [f"社群貼文（待審核）：{created.get('permalink') or ''}"]
+        if progress.get("zoom"):
+            desc.append(f"Zoom：{progress['zoom']['join_url']}")
+        progress["calendar"] = cal.add(
+            title=event["title"],
+            start=span[0],
+            end=span[1],
+            description="\n".join(desc) + "\n（Sanji 建的社群活動）",
+            key=f"sanji-event-{created.get('feed_id')}",
+        )
     return HandlerResponse(text=_success_text(state, created))

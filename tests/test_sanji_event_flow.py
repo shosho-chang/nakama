@@ -17,6 +17,7 @@ import pytest
 from gateway.handlers import sanji_event
 from gateway.handlers.sanji import SanjiHandler
 from shared.fleet_events import FleetEventsError
+from tests import sanji_fake_calendar
 
 TZ = sanji_event.TZ
 FIXED_NOW = datetime(2026, 11, 13, 10, 0, tzinfo=TZ)  # 星期五
@@ -89,7 +90,10 @@ def ext(monkeypatch):
     monkeypatch.setenv("SANJI_SLACK_BOT_TOKEN", "xoxb-sanji")
     monkeypatch.setenv("SANJI_EVENTS_SPACE", "test-dock")
     monkeypatch.setenv("SANJI_EVENTS_SPACE_LABEL", "測試船塢")
-    return types.SimpleNamespace(calls=calls, payloads=payloads, fail=fail, outputs=outputs)
+    gcal = sanji_fake_calendar.install(monkeypatch)
+    return types.SimpleNamespace(
+        calls=calls, payloads=payloads, fail=fail, outputs=outputs, gcal=gcal
+    )
 
 
 def _start(llm_replies, text=RAW):
@@ -540,3 +544,60 @@ def test_custom_slug_is_cleaned_and_kept(ext):
 )
 def test_clean_slug(raw, clean):
     assert sanji_event.clean_slug(raw) == clean
+
+
+# ── 行事曆（2026-11-16：跟 Nami 一樣先查衝突、確認後寫入）──────────────────────
+
+
+def test_no_conflict_card_and_calendar_written(ext):
+    resp, _ = _start([_llm_json()])
+    assert "行事曆：這個時段沒有其他行程" in resp.text
+    _cont(resp.continuation.state, "確認")
+    created = ext.gcal.created[0]
+    assert created["title"] == "六月讀書會《原子習慣》"
+    assert created["start"] == "2026-11-28T20:00:00+08:00"
+    assert created["end"] == "2026-11-28T22:00:00+08:00"
+    assert created["check_conflict"] is False
+    assert created["idempotency_key"] == "sanji-event-900@2026-11-28"
+    assert PERMALINK in created["description"]
+
+
+def test_conflict_blocks_confirm_until_force(ext):
+    ext.gcal.conflicts = [
+        sanji_fake_calendar.event(
+            "看牙醫", "2026-11-28T19:30:00+08:00", "2026-11-28T21:00:00+08:00"
+        )
+    ]
+    ext.gcal.free = [("2026-11-28T21:00:00+08:00", "2026-11-28T23:00:00+08:00")]
+    resp, _ = _start([_llm_json()])
+    assert "行事曆衝突：19:30–21:00「看牙醫」" in resp.text
+    assert "21:00–23:00" in resp.text and "「照排」" in resp.text
+
+    resp2, _ = _cont(resp.continuation.state, "確認")
+    assert "先不建" in resp2.text and "post" not in ext.calls
+    assert resp2.continuation is not None
+
+    resp3, _ = _cont(resp2.continuation.state, "照排")
+    assert ext.calls.count("post") == 1 and resp3.continuation is None
+    assert ext.gcal.created
+
+
+def test_revision_clears_force(ext):
+    ext.gcal.conflicts = [
+        sanji_fake_calendar.event("A", "2026-11-28T20:00:00+08:00", "2026-11-28T21:00:00+08:00")
+    ]
+    resp, _ = _start([_llm_json()])
+    state = resp.continuation.state
+    state["force_calendar"] = True
+    resp2, _ = _cont(state, "時間改成 9 點", [_llm_json(start="2026-11-28T21:00:00+08:00")])
+    assert resp2.continuation.state["force_calendar"] is False
+
+
+def test_calendar_unavailable_does_not_block(ext):
+    ext.gcal.fail_check = RuntimeError("token expired")
+    ext.gcal.fail_add = RuntimeError("token expired")
+    resp, _ = _start([_llm_json()])
+    assert "沒查到你的 Google 行事曆" in resp.text
+    resp2, _ = _cont(resp.continuation.state, "確認")
+    assert ext.calls.count("post") == 1
+    assert "行事曆沒寫進去" in resp2.text and "token expired" in resp2.text
