@@ -5,14 +5,17 @@ facade 依 MODEL_SANJI env 自動把 Sanji 路到 Grok（見 shared/llm_router.p
 
 之後（P2/P3）可加社群監控 tool（讀 Fluent Community REST、偵測未回覆）。
 
-建活動草稿：訊息含建活動關鍵字（見 ``sanji_event.TRIGGER_KEYWORDS``）時改走
-``gateway/handlers/sanji_event.py`` 的多輪流程（flow_name = ``event_draft``）；
+多輪流程（執行端在 freedom-fleet，見 ``shared/fleet_events.py``）：
+- 建社群活動：含建活動關鍵字（``sanji_event.TRIGGER_KEYWORDS``）→ ``sanji_event``
+  （flow_name = ``event_draft``，發「待審核」活動）
+- 開內部會議：含開會關鍵字（``sanji_meeting.TRIGGER_KEYWORDS``）→ ``sanji_meeting``
+  （flow_name = ``internal_meeting``，只開 Zoom＋Slack 提醒）
 其他訊息照舊走聊天。
 """
 
 from __future__ import annotations
 
-from gateway.handlers import sanji_event
+from gateway.handlers import sanji_event, sanji_meeting
 from gateway.handlers.base import BaseHandler, HandlerResponse
 from shared import agent_memory
 from shared.llm import ask
@@ -37,6 +40,8 @@ class SanjiHandler(BaseHandler):
 
         if sanji_event.is_event_request(text):
             return sanji_event.start_flow(text, user_id)
+        if sanji_meeting.is_meeting_request(text):
+            return sanji_meeting.start_flow(text, user_id)
 
         try:
             system = load_prompt("sanji", "persona")
@@ -68,8 +73,11 @@ class SanjiHandler(BaseHandler):
         text: str,
         user_id: str,
     ) -> HandlerResponse:
-        """接續建活動草稿流程；其他 flow 不支援（bot 會結束該 conversation）。"""
-        if flow_name != sanji_event.FLOW_NAME:
-            return super().continue_flow(flow_name, state, text, user_id)
-        set_current_agent("sanji")
-        return sanji_event.continue_flow(state, text, user_id)
+        """接續建活動／開會議流程；其他 flow 不支援（bot 會結束該 conversation）。"""
+        if flow_name == sanji_event.FLOW_NAME:
+            set_current_agent("sanji")
+            return sanji_event.continue_flow(state, text, user_id)
+        if flow_name == sanji_meeting.FLOW_NAME:
+            set_current_agent("sanji")
+            return sanji_meeting.continue_flow(state, text, user_id)
+        return super().continue_flow(flow_name, state, text, user_id)

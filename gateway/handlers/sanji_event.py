@@ -1,4 +1,4 @@
-"""Sanji 建活動草稿流程 — 曉宣在 Slack 叫 Sanji 在 fleet.shosho.tw 開一場活動「草稿」。
+"""Sanji 建社群活動流程 — 曉宣／修修在 Slack 叫 Sanji 在 fleet.shosho.tw 發一場「待審核」活動。
 
 流程（多輪，flow_name = ``event_draft``）：
 
@@ -7,27 +7,28 @@
    - 文案（description）必須是使用者原文的子字串（空白正規化後比對）；LLM 改寫了就
      退回使用者原文（去掉觸發那一行），並記 log
    - 封面小標由程式依活動類型定案，不讓 LLM 自由發揮
-3. 回一張確認卡（純文字）；缺必填就只問缺的東西
+3. 資料齊了就先產生封面（上傳到網站媒體庫拿預覽連結），再回確認卡；缺必填就只問缺的東西。
+   **內容審核在這張確認卡**（2026-11-16 修修裁決：社群上的待審核活動內頁看不到，
+   FluentEvent 寫死只顯示已發布貼文）。
 4. :func:`continue_flow`：取消 → 結束；確認 → 執行；其他 → 當修改指示，讓 LLM 套用
-5. 執行順序：Zoom（線上）→ 主圖（附圖 / AI 插畫 / 無）→ 合成封面 → 上傳封面 →
-   建活動草稿。每一步的成果都寫進 state，失敗時回報哪些完成、哪些失敗，流程保留；
-   再回「確認」會從失敗那步接著做，不會重開 Zoom、不會重傳封面。
+5. 執行順序：封面（內容沒變就沿用）→ Zoom（線上）→ 發待審核活動。每一步的成果都寫進
+   state，失敗時回報哪些完成、哪些失敗，流程保留；再回「確認」會從失敗那步接著做，
+   不會重開 Zoom。
 
-邊界：Sanji 只建「草稿」。發布活動、寄會員通知信由曉宣自己在 WordPress 後台做。
+邊界：Sanji 只發「待審核」。社群上按 Review → Approve Post 才上線、才通知會員
+（FluentCommunity Pro 內建審核；公告信也是核准後才排程寄出）。
+
+執行端（開 Zoom、合成與上傳封面、發活動）在 freedom-fleet repo（ADR-071 分工 B），
+透過 :mod:`shared.fleet_events` 呼叫。
 
 state 會被 ConversationStore JSON 序列化 → 只放 str / int / bool / None / list / dict；
 時間一律存 ISO 字串，圖片只存 Slack 下載網址，bytes 不進 state。
-
-外部模組（``shared.fleet_cover`` / ``shared.zoom_client`` / ``shared.fca_events_client``）
-一律在函式內用 ``importlib.import_module`` lazy import：模組還沒上線時 gateway 照樣能啟動，
-測試也能用 ``sys.modules`` stub 換掉。
 """
 
 from __future__ import annotations
 
+import base64
 import hashlib
-import html
-import importlib
 import json
 import os
 import re
@@ -38,6 +39,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from gateway.handlers.base import Continuation, HandlerResponse
+from shared import fleet_events
 from shared.llm import ask
 from shared.llm_json import extract_json_object
 from shared.log import get_logger
@@ -50,20 +52,11 @@ TZ = ZoneInfo("Asia/Taipei")
 DEFAULT_DURATION_MIN = 120
 PARSE_MAX_TOKENS = 2048
 _IMAGE_DOWNLOAD_TIMEOUT_S = 30
-# 草稿建立結果不明時，請曉宣先到這裡確認有沒有重複
-_MANAGE_URL = "https://fleet.shosho.tw/deck/events/manage"
-
-
-def _is_rejected_before_create(err: Exception) -> bool:
-    """站上明確拒絕（401/403/其他 4xx）＝ 活動一定沒建，可以放心重試。"""
-    try:
-        wp = importlib.import_module("shared.wordpress_client")
-    except Exception:
-        return False
-    return isinstance(err, (wp.WPAuthError, wp.WPClientError))
-
-
-_STATE_VERSION = 1
+_STATE_VERSION = 2
+# 活動要發到哪個 space（slug）；UAT 期間設 test-dock。沒設就不准建（避免發錯地方）。
+ENV_SPACE = "SANJI_EVENTS_SPACE"
+# 確認卡上顯示的 space 名稱（選填；沒設就顯示 slug）
+ENV_SPACE_LABEL = "SANJI_EVENTS_SPACE_LABEL"
 
 # ── 觸發 ─────────────────────────────────────────────────────────────────
 #
@@ -266,18 +259,6 @@ def _duration_min(event: dict) -> int:
     return int(event.get("duration_min") or DEFAULT_DURATION_MIN)
 
 
-def description_to_html(text: str) -> str:
-    """原文文案 → HTML 段落：先 escape；空行分段成 <p>，單一換行變 <br>。"""
-    norm = (text or "").replace("\r\n", "\n").replace("\r", "\n").strip()
-    if not norm:
-        return ""
-    paragraphs = [p.strip("\n") for p in re.split(r"\n[ \t]*\n+", norm) if p.strip()]
-    return "\n".join(
-        "<p>" + "<br>\n".join(html.escape(line) for line in p.split("\n")) + "</p>"
-        for p in paragraphs
-    )
-
-
 # ═════════════════════════════════════════════════════════════════════════
 # LLM 解析 + 程式端驗證
 # ═════════════════════════════════════════════════════════════════════════
@@ -428,6 +409,7 @@ def normalize_event(
         "kind": kind,
         "is_online": is_online,
         "location": "" if is_online else str(data.get("location") or "").strip(),
+        "address": "" if is_online else str(data.get("address") or "").strip(),
         "cover_location_label": ""
         if is_online
         else str(data.get("cover_location_label") or "").strip(),
@@ -436,6 +418,7 @@ def normalize_event(
         "illustration_topic": ""
         if kind == "book_club"
         else str(data.get("illustration_topic") or "").strip(),
+        "send_announcement_email": data.get("send_announcement_email") is True,
         "missing": [m for m in _REQUIRED if m in missing],
         "description_fallback": desc_fallback,
     }
@@ -469,6 +452,13 @@ def revise_event(current: dict, instruction: str, sources: list[str]) -> dict:
 # ═════════════════════════════════════════════════════════════════════════
 
 
+def _space() -> tuple[str, str]:
+    """(slug, 顯示名稱)。slug 沒設回空字串。"""
+    slug = os.environ.get(ENV_SPACE, "").strip()
+    label = os.environ.get(ENV_SPACE_LABEL, "").strip() or slug
+    return slug, label
+
+
 def _cover_image_plan(event: dict, image: dict | None) -> str:
     if image:
         what = "書封" if event.get("kind") == "book_club" else "圖片"
@@ -485,11 +475,11 @@ def _duration_label(minutes: int) -> str:
 
 def build_missing_prompt(event: dict) -> str:
     items = "\n".join(f"・{_MISSING_LABELS[m]}" for m in event.get("missing") or [])
-    return f"要開活動草稿，我這邊還缺這幾樣：\n{items}\n直接在這串回我就好；不做了就回「取消」。"
+    return f"要建活動，我這邊還缺這幾樣：\n{items}\n直接在這串回我就好；不做了就回「取消」。"
 
 
 def build_card(state: dict) -> str:
-    """確認卡（純文字）。缺必填時只問缺的東西。"""
+    """確認卡（純文字）。缺必填時只問缺的東西。內容審核就在這張卡上。"""
     event = state["event"]
     if event.get("missing"):
         return build_missing_prompt(event)
@@ -502,22 +492,42 @@ def build_card(state: dict) -> str:
         where = "線上（確認後我會開一個 Zoom 會議）"
     else:
         where = f"實體・{event.get('location') or '（地點未填）'}"
+        if event.get("address"):
+            where += f"（{event['address']}）"
 
+    _slug, space_label = _space()
+    announce = (
+        "寄給這個 space 的全部成員（社群上核准後約 5 分鐘寄出）"
+        if event.get("send_announcement_email")
+        else "不寄（要寄就說「要寄公告信」）"
+    )
     headline = " / ".join(event.get("cover_headline_lines") or []) or "（無）"
+    image = state.get("image")
+    progress = state.get("progress") or {}
+    cover = progress.get("cover") or {}
+    cover_fresh = cover.get("key") == _cover_key(event, image)
     lines = [
-        "收到，活動草稿的內容我整理好了，先對一下：",
+        "收到，活動內容我整理好了，先對一下（社群上看不到待審核活動的內頁，內容請在這裡確認）：",
         "",
         f"活動名稱：{event.get('title')}",
         f"時間：{when}",
         f"形式：{where}",
+        f"發在：{space_label or '（未設定，建不了）'}",
+        f"公告信：{announce}",
         "封面：",
         f"・小標：{event.get('cover_eyebrow')}",
         f"・大字：{headline}",
         f"・日期列：{cover_date_label(event)}",
-        f"・主圖：{_cover_image_plan(event, state.get('image'))}",
+        f"・主圖：{_cover_image_plan(event, image)}",
     ]
+    if cover_fresh and cover.get("url"):
+        lines.append(f"・預覽：{cover['url']}")
+    elif state.get("cover_error"):
+        lines.append(f"・預覽：這次沒產生成功（{state['cover_error']}），確認時我會再試一次")
+    if cover_fresh and cover.get("note"):
+        lines.append(f"・備註：{cover['note']}")
 
-    zoom = (state.get("progress") or {}).get("zoom")
+    zoom = progress.get("zoom")
     if zoom and zoom.get("key") != _zoom_key(event):
         lines += [
             "",
@@ -531,7 +541,8 @@ def build_card(state: dict) -> str:
     lines += [
         event.get("description") or "",
         "",
-        "沒問題就回「確認」，我會在 fleet.shosho.tw 建成「草稿」（不會發布、不會寄信）。",
+        "沒問題就回「確認」，我會發到社群，狀態是「待審核」：會員看不到，"
+        "要到社群上按 Review → Approve Post 才會上線、通知會員。",
         "要改就直接說，例如「時間改成 8 點」；不做了就回「取消」。",
     ]
     return "\n".join(lines)
@@ -539,6 +550,18 @@ def build_card(state: dict) -> str:
 
 def _respond(state: dict, text: str) -> HandlerResponse:
     return HandlerResponse(text=text, continuation=Continuation(flow_name=FLOW_NAME, state=state))
+
+
+def _card_response(state: dict, user_id: str) -> HandlerResponse:
+    """資料齊了就先備好封面預覽，再出確認卡。"""
+    state.pop("cover_error", None)
+    if not state["event"].get("missing"):
+        try:
+            _ensure_cover(state, user_id)
+        except Exception as e:  # 預覽失敗不擋確認卡；確認時會再試
+            logger.warning(f"event_draft: cover preview failed user={user_id}: {e}")
+            state["cover_error"] = str(e)[:200]
+    return _respond(state, build_card(state))
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -569,7 +592,7 @@ def start_flow(text: str, user_id: str) -> HandlerResponse:
         f"event_draft start: user={user_id} title={event.get('title')!r} "
         f"missing={event.get('missing')} image={'yes' if image else 'no'}"
     )
-    return _respond(state, build_card(state))
+    return _card_response(state, user_id)
 
 
 def continue_flow(state: dict, text: str, user_id: str) -> HandlerResponse:
@@ -595,7 +618,7 @@ def continue_flow(state: dict, text: str, user_id: str) -> HandlerResponse:
         return HandlerResponse(text="好，這場活動先不建了。" + extra)
 
     if not body:  # 只補一張圖（沒打字）→ 換圖後重出確認卡
-        return _respond(state, build_card(state))
+        return _card_response(state, user_id)
 
     if reply in CONFIRM_WORDS:
         if state["event"].get("missing"):
@@ -612,7 +635,7 @@ def continue_flow(state: dict, text: str, user_id: str) -> HandlerResponse:
             "抱歉，這個修改我沒看懂。可以換個說法再講一次嗎？"
             "（例如「時間改成 8 點」「地點改成台北」）不做了就回「取消」。",
         )
-    return _respond(state, build_card(state))
+    return _card_response(state, user_id)
 
 
 # ═════════════════════════════════════════════════════════════════════════
@@ -661,38 +684,99 @@ def _download_image(url: str) -> bytes:
     return data
 
 
-def _main_image(event: dict, image: dict | None, fleet_cover: Any) -> tuple[bytes | None, str, str]:
-    """決定封面主圖。回 (bytes or None, main_kind, 給使用者的備註)。"""
+def _cover_payload(event: dict, image: dict | None) -> tuple[dict, str]:
+    """組 freedom-fleet ``cover`` 指令的輸入。回 (payload, 給使用者的備註)。
+
+    使用者附圖由這裡下載（要用 Sanji 的 Slack token）；AI 插畫交給 freedom-fleet 生。
+    """
+    start = _parse_dt(event.get("start"))
+    payload: dict[str, Any] = {
+        "eyebrow": event["cover_eyebrow"],
+        "headline_lines": list(event["cover_headline_lines"]),
+        "date_label": cover_date_label(event),
+        "filename": f"sanji-cover-{start.strftime('%Y%m%d') if start else 'event'}.jpg",
+        "main_kind": "none",
+    }
     note = ""
+    is_book = event.get("kind") == "book_club"
     if image and image.get("url"):
         try:
             data = _download_image(image["url"])
-            return data, ("book" if event.get("kind") == "book_club" else "illustration"), ""
+            payload["main_kind"] = "book" if is_book else "illustration"
+            payload["main_image_b64"] = base64.b64encode(data).decode("ascii")
+            return payload, ""
         except Exception as e:
             logger.warning(f"event_draft: 附圖下載失敗 {image.get('name')}: {e}")
             note = "你附的圖片我下載不到（Slack app 可能缺 files:read 權限），封面先不放這張圖。"
-            if event.get("kind") == "book_club":
-                return None, "none", note
-    if event.get("kind") == "book_club":
-        return None, "none", note
-    try:
-        topic = event.get("illustration_topic") or event.get("title") or ""
-        data = fleet_cover.generate_illustration(topic)
-        return data, "illustration", note
-    except fleet_cover.IllustrationError as e:
-        logger.warning(f"event_draft: AI 插畫生成失敗: {e}")
-        msg = "AI 插畫這次沒生成成功，封面先不放主圖。"
-        return None, "none", f"{note} {msg}".strip()
+    if not is_book:
+        payload["main_kind"] = "illustration"
+        payload["illustration_topic"] = event.get("illustration_topic") or event.get("title") or ""
+    return payload, note
+
+
+def _ensure_cover(state: dict, user_id: str) -> dict:
+    """封面內容沒變就沿用；變了（或還沒有）就請 freedom-fleet 重新合成並上傳。"""
+    event = state["event"]
+    image = state.get("image")
+    progress = state.setdefault("progress", {})
+    key = _cover_key(event, image)
+    cover = progress.get("cover")
+    if cover and cover.get("key") == key:
+        return cover
+    payload, note = _cover_payload(event, image)
+    out = fleet_events.run("cover", payload)
+    note = " ".join(x for x in (note, str(out.get("note") or "")) if x)
+    cover = {"id": int(out["media_id"]), "url": str(out["url"]), "key": key, "note": note}
+    progress["cover"] = cover
+    logger.info(f"event_draft: cover uploaded id={cover['id']} user={user_id}")
+    return cover
+
+
+def _local(dt: datetime) -> str:
+    """FluentEvent EventRequest 的時間格式：當地時間 ``Y-m-d H:i:s``。"""
+    return dt.astimezone(TZ).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _post_payload(state: dict, space: str) -> dict:
+    event = state["event"]
+    progress = state["progress"]
+    start = _parse_dt(event["start"])
+    end = _parse_dt(event.get("end")) or start + timedelta(minutes=_duration_min(event))
+    fe: dict[str, Any] = {
+        "title": event["title"],
+        "description_md": event["description"],
+        "start_at": _local(start),
+        "end_at": _local(end),
+        "timezone": "Asia/Taipei",
+        "cover_url": progress["cover"]["url"],
+        "entry_type": "rsvp",
+        "show_guest_count": "yes",
+    }
+    if event.get("is_online"):
+        fe["venue_type"] = "online"
+        fe["online_meeting_url"] = (progress.get("zoom") or {}).get("join_url", "")
+    else:
+        fe["venue_type"] = "offline"
+        fe["venue"] = event.get("location", "")
+        fe["address"] = event.get("address", "")
+    return {
+        "space": space,
+        # 貼文本文 = 活動文案：待審核時管理者在動態上就讀得到內容
+        "message": event["description"],
+        "send_announcement_email": bool(event.get("send_announcement_email")),
+        "event": fe,
+    }
 
 
 def _success_text(state: dict, created: dict) -> str:
     progress = state["progress"]
     cover = progress.get("cover") or {}
     zoom = progress.get("zoom")
+    event = state["event"]
     lines = [
-        f"活動「{state['event'].get('title')}」的草稿建好了（狀態：草稿，還沒對外公開）。",
+        f"活動「{event.get('title')}」已經發到社群，狀態是「待審核」（會員還看不到）。",
         "",
-        f"・草稿編輯連結：{created.get('edit_url')}",
+        f"・待審核貼文：{created.get('permalink') or '（站上沒回連結，請到 space 動態找）'}",
         f"・封面圖：{cover.get('url') or '（無）'}",
     ]
     if zoom:
@@ -701,20 +785,21 @@ def _success_text(state: dict, created: dict) -> str:
         lines += ["", cover["note"]]
     lines += [
         "",
-        "接下來交給你：打開編輯連結檢查內容和封面，沒問題就在後台按發布，"
-        "再從站上寄會員通知信。發布和寄信我都不會碰。",
+        "下一步：到社群打開這篇，按 Review → Approve Post，活動才會上線、通知會員。",
     ]
+    if event.get("send_announcement_email"):
+        lines.append("公告信會在核准後約 5 分鐘寄給這個 space 的全部成員。")
     return "\n".join(lines)
 
 
 def _failure_text(state: dict, step: str, err: Exception) -> str:
     progress = state["progress"]
     done: list[str] = []
-    if progress.get("zoom"):
-        done.append(f"・Zoom 會議已經開好：{progress['zoom'].get('join_url')}")
     if progress.get("cover"):
         done.append(f"・封面已經上傳：{progress['cover'].get('url')}")
-    lines = [f"活動草稿還沒建好，卡在「{step}」這一步：{err}"]
+    if progress.get("zoom"):
+        done.append(f"・Zoom 會議已經開好：{progress['zoom'].get('join_url')}")
+    lines = [f"活動還沒發出去，卡在「{step}」這一步：{err}"]
     if done:
         lines += ["", "已經完成的部分（不會重做）：", *done]
     lines += [
@@ -725,90 +810,56 @@ def _failure_text(state: dict, step: str, err: Exception) -> str:
 
 
 def execute(state: dict, user_id: str) -> HandlerResponse:
-    """依序執行：Zoom → 主圖 → 合成封面 → 上傳封面 → 建草稿。每步成果寫回 state。"""
+    """依序執行：封面 → Zoom（線上）→ 發待審核活動。每步成果寫回 state。"""
     event = state["event"]
     progress = state.setdefault("progress", {})
-    image = state.get("image")
-    start = _parse_dt(event["start"])
-    end = _parse_dt(event["end"]) or start + timedelta(minutes=_duration_min(event))
-    duration = _duration_min(event)
+    space, space_label = _space()
+    if not space:
+        return _respond(
+            state,
+            f"還沒設定活動要發到哪個 space（env {ENV_SPACE}），我先不建。"
+            "請修修設定好再回「確認」。",
+        )
 
     step = "準備"
     try:
-        # a) Zoom（線上活動；已開過就不再開）
+        step = "產生封面"
+        _ensure_cover(state, user_id)
+
         if event.get("is_online") and not progress.get("zoom"):
             step = "開 Zoom 會議"
-            zoom_client = importlib.import_module("shared.zoom_client")
-            meeting = zoom_client.create_meeting(event["title"], start, duration)
+            start = _parse_dt(event["start"])
+            out = fleet_events.run(
+                "zoom",
+                {
+                    "title": event["title"],
+                    "start": start.isoformat(),
+                    "duration_min": _duration_min(event),
+                },
+            )
             progress["zoom"] = {
-                "id": meeting.id,
-                "join_url": meeting.join_url,
+                "id": out["id"],
+                "join_url": out["join_url"],
                 "key": _zoom_key(event),
             }
-            logger.info(f"event_draft: zoom created id={meeting.id} user={user_id}")
+            logger.info(f"event_draft: zoom created id={out['id']} user={user_id}")
 
-        # b)–d) 封面（同樣內容已上傳過就沿用）
-        key = _cover_key(event, image)
-        cover = progress.get("cover")
-        if not cover or cover.get("key") != key:
-            step = "準備封面主圖"
-            fleet_cover = importlib.import_module("shared.fleet_cover")
-            main_image, main_kind, note = _main_image(event, image, fleet_cover)
-
-            step = "合成封面"
-            cover_jpg = fleet_cover.render_cover(
-                fleet_cover.CoverSpec(
-                    eyebrow=event["cover_eyebrow"],
-                    headline_lines=list(event["cover_headline_lines"]),
-                    date_label=cover_date_label(event),
-                    main_image=main_image,
-                    main_kind=main_kind,
-                )
-            )
-
-            step = "上傳封面"
-            fca = importlib.import_module("shared.fca_events_client")
-            client = fca.FcaEventsClient.from_env()
-            uploaded = client.upload_image(cover_jpg, f"sanji-cover-{start.strftime('%Y%m%d')}.jpg")
-            progress["cover"] = {"id": uploaded.id, "url": uploaded.url, "key": key, "note": note}
-            logger.info(f"event_draft: cover uploaded id={uploaded.id} user={user_id}")
-        else:
-            fca = importlib.import_module("shared.fca_events_client")
-            client = fca.FcaEventsClient.from_env()
-
-        # e) 建活動草稿
-        step = "建立活動草稿"
-        zoom = progress.get("zoom") or {}
-        draft = fca.EventDraft(
-            title=event["title"],
-            content_html=description_to_html(event["description"]),
-            start=start,
-            end=end,
-            event_type="online" if event.get("is_online") else "in_person",
-            event_url=zoom.get("join_url", "") if event.get("is_online") else "",
-            meeting_provider="zoom" if event.get("is_online") else "",
-            location="" if event.get("is_online") else event.get("location", ""),
-            featured_image_id=progress["cover"]["id"],
-        )
-        created = client.create_draft_event(draft)
+        step = "發待審核活動"
+        created = fleet_events.run("post", _post_payload(state, space))
         logger.info(
-            f"event_draft: draft created id={created.id} status={created.status} user={user_id}"
+            f"event_draft: pending event feed={created.get('feed_id')} "
+            f"event={created.get('event_id')} space={space} user={user_id}"
         )
     except Exception as e:
         logger.error(f"event_draft execute failed at {step!r} user={user_id}: {e}", exc_info=True)
         text = _failure_text(state, step, e)
-        if step == "建立活動草稿" and not _is_rejected_before_create(e):
-            # 逾時／5xx／回應異常：站上可能已經建了這筆活動，盲目重試會變成兩筆
+        if getattr(e, "maybe_done", False):
+            # 逾時／5xx／回應異常：站上可能已經建了，盲目重試會變成兩篇（或兩場 Zoom）
             text += (
-                "\n\n⚠️ 這種錯誤有可能是站上其實已經建好了、只是回應出問題。"
-                f"回「確認」之前，請先到 {_MANAGE_URL} 看一下有沒有這筆活動，"
-                "有的話就不要再確認，避免重複。"
+                "\n\n⚠️ 這種錯誤有可能是其實已經做完、只是回應出問題。"
+                f"回「確認」之前，請先到社群「{space_label}」看有沒有這篇待審核貼文"
+                "（或到 Zoom 後台看有沒有這場會議），有的話就不要再確認，避免重複。"
             )
         return _respond(state, text)
 
-    return HandlerResponse(
-        text=_success_text(
-            state,
-            {"id": created.id, "edit_url": created.edit_url, "status": created.status},
-        )
-    )
+    return HandlerResponse(text=_success_text(state, created))

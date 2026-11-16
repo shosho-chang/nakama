@@ -52,3 +52,18 @@
 - VPS 上舊的 `nakama-sanji*` unit 檔暫時還在（disabled），7 天後（最早 2026-11-16）經修修核准再 `rm` ＋ `daemon-reload`（Phase 5）。
 - nakama `state.db` 的 `sanji_*` 三張表**留著不刪**（稽核軌跡）。
 - 搬走前的完整歷史永遠留在 nakama：`git log -- agents/sanji wp/fleet-gamification`。
+
+## 修訂（2026-11-16）：自由艦隊的操作一律在 freedom-fleet（分工 B）
+
+修修裁決：**所有自由艦隊領域的服務都放 freedom-fleet repo**。D2 的「Slack 上的 Sanji 人格留在 nakama」
+維持，但範圍縮成「只管 Slack 對話」：
+
+- nakama（`gateway/handlers/sanji*.py`）：收訊息、LLM 整理、確認卡、對話 state、Slack 排程提醒。
+- freedom-fleet（`fleet/events/`，`python -m fleet.events zoom|cover|post`）：開 Zoom、合成與上傳封面、
+  透過艦隊外掛 `nakama-gam/v1/community-events` 發待審核活動。
+- 兩邊在 VPS 同一台機器、同一個執行身分，nakama 以子行程呼叫（`shared/fleet_events.py`，stdin/stdout JSON）。
+  子行程只拿最小環境變數，金鑰各讀各的 `.env`。
+
+隨之從 nakama 移除（搬到 freedom-fleet 或退役）：`shared/zoom_client.py`、`shared/fleet_cover/`、
+`shared/fca_events_client.py`（FCA 外掛退役，改用 FluentCommunity 2.14 內建 FluentEvent）。
+沒選「整個 Sanji Slack app 搬過去」（分工 A），因為那會讓 Sanji 退出 nakama 的海賊團群聊（orchestrator 預設參與者）。
