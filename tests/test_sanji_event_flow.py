@@ -1,16 +1,14 @@
-"""gateway/handlers/sanji_event.py — Sanji 建活動草稿流程測試。
+"""gateway/handlers/sanji_event.py — Sanji 建社群活動流程測試。
 
-外部模組（shared.fleet_cover / zoom_client / fca_events_client）由其他 PR 實作，
-這裡一律用 ``sys.modules`` stub 換掉；LLM 一律 patch ``sanji_event.ask``。
-不打任何真網路 / 真模型。
+執行端（freedom-fleet ``fleet.events``）一律 patch ``sanji_event.fleet_events.run``；
+LLM 一律 patch ``sanji_event.ask``。不打任何真網路 / 真模型 / 子行程。
 """
 
 from __future__ import annotations
 
+import base64
 import json
-import sys
 import types
-from dataclasses import dataclass
 from datetime import datetime
 from unittest.mock import MagicMock, patch
 
@@ -18,6 +16,7 @@ import pytest
 
 from gateway.handlers import sanji_event
 from gateway.handlers.sanji import SanjiHandler
+from shared.fleet_events import FleetEventsError
 
 TZ = sanji_event.TZ
 FIXED_NOW = datetime(2026, 11, 13, 10, 0, tzinfo=TZ)  # 星期五
@@ -27,6 +26,9 @@ RAW = f"幫我建活動\n活動名稱：六月讀書會《原子習慣》\n時�
 IMAGE_LINE = (
     "[附件圖片] atomic habits.jpg https://files.slack.com/files-pri/T1-F1/atomic.jpg image/jpeg"
 )
+COVER_URL = "https://fleet.shosho.tw/wp-content/uploads/c.jpg"
+ZOOM_URL = "https://zoom.us/j/111?pwd=x"
+PERMALINK = "https://fleet.shosho.tw/portal/space/test-dock/post/p-1"
 
 
 def _llm_json(**overrides) -> str:
@@ -40,102 +42,53 @@ def _llm_json(**overrides) -> str:
         "kind": "book_club",
         "is_online": True,
         "location": "",
+        "address": "",
         "cover_location_label": "",
         "cover_eyebrow": "Captain's Book Club",
         "cover_headline_lines": ["六月選書"],
         "illustration_topic": "",
+        "send_announcement_email": False,
         "missing": [],
     }
     data.update(overrides)
     return json.dumps(data, ensure_ascii=False)
 
 
-# ── 外部模組 stub ──────────────────────────────────────────────────────────
-
-
-class _IllustrationError(RuntimeError):
-    pass
-
-
-@dataclass
-class _CoverSpec:
-    eyebrow: str
-    headline_lines: list
-    date_label: str = ""
-    main_image: bytes | None = None
-    main_kind: str = "none"
-
-
-@dataclass
-class _EventDraft:
-    title: str
-    content_html: str
-    start: datetime
-    end: datetime
-    event_type: str
-    event_url: str = ""
-    meeting_provider: str = ""
-    location: str = ""
-    featured_image_id: int | None = None
-    timezone: str = "Asia/Taipei"
+# ── freedom-fleet 執行端 stub ─────────────────────────────────────────────
 
 
 @pytest.fixture
 def ext(monkeypatch):
-    """三個外部模組的 stub；``ext.calls`` 記錄呼叫順序。"""
+    """``ext.calls``：指令順序；``ext.payloads[cmd]``：最後一次輸入；``ext.fail[cmd]``：注入錯誤。"""
     calls: list[str] = []
+    payloads: dict[str, dict] = {}
+    fail: dict[str, Exception] = {}
+    outputs = {
+        "cover": {"ok": True, "media_id": 55, "url": COVER_URL, "note": ""},
+        "zoom": {"ok": True, "id": 111, "join_url": ZOOM_URL},
+        "post": {
+            "ok": True,
+            "feed_id": 900,
+            "feed_slug": "p-1",
+            "event_id": 7,
+            "report_id": 8,
+            "permalink": PERMALINK,
+        },
+    }
 
-    def _rec(name, ret=None, side_effect=None):
-        m = MagicMock(name=name)
+    def fake_run(command, payload):
+        calls.append(command)
+        payloads[command] = payload
+        if command in fail:
+            raise fail[command]
+        return dict(outputs[command])
 
-        def _effect(*a, **kw):
-            calls.append(name)
-            if side_effect is not None:
-                return side_effect(*a, **kw)
-            return ret
-
-        m.side_effect = _effect
-        return m
-
-    zoom = types.ModuleType("shared.zoom_client")
-    zoom.ZoomError = type("ZoomError", (RuntimeError,), {})
-    zoom.create_meeting = _rec(
-        "zoom",
-        types.SimpleNamespace(
-            id=111, join_url="https://zoom.us/j/111?pwd=x", start_url="s", password="p"
-        ),
-    )
-
-    cover = types.ModuleType("shared.fleet_cover")
-    cover.CoverSpec = _CoverSpec
-    cover.IllustrationError = _IllustrationError
-    cover.generate_illustration = _rec("illustration", b"ILLU")
-    cover.render_cover = _rec("render", b"PNG")
-
-    client = MagicMock(name="FcaEventsClient")
-    client.upload_image = _rec(
-        "upload", types.SimpleNamespace(id=55, url="https://fleet.shosho.tw/c.png")
-    )
-    client.create_draft_event = _rec(
-        "create",
-        types.SimpleNamespace(
-            id=900,
-            slug="june-book-club",
-            status="draft",
-            edit_url="https://fleet.shosho.tw/wp-admin/post.php?post=900&action=edit",
-        ),
-    )
-    fca = types.ModuleType("shared.fca_events_client")
-    fca.EventDraft = _EventDraft
-    fca.FcaEventsClient = MagicMock()
-    fca.FcaEventsClient.from_env.return_value = client
-
-    monkeypatch.setitem(sys.modules, "shared.zoom_client", zoom)
-    monkeypatch.setitem(sys.modules, "shared.fleet_cover", cover)
-    monkeypatch.setitem(sys.modules, "shared.fca_events_client", fca)
+    monkeypatch.setattr(sanji_event.fleet_events, "run", fake_run)
     monkeypatch.setattr(sanji_event, "_now", lambda: FIXED_NOW)
     monkeypatch.setenv("SANJI_SLACK_BOT_TOKEN", "xoxb-sanji")
-    return types.SimpleNamespace(calls=calls, zoom=zoom, cover=cover, fca=fca, client=client)
+    monkeypatch.setenv("SANJI_EVENTS_SPACE", "test-dock")
+    monkeypatch.setenv("SANJI_EVENTS_SPACE_LABEL", "測試船塢")
+    return types.SimpleNamespace(calls=calls, payloads=payloads, fail=fail, outputs=outputs)
 
 
 def _start(llm_replies, text=RAW):
@@ -152,6 +105,14 @@ def _cont(state, text, llm_replies=()):
 
 def _assert_json_safe(state):
     assert json.loads(json.dumps(state)) == state
+
+
+def _http_ok(content=b"JPEGDATA", ctype="image/jpeg"):
+    r = MagicMock()
+    r.content = content
+    r.headers = {"content-type": ctype}
+    r.raise_for_status.return_value = None
+    return r
 
 
 # ── 觸發 ────────────────────────────────────────────────────────────────
@@ -180,28 +141,41 @@ def test_normal_chat_unchanged(ext):
     assert resp.continuation is None
     chat_ask.assert_called_once()
     event_ask.assert_not_called()
+    assert ext.calls == []
 
 
-def test_trigger_starts_flow_with_card(ext):
+# ── 確認卡 ──────────────────────────────────────────────────────────────
+
+
+def test_trigger_starts_flow_with_card_and_cover_preview(ext):
     resp, m_ask = _start([_llm_json()])
 
     m_ask.assert_called_once()
     kwargs = m_ask.call_args.kwargs
     assert kwargs["call_class"] == "interactive"
-    # 今天日期與星期要給 LLM，相對日期才能換算
     assert "2026-11-13" in kwargs["prompt"] and "星期五" in kwargs["prompt"]
     assert RAW in kwargs["prompt"]
 
-    assert resp.continuation is not None
-    assert resp.continuation.flow_name == "event_draft"
+    # 資料齊了 → 先備好封面預覽（只做封面，不開 Zoom、不發活動）
+    assert ext.calls == ["cover"]
+    cover_in = ext.payloads["cover"]
+    assert cover_in["eyebrow"] == "Captain's Book Club"
+    assert cover_in["headline_lines"] == ["六月選書"]
+    assert cover_in["date_label"] == "11/28（六）20:00・線上"
+    assert cover_in["main_kind"] == "none"  # 讀書會沒附書封
+    assert cover_in["filename"] == "sanji-cover-20261128.jpg"
+
+    assert resp.continuation is not None and resp.continuation.flow_name == "event_draft"
     card = resp.text
     assert "六月讀書會《原子習慣》" in card
     assert "2026/11/28（六） 20:00–22:00" in card
-    assert "先抓 2 小時" in card  # 預設長度要讓她看得到
+    assert "先抓 2 小時" in card
     assert "Zoom" in card
-    assert "Captain's Book Club" in card and "六月選書" in card
-    assert "11/28（六）20:00・線上" in card
-    assert COPY in card  # 全文、保留原本的空行
+    assert "發在：測試船塢" in card
+    assert "公告信：不寄" in card
+    assert f"預覽：{COVER_URL}" in card
+    assert COPY in card
+    assert "待審核" in card and "Approve Post" in card
     assert "「確認」" in card and "「取消」" in card
     _assert_json_safe(resp.continuation.state)
     assert resp.continuation.state["event"]["description"] == COPY
@@ -209,23 +183,18 @@ def test_trigger_starts_flow_with_card(ext):
 
 def test_missing_start_asks_only_for_it(ext):
     resp, _ = _start([_llm_json(start=None, missing=["start"])])
-    assert resp.continuation is not None
-    assert "活動時間" in resp.text
-    assert "「確認」" not in resp.text
-    assert resp.continuation.state["event"]["missing"] == ["start"]
+    assert "活動時間" in resp.text and "「確認」" not in resp.text
+    assert ext.calls == []  # 缺資料不做封面
 
-    # 缺東西時回「確認」不能執行
     resp2, _ = _cont(resp.continuation.state, "確認")
     assert ext.calls == []
-    assert "活動時間" in resp2.text
-    assert resp2.continuation is not None
+    assert "活動時間" in resp2.text and resp2.continuation is not None
 
 
 def test_paraphrased_description_falls_back_to_raw_text(ext):
     resp, _ = _start([_llm_json(description="本月共讀原子習慣，讓好習慣自動化！")])
     event = resp.continuation.state["event"]
     assert event["description_fallback"] is True
-    # 退回使用者原文（去掉觸發那一行）
     assert event["description"].startswith("活動名稱：六月讀書會")
     assert "幫我建活動" not in event["description"]
     assert COPY in event["description"]
@@ -246,6 +215,14 @@ def test_json_gives_up_with_friendly_message(ext):
     assert "再傳一次" in resp.text
 
 
+def test_cover_preview_failure_still_shows_card(ext):
+    ext.fail["cover"] = FleetEventsError("字型不見了")
+    resp, _ = _start([_llm_json()])
+    assert "沒產生成功" in resp.text and "字型不見了" in resp.text
+    assert resp.continuation is not None
+    _assert_json_safe(resp.continuation.state)
+
+
 # ── continue_flow ─────────────────────────────────────────────────────────
 
 
@@ -254,24 +231,29 @@ def test_cancel_ends_flow(ext):
     resp2, m_ask = _cont(resp.continuation.state, "取消")
     assert resp2.continuation is None
     m_ask.assert_not_called()
-    assert ext.calls == []
+    assert ext.calls == ["cover"]  # 只有預覽，沒開 Zoom、沒發活動
 
 
-def test_revision_updates_time_and_keeps_flow(ext):
+def test_revision_updates_time_and_regenerates_cover(ext):
     resp, _ = _start([_llm_json()])
     resp2, m_ask = _cont(
-        resp.continuation.state,
-        "時間改成 9 點",
-        [_llm_json(start="2026-11-28T21:00:00+08:00")],
+        resp.continuation.state, "時間改成 9 點", [_llm_json(start="2026-11-28T21:00:00+08:00")]
     )
     prompt = m_ask.call_args.kwargs["prompt"]
-    assert "時間改成 9 點" in prompt
-    assert "六月讀書會《原子習慣》" in prompt  # 目前 JSON 有帶給 LLM
-    assert resp2.continuation is not None
+    assert "時間改成 9 點" in prompt and "六月讀書會《原子習慣》" in prompt
     assert resp2.continuation.state["event"]["start"] == "2026-11-28T21:00:00+08:00"
     assert "21:00–23:00" in resp2.text
     assert resp2.continuation.state["event"]["description"] == COPY
+    # 日期列變了 → 封面重做
+    assert ext.calls == ["cover", "cover"]
+    assert ext.payloads["cover"]["date_label"] == "11/28（六）21:00・線上"
     _assert_json_safe(resp2.continuation.state)
+
+
+def test_revision_not_touching_cover_reuses_it(ext):
+    resp, _ = _start([_llm_json()])
+    _cont(resp.continuation.state, "要寄公告信", [_llm_json(send_announcement_email=True)])
+    assert ext.calls == ["cover"]
 
 
 def test_revision_cannot_paraphrase_existing_description(ext):
@@ -282,25 +264,19 @@ def test_revision_cannot_paraphrase_existing_description(ext):
     assert resp2.continuation.state["event"]["description"] == COPY
 
 
-def test_revision_with_new_image_replaces_stored_image(ext):
-    resp, _ = _start([_llm_json()], text=RAW + "\n" + IMAGE_LINE)
-    assert resp.continuation.state["image"]["name"] == "atomic habits.jpg"
-    new_line = "[附件圖片] v2.png https://files.slack.com/files-pri/T1-F2/v2.png image/png"
-    resp2, m_ask = _cont(resp.continuation.state, new_line)
+def test_new_image_replaces_stored_image_and_redoes_cover(ext):
+    with patch.object(sanji_event.httpx, "get", return_value=_http_ok()):
+        resp, _ = _start([_llm_json()], text=RAW + "\n" + IMAGE_LINE)
+        assert resp.continuation.state["image"]["name"] == "atomic habits.jpg"
+        new_line = "[附件圖片] v2.png https://files.slack.com/files-pri/T1-F2/v2.png image/png"
+        resp2, m_ask = _cont(resp.continuation.state, new_line)
     m_ask.assert_not_called()  # 只換圖不需要 LLM
     assert resp2.continuation.state["image"]["url"].endswith("v2.png")
     assert "v2.png" in resp2.text
+    assert ext.calls == ["cover", "cover"]
 
 
 # ── 執行 ────────────────────────────────────────────────────────────────
-
-
-def _http_ok(content=b"JPEGDATA", ctype="image/jpeg"):
-    r = MagicMock()
-    r.content = content
-    r.headers = {"content-type": ctype}
-    r.raise_for_status.return_value = None
-    return r
 
 
 def test_confirm_online_live_runs_in_order(ext):
@@ -318,48 +294,35 @@ def test_confirm_online_live_runs_in_order(ext):
         text=RAW.replace("六月讀書會《原子習慣》", "五月主題直播：睡眠"),
     )
     assert "AI 生成插畫" in resp.text
+    cover_in = ext.payloads["cover"]
+    assert cover_in["main_kind"] == "illustration"
+    assert cover_in["illustration_topic"] == "a cozy bedroom at night"
+    assert cover_in["date_label"] == "11/28（六）20:00・線上直播"
+
     resp2, _ = _cont(resp.continuation.state, "確認")
 
-    assert ext.calls == ["zoom", "illustration", "render", "upload", "create"]
-    title, start, duration = ext.zoom.create_meeting.call_args.args
-    assert title == "五月主題直播：睡眠"
-    assert start == datetime(2026, 11, 28, 20, 0, tzinfo=TZ)
-    assert duration == 120
-    ext.cover.generate_illustration.assert_called_once_with("a cozy bedroom at night")
-
-    spec = ext.cover.render_cover.call_args.args[0]
-    assert spec.eyebrow == "Live Room・五月主題"
-    assert spec.headline_lines == ["睡眠直播"]
-    assert spec.date_label == "11/28（六）20:00・線上直播"
-    assert spec.main_image == b"ILLU" and spec.main_kind == "illustration"
-
-    ext.client.upload_image.assert_called_once_with(b"PNG", "sanji-cover-20261128.jpg")
-    draft = ext.client.create_draft_event.call_args.args[0]
-    assert draft.event_type == "online"
-    assert draft.event_url == "https://zoom.us/j/111?pwd=x"
-    assert draft.meeting_provider == "zoom"
-    assert draft.featured_image_id == 55
-    assert draft.end == datetime(2026, 11, 28, 22, 0, tzinfo=TZ)
+    assert ext.calls == ["cover", "zoom", "post"]  # 封面沿用預覽，不重做
+    assert ext.payloads["zoom"] == {
+        "title": "五月主題直播：睡眠",
+        "start": "2026-11-28T20:00:00+08:00",
+        "duration_min": 120,
+    }
+    post = ext.payloads["post"]
+    assert post["space"] == "test-dock"
+    assert post["message"] == "一起聊聊怎麼讓好習慣自動發生！"
+    assert post["send_announcement_email"] is False
+    fe = post["event"]
+    assert fe["venue_type"] == "online" and fe["online_meeting_url"] == ZOOM_URL
+    assert fe["start_at"] == "2026-11-28 20:00:00" and fe["end_at"] == "2026-11-28 22:00:00"
+    assert fe["timezone"] == "Asia/Taipei"
+    assert fe["cover_url"] == COVER_URL
+    assert fe["description_md"] == "一起聊聊怎麼讓好習慣自動發生！"
+    assert "venue" not in fe
 
     assert resp2.continuation is None
-    assert "https://fleet.shosho.tw/wp-admin/post.php?post=900&action=edit" in resp2.text
-    assert "https://fleet.shosho.tw/c.png" in resp2.text
-    assert "https://zoom.us/j/111?pwd=x" in resp2.text
-    assert "草稿" in resp2.text
-    assert "已發布" not in resp2.text and "已經發布" not in resp2.text
-    assert "published" not in resp2.text.lower()
-
-
-def test_content_html_is_escaped_paragraphs(ext):
-    copy = "第一段 <b>粗</b> & 好\n第二行\n\n第二段"
-    resp, _ = _start(
-        [_llm_json(description=copy)], text=f"幫我建活動\n六月讀書會《原子習慣》 11/28 八點\n{copy}"
-    )
-    _cont(resp.continuation.state, "確認")
-    draft = ext.client.create_draft_event.call_args.args[0]
-    assert draft.content_html == (
-        "<p>第一段 &lt;b&gt;粗&lt;/b&gt; &amp; 好<br>\n第二行</p>\n<p>第二段</p>"
-    )
+    assert PERMALINK in resp2.text and COVER_URL in resp2.text and ZOOM_URL in resp2.text
+    assert "待審核" in resp2.text and "Approve Post" in resp2.text
+    assert "公告信" not in resp2.text
 
 
 def test_in_person_meetup_skips_zoom(ext):
@@ -371,7 +334,8 @@ def test_in_person_meetup_skips_zoom(ext):
                 is_online=False,
                 start="2026-08-09T14:00:00+08:00",
                 end="2026-08-09T17:00:00+08:00",
-                location="台北市大安區某咖啡廳",
+                location="某咖啡廳",
+                address="台北市大安區某路 1 號",
                 cover_location_label="台北場",
                 cover_eyebrow="whatever",
                 cover_headline_lines=["台北小聚"],
@@ -381,114 +345,111 @@ def test_in_person_meetup_skips_zoom(ext):
         text=RAW.replace("六月讀書會《原子習慣》", "台北小聚"),
     )
     card = resp.text
-    assert "實體・台北市大安區某咖啡廳" in card
+    assert "實體・某咖啡廳（台北市大安區某路 1 號）" in card
     assert "Fleet Meetup" in card  # 小標由程式定案
-    assert "先抓" not in card  # 有給結束時間
+    assert "先抓" not in card
+    assert ext.payloads["cover"]["date_label"] == "台北場・8/9（日）14:00"
 
     _cont(resp.continuation.state, "OK")
-    assert ext.calls == ["illustration", "render", "upload", "create"]
-    ext.zoom.create_meeting.assert_not_called()
-    spec = ext.cover.render_cover.call_args.args[0]
-    assert spec.date_label == "台北場・8/9（日）14:00"
-    draft = ext.client.create_draft_event.call_args.args[0]
-    assert draft.event_type == "in_person"
-    assert draft.event_url == "" and draft.meeting_provider == ""
-    assert draft.location == "台北市大安區某咖啡廳"
+    assert ext.calls == ["cover", "post"]
+    fe = ext.payloads["post"]["event"]
+    assert fe["venue_type"] == "offline"
+    assert fe["venue"] == "某咖啡廳" and fe["address"] == "台北市大安區某路 1 號"
+    assert "online_meeting_url" not in fe
 
 
-def test_book_club_with_image_uses_book_and_no_illustration(ext):
-    resp, _ = _start([_llm_json()], text=RAW + "\n" + IMAGE_LINE)
-    assert "用你附的書封（atomic habits.jpg）" in resp.text
+def test_announcement_email_on(ext):
+    resp, _ = _start([_llm_json(send_announcement_email=True)])
+    assert "公告信：寄給這個 space 的全部成員" in resp.text
+    resp2, _ = _cont(resp.continuation.state, "確認")
+    assert ext.payloads["post"]["send_announcement_email"] is True
+    assert "公告信會在核准後約 5 分鐘" in resp2.text
+
+
+def test_book_club_with_image_sends_book_image(ext):
     with patch.object(sanji_event.httpx, "get", return_value=_http_ok()) as m_get:
-        resp2, _ = _cont(resp.continuation.state, "確認")
-
-    m_get.assert_called_once()
+        resp, _ = _start([_llm_json()], text=RAW + "\n" + IMAGE_LINE)
+    assert "用你附的書封（atomic habits.jpg）" in resp.text
     assert m_get.call_args.args[0] == "https://files.slack.com/files-pri/T1-F1/atomic.jpg"
     assert m_get.call_args.kwargs["headers"] == {"Authorization": "Bearer xoxb-sanji"}
     assert m_get.call_args.kwargs["follow_redirects"] is True
-    ext.cover.generate_illustration.assert_not_called()
-    spec = ext.cover.render_cover.call_args.args[0]
-    assert spec.main_kind == "book" and spec.main_image == b"JPEGDATA"
-    assert ext.calls == ["zoom", "render", "upload", "create"]
-    assert resp2.continuation is None
+    cover_in = ext.payloads["cover"]
+    assert cover_in["main_kind"] == "book"
+    assert base64.b64decode(cover_in["main_image_b64"]) == b"JPEGDATA"
+    assert "illustration_topic" not in cover_in
 
 
 def test_image_download_returns_html_continues_without_image(ext):
-    resp, _ = _start([_llm_json()], text=RAW + "\n" + IMAGE_LINE)
     html_resp = _http_ok(b"<!DOCTYPE html><html>login</html>", "text/html")
     with patch.object(sanji_event.httpx, "get", return_value=html_resp):
-        resp2, _ = _cont(resp.continuation.state, "確認")
-    spec = ext.cover.render_cover.call_args.args[0]
-    assert spec.main_kind == "none" and spec.main_image is None
-    assert "下載不到" in resp2.text
-    assert resp2.continuation is None
+        resp, _ = _start([_llm_json()], text=RAW + "\n" + IMAGE_LINE)
+    cover_in = ext.payloads["cover"]
+    assert cover_in["main_kind"] == "none" and "main_image_b64" not in cover_in
+    assert "下載不到" in resp.text
 
 
-def test_illustration_error_continues_with_none(ext):
-    ext.cover.generate_illustration.side_effect = _IllustrationError("timeout")
+def test_cover_note_from_fleet_is_shown(ext):
+    ext.outputs["cover"]["note"] = "AI 插畫這次沒生成成功，封面先不放主圖。"
     resp, _ = _start([_llm_json(kind="live", illustration_topic="x")])
+    assert "沒生成成功" in resp.text
+
+
+def test_cover_failure_at_preview_is_retried_on_confirm(ext):
+    ext.fail["cover"] = FleetEventsError("timeout")
+    resp, _ = _start([_llm_json()])
+    del ext.fail["cover"]
     resp2, _ = _cont(resp.continuation.state, "確認")
-    spec = ext.cover.render_cover.call_args.args[0]
-    assert spec.main_kind == "none" and spec.main_image is None
-    assert "插畫" in resp2.text and "沒生成成功" in resp2.text
+    assert ext.calls == ["cover", "cover", "zoom", "post"]
     assert resp2.continuation is None
-    ext.client.create_draft_event.assert_called_once()
 
 
-def test_create_failure_keeps_flow_and_retry_does_not_duplicate(ext):
-    ext.client.create_draft_event.side_effect = RuntimeError("WP 500")
+def test_post_failure_keeps_flow_and_retry_does_not_duplicate(ext):
+    ext.fail["post"] = FleetEventsError("HTTP 403: forbidden")
     resp, _ = _start([_llm_json()])
     resp2, _ = _cont(resp.continuation.state, "確認")
 
     assert resp2.continuation is not None
-    assert "https://zoom.us/j/111?pwd=x" in resp2.text
-    assert "建立活動草稿" in resp2.text and "WP 500" in resp2.text
+    assert ZOOM_URL in resp2.text
+    assert "發待審核活動" in resp2.text and "HTTP 403" in resp2.text
+    assert "避免重複" not in resp2.text  # 明確被拒＝一定沒建
     state = resp2.continuation.state
     _assert_json_safe(state)
     assert state["progress"]["zoom"]["id"] == 111
     assert state["progress"]["cover"]["id"] == 55
 
-    # 修好之後再「確認」：不重開 Zoom、不重傳封面
-    ext.client.create_draft_event.side_effect = lambda d: types.SimpleNamespace(
-        id=901, slug="s", status="draft", edit_url="https://fleet.shosho.tw/edit/901"
-    )
+    del ext.fail["post"]
     resp3, _ = _cont(state, "確認")
-    assert ext.zoom.create_meeting.call_count == 1
-    assert ext.client.upload_image.call_count == 1
-    assert ext.cover.render_cover.call_count == 1
+    assert ext.calls == ["cover", "zoom", "post", "post"]  # 不重開 Zoom、不重做封面
     assert resp3.continuation is None
-    assert "https://fleet.shosho.tw/edit/901" in resp3.text
-    draft = ext.client.create_draft_event.call_args.args[0]
-    assert draft.featured_image_id == 55
+    assert PERMALINK in resp3.text
 
 
-def test_uncertain_create_failure_warns_about_duplicates(ext):
-    """逾時／5xx 時站上可能已經建好 → 提醒先去管理頁確認再重試。"""
-    ext.client.create_draft_event.side_effect = RuntimeError("timeout")
+def test_uncertain_post_failure_warns_about_duplicates(ext):
+    ext.fail["post"] = FleetEventsError("逾時", maybe_done=True)
     resp, _ = _start([_llm_json()])
     resp2, _ = _cont(resp.continuation.state, "確認")
-    assert "https://fleet.shosho.tw/deck/events/manage" in resp2.text
-    assert "避免重複" in resp2.text
-
-
-def test_rejected_create_failure_has_no_duplicate_warning(ext):
-    """站上明確拒絕（4xx）＝ 一定沒建，不需要嚇人。"""
-    from shared.wordpress_client import WPClientError
-
-    ext.client.create_draft_event.side_effect = WPClientError("400 bad date")
-    resp, _ = _start([_llm_json()])
-    resp2, _ = _cont(resp.continuation.state, "確認")
-    assert "避免重複" not in resp2.text
+    assert "避免重複" in resp2.text and "測試船塢" in resp2.text
     assert resp2.continuation is not None
 
 
 def test_zoom_failure_reports_and_keeps_flow(ext):
-    ext.zoom.create_meeting.side_effect = ext.zoom.ZoomError("401 token")
+    ext.fail["zoom"] = FleetEventsError("ZoomError: 401 token")
     resp, _ = _start([_llm_json()])
     resp2, _ = _cont(resp.continuation.state, "確認")
     assert resp2.continuation is not None
     assert "Zoom" in resp2.text and "401 token" in resp2.text
-    ext.client.create_draft_event.assert_not_called()
+    assert "post" not in ext.calls
+
+
+def test_space_not_configured_refuses(ext, monkeypatch):
+    monkeypatch.delenv("SANJI_EVENTS_SPACE")
+    monkeypatch.delenv("SANJI_EVENTS_SPACE_LABEL")
+    resp, _ = _start([_llm_json()])
+    assert "未設定" in resp.text
+    resp2, _ = _cont(resp.continuation.state, "確認")
+    assert "SANJI_EVENTS_SPACE" in resp2.text
+    assert ext.calls == ["cover"]
+    assert resp2.continuation is not None
 
 
 def test_unknown_flow_raises_not_implemented():
@@ -497,10 +458,10 @@ def test_unknown_flow_raises_not_implemented():
 
 
 def test_state_json_roundtrip_through_conversation_store(ext):
-    """state 真的能進 SQLite ConversationStore（JSON 序列化）再拿出來接著跑。"""
     from gateway.conversation_state import ConversationStore
 
-    resp, _ = _start([_llm_json()], text=RAW + "\n" + IMAGE_LINE)
+    with patch.object(sanji_event.httpx, "get", return_value=_http_ok()):
+        resp, _ = _start([_llm_json()], text=RAW + "\n" + IMAGE_LINE)
     store = ConversationStore(db_path=":memory:")
     store.start(
         thread_ts="1.0",
@@ -510,8 +471,7 @@ def test_state_json_roundtrip_through_conversation_store(ext):
         flow_name="event_draft",
         state=resp.continuation.state,
     )
-    conv = store.get("1.0")
-    assert conv.state == resp.continuation.state
+    assert store.get("1.0").state == resp.continuation.state
 
 
 # ── 2026-11-13 上線實測修正 ───────────────────────────────────────────────
@@ -522,14 +482,12 @@ def test_strip_ai_footer():
     assert f("確認\n*Sent using* Claude") == "確認"
     assert f("時間改成晚上八點半 *Sent using* Claude") == "時間改成晚上八點半"
     assert f("文案第一行\n\n文案第二行") == "文案第一行\n\n文案第二行"
-    # 一般句子裡的 sent using 不能被誤刪
     assert f("This was sent using a boat") == "This was sent using a boat"
 
 
 def test_confirm_with_ai_footer_executes(ext):
-    """透過 AI 工具代發的「確認」結尾帶 *Sent using* Claude，仍要當成確認。"""
     resp, _ = _start([_llm_json()])
     resp2, m_ask = _cont(resp.continuation.state, "確認\n*Sent using* Claude")
-    m_ask.assert_not_called()  # 不是修改 → 不呼叫 LLM
-    assert ext.client.create_draft_event.call_count == 1
+    m_ask.assert_not_called()
+    assert ext.calls.count("post") == 1
     assert resp2.continuation is None
