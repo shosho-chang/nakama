@@ -50,10 +50,25 @@ def test_missing_file(tmp_path):
         tl.load_rough_cut(tmp_path)
 
 
-def test_clip_infos_end_frame_is_exclusive(tmp_path):
-    cut = tl.load_rough_cut(_write(tmp_path, [{"src_in": 5, "src_out": 35}]))
-    assert tl.clip_infos("clip", cut) == [
-        {"mediaPoolItem": "clip", "startFrame": 5, "endFrame": 35}
+def test_clip_infos_place_segments_back_to_back(tmp_path):
+    cut = tl.load_rough_cut(
+        _write(tmp_path, [{"src_in": 5, "src_out": 35}, {"src_in": 90, "src_out": 100}])
+    )
+    assert tl.clip_infos("clip", cut, start=108000) == [
+        {
+            "mediaPoolItem": "clip",
+            "startFrame": 5,
+            "endFrame": 35,
+            "recordFrame": 108000,
+            "trackIndex": 1,
+        },
+        {
+            "mediaPoolItem": "clip",
+            "startFrame": 90,
+            "endFrame": 100,
+            "recordFrame": 108030,
+            "trackIndex": 1,
+        },
     ]
 
 
@@ -96,8 +111,5 @@ def test_extra_frames_are_trimmed_from_end_frame(tmp_path):
     errors = tl.duration_errors([Item(0, 30), Item(100, 1835)], cut)
     assert errors == [0, 1]
     ends = [b - e for (_, b), e in zip(cut.segments, errors)]
-    assert tl.clip_infos("c", cut, ends)[1] == {
-        "mediaPoolItem": "c",
-        "startFrame": 100,
-        "endFrame": 1933,
-    }
+    info = tl.clip_infos("c", cut, 0, ends)[1]
+    assert (info["startFrame"], info["endFrame"], info["recordFrame"]) == (100, 1933, 30)

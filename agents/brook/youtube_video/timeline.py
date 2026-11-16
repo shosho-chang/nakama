@@ -87,17 +87,28 @@ def load_rough_cut(episode_dir: Path) -> RoughCut:
     return RoughCut(media=media, segments=tuple(segments))
 
 
-def clip_infos(item: Any, cut: RoughCut, ends: Sequence[int] | None = None) -> list[dict[str, Any]]:
-    """AppendToTimeline 的參數。
+def clip_infos(
+    item: Any, cut: RoughCut, start: int = 0, ends: Sequence[int] | None = None
+) -> list[dict[str, Any]]:
+    """AppendToTimeline 的參數：每段指定放在 V1 的哪一格（recordFrame），一段接一段。
 
-    Resolve 20.3 實測：endFrame 不含（startFrame=a、endFrame=b 放上 b−a 格），起點精準；
-    但原始錄影是 29.97 drop-frame 時，少數段會多放 1 格——`ends` 用來把那幾段的 endFrame 往回調。
+    Resolve 21 實測：endFrame 不含（startFrame=a、endFrame=b 放上 b−a 格）。時間軸幀率跟錄影不同時
+    少數段會多放 1 格——`ends` 用來把那幾段的 endFrame 往回調（29.97 時間軸上沒再發生，保留當保險）。
     """
     ends = list(ends) if ends is not None else [b for _, b in cut.segments]
-    return [
-        {"mediaPoolItem": item, "startFrame": a, "endFrame": e}
-        for (a, _), e in zip(cut.segments, ends, strict=True)
-    ]
+    infos, record = [], start
+    for (a, b), e in zip(cut.segments, ends, strict=True):
+        infos.append(
+            {
+                "mediaPoolItem": item,
+                "startFrame": a,
+                "endFrame": e,
+                "recordFrame": record,
+                "trackIndex": 1,
+            }
+        )
+        record += b - a
+    return infos
 
 
 def duration_errors(items: Sequence[Any], cut: RoughCut) -> list[int]:
@@ -125,19 +136,37 @@ def check_placed(timeline: Any, cut: RoughCut) -> None:
             raise TimelineError(f"第 {i} 段從原始錄影第 {frame:.1f} 格開始，應為 {a}")
 
 
-def srt_last_end(srt: Path) -> float:
-    """SRT 最後一句的結束秒數。"""
-    lines = [ln for ln in srt.read_text(encoding="utf-8-sig").splitlines() if "-->" in ln]
-    h, m, rest = lines[-1].split("-->")[1].strip().split(":")
+def _srt_seconds(stamp: str) -> float:
+    h, m, rest = stamp.strip().split(":")
     return int(h) * 3600 + int(m) * 60 + float(rest.replace(",", "."))
 
 
+def _srt_lines(srt: Path) -> list[str]:
+    return [ln for ln in srt.read_text(encoding="utf-8-sig").splitlines() if "-->" in ln]
+
+
+def srt_first_start(srt: Path) -> float:
+    return _srt_seconds(_srt_lines(srt)[0].split("-->")[0])
+
+
+def srt_last_end(srt: Path) -> float:
+    """SRT 最後一句的結束秒數。"""
+    return _srt_seconds(_srt_lines(srt)[-1].split("-->")[1])
+
+
 def check_subtitles(timeline: Any, srt: Path) -> None:
-    """字幕軌最後一句要跟 SRT 同時結束（差 1 格內）——時間軸幀率不對時，字幕越後面越晚。"""
+    """字幕軌要從時間軸起點開始，最後一句跟 SRT 同時結束（差 1 格內）。
+
+    幀率不對時字幕越後面越晚；字幕不是第一個放上去的，會被接在時間軸尾巴。
+    """
     items = timeline.GetItemListInTrack("subtitle", 1) or []
     if not items:
         raise TimelineError("字幕軌是空的")
     fps = float(FPS)
+    first = (int(items[0].GetStart()) - int(timeline.GetStartFrame())) / fps
+    first_srt = srt_first_start(srt)
+    if abs(first - first_srt) > 1.5 / fps:
+        raise TimelineError(f"第一句字幕在 {first:.3f}s，SRT 是 {first_srt:.3f}s")
     placed = (int(items[-1].GetEnd()) - int(timeline.GetStartFrame())) / fps
     want = srt_last_end(srt)
     if abs(placed - want) > 1.5 / fps:
@@ -210,6 +239,25 @@ def _import(media_pool: Any, path: Path) -> Any:
     return items[0]
 
 
+def _new_timeline(pool: Any) -> Any:
+    """從 29.97 字幕樣式模板長出一條（沒有模板就建空的、字幕沒有樣式）；幀率不是 29.97 就停。"""
+    template = _template()
+    if template is not None:
+        timeline = pool.ImportTimelineFromFile(str(template), {})
+        if timeline is None:
+            raise TimelineError(f"字幕樣式模板匯入失敗：{template}")
+        timeline.SetName(V1_NAME)
+    else:
+        timeline = pool.CreateEmptyTimeline(V1_NAME)
+        if timeline is None:
+            raise TimelineError("時間軸建不起來")
+    if not _is_2997(timeline.GetSetting("timelineFrameRate")):
+        rate = timeline.GetSetting("timelineFrameRate")
+        pool.DeleteTimelines([timeline])
+        raise TimelineError(f"時間軸幀率是 {rate}，不是 29.97（字幕樣式模板要用 29.97 的）")
+    return timeline
+
+
 def build_v1(resolve: Any, episode_dir: Path, cut: RoughCut, srt: Path) -> dict[str, Any]:
     episode_dir = Path(episode_dir)
     project = _open_project(resolve, episode_dir.name)
@@ -217,28 +265,21 @@ def build_v1(resolve: Any, episode_dir: Path, cut: RoughCut, srt: Path) -> dict[
         raise TimelineError(f"專案「{episode_dir.name}」已經有「{V1_NAME}」，不覆蓋")
     pool = project.GetMediaPool()
     clip = _find_or_import(pool, cut.media)
+    srt_item = _find_or_import(pool, srt)
     ends = [b for _, b in cut.segments]
     timeline = None
-    for attempt in range(1, 4):
-        # 模板 timeline 偶爾整條卡死（append 回 [None]）；drop-frame 錄影少數段會多 1 格。
-        # 兩種都是丟掉重來：前者重匯一條，後者把多出來的段 endFrame 往回調
-        template = _template()
-        if template is not None:
-            timeline = pool.ImportTimelineFromFile(str(template), {})
-            if timeline is None:
-                raise TimelineError(f"字幕樣式模板匯入失敗：{template}")
-            timeline.SetName(V1_NAME)
-        else:
-            timeline = pool.CreateEmptyTimeline(V1_NAME)
-            if timeline is None:
-                raise TimelineError("時間軸建不起來")
-        if not _is_2997(timeline.GetSetting("timelineFrameRate")):
-            rate = timeline.GetSetting("timelineFrameRate")
-            pool.DeleteTimelines([timeline])
-            raise TimelineError(f"時間軸幀率是 {rate}，不是 29.97（字幕樣式模板要用 29.97 的）")
+    for _ in range(3):
+        # 模板 timeline 偶爾整條卡死（append 回 [None]）；長度對不上就把多出來的段 endFrame 往回調。
+        # 兩種都是丟掉這條、重建一條
+        timeline = _new_timeline(pool)
         project.SetCurrentTimeline(timeline)
-        placed = pool.AppendToTimeline(clip_infos(clip, cut, ends))
-        if placed and all(placed):
+        # 字幕一定要第一個放：AppendToTimeline 對字幕不吃 recordFrame，
+        # 一律接在時間軸尾巴（Resolve 21 實測）
+        if timeline.GetTrackCount("subtitle") == 0:
+            timeline.AddTrack("subtitle")
+        subs = pool.AppendToTimeline([srt_item])
+        placed = pool.AppendToTimeline(clip_infos(clip, cut, int(timeline.GetStartFrame()), ends))
+        if subs and placed and all(placed):
             errors = duration_errors(timeline.GetItemListInTrack("video", 1) or [], cut)
             if not any(errors):
                 break
@@ -246,24 +287,20 @@ def build_v1(resolve: Any, episode_dir: Path, cut: RoughCut, srt: Path) -> dict[
         pool.DeleteTimelines([timeline])
         timeline = None
     if timeline is None:
-        raise TimelineError("原始錄影放不上時間軸或長度對不上（試了 3 次）")
+        raise TimelineError("原始錄影或字幕放不上時間軸、或長度對不上（試了 3 次）")
     try:
         check_placed(timeline, cut)
+        check_subtitles(timeline, srt)
     except TimelineError:
         pool.DeleteTimelines([timeline])  # 不留一條放錯的時間軸
         raise
-    if timeline.GetTrackCount("subtitle") == 0:
-        timeline.AddTrack("subtitle")
-    subtitle_ok = bool(pool.AppendToTimeline([_import(pool, srt)]))
-    if subtitle_ok:
-        check_subtitles(timeline, srt)
     resolve.GetProjectManager().SaveProject()
     return {
         "project": episode_dir.name,
         "timeline": V1_NAME,
         "segments": len(cut.segments),
         "seconds": round(cut.seconds, 3),
-        "subtitle_on_timeline": subtitle_ok,
+        "subtitle_on_timeline": True,
         "subtitle_style": "template"
         if _template() is not None
         else "none（沒有 29.97 字幕樣式模板）",
