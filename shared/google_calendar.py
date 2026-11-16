@@ -156,8 +156,12 @@ def create_event(
     description: str = "",
     check_conflict: bool = True,
     idempotency_key: str | None = None,
+    attendees: list[str] | None = None,
 ) -> CalendarEvent | list[CalendarEvent]:
     """建立事件。
+
+    ``attendees``（email 清單，選填）：加成與會者並請 Google 寄邀請信
+    （``sendUpdates="all"``；不帶與會者時維持原本行為，不寄任何信）。
 
     若 ``check_conflict=True`` 且時段有精確重疊的既有事件，**不建立**，改回傳
     衝突事件列表供呼叫端決定（問使用者或 force=True 重試）。
@@ -201,7 +205,11 @@ def create_event(
         body["end"] = {"dateTime": _ensure_tz_iso(end), "timeZone": TIMEZONE}
     if idempotency_key is not None:
         body["extendedProperties"] = {"private": {IDEMPOTENCY_PROP: idempotency_key}}
-    created = service.events().insert(calendarId="primary", body=body).execute()
+    insert_kwargs: dict = {"calendarId": "primary", "body": body}
+    if attendees:
+        body["attendees"] = [{"email": e} for e in attendees]
+        insert_kwargs["sendUpdates"] = "all"  # Google 預設不寄信；帶與會者時要寄邀請
+    created = service.events().insert(**insert_kwargs).execute()
     return _parse_event(created)
 
 

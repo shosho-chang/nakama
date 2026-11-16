@@ -54,6 +54,29 @@ def _channel() -> str:
     return os.environ.get(ENV_CHANNEL, "").strip() or DEFAULT_CHANNEL
 
 
+# 內部會議的固定與會者（2026-11-16 修修要求：行事曆寄邀請＋提醒 @ 她）。
+# 放在 VPS .env、不進 repo（含 email）。格式：「名字|email|Slack 使用者 ID」，多人用 ; 分隔。
+ENV_ATTENDEES = "SANJI_MEETING_ATTENDEES"
+
+
+def attendees() -> list[dict]:
+    out = []
+    for chunk in os.environ.get(ENV_ATTENDEES, "").split(";"):
+        parts = [p.strip() for p in chunk.split("|")]
+        if len(parts) == 3 and parts[0] and "@" in parts[1] and parts[2]:
+            out.append({"name": parts[0], "email": parts[1], "slack": parts[2]})
+        elif chunk.strip():
+            logger.warning(f"{ENV_ATTENDEES} 有一筆格式不對，略過：{chunk.strip()[:40]!r}")
+    return out
+
+
+def _attendee_line() -> str:
+    names = "、".join(a["name"] for a in attendees())
+    if not names:
+        return "與會者：（沒設定，只有你；不會寄邀請）"
+    return f"與會者：{names}（確認後寄 Google 行事曆邀請，開會前提醒會 @ 她／他）"
+
+
 # ── 解析 ────────────────────────────────────────────────────────────────
 
 
@@ -135,6 +158,7 @@ def build_card(state: dict) -> str:
             f"時間：{when}",
             "形式：只開 Zoom，不會發到社群",
             f"提醒：{remind_line}",
+            _attendee_line(),
             *cal.card_lines(state.get("calendar"), state.get("force_calendar", False)),
             "",
             "沒問題就回「確認」，我去開 Zoom、寫進你的 Google 行事曆；要改就直接說；"
@@ -241,9 +265,11 @@ def _schedule_reminder(m: dict, join_url: str) -> str | None:
     if not token:
         raise RuntimeError("沒有 SANJI_SLACK_BOT_TOKEN")
     start = ev._parse_dt(m["start"])
+    mentions = " ".join(f"<@{a['slack']}>" for a in attendees())
     text = (
-        f"⏰ {REMIND_BEFORE_MIN} 分鐘後開會：{m['title']}（{start.strftime('%H:%M')}）\n"
-        f"Zoom：{join_url}"
+        (f"{mentions} " if mentions else "")
+        + f"⏰ {REMIND_BEFORE_MIN} 分鐘後開會：{m['title']}（{start.strftime('%H:%M')}）\n"
+        + f"Zoom：{join_url}"
     )
     resp = WebClient(token=token).chat_scheduleMessage(
         channel=_channel(), post_at=int(remind.timestamp()), text=text
@@ -282,6 +308,7 @@ def execute(state: dict, user_id: str) -> HandlerResponse:
                 end=end,
                 description=f"Zoom：{progress['zoom']['join_url']}\n（Sanji 開的內部會議）",
                 key=f"sanji-meeting-{progress['zoom']['id']}",
+                attendees=[a["email"] for a in attendees()],
             )
     except Exception as e:
         logger.error(f"internal_meeting failed at {step!r} user={user_id}: {e}", exc_info=True)
@@ -308,7 +335,10 @@ def execute(state: dict, user_id: str) -> HandlerResponse:
         lines.append("離開會不到 15 分鐘，沒有另外排提醒。")
     added = progress.get("calendar") or {}
     if added.get("ok"):
-        lines.append("行事曆：已寫進你的 Google 行事曆。")
+        invited = "、".join(a["name"] for a in attendees())
+        lines.append(
+            "行事曆：已寫進你的 Google 行事曆" + (f"，並寄邀請給 {invited}。" if invited else "。")
+        )
     elif added:
         lines.append(f"行事曆：沒寫進去（{added.get('error')}），請手動加。")
     if progress.get("zoom_stale"):

@@ -380,3 +380,37 @@ def test_find_free_slots_gaps_ordered_by_proximity(monkeypatch):
     assert slots[0] == ("2026-06-05T15:00:00+08:00", "2026-06-05T16:00:00+08:00")
     starts = {s for s, _ in slots}
     assert "2026-06-05T08:00:00+08:00" in starts and "2026-06-05T10:00:00+08:00" in starts
+
+
+def test_create_event_with_attendees_sends_invites(monkeypatch):
+    """2026-11-16（Sanji 內部會議）：帶 attendees 時加成與會者並 sendUpdates=all 寄邀請；
+    不帶時 insert 參數跟以前一樣（不寄信）。"""
+    from shared import google_calendar
+
+    calls = []
+
+    class _Svc:
+        def events(self):
+            return self
+
+        def insert(self, **kw):
+            calls.append(kw)
+            return _FakeExec({"id": "evt_new", **kw["body"]})
+
+    monkeypatch.setattr(google_calendar, "_get_service", lambda: _Svc())
+    google_calendar.create_event(
+        title="週會",
+        start="2026-11-16T14:00:00",
+        end="2026-11-16T14:30:00",
+        check_conflict=False,
+        attendees=["xs@example.com"],
+    )
+    google_calendar.create_event(
+        title="自己的事",
+        start="2026-11-16T15:00:00",
+        end="2026-11-16T15:30:00",
+        check_conflict=False,
+    )
+    assert calls[0]["sendUpdates"] == "all"
+    assert calls[0]["body"]["attendees"] == [{"email": "xs@example.com"}]
+    assert "sendUpdates" not in calls[1] and "attendees" not in calls[1]["body"]
