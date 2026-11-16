@@ -1,0 +1,109 @@
+<!doctype html>
+<!-- 第 18 類「重點條列」（YouTube 照稿影片，疊在錄影上、不插入時間）。修修 2026-11-16 定版：
+     - 用途：一條一條講的總結（例：《財富階梯》最後的五個重點）。修修：「把我人移到一邊，
+       然後另一側就用 bullet point 的方式一個一個列出來」。人由畫面搬移（reframe left）讓到左 1/3，
+       跟側欄同一秒開始、同樣 0.5 秒。
+     - 三款（深色側板／白色字牌／品牌灰側欄）裡修修選「品牌灰側欄」：右側品牌冷灰 #dddddb 實色側欄（左緣斜邊），
+       左上橘色字牌標題、黑字、橘色編號；右下角從底邊探進品牌手冊 brand-identity.pdf 第 24 頁「影片開頭」
+       右下角的 3 塊橘色碎片（章節卡 POLYS 第 4、5、6 塊，原樣不重畫；跟金句卡同一組）。
+     - 編號：修修「數字跟文字的底部應該是要在同一個 level」→ 試過 64／60／44px，定 60px，
+       往上移 6px 讓數字底部跟第一行字底部切齊（實測）。只移字，不動行距。
+     - 每一條在它那句字幕開頭出現（times，從這張開始算的秒數）。
+     被否決過：深色側板（前面的條目變淡）、白色字牌一條一條拍上；編號 64px（比字高太多）、44px（跟字同大）。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"title","type":"string","label":"標題","default":"重點整理"},
+    {"id":"items","type":"string","label":"條列（一條一行，以換行分開）","default":"花錢看階層，用萬分之一法則\n時間換錢，參考 1% 法則\n投資與學習都要趁早"},
+    {"id":"times","type":"string","label":"每一條出現的秒數（逗號分開）","default":"1.0,2.5,4.0"},
+    {"id":"show_sec","type":"number","label":"停留秒數","default":6}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <style>
+      @font-face { font-family: "Noto Sans TC Black"; font-weight: 900; font-display: block;
+        src: url("assets/fonts/noto-sans-tc/NotoSansTC-Black.woff2") format("woff2"); }
+      :root { --orange: #f57331; --gray: #dddddb; --ink: #000;
+        --font-display: "Noto Sans TC Black", "Noto Sans TC", "Source Han Sans TC", sans-serif; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden;
+        font-family: var(--font-display); font-weight: 900; }
+      /* 側欄：右側 810px，左緣斜邊（上窄下寬），避開左 1/3 的臉與肩膀 */
+      #panel { position: absolute; top: 0; bottom: 0; left: 1110px; right: 0; background: var(--gray);
+        clip-path: polygon(6% 0%, 100% 0%, 100% 100%, 0% 100%); }
+      svg { position: absolute; inset: 0; }
+      #list { position: absolute; left: 1210px; right: 56px; top: 0; bottom: 0;
+        display: flex; flex-direction: column; justify-content: center; gap: 34px; }
+      #title { align-self: flex-start; font-size: 44px; line-height: 1; color: #fff; background: var(--orange);
+        padding: 14px 34px 16px; clip-path: polygon(4% 0%, 100% 0%, 96% 100%, 0% 100%); margin-bottom: 14px; }
+      .item { display: flex; align-items: flex-start; gap: 22px; }
+      /* 60px 編號底部跟第一行字底部切齊（實測低 6px），只移字不動行距 */
+      .num { flex: none; font-size: 60px; line-height: 1; color: var(--orange); min-width: 38px;
+        position: relative; top: -6px; }
+      .txt { font-size: 44px; line-height: 1.25; color: var(--ink); text-wrap: balance; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="side_bullets"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60">
+      <div id="panel"></div>
+      <svg id="frame" width="1920" height="1080" viewBox="0 0 1920 1080" aria-hidden="true"></svg>
+      <div id="list"><div id="title"></div></div>
+    </div>
+    <script>
+      // 手冊 p24 「影片開頭」右下角貼著底邊的 3 塊（已換算成 1920×1080 座標；與章節卡 POLYS 第 4、5、6 塊相同）
+      const SHARDS = [[[1399.4,959.4],[1542.0,1080.1],[1832.8,1080.1],[1479.8,831.0]],[[1626.0,860.3],[1782.6,1080.1],[1920.1,1080.1],[1920.1,973.8],[1808.7,780.6]],[[1267.7,1080.1],[1536.7,1080.1],[1279.5,1005.1]]];
+      const DOWN = 110, FROM = 420; // 碎片停住時往下推 110px；進場起點／退場終點在畫面下方
+      const v = (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const items = String(v.items ?? "").split("\n").filter((t) => t.length);
+      const times = String(v.times ?? "").split(",").map(Number);
+      const S = Number(v.show_sec ?? 6);
+      // 退場：字與碎片先走，側欄在畫面搬移開始退回（結束前 0.25 秒）前後滑出；
+      // 結束前 0.05 秒就完全離開——最後一格比停留秒數早 1/30 秒，不能留一截側欄
+      const OUT = S - 0.5, PANEL_OUT = S - 0.35;
+      document.getElementById("title").textContent = v.title || "重點整理";
+      const list = document.getElementById("list");
+      const els = items.map((t, i) => {
+        const it = document.createElement("div");
+        it.className = "item";
+        const n = document.createElement("div");
+        n.className = "num";
+        n.textContent = String(i + 1);
+        const x = document.createElement("div");
+        x.className = "txt";
+        x.textContent = t;
+        it.append(n, x);
+        list.appendChild(it);
+        return it;
+      });
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["side_bullets"] = tl;
+
+      // 進場：側欄從右滑入（跟畫面搬移同一秒開始、同樣 0.5 秒），標題字牌刷出
+      tl.fromTo("#panel", { xPercent: 100 }, { xPercent: 0, duration: 0.5, ease: "power2.inOut" }, 0);
+      tl.fromTo("#title", { clipPath: "polygon(0% 0%, 0% 0%, 0% 100%, 0% 100%)" },
+        { clipPath: "polygon(4% 0%, 100% 0%, 96% 100%, 0% 100%)", duration: 0.26, ease: "power3.out" }, 0.4);
+      // 每一條在它那句字幕開頭從右滑入
+      els.forEach((el, i) => {
+        tl.fromTo(el, { x: 50, opacity: 0 }, { x: 0, opacity: 1, duration: 0.32, ease: "power3.out" }, times[i]);
+      });
+      // 右下角碎片：從畫面下方探進來，只露一截
+      const NS = "http://www.w3.org/2000/svg";
+      SHARDS.forEach((pts) => {
+        const el = document.createElementNS(NS, "polygon");
+        el.setAttribute("fill", "#f57331"); // SVG 屬性不吃 CSS 變數
+        el.setAttribute("points", pts.map(([x, y]) => x + "," + y).join(" "));
+        document.getElementById("frame").appendChild(el);
+        tl.fromTo(el, { y: FROM }, { y: DOWN, duration: 0.3, ease: "power3.out" }, 0.35);
+        tl.to(el, { y: FROM, duration: 0.22, ease: "power2.in" }, OUT);
+      });
+      // 退場
+      tl.to(["#title", ...els], { opacity: 0, duration: 0.2, ease: "power1.in" }, OUT);
+      tl.to("#panel", { xPercent: 100, duration: 0.3, ease: "power2.in" }, PANEL_OUT);
+      tl.to({}, { duration: 60 }, 0);
+    </script>
+  </body>
+</html>

@@ -50,8 +50,9 @@ KINDS: dict[str, tuple[float, float | None]] = {
     "left": (1.4, 1 / 3),
     "right": (1.4, 2 / 3),
 }
-# 疊加畫面固定在哪一側 → 臉要讓到另一側。書封固定在右側（youtube-book-cover）。
-OVERLAY_MOVES = {"book_cover": "left"}
+# 疊加畫面固定在哪一側 → 臉要讓到另一側。
+# 書封、重點條列固定在右側（youtube-book-cover、youtube-side-bullets）。
+OVERLAY_MOVES = {"book_cover": "left", "side_bullets": "left"}
 FACE_MODEL = Path(os.environ.get("FACE_LANDMARKER_MODEL", r"E:\data\models\face_landmarker.task"))
 IRIS_L, IRIS_R = 468, 473
 MIN_FACE_SAMPLES = 3

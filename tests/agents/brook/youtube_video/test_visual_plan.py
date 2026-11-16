@@ -75,7 +75,7 @@ def plan() -> dict:
 def test_category_list_is_complete_and_valid():
     categories = load_categories()
     numbered = sorted(c.number for c in categories.values() if c.number is not None)
-    assert numbered == list(range(1, 18))
+    assert numbered == list(range(1, 19))
     assert {"section_title", "channel_intro", "outro_transition"} <= {
         c.id for c in categories.values() if c.auto
     }
