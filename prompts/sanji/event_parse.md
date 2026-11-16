@@ -46,6 +46,7 @@
   "cover_headline_lines": ["封面大字，1–2 行，每行最多 7 個中文字"],
   "illustration_topic": "非讀書會活動的插畫場景描述，簡短英文；讀書會填空字串",
   "send_announcement_email": false,
+  "slug": "",
   "missing": ["缺的必填欄位：title / start / description，沒缺就空陣列"]
 }}
 
@@ -65,4 +66,5 @@
 - `start` / `end`：一定要帶 `+08:00`。只講「晚上 8 點」→ 20:00。只有日期沒有時間 → `start` 填 null 並把 `start` 放進 `missing`。
 - `location` / `address`：使用者把場地和地址寫在一起（例如「測試咖啡館（台北市測試路 1 號）」）時，場地名稱放 `location`、地址放 `address`；分不出來就整段放 `location`、`address` 留空。
 - `send_announcement_email`：只有使用者**明確**要寄公告信／通知信給全體成員時才填 true（例如「要寄公告信」「寄信通知大家」）；沒提到就 false。修改模式下使用者說「不要寄」就改回 false，沒提到就原樣保留。
+- `slug`：活動網址。只有使用者**明確**指定網址時才填（例如「網址改成 sleep-live」→ `sleep-live`），只能是小寫英文、數字和 -；沒指定就空字串（程式會用「日期＋類型」）。修改模式下沒提到就原樣保留。
 - `missing`：只看 title、start、description 三個欄位；缺哪個放哪個。

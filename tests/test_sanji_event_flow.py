@@ -48,6 +48,7 @@ def _llm_json(**overrides) -> str:
         "cover_headline_lines": ["六月選書"],
         "illustration_topic": "",
         "send_announcement_email": False,
+        "slug": "",
         "missing": [],
     }
     data.update(overrides)
@@ -491,3 +492,51 @@ def test_confirm_with_ai_footer_executes(ext):
     m_ask.assert_not_called()
     assert ext.calls.count("post") == 1
     assert resp2.continuation is None
+
+
+# ── 網址（2026-11-16 UAT：vendor 預設網址又長又難辨識）──────────────────────
+
+
+@pytest.mark.parametrize(
+    ("kind", "expected"),
+    [
+        ("book_club", "2026-11-28-book-club"),
+        ("live", "2026-11-28-live"),
+        ("meetup", "2026-11-28-meetup"),
+    ],
+)
+def test_default_slug_is_date_and_kind(kind, expected):
+    event = {"start": "2026-11-28T20:00:00+08:00", "kind": kind, "slug": ""}
+    assert sanji_event.event_slug(event) == expected
+
+
+def test_slug_shown_on_card_and_sent(ext):
+    resp, _ = _start([_llm_json()])
+    assert "網址：2026-11-28-book-club" in resp.text
+    _cont(resp.continuation.state, "確認")
+    assert ext.payloads["post"]["slug"] == "2026-11-28-book-club"
+
+
+def test_default_slug_follows_date_change(ext):
+    resp, _ = _start([_llm_json()])
+    resp2, _ = _cont(
+        resp.continuation.state, "改到 12/5", [_llm_json(start="2026-12-05T20:00:00+08:00")]
+    )
+    assert "網址：2026-12-05-book-club" in resp2.text
+
+
+def test_custom_slug_is_cleaned_and_kept(ext):
+    resp, _ = _start([_llm_json()])
+    resp2, _ = _cont(
+        resp.continuation.state, "網址改成 Atomic Habits!", [_llm_json(slug="Atomic Habits!")]
+    )
+    assert "網址：atomic-habits" in resp2.text
+    resp3, _ = _cont(resp2.continuation.state, "確認")
+    assert ext.payloads["post"]["slug"] == "atomic-habits"
+
+
+@pytest.mark.parametrize(
+    ("raw", "clean"), [("中文", ""), ("--a__b--", "a-b"), ("X" * 90, "x" * 80)]
+)
+def test_clean_slug(raw, clean):
+    assert sanji_event.clean_slug(raw) == clean
