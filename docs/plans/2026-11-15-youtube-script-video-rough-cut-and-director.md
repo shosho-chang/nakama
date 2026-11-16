@@ -184,7 +184,7 @@
 | `## Reference` | 什麼都不產生；內容交 Director 當出處參考 | — | 推論（不唸的段落） |
 | `## Outro` | 不插章節卡；改用模糊 slide transition＋swoosh 音效 | （待查舊做法） | 「從正片進到 outro 這裡不用有章節卡。我之前的做法是用一個模糊的 slide transition，加上一個 swoosh 音效」 |
 
-- `###` 的樣式沿用 `video/compositions/transition_title/compositions/transition_title_wide.html` 的 `style=scrim`（程式註解標「修修提案」）。標題字置中、底部留 200px，不跟字幕相撞。
+- `###` 的樣式：修修 2026-11-16 定版新元件 `video/compositions/section_title/`（skill `youtube-section-title`）——深色半透明遮罩、左上右下兩角探進品牌手冊 p24 碎片（左上是右下那組沿對角線翻面）、白色標題逐字浮現，2.5 秒。修修：「我想採用深色的遮罩……想再更輕量化一點」。舊的 `transition_title_wide.html` `style=scrim` 是長精華紙卡系統，不用。
 - 章節卡長度 2 秒落在修修過去成片的 2–4 秒區間（`docs/research/editing-grammar/2026-07-18-shoshotw-editing-grammar.md:83`）。
 - 《財富階梯》v3 稿還沒有 `## Outro` 標示。
 

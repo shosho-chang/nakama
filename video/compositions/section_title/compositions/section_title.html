@@ -1,0 +1,93 @@
+<!doctype html>
+<!-- 稿上 `###` 小標題遮罩（YouTube 照稿影片，疊在錄影上 2.5 秒、不插入時間）。修修 2026-11-16 定版：
+     - 底：全畫面深色半透明遮罩。修修：「我想採用深色的遮罩」「想再更輕量化一點」——跟章節卡「碎片框飛進飛出」拉開距離。
+     - 碎片：只在左上、右下兩角。右下＝品牌手冊 brand-identity.pdf 第 24 頁「影片開頭」向量原稿裡右下角那 3 塊
+       （章節卡 POLYS 第 1、4、5 塊，原樣，不重畫）；左上＝同一組沿畫面對角線翻面，讓兩角方塊寬度、形狀一致。
+       修修：「左上角的 pattern 跟右下角的 pattern，它的方塊寬度以及形狀是不一樣的，這樣會變得很奇怪」→ 選了翻面這版。
+     - 兩團碎片停住時整團往各自的角外推 160px（橫）／109px（縱），只露一點。修修：「160 還不錯」。
+     - 動作：遮罩淡入、碎片從角外探進來，標題一個字一個字往上浮；2.2 秒起字先淡掉、碎片縮回角外、遮罩淡出。
+     - 標題：白色思源黑體 Black 一行，水平置中、中心在 y=440；font_px 由程式依字數算（最大 96px）。
+     被否決過：裁切／縮小／四角碎片、左上用 p24 自己的左上碎片（擠成一團）、扇形排開、轉 180°、轉 ±20°。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"title","type":"string","label":"小標題（稿上 ### 的文字）","default":"第五階：住宅自由"},
+    {"id":"font_px","type":"number","label":"標題字級（px）","default":96}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <style>
+      @font-face { font-family: "Noto Sans TC Black"; font-weight: 900; font-display: block;
+        src: url("assets/fonts/noto-sans-tc/NotoSansTC-Black.woff2") format("woff2"); }
+      :root { --scrim: rgba(40, 37, 37, 0.62); --orange: #f57331; --title-y: 440px;
+        --font-display: "Noto Sans TC Black", "Noto Sans TC", "Source Han Sans TC", sans-serif; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+      #scrim { position: absolute; inset: 0; background: var(--scrim); }
+      svg { position: absolute; inset: 0; }
+      #title { position: absolute; left: 50%; top: var(--title-y); transform: translate(-50%, -50%);
+        white-space: nowrap; font-family: var(--font-display); font-weight: 900;
+        line-height: 1; letter-spacing: -0.01em; color: #fff; }
+      #title span { display: inline-block; white-space: pre; } /* 保留標題裡的空格 */
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="section_title"
+      data-width="1920" data-height="1080" data-start="0" data-duration="2.5">
+      <div id="scrim"></div>
+      <svg id="frame" width="1920" height="1080" viewBox="0 0 1920 1080" aria-hidden="true"></svg>
+      <div id="title"></div>
+    </div>
+    <script>
+      // 手冊 p24 「影片開頭」右下角 3 塊（已換算成 1920×1080 座標；與章節卡 POLYS 第 1、4、5 塊相同）
+      const BR = [[[1683.5,751.5],[1920.1,845.5],[1920.1,661.9],[1733.5,598.4]],[[1399.4,959.4],[1542.0,1080.1],[1832.8,1080.1],[1479.8,831.0]],[[1626.0,860.3],[1782.6,1080.1],[1920.1,1080.1],[1920.1,973.8],[1808.7,780.6]]];
+      const PUSH_X = 160, PUSH_Y = PUSH_X * 0.68; // 停住時整團往角外推
+      const FROM_X = 360, FROM_Y = 240;            // 進場起點／退場終點（角外）
+      const v = (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const svg = document.getElementById("frame");
+      const NS = "http://www.w3.org/2000/svg";
+      const polygon = (pts) => {
+        const el = document.createElementNS(NS, "polygon");
+        el.setAttribute("fill", "#f57331"); // SVG 屬性不吃 CSS 變數
+        el.setAttribute("points", pts.map(([x, y]) => x + "," + y).join(" "));
+        svg.appendChild(el);
+        return el;
+      };
+      const pieces = [];
+      BR.forEach((pts) => {
+        const cx = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+        const cy = pts.reduce((a, p) => a + p[1], 0) / pts.length;
+        const k = 3000 - cx - cy; // 越靠角落越先進場
+        // 左上：沿畫面對角線翻面——(x, y) → (1080 − y, 1920 − x)
+        pieces.push({ el: polygon(pts.map(([x, y]) => [1080 - y, 1920 - x])), d: -1, k });
+        pieces.push({ el: polygon(pts), d: 1, k });
+      });
+      const title = document.getElementById("title");
+      title.style.fontSize = Number(v.font_px ?? 96) + "px";
+      for (const ch of Array.from(v.title || "")) {
+        const s = document.createElement("span");
+        s.textContent = ch;
+        title.appendChild(s);
+      }
+
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["section_title"] = tl;
+      const OUT = 2.2;
+      tl.fromTo("#scrim", { opacity: 0 }, { opacity: 1, duration: 0.18, ease: "power1.out" }, 0);
+      pieces.sort((a, b) => a.k - b.k).forEach((p, i) => {
+        tl.fromTo(p.el, { x: p.d * FROM_X, y: p.d * FROM_Y },
+          { x: p.d * PUSH_X, y: p.d * PUSH_Y, duration: 0.28, ease: "power3.out" }, 0.03 * (i % 4));
+      });
+      tl.fromTo("#title span", { y: 18, opacity: 0 },
+        { y: 0, opacity: 1, duration: 0.2, ease: "power3.out", stagger: 0.035 }, 0.12);
+      // 退場：字先淡掉、碎片縮回角外、遮罩最後淡出
+      tl.to("#title", { opacity: 0, duration: 0.14, ease: "power1.in" }, OUT);
+      pieces.forEach((p) => tl.to(p.el, { x: p.d * FROM_X, y: p.d * FROM_Y, duration: 0.22, ease: "power2.in" }, OUT));
+      tl.to("#scrim", { opacity: 0, duration: 0.2, ease: "power1.in" }, OUT + 0.08);
+      tl.to({}, { duration: 2.5 }, 0);
+    </script>
+  </body>
+</html>
