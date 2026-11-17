@@ -218,9 +218,12 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
             f"user={user_id} channel={channel}"
         )
 
+        is_dm = event.get("channel_type") == "im"
         conv = get_store().get(thread_ts) if thread_ts else None
-        # DM 時 thread_ts 可能沒有；嘗試從 user_id + 本 bot 的 agent_name 找最新
-        if not conv and user_id:
+        # DM 時 thread_ts 可能沒有；嘗試從 user_id + 本 bot 的 agent_name 找最新。
+        # 只限私訊：頻道裡的話不在那個 thread 就不是在回 Sanji（2026-11-17 曉宣在頻道
+        # 問修修事情、附截圖，被接進她還沒結束的建活動流程，截圖變成封面主圖）
+        if not conv and user_id and is_dm:
             conv = get_store().get_latest_for_user_and_agent(user_id, agent_name)
             if conv:
                 logger.info(
@@ -229,7 +232,6 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
                 )
                 thread_ts = conv.thread_ts
 
-        is_dm = event.get("channel_type") == "im"
         if (not thread_ts or thread_ts == msg_ts or conv is None) and not is_dm:
             return
 
