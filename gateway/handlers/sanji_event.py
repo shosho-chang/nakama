@@ -59,6 +59,9 @@ _STATE_VERSION = 2
 ENV_SPACE = "SANJI_EVENTS_SPACE"
 # 確認卡上顯示的 space 名稱（選填；沒設就顯示 slug）
 ENV_SPACE_LABEL = "SANJI_EVENTS_SPACE_LABEL"
+# 誰請 Sanji 建活動，社群上就掛誰的名字（2026-11-17：曉宣建的活動作者都顯示 Sanji）。
+# 格式「Slack user ID:網站 user id」，逗號分隔，例：U0CFJS8A8K1:92。對不到的人照舊由 Sanji 發。
+ENV_AUTHORS = "SANJI_EVENT_AUTHORS"
 
 # ── 觸發 ─────────────────────────────────────────────────────────────────
 #
@@ -74,6 +77,12 @@ _TRIGGER_RE = re.compile(
 # 回覆詞比對前會去掉頭尾空白與標點、轉小寫
 CONFIRM_WORDS = {"確認", "好", "好的", "ok", "okay", "建立", "沒問題", "確定"}
 CANCEL_WORDS = {"取消", "算了", "cancel", "不用了"}
+# 讀書會沒附書封時，確認前會先問一次；回這些就不放書封照建
+NO_BOOK_COVER_WORDS = {"不用書封", "不放書封", "沒有書封", "不要書封", "不需要書封"}
+BOOK_COVER_PROMPT = (
+    "這場是讀書會，封面還沒有書封（目前右邊會是空的）。\n"
+    "把書封圖直接貼在這串，我換好封面再給你看一次；不放書封就回「不用書封」。"
+)
 _REPLY_STRIP = " \t\r\n。．.！!～~，,、？?…"
 
 # ── 附件圖片（gateway/slack_files.image_attachment_lines 產生的行）──────────
@@ -483,14 +492,34 @@ def _space() -> tuple[str, str]:
     return slug, label
 
 
-def _cover_image_plan(event: dict, image: dict | None) -> str:
+def _author_id(user_id: str) -> int:
+    """Slack 使用者對應的網站帳號；沒設定或對不到回 0（由 Sanji 發）。"""
+    for pair in os.environ.get(ENV_AUTHORS, "").split(","):
+        slack_id, _, wp_id = pair.strip().partition(":")
+        if slack_id.strip() == user_id and wp_id.strip().isdigit():
+            return int(wp_id.strip())
+    return 0
+
+
+def _needs_book_cover(state: dict) -> bool:
+    """讀書會、沒附書封、也還沒說「不用書封」→ 確認前要先問。"""
+    return (
+        state["event"].get("kind") == "book_club"
+        and not state.get("image")
+        and not state.get("no_book_cover")
+    )
+
+
+def _cover_image_plan(event: dict, image: dict | None, no_book_cover: bool = False) -> str:
     if image:
         what = "書封" if event.get("kind") == "book_club" else "圖片"
         return f"用你附的{what}（{image.get('name') or 'image'}）"
     if event.get("kind") != "book_club":
         topic = event.get("illustration_topic") or "依活動主題"
         return f"AI 生成插畫（場景：{topic}）"
-    return "不放主圖（讀書會沒附書封；要放的話直接把書封圖貼在這串）"
+    if no_book_cover:
+        return "不放書封（你說不用）"
+    return "⚠️ 還沒有書封：把書封圖直接貼在這串；不放書封就回「不用書封」"
 
 
 def _duration_label(minutes: int) -> str:
@@ -543,7 +572,7 @@ def build_card(state: dict) -> str:
         f"・小標：{event.get('cover_eyebrow')}",
         f"・大字：{headline}",
         f"・日期列：{cover_date_label(event)}",
-        f"・主圖：{_cover_image_plan(event, image)}",
+        f"・主圖：{_cover_image_plan(event, image, bool(state.get('no_book_cover')))}",
     ]
     if cover_fresh and cover.get("url"):
         lines.append(f"・預覽：{cover['url']}")
@@ -657,13 +686,21 @@ def continue_flow(state: dict, text: str, user_id: str) -> HandlerResponse:
     if not body:  # 只補一張圖（沒打字）→ 換圖後重出確認卡
         return _card_response(state, user_id)
 
+    if reply in NO_BOOK_COVER_WORDS:
+        state["no_book_cover"] = True
+        return _card_response(state, user_id)
+
     if reply in cal.FORCE_WORDS and not state["event"].get("missing"):
         state["force_calendar"] = True
+        if _needs_book_cover(state):
+            return _respond(state, BOOK_COVER_PROMPT)
         return execute(state, user_id)
 
     if reply in CONFIRM_WORDS:
         if state["event"].get("missing"):
             return _respond(state, build_missing_prompt(state["event"]))
+        if _needs_book_cover(state):
+            return _respond(state, BOOK_COVER_PROMPT)
         if cal.blocked(state.get("calendar"), state.get("force_calendar", False)):
             return _respond(
                 state,
@@ -785,7 +822,7 @@ def _local(dt: datetime) -> str:
     return dt.astimezone(TZ).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def _post_payload(state: dict, space: str) -> dict:
+def _post_payload(state: dict, space: str, user_id: str = "") -> dict:
     event = state["event"]
     progress = state["progress"]
     start = _parse_dt(event["start"])
@@ -808,7 +845,7 @@ def _post_payload(state: dict, space: str) -> dict:
         fe["venue_type"] = "offline"
         fe["venue"] = event.get("location", "")
         fe["address"] = event.get("address", "")
-    return {
+    payload: dict[str, Any] = {
         "space": space,
         "slug": event_slug(event),
         # 貼文本文 = 活動文案：待審核時管理者在動態上就讀得到內容
@@ -816,6 +853,10 @@ def _post_payload(state: dict, space: str) -> dict:
         "send_announcement_email": bool(event.get("send_announcement_email")),
         "event": fe,
     }
+    author = _author_id(user_id)
+    if author:
+        payload["author_id"] = author  # 社群上掛發起人的名字（建立仍由 Sanji 代勞）
+    return payload
 
 
 def _success_text(state: dict, created: dict) -> str:
@@ -831,6 +872,9 @@ def _success_text(state: dict, created: dict) -> str:
     ]
     if zoom:
         lines.append(f"・Zoom 會議連結：{zoom.get('join_url')}")
+    if created.get("author_note"):
+        note = created["author_note"]
+        lines.append(f"・發文者：這次還是 Sanji，沒改成你的帳號（網站回：{note}）")
     if cover.get("note"):
         lines += ["", cover["note"]]
     lines += [
@@ -900,7 +944,7 @@ def execute(state: dict, user_id: str) -> HandlerResponse:
             logger.info(f"event_draft: zoom created id={out['id']} user={user_id}")
 
         step = "發待審核活動"
-        created = fleet_events.run("post", _post_payload(state, space))
+        created = fleet_events.run("post", _post_payload(state, space, user_id))
         logger.info(
             f"event_draft: pending event feed={created.get('feed_id')} "
             f"event={created.get('event_id')} space={space} user={user_id}"
