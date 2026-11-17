@@ -13,7 +13,8 @@ description: >
 
 規格：`docs/plans/2026-11-15-youtube-script-video-rough-cut-and-director.md` §1（第 6 步 DP）、§3.8、§4.4–4.5。
 每一類怎麼做、規則與檢查在各自的 skill：`youtube-chapter-card`、`youtube-section-title`、`youtube-concept-title`、
-`youtube-person`、`youtube-book-cover`、`youtube-doc-highlight`、`youtube-quote-card`、`youtube-side-bullets`，
+`youtube-person`、`youtube-book-cover`、`youtube-doc-highlight`、`youtube-quote-card`、`youtube-side-bullets`、
+`youtube-others-clip`，
 畫面搬移在 `youtube-reframe`。本 skill 只管順序與交接。
 
 ## 流程
@@ -26,6 +27,7 @@ description: >
    - 人物照片：照 §3.8 順序找（Wikimedia 商用授權 → 官方 → 本人公開大頭照），要下載就列進清單；
      「出處」填本機照片路徑。
    - 文件 highlighter：原始文件（PDF／網頁列印成 PDF），列進清單；拿到後寫說明檔、出檢查圖（`youtube-doc-highlight`）。
+   - 他人影片引用：修修在 Bridge 標「要」的片段（`clips download --dry-run` 列出檔名、來源、大小），列進清單（`youtube-others-clip`）。
 3. **渲**：
 
    ```bash

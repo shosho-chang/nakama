@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · 挑片段 · {{ episode }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-video-clips.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='') }}
+
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="vc-i-in" viewBox="0 0 24 24"><path d="M5 4v16"/><path d="M19 12H9"/><path d="m13 8-4 4 4 4"/></symbol>
+  <symbol id="vc-i-out" viewBox="0 0 24 24"><path d="M19 4v16"/><path d="M5 12h10"/><path d="m11 8 4 4-4 4"/></symbol>
+  <symbol id="vc-i-play" viewBox="0 0 24 24"><path d="M7 5v14l12-7z"/></symbol>
+  <symbol id="vc-i-ext" viewBox="0 0 24 24"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M18 14v6H4V6h6"/></symbol>
+  <symbol id="vc-i-back" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></symbol>
+</svg>
+
+<header class="page-header vc-head">
+  <a class="nk-caps vc-back" href="/bridge/video-plan/{{ episode|urlencode }}#row-{{ row.id }}"><svg class="vc-ic" aria-hidden="true"><use href="#vc-i-back"/></svg>{{ episode }} · 畫面規劃表</a>
+  <h1 class="page-title">挑片段 <span class="zh sho-mono">{{ view.time_label }}</span></h1>
+  <dl class="vc-meta">
+    <div><dt>這一列</dt><dd>{{ '%.1f'|format(row_sec) }} 秒</dd></div>
+    <div><dt>要幾段</dt><dd data-need></dd></div>
+    <div><dt>已選</dt><dd><span data-approved></span> 段 · <span data-approved-sec></span> 秒</dd></div>
+  </dl>
+  <blockquote class="vc-quote">{{ view.covered_text }}</blockquote>
+  {% if row.dp_instruction %}<p class="vc-instr"><b>給 DP 的指示</b>{{ row.dp_instruction }}</p>{% endif %}
+</header>
+
+<main class="vc-main">
+  <ol class="vc-list" data-list></ol>
+  <p class="vc-empty" data-empty hidden>還沒有候選片段</p>
+  <form class="vc-add" data-add>
+    <label class="vc-field vc-field--grow">
+      <span class="vc-label">加一支 YouTube 網址</span>
+      <input type="url" name="url" required placeholder="https://www.youtube.com/watch?v=…" autocomplete="off">
+    </label>
+    <button type="submit" class="sho-btn">加入</button>
+    <span class="vc-save sho-mono" data-add-save aria-live="polite"></span>
+  </form>
+</main>
+
+<template id="vc-row">
+  <li class="vc-row">
+    <div class="vc-player"><div data-player></div></div>
+    <div class="vc-body">
+      <a class="vc-title" data-link target="_blank" rel="noopener"><span data-title></span><svg class="vc-ic" aria-hidden="true"><use href="#vc-i-ext"/></svg></a>
+      <p class="vc-sub"><span data-channel></span><span class="sho-mono" data-duration></span></p>
+      <p class="vc-note" data-note></p>
+      <div class="vc-marks">
+        <button type="button" class="vc-mark" data-set="start" title="把起點設成播放器目前的位置">
+          <svg class="vc-ic" aria-hidden="true"><use href="#vc-i-in"/></svg><span class="vc-label">起點</span><span class="sho-mono" data-start></span>
+        </button>
+        <button type="button" class="vc-mark" data-set="end" title="把終點設成播放器目前的位置">
+          <svg class="vc-ic" aria-hidden="true"><use href="#vc-i-out"/></svg><span class="vc-label">終點</span><span class="sho-mono" data-end></span>
+        </button>
+        <span class="vc-len sho-mono" data-len></span>
+        <button type="button" class="vc-icon" data-preview aria-label="從起點播到終點" title="從起點播到終點"><svg class="vc-ic"><use href="#vc-i-play"/></svg></button>
+      </div>
+      <label class="vc-field">
+        <span class="vc-label">畫面上的來源</span>
+        <input type="text" name="source_label" autocomplete="off">
+      </label>
+      <div class="vc-decide">
+        <div class="vc-status" role="radiogroup" aria-label="要不要這段">
+          <button type="button" role="radio" class="vc-st vc-st--ok" data-status="approved" aria-checked="false">要</button>
+          <button type="button" role="radio" class="vc-st vc-st--no" data-status="rejected" aria-checked="false">不要</button>
+        </div>
+        <span class="vc-save sho-mono" data-save aria-live="polite"></span>
+      </div>
+    </div>
+  </li>
+</template>
+
+<script type="application/json" id="vc-picks">{{ picks_json|safe }}</script>
+<script>window.VC_BASE = {{ ("/bridge/video-plan/" ~ (episode|urlencode) ~ "/clips/" ~ row.id)|tojson }};</script>
+<script src="/static/shosho/bridge-video-clips.js?v={{ asset_version }}" defer></script>
+</body>
+</html>
