@@ -170,7 +170,7 @@ def test_revision_and_cancel(ext):
 
 def test_meeting_written_to_calendar(ext):
     resp = _start([_llm()])
-    assert "行事曆：這個時段沒有其他行程" in resp.text
+    assert "行事曆：修修這個時段沒有其他行程" in resp.text
     _cont(resp.continuation.state, "確認")
     created = ext.gcal.created[0]
     assert created["title"] == "內部週會"
@@ -185,7 +185,7 @@ def test_meeting_conflict_blocks_then_force(ext):
         )
     ]
     resp = _start([_llm()])
-    assert "行事曆衝突：09:30–10:30「客戶會議」" in resp.text
+    assert "修修的行事曆這個時段已經有：09:30–10:30「客戶會議」" in resp.text
     resp2, _ = _cont(resp.continuation.state, "確認")
     assert "先不排" in resp2.text and ext.calls == []
     resp3, _ = _cont(resp2.continuation.state, "照排")

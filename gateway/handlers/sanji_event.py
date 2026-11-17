@@ -39,6 +39,7 @@ from zoneinfo import ZoneInfo
 import httpx
 
 from gateway.handlers import sanji_calendar as cal
+from gateway.handlers import slack_markdown
 from gateway.handlers.base import Continuation, HandlerResponse
 from shared import fleet_events
 from shared.llm import ask
@@ -666,7 +667,7 @@ def continue_flow(state: dict, text: str, user_id: str) -> HandlerResponse:
         if cal.blocked(state.get("calendar"), state.get("force_calendar", False)):
             return _respond(
                 state,
-                "這個時段跟你的行事曆衝突，我先不建。\n"
+                "這個時段修修的 Google 行事曆已經有行程，我先不建。\n"
                 + "\n".join(cal.card_lines(state["calendar"], False)),
             )
         return execute(state, user_id)
@@ -790,8 +791,9 @@ def _post_payload(state: dict, space: str) -> dict:
     start = _parse_dt(event["start"])
     end = _parse_dt(event.get("end")) or start + timedelta(minutes=_duration_min(event))
     fe: dict[str, Any] = {
-        "title": event["title"],
-        "description_md": event["description"],
+        "title": slack_markdown.emojize(event["title"]),
+        # Slack 的表情代碼、<網址|文字>、*粗體* 網站看不懂，送出前轉成 Markdown
+        "description_md": slack_markdown.to_markdown(event["description"]),
         "start_at": _local(start),
         "end_at": _local(end),
         "timezone": "Asia/Taipei",
@@ -810,7 +812,7 @@ def _post_payload(state: dict, space: str) -> dict:
         "space": space,
         "slug": event_slug(event),
         # 貼文本文 = 活動文案：待審核時管理者在動態上就讀得到內容
-        "message": event["description"],
+        "message": slack_markdown.to_markdown(event["description"]),
         "send_announcement_email": bool(event.get("send_announcement_email")),
         "event": fe,
     }
@@ -839,7 +841,7 @@ def _success_text(state: dict, created: dict) -> str:
         lines.append("公告信會在核准後約 5 分鐘寄給這個 space 的全部成員。")
     added = progress.get("calendar") or {}
     if added.get("ok"):
-        lines.append("已寫進你的 Google 行事曆。")
+        lines.append("已寫進修修的 Google 行事曆。")
     elif added:
         lines.append(f"行事曆沒寫進去（{added.get('error')}），請手動加。")
     return "\n".join(lines)
