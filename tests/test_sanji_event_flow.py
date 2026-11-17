@@ -551,7 +551,7 @@ def test_clean_slug(raw, clean):
 
 def test_no_conflict_card_and_calendar_written(ext):
     resp, _ = _start([_llm_json()])
-    assert "行事曆：這個時段沒有其他行程" in resp.text
+    assert "行事曆：修修這個時段沒有其他行程" in resp.text
     _cont(resp.continuation.state, "確認")
     created = ext.gcal.created[0]
     assert created["title"] == "六月讀書會《原子習慣》"
@@ -570,7 +570,7 @@ def test_conflict_blocks_confirm_until_force(ext):
     ]
     ext.gcal.free = [("2026-11-28T21:00:00+08:00", "2026-11-28T23:00:00+08:00")]
     resp, _ = _start([_llm_json()])
-    assert "行事曆衝突：19:30–21:00「看牙醫」" in resp.text
+    assert "修修的行事曆這個時段已經有：19:30–21:00「看牙醫」" in resp.text
     assert "21:00–23:00" in resp.text and "「照排」" in resp.text
 
     resp2, _ = _cont(resp.continuation.state, "確認")
@@ -597,7 +597,7 @@ def test_calendar_unavailable_does_not_block(ext):
     ext.gcal.fail_check = RuntimeError("token expired")
     ext.gcal.fail_add = RuntimeError("token expired")
     resp, _ = _start([_llm_json()])
-    assert "沒查到你的 Google 行事曆" in resp.text
+    assert "沒查到修修的 Google 行事曆" in resp.text
     resp2, _ = _cont(resp.continuation.state, "確認")
     assert ext.calls.count("post") == 1
     assert "行事曆沒寫進去" in resp2.text and "token expired" in resp2.text

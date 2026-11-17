@@ -59,16 +59,19 @@ def card_lines(cal: dict | None, forced: bool) -> list[str]:
         return []
     if not cal.get("ok"):
         err = cal.get("error") or "未知錯誤"
-        return [f"行事曆：這次沒查到你的 Google 行事曆（{err}），衝突請自己留意"]
+        return [f"行事曆：這次沒查到修修的 Google 行事曆（{err}），衝突請自己留意"]
     if not cal.get("conflicts"):
-        return ["行事曆：這個時段沒有其他行程 ✅"]
-    lines = [f"⚠️ 行事曆衝突：{'、'.join(cal['conflicts'])}"]
+        return ["行事曆：修修這個時段沒有其他行程 ✅"]
+    lines = [f"⚠️ 修修的行事曆這個時段已經有：{'、'.join(cal['conflicts'])}"]
     if cal.get("free"):
         lines.append(f"　當天附近的空檔：{'、'.join(cal['free'])}")
     if forced:
         lines.append("　（你說要照排，確認後會照原時間排）")
     else:
-        lines.append("　要改時間就直接說；要照原時間排，回「照排」")
+        lines.append(
+            "　如果那就是這場活動本身（修修先記在行事曆上了），或不影響，回「照排」；"
+            "要改時間就直接說"
+        )
     return lines
 
 

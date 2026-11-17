@@ -161,7 +161,7 @@ def build_card(state: dict) -> str:
             _attendee_line(),
             *cal.card_lines(state.get("calendar"), state.get("force_calendar", False)),
             "",
-            "沒問題就回「確認」，我去開 Zoom、寫進你的 Google 行事曆；要改就直接說；"
+            "沒問題就回「確認」，我去開 Zoom、寫進修修的 Google 行事曆；要改就直接說；"
             "不開了就回「取消」。",
         ]
     )
@@ -227,7 +227,7 @@ def continue_flow(state: dict, text: str, user_id: str) -> HandlerResponse:
         if cal.blocked(state.get("calendar"), state.get("force_calendar", False)):
             return _respond(
                 state,
-                "這個時段跟你的行事曆衝突，我先不排。\n"
+                "這個時段修修的 Google 行事曆已經有行程，我先不排。\n"
                 + "\n".join(cal.card_lines(state["calendar"], False)),
             )
         return execute(state, user_id)
@@ -337,7 +337,8 @@ def execute(state: dict, user_id: str) -> HandlerResponse:
     if added.get("ok"):
         invited = "、".join(a["name"] for a in attendees())
         lines.append(
-            "行事曆：已寫進你的 Google 行事曆" + (f"，並寄邀請給 {invited}。" if invited else "。")
+            "行事曆：已寫進修修的 Google 行事曆"
+            + (f"，並寄邀請給 {invited}。" if invited else "。")
         )
     elif added:
         lines.append(f"行事曆：沒寫進去（{added.get('error')}），請手動加。")
