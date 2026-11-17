@@ -337,7 +337,8 @@ def execute(state: dict, user_id: str) -> HandlerResponse:
     if added.get("ok"):
         invited = "、".join(a["name"] for a in attendees())
         lines.append(
-            "行事曆：已寫進修修的 Google 行事曆" + (f"，並寄邀請給 {invited}。" if invited else "。")
+            "行事曆：已寫進修修的 Google 行事曆"
+            + (f"，並寄邀請給 {invited}。" if invited else "。")
         )
     elif added:
         lines.append(f"行事曆：沒寫進去（{added.get('error')}），請手動加。")
