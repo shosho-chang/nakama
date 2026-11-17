@@ -94,6 +94,64 @@ def test_stranger_dm_is_never_preempted():
     handler.preempt_dm.assert_not_called()
 
 
+# ── 頻道 @Sanji ──────────────────────────────────────────────────────────
+
+
+def _mention(text, *, user=MANAGER, preempt=None, thread_ts=None):
+    from gateway import bot
+
+    handler = MagicMock()
+    handler.handle.return_value = SimpleNamespace(text="一般回覆", continuation=None)
+    handler.preempt_mention.return_value = preempt
+    say = MagicMock(return_value={"ts": "9.0"})
+    event = {"text": text, "user": user, "channel": "C1", "ts": "2.0"}
+    if thread_ts:
+        event["thread_ts"] = thread_ts
+    route = SimpleNamespace(agent="sanji", intent="general", text=text, confidence="exact")
+    with (
+        patch.object(bot, "get_store", return_value=MagicMock()),
+        patch.object(bot, "get_handler", return_value=handler),
+        patch.object(bot, "route_mention", return_value=route),
+        patch.object(bot, "with_attachments", side_effect=lambda t, e, c, **kw: t),
+    ):
+        bot._make_mention_handler("sanji")(event, say, MagicMock())
+    return handler, say
+
+
+def test_mention_preempted_replies_in_thread_and_skips_routing():
+    handler, say = _mention("<@USANJI> 3 做完了", preempt=HandlerResponse(text="✓ 3. 大旗"))
+    handler.preempt_mention.assert_called_once_with("3 做完了", MANAGER)
+    handler.handle.assert_not_called()
+    assert say.call_args.kwargs["thread_ts"] == "2.0"
+    assert "✓ 3. 大旗" in say.call_args.kwargs["text"]
+
+
+def test_mention_not_preempted_goes_to_handle():
+    handler, _ = _mention("<@USANJI> 幫我建活動：週四讀書會")
+    handler.handle.assert_called_once()
+
+
+def test_mention_preempt_error_falls_back():
+    from gateway import bot
+
+    handler = MagicMock()
+    handler.preempt_mention.side_effect = RuntimeError("boom")
+    say = MagicMock()
+    assert bot._preempt_mention("sanji", handler, "<@U1> 待辦", MANAGER, say, "1.0") is False
+    say.assert_not_called()
+
+
+def test_sanji_preempt_mention_asks_freedom_fleet():
+    from gateway.handlers.sanji import SanjiHandler
+
+    with patch.object(fleet_events, "minutes_mention", return_value="清單") as m:
+        assert SanjiHandler().preempt_mention("待辦", OWNER).text == "清單"
+    m.assert_called_once_with(OWNER, "待辦")
+    with patch.object(fleet_events, "minutes_mention") as m:
+        assert SanjiHandler().preempt_mention("幫我建活動：週四讀書會", OWNER) is None
+    m.assert_not_called()
+
+
 # ── Sanji.preempt_dm ─────────────────────────────────────────────────────
 
 
@@ -141,7 +199,23 @@ def test_minutes_dm_calls_tracker(ff_dir):
         assert fleet_events.minutes_dm(MANAGER, "核准", in_flow=True) == "收到"
     args, kw = m.call_args
     assert args[0][1:] == ["-m", "fleet.minutes.tracker", "dm"]
-    assert json.loads(kw["input"]) == {"user": MANAGER, "text": "核准", "in_flow": True}
+    assert json.loads(kw["input"]) == {
+        "user": MANAGER,
+        "text": "核准",
+        "in_flow": True,
+        "where": "dm",
+    }
+
+
+def test_minutes_mention_asks_channel_mode(ff_dir):
+    out = {"ok": True, "handled": True, "reply": "✓ 3."}
+    with patch.object(subprocess, "run", return_value=_proc(json.dumps(out))) as m:
+        assert fleet_events.minutes_mention(OWNER, "3 做完了") == "✓ 3."
+    assert json.loads(m.call_args.kwargs["input"]) == {
+        "user": OWNER,
+        "text": "3 做完了",
+        "where": "channel",
+    }
 
 
 def test_minutes_dm_not_handled(ff_dir):

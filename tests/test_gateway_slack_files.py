@@ -124,6 +124,7 @@ def _run_dm(text: str, route_text: str | None = None):
 
     handler = MagicMock()
     handler.preempt_dm.return_value = None
+    handler.preempt_mention.return_value = None
     handler.handle.return_value = SimpleNamespace(text="ok", continuation=None)
     store = MagicMock()
     store.get.return_value = None
@@ -165,6 +166,7 @@ def test_mention_passes_email_to_agent():
 
     handler = MagicMock()
     handler.preempt_dm.return_value = None
+    handler.preempt_mention.return_value = None
     handler.handle.return_value = SimpleNamespace(text="ok", continuation=None)
     route = SimpleNamespace(
         agent="nami", intent="general", text="增加這個行程", confidence="keyword"
@@ -319,6 +321,7 @@ def _run_dm_for(agent: str):
 
     handler = MagicMock()
     handler.preempt_dm.return_value = None
+    handler.preempt_mention.return_value = None
     handler.handle.return_value = SimpleNamespace(text="ok", continuation=None)
     store = MagicMock()
     store.get.return_value = None
@@ -348,6 +351,7 @@ def test_bot_thread_continuation_passes_images_to_sanji():
     store.get.return_value = conv
     handler = MagicMock()
     handler.preempt_dm.return_value = None
+    handler.preempt_mention.return_value = None
     handler.continue_flow.return_value = SimpleNamespace(text="ok", blocks=None, continuation=None)
     event = {
         "text": "換這張",
@@ -374,6 +378,7 @@ def test_sanji_mention_gets_raw_text_with_agent_name_kept():
 
     handler = MagicMock()
     handler.preempt_dm.return_value = None
+    handler.preempt_mention.return_value = None
     handler.handle.return_value = SimpleNamespace(text="ok", continuation=None)
     raw = "<@U0SANJI> 幫我建活動\n文案：這是 Sanji 建活動功能的測試"
     route = SimpleNamespace(
@@ -398,6 +403,7 @@ def test_nami_still_gets_router_text():
 
     handler = MagicMock()
     handler.preempt_dm.return_value = None
+    handler.preempt_mention.return_value = None
     handler.handle.return_value = SimpleNamespace(text="ok", continuation=None)
     route = SimpleNamespace(agent="nami", intent="general", text="ROUTED", confidence="keyword")
     event = {"text": "<@U0NAMI> 原文", "user": "U1", "channel": "C1", "ts": "1.0"}
