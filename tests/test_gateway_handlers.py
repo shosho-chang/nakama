@@ -1566,11 +1566,11 @@ def test_delete_calendar_event_keeps_other_plan_entries():
     existing = _fake_cal_event(id_="evt_a", title="寫稿")  # the 6/3 event
     fake_task_file = SimpleNamespace(name="寫稿.md", stem="寫稿")
     task_content = (
-        "---\ntitle: 寫稿\nstatus: to-do\nplan:\n"
+        "---\ntitle: 寫稿\nstatus: to-do\n預估🍅: 5\nplan:\n"
         "  - date: 2026-06-03\n    pomodoros: 2\n    start: 2026-06-03T09:00:00+08:00\n"
         "    end: 2026-06-03T10:00:00+08:00\n    calendar_event_id: evt_a\n"
-        "  - date: 2026-06-05\n    pomodoros: 2\n    start: 2026-06-05T09:00:00+08:00\n"
-        "    end: 2026-06-05T10:00:00+08:00\n    calendar_event_id: evt_b\n"
+        "  - date: 2026-06-05\n    pomodoros: 3\n    start: 2026-06-05T09:00:00+08:00\n"
+        "    end: 2026-06-05T10:30:00+08:00\n    calendar_event_id: evt_b\n"
         "---\n"
     )
 
@@ -1598,6 +1598,8 @@ def test_delete_calendar_event_keeps_other_plan_entries():
     assert len(remaining) == 1
     assert remaining[0]["calendar_event_id"] == "evt_b"
     assert remaining[0]["date"] == "2026-06-05"
+    # 預估🍅 follows the remaining plan (5 = 2 + 3 → 3), same rule as the Bridge writes
+    assert new_fm["預估🍅"] == 3
 
 
 def test_delete_calendar_event_task_not_found_silent():

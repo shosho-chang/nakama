@@ -284,6 +284,29 @@ class TestRemovePlanEntry:
         with pytest.raises(WeeklyWriteError):
             remove_plan_entry(vault, "no-such-task", date(2026, 6, 1))
 
+    def test_estimate_follows_plan_after_removing_a_day(self, vault):
+        """修修 2026-11-17：昨天排 4🍅 沒做、今天重排 3🍅，在任務面板刪掉昨天的安排後
+        預估🍅 仍停在 7。刪除也是改 plan[] 的排程寫入，預估要跟著 plan 總和走。"""
+        slug = "test-task"
+        existing = [
+            {"date": "2026-11-16", "pomodoros": 4},
+            {"date": "2026-11-17", "pomodoros": 3},
+        ]
+        p = _make_task(vault, slug, {"title": "Test", "預估🍅": 7, "plan": existing})
+        remove_plan_entry(vault, slug, date(2026, 11, 16))
+        assert _read_fm(p)["預估🍅"] == 3
+
+    def test_estimate_kept_when_last_entry_removed(self, vault):
+        """plan[] 清空 → 沒有排程可跟，預估留著當「未排程的預估」（同 _sync 的 no-op 規則）。"""
+        slug = "test-task"
+        p = _make_task(
+            vault,
+            slug,
+            {"title": "Test", "預估🍅": 2, "plan": [{"date": "2026-06-01", "pomodoros": 2}]},
+        )
+        remove_plan_entry(vault, slug, date(2026, 6, 1))
+        assert _read_fm(p)["預估🍅"] == 2
+
     def test_file_not_written_when_no_entry(self, vault):
         """File should remain unchanged when there's nothing to remove."""
         slug = "test-task"
@@ -893,6 +916,13 @@ class TestRescheduleTaskBlock:
         dates = sorted(e["date"] for e in fm["plan"])
         assert dates == ["2026-06-03", "2026-06-05"]  # done-work history kept
 
+    def test_estimate_follows_relocated_plan(self, vault):
+        """搬移會丟掉舊日期的 entry、寫入新的 → 預估🍅 要跟著新的 plan 總和。"""
+        _make_task(vault, "測試任務", self._LINKED)  # 預估🍅: 6, plan 2🍅 on 6/3
+        reschedule_task_block(vault, "測試任務", start=datetime(2026, 6, 4, 14, 0), pomodoros=3)
+        fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
+        assert fm["預估🍅"] == 3
+
     def test_unlinked_task_returns_empty_event_id(self, vault):
         fm0 = {"title": "測試任務", "status": "to-do", "預估🍅": 4, "tags": ["task"]}
         _make_task(vault, "測試任務", fm0)
@@ -976,6 +1006,13 @@ class TestUnscheduleTaskBlock:
         assert old_eid == "evt_live"
         assert [e["date"] for e in fm["plan"]] == ["2026-06-05"]  # only 6/3 dropped
         assert "scheduled" not in fm and "calendar_event_id" not in fm
+
+    def test_estimate_follows_remaining_plan(self, vault):
+        """取消排程丟掉 6/3 的 2🍅，只剩 6/5 的 1🍅 → 預估🍅 = 1。"""
+        _make_task(vault, "測試任務", self._LINKED)  # 預估🍅: 6
+        unschedule_task_block(vault, "測試任務")
+        fm = _read_fm(vault / TASKS_DIR / "測試任務.md")
+        assert fm["預估🍅"] == 1
 
     def test_keeps_done_work_entry(self, vault):
         fm0 = {
