@@ -96,9 +96,16 @@ def ext(monkeypatch):
     )
 
 
-def _start(llm_replies, text=RAW):
+def _start(llm_replies, text=RAW, *, book_cover_answered=True):
+    """預設的測試活動是「沒附書封的讀書會」，確認前 Sanji 會先問書封。
+
+    跟書封無關的測試預設當作已經回過「不用書封」（``book_cover_answered``）；
+    要測問書封這一步就傳 False。
+    """
     with patch.object(sanji_event, "ask", side_effect=list(llm_replies)) as m_ask:
         resp = SanjiHandler().handle("general", text, "U_XS")
+    if book_cover_answered and resp.continuation:
+        resp.continuation.state["no_book_cover"] = True
     return resp, m_ask
 
 
@@ -601,3 +608,74 @@ def test_calendar_unavailable_does_not_block(ext):
     resp2, _ = _cont(resp.continuation.state, "確認")
     assert ext.calls.count("post") == 1
     assert "行事曆沒寫進去" in resp2.text and "token expired" in resp2.text
+
+
+# ── 讀書會沒書封先問（2026-11-17：曉宣沒貼書封，封面右邊空著就發出去了）──────────
+
+
+def test_book_club_without_cover_asks_before_posting(ext):
+    resp, _ = _start([_llm_json()], book_cover_answered=False)
+    assert "還沒有書封" in resp.text and "不用書封" in resp.text
+    resp2, _ = _cont(resp.continuation.state, "確認")
+    assert resp2.text == sanji_event.BOOK_COVER_PROMPT
+    assert "post" not in ext.calls and "zoom" not in ext.calls
+
+
+def test_book_club_force_also_asks_for_cover(ext):
+    resp, _ = _start([_llm_json()], book_cover_answered=False)
+    resp2, _ = _cont(resp.continuation.state, "照排")
+    assert resp2.text == sanji_event.BOOK_COVER_PROMPT
+    assert resp2.continuation.state["force_calendar"] is True
+    assert "post" not in ext.calls
+
+
+def test_book_club_pasting_cover_then_confirm_posts_with_book(ext):
+    resp, _ = _start([_llm_json()], book_cover_answered=False)
+    with patch.object(sanji_event.httpx, "get", return_value=_http_ok()):
+        resp2, _ = _cont(resp.continuation.state, IMAGE_LINE)
+    assert "用你附的書封（atomic habits.jpg）" in resp2.text
+    assert ext.payloads["cover"]["main_kind"] == "book"
+    resp3, _ = _cont(resp2.continuation.state, "確認")
+    assert "post" in ext.calls and "待審核" in resp3.text
+
+
+def test_book_club_no_cover_answer_then_confirm_posts(ext):
+    resp, _ = _start([_llm_json()], book_cover_answered=False)
+    resp2, m_ask = _cont(resp.continuation.state, "不用書封")
+    m_ask.assert_not_called()  # 不是修改內容，不打 LLM
+    assert "不放書封（你說不用）" in resp2.text
+    resp3, _ = _cont(resp2.continuation.state, "確認")
+    assert "post" in ext.calls and "待審核" in resp3.text
+
+
+def test_live_event_without_image_does_not_ask_for_cover(ext):
+    resp, _ = _start([_llm_json(kind="live", illustration_topic="x")], book_cover_answered=False)
+    _cont(resp.continuation.state, "確認")
+    assert "post" in ext.calls
+
+
+# ── 作者掛發起人（2026-11-17：曉宣請 Sanji 建的活動，作者都顯示 Sanji）──────────
+
+
+def test_author_id_sent_when_requester_is_mapped(ext, monkeypatch):
+    monkeypatch.setenv("SANJI_EVENT_AUTHORS", "U_OTHER:5, U_XS:92")
+    resp, _ = _start([_llm_json()])
+    _cont(resp.continuation.state, "確認")
+    assert ext.payloads["post"]["author_id"] == 92
+
+
+@pytest.mark.parametrize("value", ["", "U_OTHER:5", "U_XS:abc", "U_XS"])
+def test_no_author_id_when_requester_not_mapped(ext, monkeypatch, value):
+    monkeypatch.setenv("SANJI_EVENT_AUTHORS", value)
+    resp, _ = _start([_llm_json()])
+    _cont(resp.continuation.state, "確認")
+    assert "author_id" not in ext.payloads["post"]
+
+
+def test_author_not_changed_is_reported(ext, monkeypatch):
+    monkeypatch.setenv("SANJI_EVENT_AUTHORS", "U_XS:92")
+    ext.outputs["post"]["author_id"] = 126
+    ext.outputs["post"]["author_note"] = "user 92 is not an active member of space 15"
+    resp, _ = _start([_llm_json()])
+    resp2, _ = _cont(resp.continuation.state, "確認")
+    assert "發文者：這次還是 Sanji" in resp2.text and "not an active member" in resp2.text

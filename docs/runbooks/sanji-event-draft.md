@@ -32,12 +32,20 @@
 3. **上線開關在社群**：打開那篇貼文 → Review → Approve Post（FluentCommunity Pro 內建審核）。
    核准那一刻才觸發「新貼文」通知；勾了公告信的話，核准後約 5 分鐘寄給 space 全部成員。
 
+**讀書會要有書封**（2026-11-17）：讀書會沒附書封時，確認卡主圖那行會標「還沒有書封」，回「確認」也會先被問一次；
+把書封圖貼在同一串就會重做封面，不放書封要回「不用書封」。
+
+**作者是發起人**（2026-11-17）：貼文仍由 sanji 帳號建立（權限、審核紀錄、公告信都照舊），建好後由艦隊外掛把
+社群貼文、活動內頁、動態紀錄的作者改成發起人（`SANJI_EVENT_AUTHORS` 對照；網站端只接受該 space 的成員或站長）。
+沒改成時，成功訊息會寫「發文者：這次還是 Sanji」和原因。
+
 ## 設定
 
 | env（nakama `.env`） | 說明 |
 | --- | --- |
 | `SANJI_EVENTS_SPACE` | 活動發到哪個 space 的 slug。**沒設 Sanji 會拒絕建**。UAT 期間 = `test-dock` |
 | `SANJI_EVENTS_SPACE_LABEL` | 確認卡顯示的 space 名稱（選填） |
+| `SANJI_EVENT_AUTHORS` | 誰請 Sanji 建活動，社群上就掛誰的名字。格式 `Slack user ID:網站 user id`，逗號分隔（例 `U0CFJS8A8K1:92`＝曉宣）。對不到的人照舊由 sanji 發 |
 | `SANJI_MEETING_CHANNEL` | 內部會議提醒頻道（選填，預設 #freedom-fleet `C0CG3UDSTGU`） |
 | `FREEDOM_FLEET_DIR` / `FREEDOM_FLEET_PYTHON` | freedom-fleet 位置（預設 `/home/freedom-fleet`、`<dir>/.venv/bin/python`）；本機開發要自己設 |
 | `SANJI_SLACK_BOT_TOKEN` | 下載附圖、排提醒 |
