@@ -166,6 +166,10 @@ def _make_mention_handler(agent_name: str) -> Callable:
             say(f"Agent `{agent_name}` 尚未上線。", thread_ts=msg_thread_ts)
             return
 
+        # 頻道裡 @Sanji「3 做完了」「待辦」：先給 handler 攔截，回在該則訊息的 thread
+        if _preempt_mention(agent_name, handler, text, user_id, say, msg_thread_ts or event_ts):
+            return
+
         # agent 已由 bot 身份決定，但仍用 router 做 intent 分類（例如 Nami 靠
         # intent="create_project" 進 bootstrap flow）；忽略 route.agent
         route = route_mention(text)
@@ -317,6 +321,22 @@ def _make_thread_message_handler(agent_name: str) -> Callable:
             get_store().update(thread_ts, result.continuation.state)
 
     return _handle
+
+
+def _preempt_mention(agent_name, handler, text, user_id, say, thread_ts) -> bool:
+    clean = _MENTION_TOKEN_RE.sub("", text or "").strip()
+    if not clean:
+        return False
+    try:
+        result = handler.preempt_mention(clean, user_id)
+    except Exception:
+        logger.exception(f"[{agent_name}] preempt_mention failed; falling back to normal routing")
+        return False
+    if result is None:
+        return False
+    fallback, blocks = format_agent_response(agent_name, result.text, "general")
+    say(text=fallback, blocks=blocks, thread_ts=thread_ts)
+    return True
 
 
 def _preempt_dm(agent_name: str, event: dict, say: Callable, conv) -> bool:

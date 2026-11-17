@@ -90,6 +90,7 @@ def _handler():
     h.handle.return_value = SimpleNamespace(text="ok", continuation=None)
     h.can_handle.return_value = True
     h.preempt_dm.return_value = None
+    h.preempt_mention.return_value = None
     return h
 
 

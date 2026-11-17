@@ -78,6 +78,15 @@ class SanjiHandler(BaseHandler):
         reply = fleet_events.minutes_dm(user_id, text, in_flow=in_flow)
         return HandlerResponse(text=reply) if reply else None
 
+    def preempt_mention(self, text: str, user_id: str) -> HandlerResponse | None:
+        """頻道裡「@Sanji 3 做完了」「@Sanji 待辦」先交給 freedom-fleet；其他照原本流程。"""
+        if not text.strip():
+            return None
+        if sanji_event.is_event_request(text) or sanji_meeting.is_meeting_request(text):
+            return None
+        reply = fleet_events.minutes_mention(user_id, text)
+        return HandlerResponse(text=reply) if reply else None
+
     def continue_flow(
         self,
         flow_name: str,

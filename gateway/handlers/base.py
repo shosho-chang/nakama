@@ -69,6 +69,10 @@ class BaseHandler(ABC):
         """
         return None
 
+    def preempt_mention(self, text: str, user_id: str) -> HandlerResponse | None:
+        """頻道裡 @本 agent 時，先於一般路由攔下來處理的機會。預設不攔；回 None = 照原本路由。"""
+        return None
+
     def suggest_redirect(self, intent: str) -> str | None:
         """此 agent 無法處理時，建議轉介給誰。"""
         from gateway.router import INTENT_TO_AGENT
