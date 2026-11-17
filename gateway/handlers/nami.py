@@ -42,6 +42,7 @@ from shared.memory_extractor import extract_in_background
 from shared.obsidian_writer import delete_page, list_files, read_page, write_page
 from shared.prompt_loader import load_prompt
 from shared.vault_rules import VaultRuleViolation, assert_nami_can_read, assert_nami_can_write
+from shared.weekly_writer import _sync_estimate_to_plan
 from shared.wikilink import strip_wikilink
 
 logger = get_logger("nakama.gateway.nami")
@@ -2342,6 +2343,7 @@ class NamiHandler(BaseHandler):
         if not matched:  # legacy task-level link OR bare `scheduled` → migrate into plan[] now
             plan.append(new_entry)
         fm["plan"] = _stringify_plan(plan)
+        _sync_estimate_to_plan(fm)  # event resized/moved → 預估🍅 follows the plan (Bridge rule)
         # retire the legacy task-level mirror (v3-D)
         for k in ("scheduled", "scheduled_end", "calendar_event_id"):
             fm.pop(k, None)
@@ -2403,6 +2405,7 @@ class NamiHandler(BaseHandler):
                     task_note = f"\n   📝 Task 一併刪除：{task_rel}"
             else:
                 fm["plan"] = _stringify_plan(remaining)
+                _sync_estimate_to_plan(fm)  # 預估🍅 follows the remaining plan (Bridge rule)
                 if legacy_match:  # retire the legacy task-level mirror (v3-D)
                     for k in ("scheduled", "scheduled_end", "calendar_event_id"):
                         fm.pop(k, None)
