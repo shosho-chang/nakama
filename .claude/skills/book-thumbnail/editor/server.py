@@ -9,6 +9,7 @@
      <work-dir>/cover.png 與 cover-320.png
 編輯畫面與出圖是同一份 DOM，所以拖到哪裡、出圖就在哪裡。
 """
+
 from __future__ import annotations
 
 import argparse
@@ -30,27 +31,40 @@ for _s in (sys.stdout, sys.stderr):
         pass
 
 HERE = Path(__file__).resolve().parent
-CHROME = Path(os.path.expandvars(r"%LOCALAPPDATA%\ms-playwright\chromium-1223\chrome-win64\chrome.exe"))
+CHROME = Path(
+    os.path.expandvars(r"%LOCALAPPDATA%\ms-playwright\chromium-1223\chrome-win64\chrome.exe")
+)
 FONT_DIR = Path(os.path.expandvars(r"%LOCALAPPDATA%\Microsoft\Windows\Fonts"))
 CUTOUT_DIR = Path("E:/Shosho LifeOS/Attachments/cutouts/shosho")
 LOGO = Path("E:/data/podcast thumbnail props/channel_logo_white.png")
 
 DEFAULT_SPEC = {
     "bg": {"src": "", "brightness": 0.40, "grayscale": 0.7, "blur": 1.5, "warm": 0.35},
-    "book": {"src": "", "cx": 905, "cy": 352, "h": 560, "tilt": -12, "frame": True, "frame_style": "skew"},
+    "book": {
+        "src": "",
+        "cx": 905,
+        "cy": 352,
+        "h": 560,
+        "tilt": -12,
+        "frame": True,
+        "frame_style": "skew",
+    },
     "person": {"src": "", "cx": 330, "top": 46, "h": 880, "glow": True, "flip": False},
-    "text": {"x": 44, "y": 446, "size": 128, "rot": -6,
-             "lead": "", "main": "", "hl": "", "en": ""},
+    "text": {"x": 44, "y": 446, "size": 128, "rot": -6, "lead": "", "main": "", "hl": "", "en": ""},
     "logo": {"on": False, "x": 30, "y": 30, "h": 64},
     "bars": True,
-    "title": "", "title_rank": None, "bigtext_id": None,
+    "title": "",
+    "title_rank": None,
+    "bigtext_id": None,
 }
 
 
 def deep_merge(base: dict, over: dict) -> dict:
     out = dict(base)
     for k, v in over.items():
-        out[k] = deep_merge(base[k], v) if isinstance(v, dict) and isinstance(base.get(k), dict) else v
+        out[k] = (
+            deep_merge(base[k], v) if isinstance(v, dict) and isinstance(base.get(k), dict) else v
+        )
     return out
 
 
@@ -89,11 +103,19 @@ def packaging(cut_id: str = "full") -> dict:
     titles, options = [], []
     pk = pdir / "packages.json"
     if pk.is_file():
-        cut = next((c for c in json.loads(pk.read_text(encoding="utf-8")).get("cuts", [])
-                    if c.get("cut_id") == cut_id), None)
+        cut = next(
+            (
+                c
+                for c in json.loads(pk.read_text(encoding="utf-8")).get("cuts", [])
+                if c.get("cut_id") == cut_id
+            ),
+            None,
+        )
         if cut:
-            titles = [{"rank": t["rank"], "text": t["text"], "payoff": t.get("payoff", "")}
-                      for t in sorted(cut.get("titles", []), key=lambda t: t["rank"])]
+            titles = [
+                {"rank": t["rank"], "text": t["text"], "payoff": t.get("payoff", "")}
+                for t in sorted(cut.get("titles", []), key=lambda t: t["rank"])
+            ]
     bt = pdir / cut_id / "bigtext.json"
     if bt.is_file():
         options = json.loads(bt.read_text(encoding="utf-8")).get("options", [])
@@ -113,16 +135,27 @@ def load_tracking() -> dict:
     第一次開啟時由 packages.json 的標題初始化；之後以這份檔案為準（修修的編輯不被
     重新發想覆蓋——新一輪發想的標題只會補進來，不會改掉已存在的列）。"""
     p = tracking_path()
-    data = json.loads(p.read_text(encoding="utf-8")) if p.is_file() else {
-        "video_url": "", "check_after_days": 7, "titles": []}
+    data = (
+        json.loads(p.read_text(encoding="utf-8"))
+        if p.is_file()
+        else {"video_url": "", "check_after_days": 7, "titles": []}
+    )
     have = {t.get("source") for t in data["titles"]}
     for t in packaging()["titles"]:
         src = f"packages#{t['rank']}:{t['text']}"
         if src not in have:
-            data["titles"].append({
-                "id": f"t{len(data['titles']) + 1}", "text": t["text"], "original_text": t["text"],
-                "source": src, "ab": False, "published": False,
-                "published_at": None, "edited_at": None})
+            data["titles"].append(
+                {
+                    "id": f"t{len(data['titles']) + 1}",
+                    "text": t["text"],
+                    "original_text": t["text"],
+                    "source": src,
+                    "ab": False,
+                    "published": False,
+                    "published_at": None,
+                    "edited_at": None,
+                }
+            )
     return data
 
 
@@ -163,11 +196,23 @@ def render() -> dict:
     url = f"http://127.0.0.1:{Ctx.port}/?render=1"
     with Ctx.lock:
         subprocess.run(
-            [str(CHROME), "--headless=new", "--disable-gpu", "--hide-scrollbars",
-             "--force-device-scale-factor=1", "--window-size=1280,720",
-             "--virtual-time-budget=4000", f"--screenshot={out}", url],
-            check=True, capture_output=True, timeout=90)
+            [
+                str(CHROME),
+                "--headless=new",
+                "--disable-gpu",
+                "--hide-scrollbars",
+                "--force-device-scale-factor=1",
+                "--window-size=1280,720",
+                "--virtual-time-budget=4000",
+                f"--screenshot={out}",
+                url,
+            ],
+            check=True,
+            capture_output=True,
+            timeout=90,
+        )
         from PIL import Image
+
         im = Image.open(out).convert("RGB")
         im.save(out)
         im.resize((320, 180), Image.LANCZOS).save(Ctx.work / "cover-320.png")
@@ -191,9 +236,14 @@ class H(BaseHTTPRequestHandler):
         q = urllib.parse.parse_qs(u.query)
         if u.path == "/":
             html = (HERE / "editor.html").read_text(encoding="utf-8")
-            boot = {"spec": Ctx.load_spec(), "lists": lists(), "packaging": packaging(),
-                    "tracking": load_tracking(), "ab_max": AB_MAX,
-                    "render": q.get("render") == ["1"]}
+            boot = {
+                "spec": Ctx.load_spec(),
+                "lists": lists(),
+                "packaging": packaging(),
+                "tracking": load_tracking(),
+                "ab_max": AB_MAX,
+                "render": q.get("render") == ["1"],
+            }
             html = html.replace("/*__BOOT__*/null", json.dumps(boot, ensure_ascii=False))
             return self._send(200, html.encode("utf-8"), "text/html; charset=utf-8")
         if u.path == "/asset":
@@ -208,7 +258,9 @@ class H(BaseHTTPRequestHandler):
             if not p.is_file() or not allowed(p):
                 return self._send(404, b"not found", "text/plain")
             import hashlib
+
             from PIL import Image
+
             cache = Ctx.work / "_thumbs"
             cache.mkdir(exist_ok=True)
             key = hashlib.sha1(f"{p}|{p.stat().st_mtime}".encode()).hexdigest() + ".png"
@@ -231,8 +283,11 @@ class H(BaseHTTPRequestHandler):
             try:
                 res = save_tracking(body)
             except ValueError as e:
-                return self._send(400, json.dumps({"error": str(e)}, ensure_ascii=False).encode(),
-                                  "application/json")
+                return self._send(
+                    400,
+                    json.dumps({"error": str(e)}, ensure_ascii=False).encode(),
+                    "application/json",
+                )
             return self._send(200, json.dumps(res, ensure_ascii=False).encode(), "application/json")
         if self.path != "/save":
             return self._send(404, b"", "text/plain")
@@ -254,8 +309,10 @@ def main():
     Ctx.work = a.work_dir.resolve()
     Ctx.work.mkdir(parents=True, exist_ok=True)
     Ctx.port = a.port
-    Ctx.roots = [p.resolve() for p in (CUTOUT_DIR, LOGO.parent, FONT_DIR, Ctx.work.parent,
-                                        Path("E:/nakama/data/books"))]
+    Ctx.roots = [
+        p.resolve()
+        for p in (CUTOUT_DIR, LOGO.parent, FONT_DIR, Ctx.work.parent, Path("E:/nakama/data/books"))
+    ]
     print(f"book cover editor → http://127.0.0.1:{a.port}/  (work: {Ctx.work})", flush=True)
     ThreadingHTTPServer(("127.0.0.1", a.port), H).serve_forever()
 
