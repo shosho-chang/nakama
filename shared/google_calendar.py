@@ -157,6 +157,7 @@ def create_event(
     check_conflict: bool = True,
     idempotency_key: str | None = None,
     attendees: list[str] | None = None,
+    location: str | None = None,
 ) -> CalendarEvent | list[CalendarEvent]:
     """建立事件。
 
@@ -197,6 +198,8 @@ def create_event(
 
     service = _get_service()
     body: dict = {"summary": title, "description": description}
+    if location:  # 例如 Zoom join URL — Google Calendar 會把它顯示成可點的地點
+        body["location"] = location
     if all_day:  # date-only → Google all-day event (end.date is exclusive)
         body["start"] = {"date": start}
         body["end"] = {"date": end}
