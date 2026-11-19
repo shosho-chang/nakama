@@ -560,6 +560,21 @@ def _scan_episodes() -> list[dict]:
             row["error"] = f"Syncthing conflict：{', '.join(conflicts)} — 先解 conflict 再進 gate"
             rows.append(row)
             continue
+        # 主頻道 YouTube 影片（書籍介紹／主題介紹）走 /bridge/youtube-packaging，
+        # 不套 podcast 的 package 數與 approve 規則
+        from thousand_sunny.routers.youtube_packaging import is_youtube_episode
+
+        if is_youtube_episode(ep_dir):
+            row["youtube"] = True
+            try:
+                row["episode"] = json.loads(
+                    (ep_dir / "packages.json").read_text(encoding="utf-8")
+                ).get("episode", ep_dir.name)
+            except (OSError, json.JSONDecodeError):
+                pass
+            row["youtube_rendered"] = (ep_dir / "cover.png").is_file()
+            rows.append(row)
+            continue
         pkg_path = ep_dir / "packages.json"
         if not pkg_path.is_file():
             row["error"] = "缺 packages.json"
@@ -1870,6 +1885,11 @@ def packaging_board(
 ):
     if not check_auth(nakama_auth):
         return RedirectResponse(f"/login?next=/bridge/packaging/{episode_slug}", status_code=302)
+    from thousand_sunny.routers.youtube_packaging import is_youtube_episode
+
+    ep_dir = _packaging_root() / episode_slug
+    if ep_dir.is_dir() and is_youtube_episode(ep_dir):
+        return RedirectResponse(f"/bridge/youtube-packaging/{episode_slug}", status_code=303)
     ctx = _board_context(episode_slug)
     focused_cut = cut
     pending_cut = None

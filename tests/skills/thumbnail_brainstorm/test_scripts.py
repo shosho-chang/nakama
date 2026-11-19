@@ -5,7 +5,7 @@ Coverage:
 - guest_cutout.sample：機位驗證 fail loud（占比不足 → ValueError、funnel 不被呼叫）
 - guest_cutout.sample happy path：驗證過 → funnel 收到 window、回傳 JSON-ready dicts
 - guest_cutout.finalize：檔名 = cutout_filename("guest", i, emotion)、落 vault podcast 目錄
-- render_still.ensure_recipe_supported：youtube_book fail loud 附指引、未知配方 ValueError
+- render_still.ensure_recipe_supported：youtube_book／youtube_explanation fail loud 指向 youtube-packaging、未知配方 ValueError
 - attach_packages：中間態 packages.json 回填 3 package → 整檔過 S1 validator、雙落點
 - attach_packages：CJK PNG 檔名被 schema 擋（整檔驗證 → 兩份都不落）
 - thumbnail_playbook：PlaybookPairing 帶 why_they_pair 且 compact formatter 有印
@@ -612,9 +612,10 @@ def test_sample_memo_mode_tampered_evidence_aborts_before_funnel(monkeypatch, tm
 # ---------------------------------------------------------------------------
 
 
-def test_youtube_book_fails_loud_with_guidance():
-    with pytest.raises(NotImplementedError, match="Attachments/cutouts/reference/youtube_book"):
-        render_still.ensure_recipe_supported("youtube_book")
+@pytest.mark.parametrize("recipe", ["youtube_book", "youtube_explanation"])
+def test_youtube_main_channel_recipes_point_to_youtube_packaging(recipe):
+    with pytest.raises(NotImplementedError, match="youtube-packaging"):
+        render_still.ensure_recipe_supported(recipe)
 
 
 def test_unknown_recipe_rejected():

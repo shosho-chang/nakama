@@ -54,14 +54,23 @@
             <td>
               {% if row.error %}
               <span class="sho-mono">{{ row.slug }}</span>
+              {% elif row.youtube %}
+              <a class="sho-lk" href="/bridge/youtube-packaging/{{ row.slug }}">{{ row.episode }}</a>
               {% else %}
               <a class="sho-lk" href="/bridge/packaging/{{ row.slug }}">{{ row.episode }}</a>
               {% endif %}
             </td>
+            {% if row.youtube %}
+            <td class="sho-mono">YouTube</td>
+            <td class="sho-mono">—</td>
+            {% else %}
             <td class="sho-mono">{{ row.cuts_total }}（長 {{ row.long_total }}）</td>
             <td class="sho-mono">{{ row.approved }}</td>
+            {% endif %}
             <td>
-              {% if row.error %}
+              {% if row.youtube %}
+              <span class="sho-tag{% if row.youtube_rendered %} sho-tag--accent{% endif %}">{{ "COVER" if row.youtube_rendered else "NO COVER" }}</span>
+              {% elif row.error %}
               <span class="pkg-error" role="alert">⚠ {{ row.error }}</span>
               {% elif row.approved >= row.long_total and row.long_total > 0 %}
               <span class="sho-tag sho-tag--accent">DONE</span>

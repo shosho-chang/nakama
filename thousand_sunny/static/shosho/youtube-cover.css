@@ -1,0 +1,57 @@
+/* YouTube 影片封面版型（書籍介紹／主題介紹）— 1280×720。
+ *
+ * 同一份 CSS/JS 同時用在兩個地方，拖到哪裡、出圖就在哪裡：
+ *   1. Bridge `/bridge/youtube-packaging/<slug>` 的預覽舞台（縮放顯示）
+ *   2. 桌機 `scripts/render_youtube_cover.py`（headless Chromium 以 file:// 載入後截圖）
+ * 字型用相對路徑載入同目錄的 fonts/，兩種載入方式都解得到。
+ * 版型來源：`.claude/skills/book-thumbnail/editor/editor.html` 原型（修修 2026-11-12 定版）。
+ */
+@font-face { font-family: "YTCover"; font-weight: 800;
+  src: url("fonts/LINESeedTW_Eb.woff2") format("woff2"), url("fonts/LINESeedTW_Eb.woff") format("woff"); }
+@font-face { font-family: "YTCover"; font-weight: 700;
+  src: url("fonts/LINESeedTW_Bd.woff2") format("woff2"), url("fonts/LINESeedTW_Bd.woff") format("woff"); }
+
+.ytc {
+  --ytc-accent: #F37425;
+  --ytc-skew: polygon(0% 0%, 100% 3.5%, 100% 100%, 0% 98.8%);
+  position: relative; width: 1280px; height: 720px; overflow: hidden;
+  background: #0c0c0e; color: #fff; transform-origin: 0 0;
+  font-family: "YTCover", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+.ytc * { box-sizing: border-box; }
+.ytc .ytc-bg { position: absolute; inset: -24px; background-size: cover; background-position: center; }
+.ytc .ytc-warm { position: absolute; inset: 0; background: #6b3a12; mix-blend-mode: multiply; }
+.ytc .ytc-shade { position: absolute; inset: 0;
+  background: linear-gradient(20deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,0) 55%); }
+.ytc .ytc-layer { position: absolute; }
+
+.ytc .ytc-feature { perspective: 1600px; }
+.ytc .ytc-deco { position: absolute; inset: 0; }
+.ytc .ytc-deco > i { position: absolute; display: block; background: var(--ytc-accent); }
+.ytc .ytc-deco > i.ol { background: transparent; border: solid var(--ytc-accent); }
+.ytc .ytc-deco > i.sk { clip-path: var(--ytc-skew); }
+.ytc .ytc-b { position: absolute; inset: 0; transform-style: preserve-3d; }
+.ytc .ytc-b img { display: block; width: 100%; height: 100%; object-fit: cover;
+  box-shadow: 0 34px 70px rgba(0,0,0,.6); }
+.ytc .ytc-spine { position: absolute; top: 0; left: 0; height: 100%; width: 26px;
+  transform-origin: left center; transform: rotateY(90deg);
+  background: linear-gradient(90deg, #cfcac0, #f1eee8 40%, #d8d3c9); }
+
+.ytc .ytc-person { transform-origin: center top; max-width: none; }
+.ytc .ytc-person.glow {
+  filter: drop-shadow(0 0 36px rgba(243,116,37,.5)) drop-shadow(0 0 90px rgba(243,116,37,.3)); }
+
+.ytc .ytc-text { font-weight: 800; white-space: nowrap; transform-origin: 0 50%;
+  text-shadow: 0 2px 4px rgba(0,0,0,.55), 0 8px 30px rgba(0,0,0,.65); }
+.ytc .ytc-lead { display: block; line-height: 1.1; letter-spacing: .02em; }
+.ytc .ytc-main { display: block; line-height: 1.08; letter-spacing: .01em; }
+.ytc .ytc-hl { display: inline-block; background: var(--ytc-accent); padding: .04em .16em 0;
+  clip-path: var(--ytc-skew); text-shadow: none; margin-left: .04em; }
+
+.ytc .ytc-logo { filter: drop-shadow(0 2px 8px rgba(0,0,0,.5)); }
+.ytc .ytc-bar { position: absolute; left: 0; right: 0; height: 14px; background: var(--ytc-accent); }
+.ytc .ytc-bar.t { top: 0; } .ytc .ytc-bar.b { bottom: 0; }
+
+/* 編輯中被選取的圖層（出圖時不會加 .editing） */
+.ytc.editing .ytc-layer.sel { outline: 2px dashed var(--ytc-accent); outline-offset: 4px; }

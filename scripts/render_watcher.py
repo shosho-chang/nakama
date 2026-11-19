@@ -449,6 +449,67 @@ def render_one(job: dict, state: dict, state_path: Path, log_path: Path | None) 
     return ok
 
 
+# ---------------------------------------------------------------------------
+# 主頻道 YouTube 影片封面（youtube_book／youtube_explanation）
+# Bridge `/bridge/youtube-packaging/<slug>` 存配方 → 這裡出圖（scripts/render_youtube_cover.py）
+# ---------------------------------------------------------------------------
+
+YOUTUBE_COVER_FILE = "youtube_cover.json"
+
+
+def _yt_state_key(slug: str) -> str:
+    return f"youtube_cover:{slug}"
+
+
+def pending_youtube_covers(vault: Path, state: dict) -> list[dict]:
+    """配方的 requested_at 比上次出圖新、且這個 requested_at 還沒嘗試過 → 待出圖。
+
+    嘗試過（成功或失敗）的 requested_at 記在 state，失敗的配方不會每 5 秒重試一次；
+    修修在 Bridge 再存一次（requested_at 變新）才會重出。"""
+    from shared.schemas.youtube_packaging import YouTubeCoverFileV1
+
+    root = vault / "Attachments" / "packaging"
+    jobs: list[dict] = []
+    if not root.is_dir():
+        return jobs
+    for path in sorted(root.glob(f"*/{YOUTUBE_COVER_FILE}")):
+        slug = path.parent.name
+        if any(path.parent.glob("*.sync-conflict-*")):
+            continue  # conflict 由 Bridge fail loud，這裡不出圖
+        try:
+            doc = YouTubeCoverFileV1.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        except Exception:  # noqa: BLE001 — 壞檔交給 Bridge 顯示，watcher 不崩
+            continue
+        if not doc.needs_render():
+            continue
+        req = doc.requested_at.isoformat()
+        if (state.get(_yt_state_key(slug)) or {}).get("requested_at") == req:
+            continue
+        jobs.append({"slug": slug, "requested_at": req})
+    return jobs
+
+
+def render_youtube_one(
+    job: dict, state: dict, state_path: Path, log_path: Path | None, render=None
+) -> bool:
+    if render is None:
+        from scripts.render_youtube_cover import render_cover as render
+    slug = job["slug"]
+    # 跟 podcast 配方同一種 state 形狀（頂層 key → {"requested_at": …}）
+    state[_yt_state_key(slug)] = {
+        "requested_at": job["requested_at"],
+        "attempted_at": datetime.now(timezone.utc).isoformat(),
+    }
+    save_state(state_path, state)  # 先記下嘗試過，失敗也不無限重試
+    try:
+        res = render(slug, get_vault_path())
+    except Exception as exc:  # noqa: BLE001
+        _log(f"YouTube 封面出圖失敗 {slug}: {type(exc).__name__}: {exc}", log_path)
+        return False
+    _log(f"YouTube 封面出圖完成 {slug} → {res['png']}", log_path)
+    return True
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--interval", type=float, default=5.0, help="掃描間隔秒數")
@@ -511,6 +572,11 @@ def main() -> int:
         )
         for job in render_jobs:
             render_one(job, state, args.state, args.log)
+        if args.cut_id is None and args.package_rank is None:
+            for yt_job in pending_youtube_covers(vault, state):
+                if args.episode_slug and yt_job["slug"] != args.episode_slug:
+                    continue
+                render_youtube_one(yt_job, state, args.state, args.log)
         if args.once:
             return 0
         time.sleep(args.interval)
