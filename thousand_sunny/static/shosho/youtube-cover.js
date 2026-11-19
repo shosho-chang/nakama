@@ -67,6 +67,8 @@
     const b = el("div", "ytc-b", feat);
     const fimg = el("img", "", b); fimg.alt = ""; fimg.draggable = false;
     el("div", "ytc-spine", b);
+    const guest = el("img", "ytc-layer ytc-person", root); guest.dataset.role = "guest";
+    guest.alt = ""; guest.draggable = false;
     const person = el("img", "ytc-layer ytc-person", root); person.dataset.role = "person";
     person.alt = ""; person.draggable = false;
     const text = el("div", "ytc-layer ytc-text", root); text.dataset.role = "text";
@@ -79,6 +81,7 @@
     const setSrc = (img, url) => { if (img.dataset.src !== url) { img.src = url; img.dataset.src = url; } };
     fimg.addEventListener("load", () => last && draw(last, lastOpts));
     person.addEventListener("load", () => last && draw(last, lastOpts));
+    guest.addEventListener("load", () => last && draw(last, lastOpts));
 
     function draw(r, o) {
       last = r; lastOpts = o || {};
@@ -100,13 +103,9 @@
         Object.assign(i.style, {left: x + "px", top: y + "px", width: w + "px", height: h + "px",
           transform: rot ? `rotate(${rot}deg)` : "", borderWidth: bw ? bw + "px" : ""});
       }
-      // 人物（中心 x、頂 y、高）
-      const p = r.person;
-      if (p.src) setSrc(person, assetUrl(p.src));
-      const pw = person.naturalWidth ? p.h * person.naturalWidth / person.naturalHeight : 0;
-      Object.assign(person.style, {height: p.h + "px", left: (p.cx - pw / 2) + "px", top: p.top + "px",
-        transform: p.flip ? "scaleX(-1)" : "", display: p.src ? "" : "none"});
-      person.classList.toggle("glow", !!p.glow);
+      // 人物（中心 x、頂 y、高）：修修＋選用的來賓（來賓疊在修修後面）
+      placePerson(person, r.person);
+      placePerson(guest, r.guest);
       // 大字（上行／主標，主標裡第一個橘框詞上橘底）
       const t = r.text, sz = t.size;
       Object.assign(text.style, {left: t.x + "px", top: t.y + "px", transform: `rotate(${t.rot || 0}deg)`});
@@ -129,8 +128,17 @@
       root.querySelectorAll(".ytc-layer").forEach(l => l.classList.toggle("sel", l.dataset.role === lastOpts.selected));
     }
 
+    function placePerson(img, p) {
+      if (!p || !p.src) { img.style.display = "none"; return; }
+      setSrc(img, assetUrl(p.src));
+      const pw = img.naturalWidth ? p.h * img.naturalWidth / img.naturalHeight : 0;
+      Object.assign(img.style, {height: p.h + "px", left: (p.cx - pw / 2) + "px", top: p.top + "px",
+        transform: p.flip ? "scaleX(-1)" : "", display: ""});
+      img.classList.toggle("glow", !!p.glow);
+    }
+
     async function ready() {
-      await Promise.all([loaded(fimg), loaded(person), loaded(logo), document.fonts.ready]);
+      await Promise.all([loaded(fimg), loaded(person), loaded(guest), loaded(logo), document.fonts.ready]);
       if (r_bgUrl()) await new Promise(res => { const im = new Image(); im.onload = im.onerror = res; im.src = r_bgUrl(); });
       if (last) draw(last, lastOpts);
     }

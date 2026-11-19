@@ -8,7 +8,8 @@ vault 目錄 `Attachments/packaging/<slug>/`（Syncthing 同步）：
 - `youtube_cover.json` — 封面配方。本 router 存配方時更新 `requested_at`；出圖由桌機
   `scripts/render_watcher.py` → `scripts/render_youtube_cover.py` 回填（VPS 不出圖，ADR-054 D11）
 - `title_tracking.json` — 上架標題紀錄（微調文字、已上頻道＝參加 A/B、影片網址）
-- `assets/` — 本集背景與主圖；去背照來自 vault `Attachments/cutouts/shosho/`
+- `assets/` — 本集背景（`bg-*`）、主圖（`feature.*`）、來賓去背（`guest-*.png`，選用）；
+  修修的去背照來自 vault `Attachments/cutouts/shosho/`
 
 目前沒有上游觸發（修修 2026-11-12：YouTube 製作 pipeline 之後再設計，封面標題先手動叫 agent 做）。
 
@@ -239,6 +240,7 @@ def youtube_packaging_page(
             "cutouts": _cutouts(vault),
             "backgrounds": _list_images(ep, vault, "bg"),
             "features": _list_images(ep, vault, "feature"),
+            "guests": _list_images(ep, vault, "guest"),
         },
         "ab_max": AB_TITLE_MAX,
     }
@@ -312,7 +314,8 @@ async def youtube_save_cover(
     except ValidationError as exc:
         return JSONResponse({"error": f"配方格式不對：{exc.errors()[0]['msg']}"}, status_code=422)
     vault = get_vault_path()
-    for rel in (recipe.bg.src, recipe.feature.src, recipe.person.src):
+    guest_src = recipe.guest.src if recipe.guest else ""
+    for rel in (recipe.bg.src, recipe.feature.src, recipe.person.src, guest_src):
         if rel:
             _resolve_asset(vault, episode_slug, rel)  # 素材必須存在且屬於本集或去背照庫
     path = ep / "youtube_cover.json"

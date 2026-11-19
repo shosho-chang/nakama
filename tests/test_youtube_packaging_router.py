@@ -123,6 +123,28 @@ def test_page_lists_titles_bigtexts_and_assets(client):
     assert boot["lists"]["features"] == [f"Attachments/packaging/{SLUG}/assets/feature.jpg"]
     assert boot["lists"]["cutouts"] == ["Attachments/cutouts/shosho/explaining/2.png"]
     assert boot["cover"] is None and boot["status"] == {"has_recipe": False}
+    assert boot["lists"]["guests"] == []
+
+
+def test_guest_layer_listed_saved_and_checked(client, vault):
+    assets = vault / "Attachments" / "packaging" / SLUG / "assets"
+    Image.new("RGBA", (30, 40)).save(assets / "guest-ray.png")
+    boot = _boot(client.get(f"/bridge/youtube-packaging/{SLUG}").text)
+    guest = f"Attachments/packaging/{SLUG}/assets/guest-ray.png"
+    assert boot["lists"]["guests"] == [guest]
+    rec = _recipe()
+    rec["guest"] = {"src": guest, "cx": 1040, "top": 110, "h": 760}
+    assert (
+        client.post(f"/bridge/youtube-packaging/{SLUG}/cover", json={"recipe": rec}).status_code
+        == 200
+    )
+    doc = json.loads((assets.parent / "youtube_cover.json").read_text(encoding="utf-8"))
+    assert doc["recipe"]["guest"]["src"] == guest
+    rec["guest"]["src"] = f"Attachments/packaging/{SLUG}/assets/guest-nobody.png"
+    assert (
+        client.post(f"/bridge/youtube-packaging/{SLUG}/cover", json={"recipe": rec}).status_code
+        == 404
+    )
 
 
 def test_asset_whitelist(client, vault):

@@ -23,10 +23,14 @@
 
   const cover = YouTubeCover.mount($("#cover"), {assetUrl: p => `${base}/asset?p=${enc(p)}`});
   let sel = "person";
-  const LABEL = {person: "修修", feature: "主圖", text: "大字"};
+  const LABEL = {person: "修修", guest: "來賓", feature: "主圖", text: "大字"};
+  const GUESTS = L.guests || [];
+  let guestMem = S.guest || {src: GUESTS[0] || "", cx: 1040, top: 110, h: 760, glow: false, flip: false};
   function draw() {
     cover.draw(S, {selected: sel});
+    const g = S.guest || guestMem;
     const m = {person: `x${Math.round(S.person.cx)} y${Math.round(S.person.top)} 高${Math.round(S.person.h)}`,
+      guest: S.guest ? `x${Math.round(g.cx)} y${Math.round(g.top)} 高${Math.round(g.h)}` : "（未放）",
       feature: `x${Math.round(S.feature.cx)} y${Math.round(S.feature.cy)} 高${Math.round(S.feature.h)}`,
       text: `x${Math.round(S.text.x)} y${Math.round(S.text.y)} 字級${Math.round(S.text.size)}`};
     $("#meta").textContent = `${LABEL[sel]} ${m[sel]}`;
@@ -37,10 +41,12 @@
   let scale = 1;
   const fit = () => { scale = stage.clientWidth / 1280; root.style.transform = `scale(${scale})`; };
   new ResizeObserver(fit).observe(stage); fit();
-  const POS = {person: ["person.cx", "person.top"], feature: ["feature.cx", "feature.cy"], text: ["text.x", "text.y"]};
-  const SIZE = {person: "person.h", feature: "feature.h", text: "text.size"};
+  const POS = {person: ["person.cx", "person.top"], guest: ["guest.cx", "guest.top"],
+    feature: ["feature.cx", "feature.cy"], text: ["text.x", "text.y"]};
+  const SIZE = {person: "person.h", guest: "guest.h", feature: "feature.h", text: "text.size"};
   let drag = null;
   stage.addEventListener("pointerdown", e => {
+    if (sel === "guest" && !S.guest) return;   // 沒放來賓時不拖
     const [kx, ky] = POS[sel];
     drag = {x0: e.clientX, y0: e.clientY, vx: get(kx), vy: get(ky)};
     stage.setPointerCapture(e.pointerId); stage.classList.add("dragging");
@@ -55,6 +61,7 @@
   stage.addEventListener("pointerup", endDrag); stage.addEventListener("pointercancel", endDrag);
   stage.addEventListener("wheel", e => {
     e.preventDefault();
+    if (sel === "guest" && !S.guest) return;
     const k = SIZE[sel]; set(k, get(k) * (e.deltaY < 0 ? 1.03 : 1 / 1.03)); draw();
   }, {passive: false});
   document.querySelectorAll("[data-sel]").forEach(b => b.onclick = () => {
@@ -84,6 +91,32 @@
   thumbs($("#cutouts"), L.cutouts, "person.src");
   thumbs($("#features"), L.features, "feature.src");
   thumbs($("#bgs"), L.backgrounds, "bg.src");
+
+  // ── 來賓（本集 assets/guest-*.png；沒有就整區隱藏）──
+  if (GUESTS.length) {
+    $("#guest-sec").hidden = false;
+    document.querySelector('[data-sel="guest"]').hidden = false;
+    const box = $("#guests");
+    const mark = () => box.querySelectorAll("button").forEach(b =>
+      b.setAttribute("aria-pressed", (S.guest ? S.guest.src : "") === b.dataset.src ? "true" : "false"));
+    const none = document.createElement("button"); none.type = "button"; none.className = "ytp-none";
+    none.dataset.src = ""; none.textContent = "不放";
+    none.onclick = () => { if (S.guest) guestMem = S.guest; S.guest = null; mark(); draw(); };
+    box.append(none);
+    for (const src of GUESTS) {
+      const b = document.createElement("button"); b.type = "button"; b.dataset.src = src;
+      b.title = src.split("/").pop();
+      const im = document.createElement("img"); im.src = `${base}/thumb?p=${enc(src)}`; im.alt = b.title; im.loading = "lazy";
+      b.append(im);
+      b.onclick = () => { S.guest = {...(S.guest || guestMem), src}; mark(); draw(); };
+      box.append(b);
+    }
+    for (const [id, k] of [["#g-glow", "glow"], ["#g-flip", "flip"]]) {
+      const cb = $(id); cb.checked = !!(S.guest || guestMem)[k];
+      cb.onchange = () => { (S.guest || guestMem)[k] = cb.checked; draw(); };
+    }
+    mark();
+  }
 
   const frames = $("#frames");
   for (const [key, label] of YouTubeCover.FRAME_LABELS) {

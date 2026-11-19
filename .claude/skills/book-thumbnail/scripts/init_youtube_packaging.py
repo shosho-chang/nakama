@@ -9,6 +9,7 @@
 
 做的事（vault `Attachments/packaging/<slug>/`）：
 - `assets/feature.<ext>`：主圖（書籍介紹＝書封；主題介紹＝主題圖）
+- `assets/guest-<名>.png`：來賓去背（選用，`--guest` 可多張；保留透明）
 - `assets/bg-<名稱>.jpg`：背景。長邊大於 2560 會縮成 2560 的工作檔（授權原檔留在桌機，
   不讓幾 MB 的原檔同步到每台裝置）
 - `youtube_cover.json`：起手配方（有 --from-spec 就照原型版面搬，`book` 改名 `feature`）。
@@ -53,6 +54,16 @@ def _copy_image(src: Path, dst: Path) -> None:
         shutil.copy2(src, dst)
 
 
+def _copy_cutout(src: Path, dst: Path) -> None:
+    """來賓去背：一律存 PNG、保留透明（過大才等比縮）。"""
+    from PIL import Image
+
+    im = Image.open(src).convert("RGBA")
+    if max(im.size) > MAX_EDGE:
+        im.thumbnail((MAX_EDGE, MAX_EDGE), Image.LANCZOS)
+    im.save(dst)
+
+
 def _rel(vault: Path, p: str) -> str:
     """原型 spec 的絕對路徑 → vault-relative（只接受 vault 內的去背照）。"""
     q = Path(p).resolve()
@@ -70,6 +81,9 @@ def main(argv: list[str] | None = None) -> int:
     ap.add_argument("--episode", required=True, help="footage 資料夾名")
     ap.add_argument("--feature", type=Path, required=True)
     ap.add_argument("--bg", type=Path, action="append", default=[])
+    ap.add_argument(
+        "--guest", type=Path, action="append", default=[], help="來賓去背 PNG（可多張）"
+    )
     ap.add_argument("--from-spec", type=Path)
     ap.add_argument("--tracking", type=Path)
     ap.add_argument("--vault", type=Path)
@@ -90,7 +104,12 @@ def main(argv: list[str] | None = None) -> int:
         dst = assets / f"bg-{bg.stem[:40]}{bg.suffix.lower()}"
         _copy_image(bg, dst)
         bg_rels.append(f"{base}/{dst.name if dst.exists() else dst.with_suffix('.jpg').name}")
-    print(f"素材 → {assets}（{1 + len(bg_rels)} 張）")
+    guest_rels = []
+    for g in a.guest:
+        dst = assets / f"guest-{g.stem[:40]}.png"
+        _copy_cutout(g, dst)
+        guest_rels.append(f"{base}/{dst.name}")
+    print(f"素材 → {assets}（{1 + len(bg_rels) + len(guest_rels)} 張）")
 
     cover_path = ep / "youtube_cover.json"
     if cover_path.exists() and not a.force:
@@ -125,6 +144,14 @@ def main(argv: list[str] | None = None) -> int:
         recipe["person"].setdefault("cx", 420)
         recipe["person"].setdefault("top", 44)
         recipe["person"].setdefault("h", 860)
+        if guest_rels:  # 有來賓：預設放右側，修修／主圖位置不動，到 Bridge 再調
+            recipe["guest"] = {
+                "src": guest_rels[0],
+                "cx": 1040,
+                "top": 110,
+                "h": 760,
+                "glow": False,
+            }
         doc = YouTubeCoverFileV1.model_validate(
             {
                 "episode": a.episode,

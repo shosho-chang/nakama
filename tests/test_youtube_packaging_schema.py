@@ -77,6 +77,23 @@ def test_backslash_paths_are_normalised():
     assert f.recipe.person.src == "Attachments/cutouts/shosho/explaining/2.png"
 
 
+def test_guest_is_optional_and_whitelisted():
+    f = YouTubeCoverFileV1.model_validate({"episode": "x", "recipe": _recipe()})
+    assert f.recipe.guest is None
+    r = _recipe()
+    r["guest"] = {
+        "src": "Attachments/packaging/ep/assets/guest-ray.png",
+        "cx": 1,
+        "top": 2,
+        "h": 700,
+    }
+    f = YouTubeCoverFileV1.model_validate({"episode": "x", "recipe": r})
+    assert f.recipe.guest.glow is True and f.recipe.guest.src.endswith("guest-ray.png")
+    r["guest"]["src"] = "D:/elsewhere/ray.png"
+    with pytest.raises(ValidationError):
+        YouTubeCoverFileV1.model_validate({"episode": "x", "recipe": r})
+
+
 def test_unknown_frame_style_rejected():
     r = _recipe()
     r["feature"]["frame_style"] = "rounded-card"

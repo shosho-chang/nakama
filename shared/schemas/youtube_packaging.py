@@ -62,6 +62,8 @@ class CoverFeatureV1(_Strict):
 
 
 class CoverPersonV1(_Strict):
+    """去背人物。`person`＝修修（去背照庫）；`guest`＝來賓（本集 assets/guest-*.png）。"""
+
     src: VaultPath
     cx: float
     top: float
@@ -91,6 +93,7 @@ class YouTubeCoverRecipeV1(_Strict):
     bg: CoverBackgroundV1
     feature: CoverFeatureV1
     person: CoverPersonV1
+    guest: CoverPersonV1 | None = None  # 來賓（選用；疊在修修後面）
     text: CoverTextV1
     logo: CoverLogoV1 = CoverLogoV1()
     bars: bool = True

@@ -42,6 +42,7 @@
     <div class="ytp-grp">圖層</div>
     <div class="ytp-tabs" role="group" aria-label="選擇圖層">
       <button class="ytp-tab" type="button" data-sel="person" aria-pressed="true">修修</button>
+      <button class="ytp-tab" type="button" data-sel="guest" aria-pressed="false" hidden>來賓</button>
       <button class="ytp-tab" type="button" data-sel="feature" aria-pressed="false">主圖</button>
       <button class="ytp-tab" type="button" data-sel="text" aria-pressed="false">大字</button>
     </div>
@@ -60,6 +61,15 @@
 
     <div class="ytp-grp">修修的臉</div>
     <div class="ytp-thumbs" id="cutouts"></div>
+
+    <div id="guest-sec" hidden>
+      <div class="ytp-grp">來賓</div>
+      <div class="ytp-thumbs" id="guests"></div>
+      <div class="ytp-toggles">
+        <label><input type="checkbox" id="g-glow">來賓光暈</label>
+        <label><input type="checkbox" id="g-flip">來賓翻轉</label>
+      </div>
+    </div>
 
     <div class="ytp-grp">主圖</div>
     <div class="ytp-thumbs wide" id="features"></div>
