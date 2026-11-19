@@ -1,0 +1,158 @@
+<!doctype html>
+<!-- 第 11 類「他人影片引用」框起來的版本（2026-11-17 草稿，三款待修修選）。
+     修修：「在底下做一個底圖，然後將引用的畫面縮小……背後可能就是我們品牌的 pattern，
+     然後一個框框可以讓它做類似這樣線條繞圈的簡單動畫」。
+     這一頁是片段「上面」那層：底圖＋框線＋影片來源，中間挖一個窗（透明），片段由 ffmpeg 縮小放在窗後面。
+     碎片＝品牌手冊 brand-identity.pdf 第 24 頁「影片開頭」向量原稿（同章節卡 POLYS，原樣不重畫）。
+     variant：a＝冷灰底＋碎片圍一圈（章節卡同款）；b＝橘色滿版＋兩角冷灰碎片；c＝冷灰底＋兩角橘色碎片。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"variant","type":"string","label":"款式 a／b／c","default":"b"},
+    {"id":"win_w","type":"number","label":"窗寬（px，16:9；高度、位置跟著算）","default":1632},
+    {"id":"segments","type":"string","label":"每段的來源 JSON：[[秒數, 來源]…]","default":"[[0.5,\"The Rational Reminder Podcast\"],[3.25,\"Marriage Kids and Money\"],[5.99,\"Moneywise\"]]"},
+    {"id":"show_sec","type":"number","label":"總長（秒）＝0.5 進場＋片段＋0.3 退場","default":8.69}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <style>
+      @font-face { font-family: "Noto Sans TC Black"; font-weight: 900; font-display: block;
+        src: url("assets/fonts/noto-sans-tc/NotoSansTC-Black.woff2") format("woff2"); }
+      :root { --orange: #f57331; --gray: #dddddb; --ink: #000; --white: #fff;
+        --font-display: "Noto Sans TC Black", "Noto Sans TC", "Source Han Sans TC", sans-serif; }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden;
+        font-family: var(--font-display); font-weight: 900; }
+      #board { position: absolute; inset: 0; }
+      #bg { position: absolute; inset: 0; }
+      svg { position: absolute; inset: 0; overflow: visible; }
+      #label { position: absolute; display: flex; align-items: stretch; }
+      #tag { flex: none; color: var(--white); background: var(--orange); font-size: 30px; line-height: 1;
+        padding: 12px 22px 13px 18px; clip-path: polygon(0% 0%, 100% 0%, 92% 100%, 0% 100%); position: relative; z-index: 1; }
+      #names { display: grid; justify-items: start; margin-left: -12px; }
+      .name { grid-area: 1 / 1; visibility: hidden; color: var(--ink); background: var(--white); font-size: 34px; line-height: 1;
+        white-space: nowrap; padding: 10px 22px 11px 26px; clip-path: polygon(6% 0%, 100% 0%, 100% 100%, 0% 100%); }
+      .vb #tag { color: var(--white); background: var(--ink); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="framed"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60">
+      <div id="board"><div id="bg"></div><svg id="shards" viewBox="0 0 1920 1080"></svg></div>
+      <svg id="lines" viewBox="0 0 1920 1080"></svg>
+      <div id="label"><div id="tag">影片來源</div><div id="names"></div></div>
+    </div>
+    <script>
+      // 窗（片段縮小後的位置）：16:9、水平置中；「影片來源（64px）＋窗」整塊垂直置中。
+      // agents/brook/youtube_video/visuals/others_clip.py 的 window_rect() 用同一條算式，兩邊要一起改。
+      const v0 = (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const W = (() => {
+        const w = Math.round(Number(v0.win_w ?? 1632) / 2) * 2, h = Math.round(w * 9 / 16 / 2) * 2;
+        return { x: (1920 - w) / 2, y: Math.round((1080 - h - 64) / 2) + 64, w, h };
+      })();
+      const POLYS = [[[-1.0,1080.1],[95.6,1080.1],[-1.0,997.0]],[[1683.5,751.5],[1920.1,845.5],[1920.1,661.9],[1733.5,598.4]],[[1663.3,508.9],[1920.1,687.4],[1920.1,461.8],[1775.5,377.7]],[[1838.3,433.1],[1920.1,539.4],[1920.1,382.3]],[[1399.4,959.4],[1542.0,1080.1],[1832.8,1080.1],[1479.8,831.0]],[[1626.0,860.3],[1782.6,1080.1],[1920.1,1080.1],[1920.1,973.8],[1808.7,780.6]],[[1267.7,1080.1],[1536.7,1080.1],[1279.5,1005.1]],[[255.9,0.9],[279.3,214.1],[431.6,178.7],[442.2,0.9]],[[-1.0,344.1],[253.5,446.3],[294.1,295.5],[-1.0,114.4]],[[-1.0,0.9],[-1.0,16.0],[233.6,322.1],[345.2,290.9],[212.9,0.9]],[[-1.0,532.1],[9.2,545.5],[120.9,514.3],[-1.0,247.1]],[[-1.0,792.3],[-1.0,860.6],[133.4,1080.1],[301.5,1080.1],[152.8,708.6]],[[422.5,0.9],[460.0,111.1],[686.5,2.8],[685.4,0.9]],[[1057.2,0.9],[1053.9,7.5],[1643.6,234.2],[1697.4,79.8],[1503.6,0.9]],[[989.7,0.9],[1297.1,215.5],[1386.4,78.5],[1279.8,0.9]],[[1427.7,0.9],[1427.4,117.8],[1920.1,89.5],[1920.1,0.9]],[[157.1,918.4],[333.2,1080.1],[600.2,1080.1],[285.1,797.1]],[[470.1,1073.2],[487.5,1080.1],[977.1,1080.1],[546.4,914.3]]];
+      // 只在兩角：右下 3 塊原樣、左上沿對角線翻面（同小標題／文件 highlighter）
+      const BR = [POLYS[1], POLYS[4], POLYS[5]];
+      const v = (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const variant = String(v.variant || "b");
+      const segs = JSON.parse(v.segments || "[]");
+      const S = Number(v.show_sec ?? 8);
+      const NS = "http://www.w3.org/2000/svg";
+      const $ = (id) => document.getElementById(id);
+      document.body.classList.add("v" + variant);
+      const look = {
+        a: { bg: "#dddddb", shard: "#f57331", base: "#000", run: "#f57331", polys: POLYS },
+        b: { bg: "#f57331", shard: "#dddddb", base: "#fff", run: "#000",
+             polys: [...BR, ...BR.map((p) => p.map(([x, y]) => [1080 - y, 1920 - x]))] },
+        c: { bg: "#dddddb", shard: "#f57331", base: "#000", run: "#f57331",
+             polys: [...BR, ...BR.map((p) => p.map(([x, y]) => [1080 - y, 1920 - x]))] },
+      }[variant] || {};
+      $("bg").style.background = look.bg;
+      // 碎片：記下它在哪一角（右下＝往右下飛出去、左上＝往左上），進退場從角外飛進來／飛出去
+      const shards = look.polys.map((pts) => {
+        const e = document.createElementNS(NS, "polygon");
+        e.setAttribute("fill", look.shard);
+        e.setAttribute("points", pts.map(([x, y]) => x + "," + y).join(" "));
+        $("shards").appendChild(e);
+        const mx = pts.reduce((a, p) => a + p[0], 0) / pts.length;
+        return { e, d: mx > 960 ? 1 : -1 };
+      });
+      // 底圖挖窗（evenodd：外框－窗）
+      const hole = (x, y, w, h) =>
+        `polygon(evenodd, 0px 0px, 1920px 0px, 1920px 1080px, 0px 1080px, 0px 0px, ${x}px ${y}px, ${x + w}px ${y}px, ${x + w}px ${y + h}px, ${x}px ${y + h}px, ${x}px ${y}px)`;
+      const cx = W.x + W.w / 2, cy = W.y + W.h / 2;
+      // 框線：底線一圈＋一段較粗的線繞著框跑（stroke-dasharray）
+      const P = 2 * (W.w + W.h), RUN = P * 0.22;
+      const rect = (stroke, width) => {
+        const r = document.createElementNS(NS, "rect");
+        Object.entries({ x: W.x, y: W.y, width: W.w, height: W.h, fill: "none", stroke, "stroke-width": width,
+          "stroke-linejoin": "miter" }).forEach(([k, val]) => r.setAttribute(k, val));
+        $("lines").appendChild(r);
+        return r;
+      };
+      const base = rect(look.base, 3);
+      const run = rect(look.run, 9);
+      base.setAttribute("stroke-dasharray", `${P} ${P}`);
+      run.setAttribute("stroke-dasharray", `${RUN} ${P - RUN}`);
+      // 來源：框的左上方
+      const label = $("label");
+      label.style.left = W.x + "px"; label.style.top = (W.y - 64) + "px";
+      const names = segs.map(([, text]) => {
+        const d = document.createElement("div");
+        d.className = "name"; d.textContent = text; $("names").appendChild(d); return d;
+      });
+
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = window.__timelines || {};
+      window.__timelines["framed"] = tl;
+      // 修修 2026-11-17：「橘色底先出現，然後灰色的框框跑進來，畫面再出現」。
+      // 進場：橘底斜著刷進來 → 兩角灰色碎片從角外飛進來（落地帶一點回彈）→ 窗從中線拉開（片段從 INTRO 秒開始播）
+      //       → 框線畫一圈 → 繞圈的線開始跑。退場反過來：窗關上 → 碎片飛出去 → 橘底刷掉。
+      // INTRO／OUTRO 跟 others_clip.py 的 INTRO_SEC／OUTRO_SEC 一樣：片段只在這中間播。
+      const INTRO = 0.5, OUTRO = 0.3;
+      const win = { x: W.x, y: cy, w: W.w, h: 0 };
+      const board = $("board");
+      const paint = () => { board.style.clipPath = hole(win.x, win.y, win.w, win.h); };
+      paint();
+      tl.fromTo("#bg", { clipPath: "polygon(130% 0%, 130% 0%, 100% 100%, 100% 100%)" },
+        { clipPath: "polygon(-30% 0%, 130% 0%, 100% 100%, 0% 100%)", duration: 0.28, ease: "power2.inOut" }, 0);
+      const FROM = [360, 240];
+      shards.forEach((p, i) => {
+        tl.fromTo(p.e, { x: p.d * FROM[0], y: p.d * FROM[1] },
+          { x: 0, y: 0, duration: 0.3, ease: "back.out(1.5)" }, 0.16 + 0.04 * (i % 3));
+      });
+      tl.fromTo(win, { x: W.x, y: cy, w: W.w, h: 0 },
+        { x: W.x, y: W.y, w: W.w, h: W.h, duration: 0.34, ease: "power3.out", onUpdate: paint }, INTRO);
+      tl.fromTo(base, { strokeDashoffset: P }, { strokeDashoffset: 0, duration: 0.5, ease: "power2.inOut" }, INTRO + 0.12);
+      tl.set(run, { opacity: 0 }, 0);
+      tl.set(run, { opacity: 1 }, INTRO + 0.6);
+      const LAP = 2.6; // 繞一圈幾秒
+      const RUN_FOR = Math.max(0.5, S - INTRO - 1.2);
+      tl.fromTo(run, { strokeDashoffset: 0 }, { strokeDashoffset: -P * Math.max(1, RUN_FOR / LAP),
+        duration: RUN_FOR, ease: "none" }, INTRO + 0.6);
+      tl.fromTo("#tag", { clipPath: "polygon(0% 0%, 0% 0%, 0% 100%, 0% 100%)" },
+        { clipPath: "polygon(0% 0%, 100% 0%, 92% 100%, 0% 100%)", duration: 0.22, ease: "power3.out" }, INTRO + 0.2);
+      tl.fromTo("#names", { xPercent: -30, opacity: 0 }, { xPercent: 0, opacity: 1, duration: 0.26, ease: "power3.out" }, INTRO + 0.3);
+      segs.forEach(([t], i) => {
+        const at = Math.max(0, Number(t));
+        if (i > 0) tl.set(names[i - 1], { visibility: "hidden" }, at);
+        tl.set(names[i], { visibility: "visible" }, at);
+        if (i > 0) tl.fromTo(names[i], { clipPath: "polygon(6% 0%, 6% 0%, 0% 100%, 0% 100%)" },
+          { clipPath: "polygon(6% 0%, 100% 0%, 100% 100%, 0% 100%)", duration: 0.2, ease: "power3.out" }, at);
+      });
+      // 退場：片段最後 0.25 秒窗關上、來源和框線同時收 → 碎片飛出去 → 橘底刷掉；最後一格前全透明
+      const CLOSE = S - OUTRO - 0.25;
+      tl.to(["#label", "#lines"], { opacity: 0, duration: 0.15 }, CLOSE);
+      tl.fromTo(win, { x: W.x, y: W.y, w: W.w, h: W.h },
+        { x: W.x, y: cy, w: W.w, h: 0, duration: 0.25, ease: "power2.in", onUpdate: paint, immediateRender: false }, CLOSE);
+      shards.forEach((p) => {
+        tl.to(p.e, { x: p.d * FROM[0], y: p.d * FROM[1], duration: 0.2, ease: "power2.in" }, S - OUTRO);
+      });
+      tl.to("#bg", { clipPath: "polygon(-30% 0%, -30% 0%, 0% 100%, 0% 100%)", duration: 0.22, ease: "power2.in" }, S - 0.25);
+      tl.set(board, { opacity: 0 }, S - 0.03);
+      tl.to({}, { duration: 60 }, 0);
+    </script>
+  </body>
+</html>

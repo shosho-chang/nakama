@@ -323,3 +323,17 @@ body.sho .vp-pick button.is-in { color: var(--sho-ink); background: var(--sho-ac
   body.sho .vp-meta { gap: var(--sho-s-2) var(--sho-s-5); }
   body.sho .vp-dialog { margin: auto auto 0; width: 100vw; max-width: 100vw; max-height: 92dvh; border-radius: var(--sho-r-2) var(--sho-r-2) 0 0; }
 }
+
+/* 他人影片引用：到「挑片段」頁 */
+body.sho .vp-clips {
+  align-self: flex-start;
+  margin-top: var(--sho-s-2);
+  font-size: 13px;
+  color: var(--sho-ink);
+  text-decoration: underline;
+  text-decoration-color: var(--sho-line-2);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+}
+body.sho .vp-clips:hover { text-decoration-color: var(--sho-accent); }
+body.sho .vp-clips:focus-visible { outline: none; box-shadow: var(--sho-focus); }

@@ -7,6 +7,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import os
@@ -18,6 +19,7 @@ from fastapi import APIRouter, Body, Cookie, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
+from agents.brook.youtube_video import clips
 from agents.brook.youtube_video import visual_plan as vp
 from agents.brook.youtube_video.categories import load_categories
 from thousand_sunny.auth import check_auth
@@ -52,6 +54,8 @@ def _asset_version() -> str:
         "bridge-pages.css",
         "bridge-video-plan.css",
         "bridge-video-plan.js",
+        "bridge-video-clips.css",
+        "bridge-video-clips.js",
     ):
         asset = static_dir / name
         if asset.is_file():
@@ -270,3 +274,108 @@ async def video_plan_delete_row(episode: str, row_id: str, nakama_auth: str | No
 async def video_plan_restore_row(episode: str, row_id: str, nakama_auth: str | None = Cookie(None)):
     _require_auth(nakama_auth)
     return _mutate(episode, lambda plan: vp.restore_row(plan, row_id))
+
+
+# ── 他人影片引用：挑片段、標起訖（第 11 類）──────────────────────────────
+
+CLIP_CATEGORY = "others_clip"
+
+
+def _clip_row(episode: str, row_id: str) -> tuple[Path, dict[str, Any], dict[str, Any]]:
+    episode_dir = _episode_dir(episode)
+    path = vp.plan_path(episode_dir)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="這一集還沒有畫面規劃表")
+    plan = vp.load_plan(path)
+    row = next((r for r in plan["rows"] if r["id"] == row_id), None)
+    if row is None or row.get("category") != CLIP_CATEGORY:
+        raise HTTPException(status_code=404, detail="這一列不是他人影片引用")
+    return episode_dir, plan, row
+
+
+def _clip_payload(picks: dict[str, Any]) -> dict[str, Any]:
+    chosen = clips.approved(picks)
+    return {
+        "candidates": picks["candidates"],
+        "need": picks.get("need", 3),
+        "approved": len(chosen),
+        "approved_sec": round(sum(c["end"] - c["start"] for c in chosen), 2),
+    }
+
+
+def _mutate_picks(episode: str, row_id: str, operation) -> JSONResponse:
+    episode_dir, _plan, _row = _clip_row(episode, row_id)
+    path = clips.picks_path(episode_dir, row_id)
+    with clips.picks_lock(path):
+        picks = clips.load_picks(path, row_id)
+        try:
+            result = operation(picks)
+        except (clips.ClipError, ValueError, TypeError) as exc:
+            return JSONResponse({"error": str(exc)}, status_code=422)
+        clips.save_picks(path, picks)
+    payload = _clip_payload(picks)
+    if isinstance(result, dict):
+        payload["candidate"] = result
+    return JSONResponse(payload)
+
+
+@page_router.get("/{episode}/clips/{row_id}", response_class=HTMLResponse)
+async def video_clips_page(
+    request: Request, episode: str, row_id: str, nakama_auth: str | None = Cookie(None)
+):
+    if not check_auth(nakama_auth):
+        return RedirectResponse(f"/login?next={quote(request.url.path, safe='/')}", status_code=302)
+    episode_dir, plan, row = _clip_row(episode, row_id)
+    picks = clips.load_picks(clips.picks_path(episode_dir, row_id), row_id)
+    view = _row_view(plan, row)
+    cues = vp.cue_range(plan, row["start_cue"], row["end_cue"])
+    return _templates.TemplateResponse(
+        request,
+        "video_clips.html",
+        {
+            "episode": episode,
+            "asset_version": _ASSET_VERSION,
+            "row": row,
+            "view": view,
+            "row_sec": round(cues[-1]["end"] - cues[0]["start"], 2),
+            # 標題可能含 "</script>"：跳脫 "</" 才放進 <script type="application/json">
+            "picks_json": json.dumps(_clip_payload(picks), ensure_ascii=False).replace(
+                "</", "<\\/"
+            ),
+        },
+    )
+
+
+@page_router.patch("/{episode}/clips/{row_id}/{cand_id}")
+async def video_clips_update(
+    episode: str,
+    row_id: str,
+    cand_id: str,
+    changes: dict[str, Any] = Body(...),
+    nakama_auth: str | None = Cookie(None),
+):
+    _require_auth(nakama_auth)
+    return _mutate_picks(
+        episode, row_id, lambda picks: clips.update_candidate(picks, cand_id, changes)
+    )
+
+
+@page_router.post("/{episode}/clips/{row_id}")
+async def video_clips_add(
+    episode: str,
+    row_id: str,
+    body: dict[str, Any] = Body(...),
+    nakama_auth: str | None = Cookie(None),
+):
+    """修修自己貼一支網址進來：讀影片資訊（不下載），預設從頭取 4 秒，再到播放器上標起訖。"""
+    _require_auth(nakama_auth)
+    url = str(body.get("url") or "").strip()
+    try:
+        meta = await asyncio.to_thread(clips.info, url)
+    except Exception as exc:  # noqa: BLE001 — 網址錯、影片下架、地區限制都直接給修修看
+        return JSONResponse({"error": f"讀不到這支影片：{exc}"}, status_code=422)
+    start = float(body.get("start") or 0)
+    end = min(start + 4.0, float(meta.get("duration") or start + 4.0))
+    return _mutate_picks(
+        episode, row_id, lambda picks: clips.add_candidate(picks, meta, start, end, "修修加的")
+    )
