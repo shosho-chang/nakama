@@ -1,0 +1,162 @@
+<!doctype html>
+<!-- 第 15 類 Avatar 的第一階段：多格漫畫（修修 2026-11-18：「先讓 2D 人偶在 2D 場景移動就好，以多格漫畫形式來做」）。
+     場景圖：ChatGPT ImageGen 生的「無人物」線稿背景（assets/comic/*.png）；人物一律用 figure.js 的線條修修疊上去，
+     logo 臉不交給生圖模型重畫。鏡頭：整頁漫畫當成一張大畫布，鏡頭逐格推近、平移，最後拉遠看整頁。
+     這一版是格式 demo，格子內容是 Kling 測試包同一組三場景（書桌／健身房／廚房）；
+     場景圖提示詞見 docs/research/2026-11-17-avatar-video-model-survey.md 的「多格漫畫」段。 -->
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/figure.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      html, body { margin: 0; background: var(--white); overflow: hidden; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--white); }
+      #page { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+      /* 格子：黑色粗框、白色溝縫，不加圓角陰影 */
+      .cell { position: absolute; overflow: hidden; background: var(--gray); outline: 7px solid var(--ink); outline-offset: -3px; }
+      .cell .bg { position: absolute; inset: -4%; width: 108%; height: 108%; object-fit: cover; }
+      .cell .ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+        font-family: var(--font); font-size: 44px; color: var(--ink-2); letter-spacing: .1em; }
+      .cell .ink { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
+      .face-cu { position: absolute; z-index: 2; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="comic"
+      data-width="1920" data-height="1080" data-start="0" data-duration="15"></div>
+    <script>
+      const NS = "http://www.w3.org/2000/svg";
+      const root = document.getElementById("root");
+      const page = document.createElement("div"); page.id = "page"; root.appendChild(page);
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = { comic: tl };
+
+      // 版面：不等寬的四格（寬鏡頭、中景、特寫、寬鏡頭）
+      const M = 24, G = 20;
+      const CELLS = {
+        desk:    { x: M, y: M, w: 1150, h: 500, bg: "assets/comic/desk.png", label: "書桌", op: [0.5, 0.5] },
+        gym:     { x: M + 1150 + G, y: M, w: 1920 - 2 * M - 1150 - G, h: 500, bg: "assets/comic/gym.png", label: "健身房", op: [0.5, 0.5] },
+        face:    { x: M, y: M + 500 + G, w: 560, h: 1080 - 2 * M - 500 - G, bg: null },
+        kitchen: { x: M + 560 + G, y: M + 500 + G, w: 1920 - 2 * M - 560 - G, h: 1080 - 2 * M - 500 - G, bg: "assets/comic/kitchen.png", label: "廚房", op: [0.5, 0.75] },
+      };
+      const cell = {};
+      for (const k in CELLS) {
+        const c = CELLS[k], d = document.createElement("div");
+        d.className = "cell";
+        Object.assign(d.style, { left: c.x + "px", top: c.y + "px", width: c.w + "px", height: c.h + "px" });
+        if (c.bg) {
+          const ph = document.createElement("div"); ph.className = "ph"; ph.textContent = c.label; d.appendChild(ph);
+          const img = document.createElement("img"); img.className = "bg"; img.src = c.bg;
+          img.style.objectPosition = c.op[0] * 100 + "% " + c.op[1] * 100 + "%";
+          img.onerror = () => img.remove(); d.appendChild(img);
+          c.img = img;
+        }
+        page.appendChild(d); cell[k] = d;
+      }
+
+      // 場景圖（ImageGen 1536×1024）上的一點 → 格子座標（照 object-fit:cover＋object-position 算）
+      const IW = 1536, IH = 1024;
+      function imgPt(k, ix, iy) {
+        const c = CELLS[k], bw = c.w * 1.08, bh = c.h * 1.08, bl = -0.04 * c.w, bt = -0.04 * c.h;
+        const s = Math.max(bw / IW, bh / IH);
+        const left = bl + (bw - IW * s) * c.op[0], top = bt + (bh - IH * s) * c.op[1];
+        return [left + ix * s, top + iy * s];
+      }
+
+      // ── 鏡頭：把某一格推到畫面中間（留一點邊，看得到格框） ──
+      function camTo(k, at, dur, fill) {
+        const c = CELLS[k];
+        const s = Math.min(1920 / c.w, 1080 / c.h) * (fill || 0.94);
+        const x = 960 - (c.x + c.w / 2) * s, y = 540 - (c.y + c.h / 2) * s;
+        tl.to(page, { scale: s, x, y, duration: dur, ease: "power3.inOut" }, at);
+      }
+      function camPage(at, dur) { tl.to(page, { scale: 1, x: 0, y: 0, duration: dur, ease: "power3.inOut" }, at); }
+      // 背景微推（格子裡的景慢慢放大，避免死照片）
+      function drift(k, at, dur, pt) {
+        const c = CELLS[k], img = c.img; if (!img) return;
+        const o = pt ? (pt[0] + 0.04 * c.w) + "px " + (pt[1] + 0.04 * c.h) + "px" : "50% 50%";
+        tl.fromTo(img, { scale: 1.0, transformOrigin: o }, { scale: 1.06, duration: dur, ease: "none" }, at);
+      }
+
+      // 起手：直接在第一格裡
+      gsap.set(page, { transformOrigin: "0 0" });
+      camTo("desk", 0, 0.001);
+
+      // 格 1 書桌：站在桌前 → 伸懶腰 → 放下
+      const p1 = imgPt("desk", 640, 800);   // 書桌正前方的地板
+      const f1 = EXK_FIGURE.make(cell.desk, { style: "line", scale: 0.62, x: p1[0], y: p1[1] });
+      f1.pose(tl, "stand", 0, 0.01);
+      f1.pose(tl, "armsUp", 0.9, 0.5);
+      f1.pose(tl, "stand", 2.1, 0.4);
+      drift("desk", 0, 3.4, p1);
+
+      // 格 2 健身房：深蹲三下
+      camTo("gym", 2.8, 0.9);
+      const p2 = imgPt("gym", 565, 830);    // 深蹲架正前方
+      const f2 = EXK_FIGURE.make(cell.gym, { style: "line", scale: 0.5, x: p2[0], y: p2[1] });
+      f2.pose(tl, "stand", 0, 0.01);
+      [3.9, 5.0, 6.1].forEach((t) => { f2.pose(tl, "squat", t, 0.45); f2.pose(tl, "stand", t + 0.6, 0.4); });
+      drift("gym", 2.8, 4.4, p2);
+
+      // 格 3 特寫：logo 臉放大＋集中線＋汗（表情靠漫畫符號，不改 logo）
+      camTo("face", 7.0, 0.8, 0.96);
+      const fc = CELLS.face;
+      const lines = document.createElementNS(NS, "svg");
+      lines.setAttribute("viewBox", `0 0 ${fc.w} ${fc.h}`); lines.setAttribute("class", "ink");
+      lines.style.zIndex = 1; lines.style.background = "#fff";
+      const cx = fc.w * 0.5, cy = fc.h * 0.46;
+      for (let i = 0; i < 72; i++) {
+        const a = (i / 72) * Math.PI * 2 + (i % 3) * 0.02, r0 = 210 + (i * 37 % 60), r1 = 900;
+        const l = document.createElementNS(NS, "line");
+        l.setAttribute("x1", cx + Math.cos(a) * r0); l.setAttribute("y1", cy + Math.sin(a) * r0);
+        l.setAttribute("x2", cx + Math.cos(a) * r1); l.setAttribute("y2", cy + Math.sin(a) * r1);
+        l.setAttribute("stroke", "#000"); l.setAttribute("stroke-width", 2 + (i % 4)); lines.appendChild(l);
+      }
+      cell.face.appendChild(lines);
+      const face = document.createElement("img"); face.className = "face-cu";
+      face.src = "assets/brand/shosho_face_filled.png";
+      const fh = fc.h * 0.86; face.style.height = fh + "px";
+      face.style.left = (cx - fh * 978 / 1377 * 0.5) + "px"; face.style.top = (fc.h * 0.1) + "px";
+      cell.face.appendChild(face);
+      // 汗滴（三顆，依序冒出往下滑）
+      const sweat = document.createElementNS(NS, "svg");
+      sweat.setAttribute("viewBox", `0 0 ${fc.w} ${fc.h}`); sweat.setAttribute("class", "ink");
+      [[fc.w * 0.83, fc.h * 0.2], [fc.w * 0.9, fc.h * 0.36], [fc.w * 0.13, fc.h * 0.26]].forEach(([x, y], i) => {
+        const p = document.createElementNS(NS, "path");
+        p.setAttribute("d", `M ${x} ${y} q 16 26 0 38 q -16 -12 0 -38 z`);
+        p.setAttribute("fill", "#fff"); p.setAttribute("stroke", "#000"); p.setAttribute("stroke-width", 5);
+        sweat.appendChild(p);
+        tl.fromTo(p, { opacity: 0, y: -10 }, { opacity: 1, y: 0, duration: 0.2 }, 7.8 + i * 0.35);
+        tl.to(p, { y: 30, duration: 1.2, ease: "power1.in" }, 8.0 + i * 0.35);
+      });
+      cell.face.appendChild(sweat);
+      tl.fromTo(face, { scale: 0.92 }, { scale: 1.0, duration: 2.6, ease: "none" }, 7.0);
+      tl.fromTo(lines, { scale: 1.1, transformOrigin: "50% 46%" }, { scale: 1.0, duration: 2.6, ease: "none" }, 7.0);
+
+      // 格 4 廚房：從左邊走進來，停下揮手
+      camTo("kitchen", 9.6, 0.9);
+      const kc = CELLS.kitchen;
+      const p4 = imgPt("kitchen", 800, 880); // 流理台前的地板
+      const f4 = EXK_FIGURE.make(cell.kitchen, { style: "line", scale: 0.7, x: p4[0], y: p4[1] });
+      f4.pose(tl, "stand", 0, 0.01);
+      tl.fromTo(f4.svg, { x: -kc.w * 0.5 }, { x: 0, duration: 1.4, ease: "power2.out" }, 10.0);
+      [10.1, 10.6, 11.1].forEach((t) => f4.jump(tl, t, 18));
+      f4.pose(tl, "wave", 11.6, 0.35);
+      f4.pose(tl, "stand", 12.6, 0.3);
+      drift("kitchen", 9.6, 5.4, p4);
+
+      // 拉遠看整頁
+      camPage(13.0, 1.2);
+      tl.to({}, { duration: 0.01 }, 15);
+
+      // 預覽：?t=秒數 停在那一格；?play=1 直接播
+      const q = new URLSearchParams(location.search);
+      if (q.get("t")) tl.seek(+q.get("t"));
+      else if (q.get("play") === "1") tl.play(0);
+      else tl.seek(0);
+    </script>
+  </body>
+</html>

@@ -1,0 +1,241 @@
+<!doctype html>
+<!-- 第 15 類 Avatar／多格漫畫 v2：3D 透視場景（修修 2026-11-18：「場景都是 2D 的，但我需要人物在 3D 的場景走動……
+     走向是縱向的 Z 軸，人物大小就會改變」）。
+     稿子同 comic_neat.html（修修 2023-02-10 NEAT 文章，台詞與數字全出自原文）。
+     場景：OpenAI Images API（chatgpt-image-latest）生的一點透視線稿（assets/comic3d/），消失點用 scratchpad 的 vp.py 自動量。
+     人物大小＝透視算出來的：腳踩在地板第 iy 列 → 身高 ≈ 1.08 ×（iy − 地平線 y）。往鏡頭走就變大、往裡走就變小。 -->
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/figure.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      html, body { margin: 0; background: var(--white); overflow: hidden; }
+      #root { background: var(--white); }
+      #page { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+      .cell { position: absolute; overflow: hidden; background: var(--white); outline: 7px solid var(--ink); outline-offset: -3px; }
+      .cell .scene { position: absolute; inset: 0; }
+      .cell .bg { position: absolute; inset: -4%; width: 108%; height: 108%; object-fit: cover; }
+      .ink { position: absolute; inset: 0; pointer-events: none; }
+      .fig { position: absolute; width: 0; height: 0; transform-origin: 0 0; z-index: 3; }
+      .face-cu { position: absolute; z-index: 2; }
+      .bubble { position: absolute; z-index: 5002; background: var(--white); border-style: solid; border-color: var(--ink); border-radius: 50%;
+        padding: .9em 1.4em; line-height: 1.35; text-align: center; white-space: nowrap; }
+      .tail { position: absolute; z-index: 5001; overflow: visible; left: 0; top: 0; width: 1px; height: 1px; }
+      .cap { position: absolute; z-index: 5002; background: var(--white); border-style: solid; border-color: var(--ink);
+        padding: .45em .7em; line-height: 1.4; white-space: nowrap; }
+      .big { position: absolute; z-index: 5002; line-height: 1.1; color: var(--orange); white-space: nowrap; paint-order: stroke fill; }
+      .hl { color: var(--orange); }
+      .neat { background: var(--white); padding: .12em .25em .2em; -webkit-text-stroke: 0 !important; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="comic3d_neat"
+      data-width="1920" data-height="1080" data-start="0" data-duration="26"></div>
+    <script>
+      const NS = "http://www.w3.org/2000/svg";
+      const root = document.getElementById("root");
+      const page = document.createElement("div"); page.id = "page"; root.appendChild(page);
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = { comic3d_neat: tl };
+      const IW = 1536, IH = 1024;          // API 輸出 1536×1024
+      const H_RATIO = 1.08;                 // 人身高 ÷ 鏡頭高度（鏡頭在眼睛高度，頭頂略高過地平線）
+      const FIG_H = 604;                    // figure.js 在 scale 1 的全身高（px）
+
+      // 版面：上排兩格 3:2，下排一格寬的特寫＋一格 3:2
+      const M = 24, G = 20, W = 1920 - 2 * M, H = 1080 - 2 * M;
+      const h1 = 611, w1 = (W - G) / 2, h2 = H - h1 - G, wS = Math.round(h2 * 1.5);
+      const CELLS = {
+        run:      { x: M, y: M, w: w1, h: h1, bg: "assets/comic3d/run.png", vp: [768, 386] },
+        office:   { x: M + w1 + G, y: M, w: w1, h: h1, bg: "assets/comic3d/office.png", vp: [762, 338] },
+        face:     { x: M, y: M + h1 + G, w: W - G - wS, h: h2 },
+        standing: { x: M + W - wS, y: M + h1 + G, w: wS, h: h2, bg: "assets/comic3d/standing.png", vp: [715, 386] },
+      };
+      const cell = {};
+      for (const k in CELLS) {
+        const c = CELLS[k], d = document.createElement("div"); d.className = "cell";
+        Object.assign(d.style, { left: c.x + "px", top: c.y + "px", width: c.w + "px", height: c.h + "px" });
+        const sc = document.createElement("div"); sc.className = "scene"; d.appendChild(sc); c.scene = sc;
+        if (c.bg) { const img = document.createElement("img"); img.className = "bg"; img.src = c.bg; sc.appendChild(img); }
+        c.zoom = Math.min(1920 / c.w, 1080 / c.h) * 0.94;   // 鏡頭推進這格時的放大倍率
+        page.appendChild(d); cell[k] = d;
+      }
+      // 圖座標 → 格子座標（object-fit:cover，置中）
+      const imgScale = (k) => { const c = CELLS[k]; return Math.max(c.w * 1.08 / IW, c.h * 1.08 / IH); };
+      function imgPt(k, ix, iy) {
+        const c = CELLS[k], s = imgScale(k);
+        return [-0.04 * c.w + (c.w * 1.08 - IW * s) / 2 + ix * s, -0.04 * c.h + (c.h * 1.08 - IH * s) / 2 + iy * s];
+      }
+      // 腳踩在圖上 (ix, iy) 時，人物在格子裡的 scale（透視）
+      const perspScale = (k, iy) => imgScale(k) * H_RATIO * Math.max(iy - CELLS[k].vp[1], 1) / FIG_H;
+
+      // ── 透視裡走路的人：位置在「世界座標」線性移動（深度 1/(iy−地平線)、橫向 (ix−消失點x)/(iy−地平線)），畫面上自然近大遠小、越近走越快 ──
+      function walker(k, ix, iy) {
+        const c = CELLS[k], [vx, hy] = c.vp;
+        const wrap = document.createElement("div"); wrap.className = "fig"; cell[k].appendChild(wrap);
+        const f = EXK_FIGURE.make(wrap, { style: "line", scale: 1, x: 0, y: 0 });
+        const st = { ix, iy };
+        function place(ix, iy) {
+          st.ix = ix; st.iy = iy;
+          const p = imgPt(k, ix, iy), s = perspScale(k, iy);
+          wrap.style.left = p[0] + "px"; wrap.style.top = p[1] + "px"; wrap.style.transform = `scale(${s})`;
+          wrap.style.zIndex = 3 + Math.round(iy);  // 越近越上層
+        }
+        place(ix, iy);
+        const toWorld = (ix, iy) => [(ix - vx) / (iy - hy), 1 / (iy - hy)];
+        const api = {
+          f, wrap, st,
+          // 在 at 秒開始，花 dur 秒從目前位置走到 (ix1, iy1)；jog=true 用跑步姿勢＋上下彈
+          walkTo(at, dur, from, to, opt) {
+            const [X0, D0] = toWorld(from[0], from[1]), [X1, D1] = toWorld(to[0], to[1]);
+            const prox = {}; let u = 0;
+            Object.defineProperty(prox, "u", { get: () => u, set: (v) => {
+              u = v; const D = D0 + (D1 - D0) * v, X = X0 + (X1 - X0) * v, iyv = hy + 1 / D;
+              place(vx + X * (iyv - hy), iyv); } });
+            tl.fromTo(prox, { u: 0 }, { u: 1, duration: dur, ease: (opt && opt.ease) || "none", immediateRender: false }, at);
+            if (opt && opt.gait) {
+              const step = opt.step || 0.24;
+              for (let t = at, i = 0; t < at + dur - 0.05; t += step, i++) {
+                f.pose(tl, opt.gait === "jog" ? (i % 2 ? "jogB" : "jogA") : (i % 2 ? "wave" : "stand"), t, step * 0.5);
+                f.jump(tl, t, opt.bob || 14);
+              }
+            }
+          },
+          // 目前 scale 下：嘴邊（給泡泡尾巴）與頭旁（給汗滴）在格子裡的位置
+          at(ix, iy) { const p = imgPt(k, ix, iy), s = perspScale(k, iy); return { p, s,
+            mouthR: [p[0] + 95 * s, p[1] - 410 * s], mouthL: [p[0] - 125 * s, p[1] - 410 * s] }; },
+        };
+        return api;
+      }
+
+      function camTo(k, at, dur) {
+        const c = CELLS[k], s = c.zoom;
+        tl.to(page, { scale: s, x: 960 - (c.x + c.w / 2) * s, y: 540 - (c.y + c.h / 2) * s, duration: dur, ease: "power3.inOut" }, at);
+      }
+      function drift(k, at, dur, pt) {
+        const c = CELLS[k];
+        tl.fromTo(c.scene, { scale: 1, transformOrigin: pt ? pt[0] + "px " + pt[1] + "px" : "50% 50%" },
+          { scale: 1.05, duration: dur, ease: "none" }, at);
+      }
+      // 文字大小都用「推進後在螢幕上的大小」來定，所以小格子、大格子推進後字一樣大
+      function bubble(k, html, box, tail, at) {
+        const z = CELLS[k].zoom, b = document.createElement("div"); b.className = "bubble"; b.innerHTML = html;
+        Object.assign(b.style, { fontSize: 46 / z + "px", borderWidth: 9 / z + "px", left: box.x + "px", top: box.y + "px" });
+        cell[k].appendChild(b);
+        const base = [box.x + b.offsetWidth * (box.tailAt ?? 0.3), box.y + b.offsetHeight * 0.84];
+        const t = document.createElementNS(NS, "svg"); t.setAttribute("class", "tail");
+        const p = document.createElementNS(NS, "path"), bw = 100 / z;
+        p.setAttribute("d", `M ${base[0] - bw * 0.6} ${base[1]} L ${tail[0]} ${tail[1]} L ${base[0] + bw * 0.4} ${base[1]} Z`);
+        p.setAttribute("fill", "#fff"); p.setAttribute("stroke", "#000"); p.setAttribute("stroke-width", 9 / z);
+        p.setAttribute("stroke-linejoin", "round"); t.appendChild(p); cell[k].appendChild(t);
+        tl.fromTo([b, t], { opacity: 0, scale: 0.6, transformOrigin: "30% 90%" },
+          { opacity: 1, scale: 1, duration: 0.28, ease: "back.out(1.7)" }, at);
+        return [b, t];
+      }
+      function cap(k, html, pos, at) {
+        const z = CELLS[k].zoom, c = document.createElement("div"); c.className = "cap"; c.innerHTML = html;
+        Object.assign(c.style, { fontSize: 40 / z + "px", borderWidth: 7 / z + "px" });
+        cell[k].appendChild(c);
+        const ww = c.offsetWidth, hh = c.offsetHeight, C = CELLS[k];
+        c.style.left = (pos.right != null ? C.w - ww - pos.right : pos.left) + "px";
+        c.style.top = (pos.bottom != null ? C.h - hh - pos.bottom : pos.top) + "px";
+        tl.fromTo(c, { opacity: 0, x: -16 / z }, { opacity: 1, x: 0, duration: 0.25, ease: "power3.out" }, at);
+        return c;
+      }
+      function bigText(k, html, left, top, size, at) {
+        const z = CELLS[k].zoom, b = document.createElement("div"); b.className = "big"; b.innerHTML = html;
+        Object.assign(b.style, { left: left + "px", top: top + "px", fontSize: size / z + "px", webkitTextStroke: 18 / z + "px #fff" });
+        cell[k].appendChild(b);
+        tl.fromTo(b, { opacity: 0, scale: 0.7, transformOrigin: "0 50%" }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(1.7)" }, at);
+        return b;
+      }
+      function sweat(k, pts, size, at) {
+        const C = CELLS[k], s = document.createElementNS(NS, "svg");
+        s.setAttribute("viewBox", `0 0 ${C.w} ${C.h}`); s.setAttribute("class", "ink"); s.style.zIndex = 4000;
+        pts.forEach(([x, y], i) => {
+          const p = document.createElementNS(NS, "path");
+          p.setAttribute("d", `M ${x} ${y} q ${size * 0.4} ${size * 0.66} 0 ${size} q ${-size * 0.4} ${-size * 0.34} 0 ${-size} z`);
+          p.setAttribute("fill", "#fff"); p.setAttribute("stroke", "#000"); p.setAttribute("stroke-width", size * 0.14);
+          s.appendChild(p);
+          tl.fromTo(p, { opacity: 0, y: -size * 0.3 }, { opacity: 1, y: 0, duration: 0.18 }, at + i * 0.3);
+          tl.to(p, { y: size * 0.8, duration: 1.1, ease: "power1.in" }, at + 0.2 + i * 0.3);
+        });
+        cell[k].appendChild(s);
+      }
+      gsap.set(page, { transformOrigin: "0 0" });
+
+      // ── 格 1：河濱跑道。從遠方沿著跑道跑向鏡頭（越跑越大），停下、喘、說話 ──
+      camTo("run", 0, 0.001);
+      const R0 = [768, 420], R1 = [740, 930];
+      const w1r = walker("run", R0[0], R0[1]);
+      w1r.f.pose(tl, "stand", 0, 0.01);
+      w1r.walkTo(0.1, 3.0, R0, R1, { gait: "jog", ease: "power1.out" });
+      w1r.f.pose(tl, "stand", 3.15, 0.3);
+      const a1 = w1r.at(R1[0], R1[1]);
+      sweat("run", [[a1.p[0] - 170 * a1.s, a1.p[1] - 560 * a1.s], [a1.p[0] + 110 * a1.s, a1.p[1] - 600 * a1.s], [a1.p[0] - 190 * a1.s, a1.p[1] - 430 * a1.s]], 48 * a1.s, 3.3);
+      bubble("run", "昨天跑了 8.88 公里，<br>才燒掉 <span class=\"hl\">625 大卡</span>⋯⋯",
+        { x: a1.p[0] + 150 * a1.s, y: 24, tailAt: 0.18 }, a1.mouthR, 3.5);
+      drift("run", 3.2, 3.4, a1.p);
+
+      // ── 格 2：書房。從裡面走出來、左右亂晃——旁白＋大數字 ──
+      camTo("office", 6.6, 0.9);
+      const O0 = [770, 470], O1 = [860, 830], O2 = [1120, 860], O3 = [880, 900];
+      const w2 = walker("office", O0[0], O0[1]);
+      w2.f.pose(tl, "stand", 0, 0.01);
+      w2.walkTo(7.4, 1.6, O0, O1, { gait: "jog" });
+      w2.walkTo(9.1, 0.6, O1, O2, { gait: "wave", step: 0.3, bob: 22 });
+      w2.walkTo(10.1, 0.6, O2, O3, { gait: "wave", step: 0.3, bob: 22 });
+      w2.f.pose(tl, "armsUp", 10.8, 0.2); w2.f.jump(tl, 10.9, 40); w2.f.pose(tl, "stand", 11.4, 0.2);
+      cap("office", "有些人整天沒運動，<br>光是抖腳、轉筆、走來走去——", { left: 20, top: 20 }, 7.6);
+      bigText("office", "一天 800 大卡<br><span style=\"font-size:.62em\">最高 2000！</span>", 24, 190, 84, 9.6);
+
+      // ── 格 3：寬特寫。臉＋集中線；右邊大字 NEAT ──
+      camTo("face", 12.4, 0.8);
+      const fc = CELLS.face, cx = fc.h * 0.62, cy = fc.h * 0.5;
+      const lines = document.createElementNS(NS, "svg");
+      lines.setAttribute("viewBox", `0 0 ${fc.w} ${fc.h}`); lines.setAttribute("class", "ink"); lines.style.zIndex = 1;
+      for (let i = 0; i < 90; i++) {
+        const a = (i / 90) * Math.PI * 2 + (i % 3) * 0.02, r0 = 170 + (i * 37 % 50), r1 = 1400;
+        const l = document.createElementNS(NS, "line");
+        l.setAttribute("x1", cx + Math.cos(a) * r0); l.setAttribute("y1", cy + Math.sin(a) * r0);
+        l.setAttribute("x2", cx + Math.cos(a) * r1); l.setAttribute("y2", cy + Math.sin(a) * r1);
+        l.setAttribute("stroke", "#000"); l.setAttribute("stroke-width", 1.5 + (i % 4) * 0.8); lines.appendChild(l);
+      }
+      cell.face.appendChild(lines);
+      const face = document.createElement("img"); face.className = "face-cu"; face.src = "assets/brand/shosho_face_filled.png";
+      const fh = fc.h * 0.86; face.style.height = fh + "px";
+      face.style.left = (cx - fh * 978 / 1377 * 0.5) + "px"; face.style.top = (fc.h * 0.07) + "px";
+      cell.face.appendChild(face);
+      tl.fromTo(face, { scale: 0.9 }, { scale: 1.0, duration: 3.8, ease: "none" }, 12.4);
+      tl.fromTo(lines, { scale: 1.12, transformOrigin: `${cx}px ${cy}px` }, { scale: 1.0, duration: 3.8, ease: "none" }, 12.4);
+      const nb = bigText("face", "<span style=\"color:var(--ink)\">這叫</span> NEAT<br><span style=\"color:var(--ink);font-size:.5em\">非運動性活動產熱</span>",
+        fc.h * 1.25, fc.h * 0.2, 120, 13.4);
+      nb.classList.add("neat");
+
+      // ── 格 4：開放辦公室。站在站立桌旁晃來晃去，然後朝鏡頭走出畫面去倒茶 ──
+      camTo("standing", 16.8, 0.9);
+      const S0 = [1150, 930], S1 = [1060, 930], S2 = [-420, 980];   // 最後往左走出畫面
+      const w4 = walker("standing", S0[0], S0[1]);
+      w4.f.pose(tl, "stand", 0, 0.01);
+      w4.walkTo(17.9, 0.6, S0, S1, { gait: "wave", step: 0.3, bob: 10 });
+      w4.walkTo(18.9, 0.6, S1, S0, { gait: "wave", step: 0.3, bob: 10 });
+      w4.walkTo(19.9, 0.6, S0, S1, { gait: "wave", step: 0.3, bob: 10 });
+      const a4 = w4.at(S1[0], S1[1]);
+      const sb4 = bubble("standing", "最無腦的方法：<br><span class=\"hl\">站著工作</span>。",
+        { x: CELLS.standing.w * 0.3, y: 10, tailAt: 0.8 }, a4.mouthL, 18.0);
+      cap("standing", "站著就會不知不覺動來動去，<br>沒事就想出去倒個茶。", { left: 14, bottom: 14 }, 19.6);
+      w4.walkTo(21.4, 1.6, S1, S2, { gait: "jog", ease: "power1.in" });
+      tl.to(sb4, { opacity: 0, duration: 0.2 }, 21.3);   // 人走了，泡泡收掉
+      drift("standing", 16.8, 6.4, imgPt("standing", S0[0], S0[1]));
+
+      // 拉遠看整頁
+      tl.to(page, { scale: 1, x: 0, y: 0, duration: 1.3, ease: "power3.inOut" }, 23.4);
+      tl.to({}, { duration: 0.01 }, 26);
+
+      const q = new URLSearchParams(location.search);
+      if (q.get("t")) tl.seek(+q.get("t")); else if (q.get("play") === "1") tl.play(0); else tl.seek(0);
+    </script>
+  </body>
+</html>

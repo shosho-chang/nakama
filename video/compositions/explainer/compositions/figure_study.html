@@ -1,0 +1,54 @@
+<!doctype html>
+<!-- 第二種主角畫風的比較稿（給修修挑，不交件）：logo 臉＋三款身體（線條／剪影／剪紙），
+     同一副骨架做同一串動作：站 → 舉手 → 深蹲 → 開合跳 → 揮手。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"spec","type":"string","label":"內容 JSON","default":"{\"layout\":\"full\",\"title\":\"logo 臉＋三款身體\",\"source\":\"\",\"show_sec\":8.2}"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/explainer-kit.js"></script>
+    <script src="assets/kit/figure.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      .flabel { position: absolute; top: 676px; width: 400px; text-align: center; font-size: 44px; }
+      .fground { position: absolute; top: 650px; width: 360px; height: 8px; background: var(--ink); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="figure_study"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60"></div>
+    <script>
+      const spec = JSON.parse(EXK.vars().spec || "{}");
+      const ctx = EXK.frame("figure_study", spec);
+      const { tl, stage } = ctx;
+      const cols = [["line", "線條", 270], ["sil", "剪影", 810], ["cut", "剪紙", 1350]];
+      const figs = cols.map(([style, name, cx]) => {
+        const g = EXK.el("div", "fground", stage); g.style.left = cx - 180 + "px";
+        const lab = EXK.el("div", "flabel", stage, name); lab.style.left = cx - 200 + "px";
+        const wrap = EXK.el("div", null, stage);
+        wrap.style.position = "absolute"; wrap.style.inset = "0";
+        const f = EXK_FIGURE.make(wrap, { style, scale: 0.8, x: cx, y: 646 });
+        EXK.land(tl, wrap, 0.6, { y: 60 });
+        tl.fromTo(g, { scaleX: 0 }, { scaleX: 1, duration: 0.25, ease: EXK.SNAP }, 0.5);
+        tl.fromTo(lab, { opacity: 0 }, { opacity: 1, duration: 0.2 }, 0.7);
+        return f;
+      });
+      figs.forEach((f) => {
+        f.pose(tl, "armsUp", 1.6, 0.35);
+        f.pose(tl, "squat", 2.9, 0.45);
+        f.pose(tl, "star", 4.3, 0.2);
+        f.jump(tl, 4.3, 110);
+        f.pose(tl, "stand", 4.8, 0.2);
+        f.pose(tl, "star", 5.1, 0.2);
+        f.jump(tl, 5.1, 110);
+        f.pose(tl, "stand", 5.6, 0.2);
+        f.pose(tl, "wave", 6.2, 0.3);
+        f.pose(tl, "stand", 7.3, 0.3);
+      });
+      EXK.end(ctx);
+    </script>
+  </body>
+</html>

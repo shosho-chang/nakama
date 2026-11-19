@@ -1,0 +1,212 @@
+<!doctype html>
+<!-- 第 15 類 Avatar／多格漫畫：第一支照稿 demo。
+     稿子：修修 2023-02-10〈不用運動輕鬆減肥，一天最高可燃燒 2000 大卡……〉（shosho.tw/blog/activate-neat-to-burn-more-fat/），
+     台詞與數字全部出自原文。場景圖：ChatGPT ImageGen 生的無人物線稿（assets/comic/）；人物＝figure.js 線條修修。
+     對白泡泡＝修修自己講；方框＝旁白。鏡頭：整頁當畫布，逐格推近，最後拉遠看整頁。 -->
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/figure.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      html, body { margin: 0; background: var(--white); overflow: hidden; }
+      #root { background: var(--white); }
+      #page { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+      .cell { position: absolute; overflow: hidden; background: var(--gray); outline: 7px solid var(--ink); outline-offset: -3px; }
+      .cell .scene { position: absolute; inset: 0; }
+      .cell .bg { position: absolute; inset: -4%; width: 108%; height: 108%; object-fit: cover; }
+      .cell .bg.fit-h { inset: auto; top: 0; }
+      .ink { position: absolute; inset: 0; pointer-events: none; }
+      .face-cu { position: absolute; z-index: 2; }
+      /* 漫畫對白泡泡（橢圓＋尾巴）與旁白方框（直角） */
+      .bubble { position: absolute; z-index: 6; background: var(--white); border: 5px solid var(--ink); border-radius: 50%;
+        padding: 30px 46px; font-size: 30px; line-height: 1.35; text-align: center; white-space: nowrap; }
+      .tail { position: absolute; z-index: 5; overflow: visible; }
+      .cap { position: absolute; z-index: 6; background: var(--white); border: 4px solid var(--ink);
+        padding: 12px 18px; font-size: 26px; line-height: 1.4; white-space: nowrap; }
+      .big { position: absolute; z-index: 6; font-size: 56px; line-height: 1.1; color: var(--orange); white-space: nowrap;
+        -webkit-text-stroke: 10px var(--white); paint-order: stroke fill; }
+      .big small { font-size: 40px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="comic_neat"
+      data-width="1920" data-height="1080" data-start="0" data-duration="26"></div>
+    <script>
+      const NS = "http://www.w3.org/2000/svg";
+      const root = document.getElementById("root");
+      const page = document.createElement("div"); page.id = "page"; root.appendChild(page);
+      const tl = gsap.timeline({ paused: true });
+      window.__timelines = { comic_neat: tl };
+
+      const M = 24, G = 20, TOPH = 500;
+      const CELLS = {
+        run:   { x: M, y: M, w: 1150, h: TOPH, bg: "assets/comic/run.png", op: [0.5, 0.62] },
+        desk:  { x: M + 1150 + G, y: M, w: 1920 - 2 * M - 1150 - G, h: TOPH, bg: "assets/comic/desk.png", op: [0.5, 0.5] },
+        face:  { x: M, y: M + TOPH + G, w: 560, h: 1080 - 2 * M - TOPH - G, bg: null },
+        stand: { x: M + 560 + G, y: M + TOPH + G, w: 1920 - 2 * M - 560 - G, h: 1080 - 2 * M - TOPH - G, bg: "assets/comic/standing.png",
+          // 格子比圖寬太多（2.5:1 vs 3:2）：整張圖照高度放、左右用同色的牆＋地板延伸（地板線在圖左緣 y747、右緣 y771）
+          fit: "h", ext: { floorL: 747, floorR: 771, wall: "#fff", floor: "rgb(228,223,221)" } },
+      };
+      const IW = 1536, IH = 1024;   // ChatGPT ImageGen 橫幅輸出
+      const cell = {};
+      for (const k in CELLS) {
+        const c = CELLS[k], d = document.createElement("div");
+        d.className = "cell";
+        Object.assign(d.style, { left: c.x + "px", top: c.y + "px", width: c.w + "px", height: c.h + "px" });
+        const scene = document.createElement("div"); scene.className = "scene"; d.appendChild(scene); c.scene = scene;
+        if (c.bg && c.fit === "h") {
+          const s = c.h / IH, iw = IW * s, left = (c.w - iw) / 2, e = c.ext;
+          const ext = document.createElementNS(NS, "svg"); ext.setAttribute("class", "ink");
+          ext.setAttribute("viewBox", `0 0 ${c.w} ${c.h}`);
+          const yl = e.floorL * s, yr = e.floorR * s;
+          ext.innerHTML = `<rect width="${c.w}" height="${c.h}" fill="${e.wall}"/>`
+            + `<rect x="0" y="${yl}" width="${left + 2}" height="${c.h}" fill="${e.floor}"/>`
+            + `<rect x="${left + iw - 2}" y="${yr}" width="${c.w}" height="${c.h}" fill="${e.floor}"/>`
+            + `<line x1="0" y1="${yl}" x2="${left + 2}" y2="${yl}" stroke="#000" stroke-width="${6 * s}"/>`
+            + `<line x1="${left + iw - 2}" y1="${yr}" x2="${c.w}" y2="${yr}" stroke="#000" stroke-width="${6 * s}"/>`;
+          scene.appendChild(ext);
+          const img = document.createElement("img"); img.className = "bg fit-h"; img.src = c.bg;
+          Object.assign(img.style, { left: left + "px", height: c.h + "px", width: iw + "px" });
+          scene.appendChild(img);
+        } else if (c.bg) {
+          const img = document.createElement("img"); img.className = "bg"; img.src = c.bg;
+          img.style.objectPosition = c.op[0] * 100 + "% " + c.op[1] * 100 + "%";
+          scene.appendChild(img);
+        }
+        page.appendChild(d); cell[k] = d;
+      }
+      function imgPt(k, ix, iy) {
+        const c = CELLS[k];
+        if (c.fit === "h") { const s = c.h / IH; return [(c.w - IW * s) / 2 + ix * s, iy * s]; }
+        const bw = c.w * 1.08, bh = c.h * 1.08, bl = -0.04 * c.w, bt = -0.04 * c.h;
+        const s = Math.max(bw / IW, bh / IH);
+        return [bl + (bw - IW * s) * c.op[0] + ix * s, bt + (bh - IH * s) * c.op[1] + iy * s];
+      }
+      function camTo(k, at, dur, fill) {
+        const c = CELLS[k], s = Math.min(1920 / c.w, 1080 / c.h) * (fill || 0.94);
+        tl.to(page, { scale: s, x: 960 - (c.x + c.w / 2) * s, y: 540 - (c.y + c.h / 2) * s, duration: dur, ease: "power3.inOut" }, at);
+      }
+      function drift(k, at, dur, pt) {
+        const c = CELLS[k];
+        const o = pt ? pt[0] + "px " + pt[1] + "px" : "50% 50%";   // 放大中心在人物腳下，腳不會在地板上滑
+        tl.fromTo(c.scene, { scale: 1.0, transformOrigin: o }, { scale: 1.06, duration: dur, ease: "none" }, at);
+      }
+      // 對白泡泡：box＝{x,y}（泡泡左上，格子座標），tail＝尾巴尖端（通常指向嘴邊）
+      function bubble(k, html, box, tail, at) {
+        const b = document.createElement("div"); b.className = "bubble"; b.innerHTML = html;
+        b.style.left = box.x + "px"; b.style.top = box.y + "px"; cell[k].appendChild(b);
+        const r = { w: b.offsetWidth, h: b.offsetHeight };
+        const base = [box.x + r.w * (box.tailAt ?? 0.3), box.y + r.h * 0.82];
+        const t = document.createElementNS(NS, "svg"); t.setAttribute("class", "tail");
+        Object.assign(t.style, { left: 0, top: 0, width: "1px", height: "1px" });
+        const p = document.createElementNS(NS, "path");
+        p.setAttribute("d", `M ${base[0] - 34} ${base[1]} L ${tail[0]} ${tail[1]} L ${base[0] + 10} ${base[1]} Z`);
+        p.setAttribute("fill", "#fff"); p.setAttribute("stroke", "#000"); p.setAttribute("stroke-width", 5);
+        p.setAttribute("stroke-linejoin", "round"); t.appendChild(p); cell[k].appendChild(t);
+        tl.fromTo([b, t], { opacity: 0, scale: 0.6, transformOrigin: "30% 90%" },
+          { opacity: 1, scale: 1, duration: 0.28, ease: "back.out(1.7)" }, at);
+      }
+      function cap(k, html, x, y, at) {
+        const c = document.createElement("div"); c.className = "cap"; c.innerHTML = html;
+        c.style.left = x + "px"; c.style.top = y + "px"; cell[k].appendChild(c);
+        tl.fromTo(c, { opacity: 0, x: -16 }, { opacity: 1, x: 0, duration: 0.25, ease: "power3.out" }, at);
+        return c;
+      }
+      function sweat(k, pts, at) {
+        const c = CELLS[k], s = document.createElementNS(NS, "svg");
+        s.setAttribute("viewBox", `0 0 ${c.w} ${c.h}`); s.setAttribute("class", "ink"); s.style.zIndex = 4;
+        pts.forEach(([x, y], i) => {
+          const p = document.createElementNS(NS, "path");
+          p.setAttribute("d", `M ${x} ${y} q 12 20 0 29 q -12 -9 0 -29 z`);
+          p.setAttribute("fill", "#fff"); p.setAttribute("stroke", "#000"); p.setAttribute("stroke-width", 4);
+          s.appendChild(p);
+          tl.fromTo(p, { opacity: 0, y: -8 }, { opacity: 1, y: 0, duration: 0.18 }, at + i * 0.3);
+          tl.to(p, { y: 24, duration: 1.1, ease: "power1.in" }, at + 0.2 + i * 0.3);
+        });
+        cell[k].appendChild(s);
+      }
+      // 線條修修的頭在格子裡的位置（p＝腳下點，S＝scale）：泡泡尾巴指到臉右邊、汗滴放在頭旁
+      const mouthTip = (p, S) => [p[0] + 95 * S, p[1] - 410 * S];   // 新頭：嘴在頭頂下 ~190、臉右緣 ~60
+      gsap.set(page, { transformOrigin: "0 0" });
+
+      // ── 格 1：河濱跑道。跑進來、停下喘、說「才燒掉 625 大卡」 ──
+      camTo("run", 0, 0.001);
+      const p1 = imgPt("run", 620, 830), S1 = 0.62;
+      const f1 = EXK_FIGURE.make(cell.run, { style: "line", scale: S1, x: p1[0], y: p1[1] });
+      f1.pose(tl, "stand", 0, 0.01);
+      tl.fromTo(f1.svg, { x: -620 }, { x: 0, duration: 2.4, ease: "power1.out" }, 0.1);
+      for (let t = 0.1, i = 0; t < 2.4; t += 0.24, i++) { f1.pose(tl, i % 2 ? "jogB" : "jogA", t, 0.12); f1.jump(tl, t, 14); }
+      f1.pose(tl, "stand", 2.55, 0.3);
+      sweat("run", [[p1[0] - 160 * S1, p1[1] - 540 * S1], [p1[0] + 100 * S1, p1[1] - 590 * S1], [p1[0] - 175 * S1, p1[1] - 430 * S1]], 2.7);
+      bubble("run", "昨天跑了 8.88 公里，<br>才燒掉 <b style=\"color:var(--orange)\">625 大卡</b>⋯⋯",
+        { x: p1[0] + 110, y: 34, tailAt: 0.18 }, mouthTip(p1, S1), 3.0);
+      drift("run", 0, 6.4, p1);
+
+      // ── 格 2：書桌。動個不停的人——旁白＋大數字 ──
+      camTo("desk", 6.0, 0.9);
+      const p2 = imgPt("desk", 1060, 800);   // 站到抽屜櫃前，左半邊留給旁白和大數字
+      const f2 = EXK_FIGURE.make(cell.desk, { style: "line", scale: 0.5, x: p2[0], y: p2[1] });
+      f2.pose(tl, "stand", 0, 0.01);
+      const fid = ["wave", "armsOut", "stand", "armsUp", "wave", "star", "stand", "armsOut", "wave", "stand"];
+      fid.forEach((ps, i) => { const t = 7.0 + i * 0.5; f2.pose(tl, ps, t, 0.18); if (i % 2 === 0) f2.jump(tl, t, 20); });
+      cap("desk", "有些人整天沒運動，<br>光是抖腳、轉筆、走來走去——", 22, 22, 7.2);
+      const big = document.createElement("div"); big.className = "big";
+      big.innerHTML = "一天 800 大卡<br><small>最高 2000！</small>";
+      Object.assign(big.style, { left: "22px", top: "150px" }); cell.desk.appendChild(big);
+      tl.fromTo(big, { opacity: 0, scale: 0.7, transformOrigin: "0 50%" }, { opacity: 1, scale: 1, duration: 0.3, ease: "back.out(1.7)" }, 9.4);
+      drift("desk", 6.0, 6.8, p2);
+
+      // ── 格 3：特寫。這叫 NEAT ──
+      camTo("face", 12.6, 0.8, 0.96);
+      const fc = CELLS.face, cx = fc.w * 0.5, cy = fc.h * 0.44;
+      const lines = document.createElementNS(NS, "svg");
+      lines.setAttribute("viewBox", `0 0 ${fc.w} ${fc.h}`); lines.setAttribute("class", "ink");
+      lines.style.zIndex = 1; lines.style.background = "#fff";
+      for (let i = 0; i < 72; i++) {
+        const a = (i / 72) * Math.PI * 2 + (i % 3) * 0.02, r0 = 200 + (i * 37 % 60), r1 = 900;
+        const l = document.createElementNS(NS, "line");
+        l.setAttribute("x1", cx + Math.cos(a) * r0); l.setAttribute("y1", cy + Math.sin(a) * r0);
+        l.setAttribute("x2", cx + Math.cos(a) * r1); l.setAttribute("y2", cy + Math.sin(a) * r1);
+        l.setAttribute("stroke", "#000"); l.setAttribute("stroke-width", 2 + (i % 4)); lines.appendChild(l);
+      }
+      cell.face.appendChild(lines);
+      const face = document.createElement("img"); face.className = "face-cu";
+      face.src = "assets/brand/shosho_face_filled.png";
+      const fh = fc.h * 0.74; face.style.height = fh + "px";
+      face.style.left = (cx - fh * 978 / 1377 * 0.5) + "px"; face.style.top = (fc.h * 0.06) + "px";
+      cell.face.appendChild(face);
+      tl.fromTo(face, { scale: 0.9 }, { scale: 1.0, duration: 3.6, ease: "none" }, 12.6);
+      tl.fromTo(lines, { scale: 1.12, transformOrigin: "50% 44%" }, { scale: 1.0, duration: 3.6, ease: "none" }, 12.6);
+      const neat = cap("face", "這叫 <b style=\"color:var(--orange)\">NEAT</b><br>非運動性活動產熱", 0, 0, 13.6);
+      neat.style.fontSize = "30px";
+      neat.style.left = (fc.w - neat.offsetWidth) / 2 + "px"; neat.style.top = (fc.h - neat.offsetHeight - 20) + "px";
+
+      // ── 格 4：站立辦公桌。最無腦的方法：站著工作 ──
+      camTo("stand", 16.6, 0.9);
+      const sc = CELLS.stand, p4 = imgPt("stand", 600, 880), S4 = 0.68;
+      const f4 = EXK_FIGURE.make(cell.stand, { style: "line", scale: S4, x: p4[0], y: p4[1] });
+      f4.pose(tl, "stand", 0, 0.01);
+      [17.8, 18.8, 19.8].forEach((t, i) => tl.to(f4.svg, { x: i % 2 ? -26 : 26, duration: 0.5, ease: "sine.inOut" }, t));
+      tl.to(f4.svg, { x: 0, duration: 0.4, ease: "sine.inOut" }, 20.6);
+      bubble("stand", "最無腦的方法：<br><b style=\"color:var(--orange)\">站著工作</b>。",
+        { x: p4[0] + 130, y: 22, tailAt: 0.16 }, mouthTip(p4, S4), 17.7);
+      cap("stand", "站著就會不知不覺動來動去，<br>沒事就想出去倒個茶。", 22, sc.h - 130, 19.4);
+      // 走出畫面去倒茶
+      tl.to(f4.svg, { x: sc.w, duration: 1.8, ease: "power1.in" }, 21.4);
+      for (let t = 21.4, i = 0; t < 23.1; t += 0.24, i++) { f4.pose(tl, i % 2 ? "jogB" : "jogA", t, 0.12); f4.jump(tl, t, 10); }
+      drift("stand", 16.6, 6.8, p4);
+
+      // 拉遠看整頁
+      tl.to(page, { scale: 1, x: 0, y: 0, duration: 1.3, ease: "power3.inOut" }, 23.4);
+      tl.to({}, { duration: 0.01 }, 26);
+
+      const q = new URLSearchParams(location.search);
+      if (q.get("t")) tl.seek(+q.get("t"));
+      else if (q.get("play") === "1") tl.play(0);
+      else tl.seek(0);
+    </script>
+  </body>
+</html>

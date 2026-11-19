@@ -1,0 +1,70 @@
+<!doctype html>
+<!-- 第 5 類「解釋動畫」型態「比例」：幾個百分比，各自佔整體多少（長條＝100% 的白色軌道，填進去的是比例）。
+     原型：《財富階梯》「20 年後還停在原階層的比例」。每一條在講到那個數字的那句出現、數字跟長條一起長；
+     正在講的那一條是橘色，講過的回黑。底板、碎片、標題、出處、進退場在 assets/kit/。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"spec","type":"string","label":"內容 JSON（見 youtube-explainer skill 的「比例」）","default":"{\"layout\":\"full\",\"title\":\"20 年後，還在原來那一階\",\"source\":\"資料：《財富階梯》\",\"show_sec\":15.197,\"groups\":[{\"label\":\"第 3 階\",\"at\":2.04,\"bars\":[{\"text\":\"20 年後仍在第 3 階\",\"value\":61.5,\"digits\":1,\"at\":2.3,\"text_at\":4.71}]},{\"label\":\"第 4 階\",\"at\":7.42,\"bars\":[{\"text\":\"20 年後仍在第 4 階\",\"value\":64,\"at\":9.3},{\"text\":\"爬上第 5 階\",\"value\":8,\"at\":12.1}]}]}"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/explainer-kit.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      /* 標題下方到安全框底（730px 高的內容區扣掉標題）垂直置中 */
+      .groups { position: absolute; left: 0; right: 0; top: 110px; bottom: 0; display: flex; flex-direction: column;
+        justify-content: center; gap: 70px; }
+      .group { display: grid; grid-template-columns: 300px 1fr; align-items: start; }
+      .glabel { font-size: 72px; padding-top: 62px; }
+      .bars { display: flex; flex-direction: column; gap: 40px; }
+      .cap { font-size: 40px; color: var(--ink-2); height: 40px; margin-bottom: 14px; }
+      .row { display: flex; align-items: center; gap: 36px; }
+      .track { position: relative; width: 1000px; height: 88px; background: var(--white); }
+      .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--ink); }
+      .val { font-size: 96px; min-width: 280px; font-variant-numeric: tabular-nums; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="proportion"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60"></div>
+    <script>
+      const spec = JSON.parse(EXK.vars().spec || "{}");
+      const ctx = EXK.frame("proportion", spec);
+      const { tl, stage } = ctx;
+      const wrap = EXK.el("div", "groups", stage);
+      const focusSteps = [];
+      (spec.groups || []).forEach((g) => {
+        const grp = EXK.el("div", "group", wrap);
+        const lab = EXK.el("div", "glabel", grp, g.label);
+        const bars = EXK.el("div", "bars", grp);
+        EXK.land(tl, lab, g.at, { x: -30, y: 0 });
+        g.bars.forEach((b) => {
+          const item = EXK.el("div", null, bars);
+          const cap = EXK.el("div", "cap", item, b.text);
+          const row = EXK.el("div", "row", item);
+          const track = EXK.el("div", "track", row);
+          const fill = EXK.el("div", "fill", track);
+          const val = EXK.el("div", "val", row);
+          const grow = 0.38 + 0.5 * Math.min(1, b.value / 100); // 比例越大長得越久，但不拖
+          tl.fromTo(track, { scaleX: 0, transformOrigin: "0 50%" }, { scaleX: 1, duration: 0.22, ease: EXK.SNAP }, b.at - 0.2);
+          tl.fromTo(fill, { width: 0 }, { width: b.value * 10 + "px", duration: grow, ease: EXK.SNAP }, b.at);
+          tl.fromTo(val, { opacity: 0 }, { opacity: 1, duration: 0.1 }, b.at);
+          EXK.count(tl, val, b.value, b.at, grow, b.digits || 0, "%");
+          tl.fromTo(cap, { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.22, ease: EXK.SNAP }, b.text_at ?? b.at);
+          focusSteps.push([b.at, [fill, val]]);
+        });
+      });
+      // 正在講的那一條染橘（長條＋數字），講過的回黑
+      let prev = null;
+      focusSteps.forEach(([t, [fill, val]]) => {
+        if (prev) { tl.to(prev[0], { backgroundColor: EXK.INK, duration: 0.14 }, t); tl.to(prev[1], { color: EXK.INK, duration: 0.14 }, t); }
+        tl.to(fill, { backgroundColor: EXK.ORANGE, duration: 0.14 }, t);
+        tl.to(val, { color: EXK.ORANGE, duration: 0.14 }, t);
+        prev = [fill, val];
+      });
+      EXK.end(ctx);
+    </script>
+  </body>
+</html>
