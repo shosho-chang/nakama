@@ -10,6 +10,9 @@ from pathlib import Path
 import pytest
 
 from agents.brook.script_video.finished_cut_production import CommandRejectedError
+from agents.brook.script_video.finished_cut_production._agent_handoff import (
+    UnassignedSemanticRunner,
+)
 from agents.brook.script_video.finished_cut_production._approved_cut import (
     ApprovedCutAuthority,
     ApprovedCutRegistration,
@@ -22,7 +25,6 @@ from agents.brook.script_video.finished_cut_production._assets import (
 )
 from agents.brook.script_video.finished_cut_production._codex_semantic import (
     CodexProcessResult,
-    SubprocessCodexProcessRunner,
 )
 from agents.brook.script_video.finished_cut_production._composition import (
     FinishedCutProductionApplication,
@@ -714,7 +716,7 @@ def test_failed_director_dispatch_is_needs_review_and_never_redispatches_after_r
         dispatches.append(argv)
         return CodexProcessResult(returncode=1)
 
-    monkeypatch.setattr(SubprocessCodexProcessRunner, "run", _record_dispatch)
+    monkeypatch.setattr(UnassignedSemanticRunner, "run", _record_dispatch)
 
     first = build_production_application(paths, "episode-1")
     first_status = first.advance(command_id)
