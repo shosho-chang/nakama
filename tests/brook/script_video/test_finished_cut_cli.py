@@ -492,3 +492,40 @@ def test_cli_rejects_stage_rows_in_approved_cut_registration(
             application_factory=lambda _paths, _episode_id: application,
         )
     assert application.registered is None
+
+
+def test_cli_inspect_cuts_does_not_need_the_production_application(tmp_path: Path, capsys) -> None:
+    """列事件是唯讀的，不該先備妥整套算圖環境。
+
+    2026-09-17：這個分支原本排在 `factory(...)` 後面，於是問一個 event_id 會先撞上
+    `pinned HyperFrames runtime is missing`——修修要改一句話的畫面，得先有 render
+    環境才問得到那句話的 id。`build_plan_record_reader` 的文件明說讀取不需要外部依賴。
+    """
+
+    def _explode(_paths, _episode_id, **_kwargs):
+        raise AssertionError("inspect-cuts 不該建構 production application")
+
+    class _Reader:
+        def inspect_current(self, episode_id: str):
+            from agents.brook.script_video.finished_cut_production._records import (
+                FinishedCutInspection,
+            )
+
+            return FinishedCutInspection(episode_id=episode_id, state="missing")
+
+    exit_code = cli.main(
+        [
+            "--runtime-root",
+            str(tmp_path / "runtime"),
+            "--episodes-root",
+            str(tmp_path / "episodes"),
+            "--episode-id",
+            "episode-1",
+            "inspect-cuts",
+        ],
+        application_factory=_explode,
+        plan_record_reader_factory=lambda _root: _Reader(),
+    )
+
+    assert exit_code == 0
+    assert json.loads(capsys.readouterr().out)["state"] == "missing"
