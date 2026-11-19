@@ -10,7 +10,12 @@
  * 音量：dock 的 [data-music-vol] range（0–100），localStorage 記住；漸弱以
  * 使用者音量為 100% 基準做比例衰減。
  *
- * 音源兩層（修修: 不上傳伺服器再串流、浪費頻寬）：
+ * 音源三層（修修: 不上傳伺服器再串流、浪費頻寬）：
+ *   0. YouTube 播放清單（修修 2026-11-09，他訂 YouTube Premium）— 貼 YouTube／
+ *      YouTube Music 的播放清單網址（專注用＋收尾振奮用各一），走官方 IFrame
+ *      Player API 在 dock 角落嵌一個小播放器。清單網址存 localStorage。Premium 無廣告
+ *      要求「此瀏覽器」登入 Premium 帳號。設了專注清單就優先於下面兩層；播放器載入
+ *      失敗或清單連續播不出來（常見：唱片公司禁止嵌入）自動退回 1./2.。
  *   1. 本地資料夾 — File System Access API。[data-music-setup] 按鈕選一次根資料夾
  *      （如 E:\data\music，內含 focus* / uplifting* 兩個分類子資料夾；沒有分類子
  *      資料夾就把根目錄的音檔全當 focus），handle 存 IndexedDB。零伺服器流量。
@@ -27,6 +32,20 @@ window.ShoFocusMusic = (function () {
   var handleLoaded = false;
   var objectUrl = null;   // current local track's blob URL (revoked on switch)
   var masterVol = 1;      // 0..1 — the user's slider setting (fades scale within it)
+  var ytMode = false;     // this block's music is coming from the YouTube player
+  var ytPlayer = null;    // YT.Player instance (lazy)
+  var ytPlayerP = null;   // promise of the player being ready
+  var ytApiP = null;      // promise of the iframe_api script having loaded
+  var ytBox = null;       // the fixed corner element wrapping the player
+  var ytWantShuffle = false;  // freshly cued list → shuffle + start on the CUED event
+  var ytErrors = 0;       // consecutive unplayable videos (embedding disabled etc.)
+  var ytFailed = false;   // YouTube gave up this block → stay on local/server files
+  var ytNotice = '';      // why YouTube was skipped this session (shown on the ⚠ button)
+  var ytLastErr = '';     // last embed error reason seen from the player
+  var ytPlayed = false;   // the current cued list actually reached PLAYING
+  var ytWatch = 0;        // watchdog token (stale timers no-op)
+  var YT_KEY = 'sho-music-yt';
+  var YT_PLAYING = 1, YT_CUED = 5;
 
   var AUDIO_RE = /\.(mp3|m4a|aac|ogg|opus|flac|wav)$/i;
   var FINALE_AT = 60;     // s remaining → switch to uplifting
@@ -74,15 +93,31 @@ window.ShoFocusMusic = (function () {
      tabs, and a block routinely ends while 修修 works in another window; the
      wall-clock k keeps the ramp correct even under background timer throttling. */
   var fadeTimer = null;
+  /* output abstraction — the same fade/volume/pause logic drives either the local
+     <audio> element or the YouTube player. */
+  function hasOut() { return ytMode ? !!ytPlayer : !!audio; }
+  function outVol(v) {
+    v = Math.min(1, Math.max(0, v));
+    if (ytMode) { if (ytPlayer && ytPlayer.setVolume) ytPlayer.setVolume(Math.round(v * 100)); }
+    else if (audio) audio.volume = v;
+  }
+  function outPause() {
+    if (ytMode) { if (ytPlayer && ytPlayer.pauseVideo) ytPlayer.pauseVideo(); }
+    else if (audio) audio.pause();
+  }
+  function outPlaying() {
+    if (ytMode) return !!(ytPlayer && ytPlayer.getPlayerState && ytPlayer.getPlayerState() === YT_PLAYING);
+    return !!(audio && !audio.paused);
+  }
   function stepFade() {
-    if (!audio || !fade) { clearFade(); return; }
+    if (!hasOut() || !fade) { clearFade(); return; }
     var k = Math.min(1, (Date.now() - fade.t0) / fade.ms);
     var scale = fade.from + (fade.to - fade.from) * k;
-    audio.volume = Math.min(1, Math.max(0, masterVol * scale));
+    outVol(masterVol * scale);
     if (k >= 1) {
       var stopAfter = fade.stopAfter;
       clearFade();
-      if (stopAfter) audio.pause();
+      if (stopAfter) outPause();
     }
   }
   function clearFade() {
@@ -210,6 +245,7 @@ window.ShoFocusMusic = (function () {
       audio.addEventListener('ended', function () { if (active) next(); });
     }
     clearFade();                    // a fresh track always starts at slider volume
+    leaveYt();                      // falling back from YouTube → local/server file
     audio.src = url;
     audio.volume = masterVol;
     return audio.play().then(function () { show(title); }).catch(hide);
@@ -246,7 +282,144 @@ window.ShoFocusMusic = (function () {
       .catch(function () { return false; });
   }
 
+  /* ── YouTube playlist source ── */
+  function listId(s) {
+    s = (s || '').trim();
+    if (!s) return '';
+    var m = s.match(/[?&]list=([\w-]+)/);
+    if (m) return m[1];
+    return /^[\w-]{10,}$/.test(s) ? s : '';
+  }
+  function ytRaw() {
+    try {
+      var c = JSON.parse(localStorage.getItem(YT_KEY) || '{}') || {};
+      return { focus: String(c.focus || ''), uplifting: String(c.uplifting || '') };
+    } catch (_) { return { focus: '', uplifting: '' }; }
+  }
+  function ytCfg() {
+    var r = ytRaw();
+    return { focus: listId(r.focus), uplifting: listId(r.uplifting) };
+  }
+
+  function loadYtApi() {
+    if (ytApiP) return ytApiP;
+    ytApiP = new Promise(function (resolve, reject) {
+      if (window.YT && window.YT.Player) { resolve(); return; }
+      var prev = window.onYouTubeIframeAPIReady;
+      window.onYouTubeIframeAPIReady = function () { if (prev) prev(); resolve(); };
+      var s = document.createElement('script');
+      s.src = 'https://www.youtube.com/iframe_api';
+      s.onerror = function () { ytApiP = null; reject(new Error('yt-api')); };
+      document.head.appendChild(s);
+      setTimeout(function () {
+        if (!(window.YT && window.YT.Player)) { ytApiP = null; reject(new Error('yt-timeout')); }
+      }, 8000);
+    });
+    return ytApiP;
+  }
+
+  function ytEnsurePlayer() {
+    if (ytPlayerP) return ytPlayerP;
+    ytPlayerP = loadYtApi().then(function () {
+      return new Promise(function (resolve) {
+        ytBox = document.createElement('div');
+        ytBox.className = 'pj-yt-box';
+        ytBox.hidden = true;
+        var host = document.createElement('div');
+        ytBox.appendChild(host);
+        document.body.appendChild(ytBox);
+        ytPlayer = new window.YT.Player(host, {
+          width: 240, height: 135,
+          playerVars: { playsinline: 1, rel: 0, origin: location.origin },
+          events: {
+            onReady: function () { resolve(ytPlayer); },
+            onStateChange: onYtState,
+            onError: onYtError,
+          },
+        });
+      });
+    }).catch(function (e) { ytPlayerP = null; throw e; });
+    return ytPlayerP;
+  }
+
+  function onYtState(e) {
+    if (!ytMode || !ytPlayer) return;
+    if (e.data === YT_CUED && ytWantShuffle) {
+      ytWantShuffle = false;
+      try { ytPlayer.setShuffle(true); ytPlayer.setLoop(true); } catch (_) { /* best-effort */ }
+      if (active) ytPlayer.playVideo();
+    } else if (e.data === YT_PLAYING) {
+      ytErrors = 0; ytPlayed = true; ytLastErr = '';
+      if (ytNotice) { ytNotice = ''; syncYtButton(); }
+      var d = ytPlayer.getVideoData ? ytPlayer.getVideoData() : null;
+      show((d && d.title) || 'YouTube');
+    }
+  }
+
+  /* unplayable video (101/150 = embedding disabled, 100 = removed…): skip it; a
+     whole run of them means this list can't be embedded → bail to local/server. */
+  function onYtError(e) {
+    if (!ytMode || !active) return;
+    ytErrors++;
+    if (e && (e.data === 101 || e.data === 150)) ytLastErr = '影片擁有者不允許嵌入播放（錯誤 ' + e.data + '）';
+    if (ytErrors >= 5) { ytGiveUp(ytLastErr || '清單裡的影片連續播不出來'); return; }
+    try { ytPlayer.nextVideo(); } catch (_) { /* ignore */ }
+  }
+
+  /* YouTube can't play this list → fall back to local/server files, but NEVER silently:
+     the reason sticks on the YouTube button (⚠) so 修修 can see why the folder music
+     is playing instead. (A silent fallback hid this once: a list of label-owned videos
+     that disallow embedding loads as 0 tracks with no error event.) */
+  function ytGiveUp(reason) {
+    ytFailed = true;
+    ytNotice = reason;
+    leaveYt();
+    syncYtButton();
+    nextFile();
+  }
+
+  function leaveYt() {
+    if (ytMode && ytPlayer) { try { ytPlayer.stopVideo(); } catch (_) { /* ignore */ } }
+    ytMode = false; ytWantShuffle = false;
+    if (ytBox) ytBox.hidden = true;
+  }
+
+  function ytStart(kind) {
+    var cfg = ytCfg();
+    var list = (kind === 'uplifting' && cfg.uplifting) ? cfg.uplifting : cfg.focus;
+    if (!list) return Promise.reject(new Error('no-list'));
+    return ytEnsurePlayer().then(function (p) {
+      if (!active) return;
+      clearFade();
+      if (audio) audio.pause();                // never both at once
+      ytMode = true; ytErrors = 0; ytWantShuffle = true;
+      ytBox.hidden = false;
+      p.setVolume(Math.round(masterVol * 100));
+      p.cuePlaylist({ list: list, listType: 'playlist' });
+      // watchdog: a list that never reaches PLAYING (private/invalid list, autoplay
+      // blocked, network) must not leave ▶ as a black box in silence.
+      ytPlayed = false;
+      var token = ++ytWatch;
+      setTimeout(function () {
+        if (token !== ytWatch || !active || !ytMode || ytPlayed) return;
+        ytGiveUp(ytLastErr || '清單沒有任何可播放的歌——通常是裡面的影片被擁有者禁止嵌入（唱片公司的 MV 很常見），或清單是私人／已刪除');
+      }, 10000);
+    });
+  }
+
   function next() {
+    var kind = phase === 'finale' ? 'uplifting' : 'focus';
+    var cfg = ytCfg();
+    if (cfg.focus && !ytFailed) {
+      // finale with no uplifting list: keep the focus playlist rolling, don't reshuffle it
+      if (kind === 'uplifting' && !cfg.uplifting && ytMode) return;
+      ytStart(kind).catch(function () { ytGiveUp('YouTube 播放器載入失敗（網路或擴充功能擋住 youtube.com？）'); });
+      return;
+    }
+    nextFile();
+  }
+
+  function nextFile() {
     var kind = phase === 'finale' ? 'uplifting' : 'focus';
     /* server fallback, then give up — but never in silence: an unreachable library
        explains itself in the bar so ▶ is never a dead button. */
@@ -281,8 +454,95 @@ window.ShoFocusMusic = (function () {
   // (this file loads in <head> on the Task page — defer the DOM queries).
   function init() {
     if (window.indexedDB) loadHandle(); else syncSetupButton();
+    syncYtButton();
     var v = volEl();
     if (v) v.value = String(Math.round(masterVol * 100));
+  }
+
+  /* ── YouTube 清單設定（<dialog>，由 JS 建，模板只放一顆按鈕）── */
+  function ytBtn() { return document.querySelector('[data-music-yt-setup]'); }
+  function syncYtButton() {
+    var b = ytBtn();
+    if (!b) return;
+    b.hidden = false;
+    var on = !!ytCfg().focus;
+    b.classList.toggle('is-warn', !!ytNotice);
+    if (ytNotice) {
+      b.textContent = '⚠ YouTube 播不出來';
+      b.title = '這次改播音樂資料夾，因為：' + ytNotice + '。點擊可換一個清單。';
+      return;
+    }
+    b.textContent = on ? '▶ YouTube ✓' : '▶ YouTube 清單';
+    b.title = on
+      ? 'YouTube 播放清單已設定（點擊可修改或清除）。要無廣告請在此瀏覽器登入 YouTube Premium 帳號'
+      : '貼 YouTube／YouTube Music 播放清單網址，之後按 ▶ 就從清單隨機播放';
+  }
+
+  function openYtDialog() {
+    var raw = ytRaw();
+    var dlg = document.createElement('dialog');
+    dlg.className = 'pj-yt-dialog';
+    dlg.innerHTML =
+      '<form method="dialog" class="pj-yt-form">' +
+      '<h2 class="pj-yt-h">YouTube 播放清單</h2>' +
+      '<p class="pj-yt-hint">貼 YouTube 或 YouTube Music 的<b>播放清單</b>網址（含 <code>list=</code>）。' +
+      '要無廣告，請在這個瀏覽器登入你的 YouTube Premium 帳號。</p>' +
+      '<label class="pj-yt-lab">專注用清單<input class="pj-yt-in" name="focus" type="url" ' +
+      'placeholder="https://music.youtube.com/playlist?list=…" autocomplete="off"></label>' +
+      '<label class="pj-yt-lab">最後一分鐘（振奮）清單 <span class="pj-yt-opt">選填；留空則整段都播專注清單</span>' +
+      '<input class="pj-yt-in" name="uplifting" type="url" placeholder="https://music.youtube.com/playlist?list=…" autocomplete="off"></label>' +
+      '<p class="pj-yt-err" role="alert" hidden></p>' +
+      '<div class="pj-yt-actions">' +
+      '<button type="submit" value="clear" class="pj-timer-secondary pj-yt-clear" formnovalidate>清除設定</button>' +
+      '<span class="pj-yt-spacer"></span>' +
+      '<button type="submit" value="cancel" class="pj-timer-secondary" formnovalidate>取消</button>' +
+      '<button type="submit" value="save" class="pj-timer-secondary pj-yt-save">儲存</button>' +
+      '</div></form>';
+    var form = dlg.querySelector('form');
+    var inFocus = form.elements.focus, inUp = form.elements.uplifting;
+    var err = dlg.querySelector('.pj-yt-err');
+    inFocus.value = raw.focus; inUp.value = raw.uplifting;
+
+    form.addEventListener('submit', function (e) {
+      var act = e.submitter ? e.submitter.value : 'cancel';
+      if (act === 'save') {
+        var f = inFocus.value.trim(), u = inUp.value.trim();
+        var bad = (f && !listId(f)) ? '專注用' : (u && !listId(u)) ? '振奮' : '';
+        if (!f || bad) {
+          e.preventDefault();
+          err.textContent = !f ? '請貼專注用清單網址（或按「清除設定」停用）'
+            : bad + '清單網址裡找不到 list=… — 請貼播放清單網址，不是單一影片';
+          err.hidden = false;
+          return;
+        }
+        try { localStorage.setItem(YT_KEY, JSON.stringify({ focus: f, uplifting: u })); }
+        catch (_) { /* storage unavailable — works for this visit only via no persistence */ }
+      } else if (act === 'clear') {
+        try { localStorage.removeItem(YT_KEY); } catch (_) { /* ignore */ }
+      }
+    });
+    var finished = false;
+    function finish(act) {
+      if (finished) return;
+      finished = true;
+      dlg.remove();
+      syncYtButton();
+      if (act === 'save' || act === 'clear') {
+        ytFailed = false; ytNotice = ''; ytLastErr = ''; syncYtButton();
+        if (active) { leaveYt(); if (audio) audio.pause(); next(); }   // mid-block change → apply now
+      }
+    }
+    // 'close' covers Esc; the submit path also finishes itself so we never depend on
+    // close-event timing (it did not fire in the in-app browser pane).
+    dlg.addEventListener('close', function () { finish(dlg.returnValue); });
+    form.addEventListener('submit', function (e) {
+      if (e.defaultPrevented) return;      // invalid save — dialog stays open
+      var act = e.submitter ? e.submitter.value : 'cancel';
+      setTimeout(function () { finish(act); }, 0);
+    });
+    document.body.appendChild(dlg);
+    dlg.showModal();
+    inFocus.focus();
   }
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
   else init();
@@ -303,17 +563,20 @@ window.ShoFocusMusic = (function () {
     /* ▶ — resume the paused track, or pick a fresh one when none is loaded. */
     resume: function () {
       active = true;
-      if (audio && audio.src) audio.play().catch(function () { /* best-effort */ });
+      if (ytMode && ytPlayer) ytPlayer.playVideo();
+      else if (audio && audio.src) audio.play().catch(function () { /* best-effort */ });
       else next();
     },
     /* ⏸ — hold the track (title stays visible; the block is only paused). */
-    pause: function () { if (audio) audio.pause(); },
+    pause: function () { outPause(); },
     /* block over (logged or aborted) — silence and clear the bar. */
     stop: function () {
-      active = false; phase = 'focus'; clearFade();
+      active = false; phase = 'focus'; clearFade(); ytFailed = false;
+      leaveYt();
       if (audio) { audio.pause(); audio.removeAttribute('src'); }
       hide();
     },
+    chooseYoutube: openYtDialog,
     /* the timer's tick — drives the last-minute uplifting switch + final fade.
        修修: 最後 1 分鐘換振奮的歌宣告收尾；最後 5 秒漸弱到停,不要驟停。 */
     sync: function (remainingSec) {
@@ -322,7 +585,7 @@ window.ShoFocusMusic = (function () {
         phase = 'finale';
         next();  // switch to the uplifting pool (falls back to focus when empty)
       }
-      if (remainingSec <= FADE_LAST && remainingSec > 0 && !fade && audio && !audio.paused) {
+      if (remainingSec <= FADE_LAST && remainingSec > 0 && !fade && outPlaying()) {
         startFade(1, 0, remainingSec * 1000, true);
       }
     },
@@ -330,7 +593,7 @@ window.ShoFocusMusic = (function () {
     setVolume: function (pct) {
       masterVol = Math.min(1, Math.max(0, pct / 100));
       try { localStorage.setItem('sho-music-vol', String(masterVol)); } catch (_) { /* ignore */ }
-      if (audio && !fade) audio.volume = masterVol;
+      if (hasOut() && !fade) outVol(masterVol);
     },
   };
 })();
@@ -340,6 +603,8 @@ window.ShoFocusMusic = (function () {
   function bind() {
     var b = document.querySelector('[data-music-setup]');
     if (b) b.addEventListener('click', function () { window.ShoFocusMusic.chooseFolder(); });
+    var y = document.querySelector('[data-music-yt-setup]');
+    if (y) y.addEventListener('click', function () { window.ShoFocusMusic.chooseYoutube(); });
     var v = document.querySelector('[data-music-vol]');
     if (v) v.addEventListener('input', function () { window.ShoFocusMusic.setVolume(parseInt(v.value, 10) || 0); });
   }
