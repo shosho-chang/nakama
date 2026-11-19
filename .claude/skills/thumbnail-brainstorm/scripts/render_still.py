@@ -31,12 +31,17 @@ SUPPORTED_RECIPES = ("podcast", "youtube_host")
 
 
 def ensure_recipe_supported(visual_recipe: str) -> None:
-    """youtube_book 尚未實作 — fail loud 附操作指引（ADR-054 D2）。"""
-    if visual_recipe == "youtube_book":
+    """主頻道 YouTube 影片不走本 skill — fail loud 指向正確入口。
+
+    2026-11-12 起 youtube_book（書籍介紹）／youtube_explanation（主題介紹）由
+    `.claude/skills/book-thumbnail` 發想、Bridge `/bridge/youtube-packaging/<slug>` 組封面、
+    `scripts/render_youtube_cover.py` 出圖。
+    """
+    if visual_recipe in ("youtube_book", "youtube_explanation"):
         raise NotImplementedError(
-            "visual_recipe=youtube_book 尚未實作（修修＋書封同框需要參考圖庫）。"
-            "請先把構圖參考圖放到 vault Attachments/cutouts/reference/youtube_book/ "
-            "並開 issue 排 composition 實作；本次 packaging 先以 youtube_host 配方跑或跳過封面。"
+            f"visual_recipe={visual_recipe} 不由 thumbnail-brainstorm 處理："
+            "改用 book-thumbnail skill 發想，Bridge /bridge/youtube-packaging/<slug> 組封面，"
+            "scripts/render_youtube_cover.py 出圖。"
         )
     if visual_recipe not in SUPPORTED_RECIPES:
         raise ValueError(

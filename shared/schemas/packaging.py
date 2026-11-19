@@ -186,7 +186,9 @@ class CutV1(BaseModel):
     cut_id: str
     format: Literal["long", "short"]
     information_origin: Literal["full_text", "one_liner"]
-    visual_recipe: Literal["podcast", "youtube_host", "youtube_book"]
+    # youtube_book／youtube_explanation：主頻道書籍介紹／主題介紹影片，封面走
+    # `/bridge/youtube-packaging`（shared/schemas/youtube_packaging.py），不走 podcast 的 packages
+    visual_recipe: Literal["podcast", "youtube_host", "youtube_book", "youtube_explanation"]
     aspect: Literal["16:9"]
     titles: list[TitleV1]
     packages: list[PackageV1]

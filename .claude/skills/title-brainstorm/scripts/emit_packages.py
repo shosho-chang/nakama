@@ -11,7 +11,7 @@
       "cut_id": "punch-L1",
       "format": "long" | "short",
       "information_origin": "full_text" | "one_liner",
-      "visual_recipe": "podcast" | "youtube_host" | "youtube_book",
+      "visual_recipe": "podcast" | "youtube_host" | "youtube_book" | "youtube_explanation",
       "aspect": "16:9",
       "citations": [],
       "brand_flags": [],

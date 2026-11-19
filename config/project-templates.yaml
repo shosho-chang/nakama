@@ -40,8 +40,8 @@ templates:
       - { name: 後製, pomodoros: 8 }
       - { name: 上架, pomodoros: 2 }
 
-  youtube-health:
-    label: YouTube · 身心健康研究
+  youtube-explanation:
+    label: YouTube · 主題介紹
     stages:
       - { name: 前期研究, pomodoros: 8 }
       - { name: 拍攝, pomodoros: 3 }

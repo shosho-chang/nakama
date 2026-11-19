@@ -71,7 +71,7 @@ PR #1234 接通 reassign）是 Weekly Dashboard 實際在用的活功能。
 
 隨之落地的三件事（不改上面任何一條退役決定）：
 
-1. **樣板** — `config/project-templates.yaml`（podcast / youtube-book / youtube-health），
+1. **樣板** — `config/project-templates.yaml`（podcast / youtube-book / youtube-explanation；2026-11-12 原 youtube-health「身心健康研究」改名為 youtube-explanation「主題介紹」），
    建立專案時選 `kind` 就一次把該類型的任務全部開好；任務帶 `stage:`，**順序永遠由 YAML
    決定**，不存進任務，所以改樣板順序既有專案會自己跟上。刪掉樣板不會弄壞既有專案。
 2. **Dashboard** — 詳情頁改成 dashboard：完成進度 / 剩餘工作（🍅→小時）/ 預計完成

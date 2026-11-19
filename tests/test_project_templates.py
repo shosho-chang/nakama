@@ -186,9 +186,9 @@ class TestStageRank:
 def test_shipped_yaml_is_valid():
     """The file we actually ship must parse and define the kinds 修修 asked for."""
     tpls = load_templates()
-    assert set(tpls) >= {"podcast", "youtube-book", "youtube-health"}
+    assert set(tpls) >= {"podcast", "youtube-book", "youtube-explanation"}
     assert [s.name for s in tpls["podcast"].stages] == ["訪綱撰寫", "節目錄製", "後製與上架"]
-    assert [s.name for s in tpls["youtube-health"].stages] == ["前期研究", "拍攝", "後製", "上架"]
+    assert [s.name for s in tpls["youtube-explanation"].stages] == ["前期研究", "拍攝", "後製", "上架"]
     post = tpls["podcast"].stages[2].notes
     assert post.startswith("## Intro\n\n大家好！歡迎收聽今天的不正常人類研究所")
     assert "## Outro" in post and post.endswith("我們下次見，掰掰！")
