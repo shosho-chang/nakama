@@ -130,3 +130,11 @@ def test_mark_terms_every_occurrence_but_not_twice() -> None:
     assert (
         mark_terms("用 Agent Skill 跟 Agent Skills", terms) == "用 「Agent Skill」 跟 Agent Skills"
     )
+
+
+def test_tidy_mark_spacing() -> None:
+    from shared.livestream_subtitles import tidy_mark_spacing
+
+    assert (
+        tidy_mark_spacing("就是 「Agent Skills」 跟《書》 好") == "就是「Agent Skills」跟《書》好"
+    )

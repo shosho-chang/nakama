@@ -235,6 +235,17 @@ def mark_terms(text: str, terms: list[str]) -> str:
     return text
 
 
+def tidy_mark_spacing(text: str) -> str:
+    """全形《》「」本身就是間隔：拿掉緊貼在外側與內側的半形空白。
+
+    例：``就是 「Agent Skills」 跟`` → ``就是「Agent Skills」跟``。
+    """
+    text = re.sub(r" +([《「])", r"\1", text)
+    text = re.sub(r"([》」]) +", r"\1", text)
+    text = re.sub(r"([《「]) +", r"\1", text)
+    return re.sub(r" +([》」])", r"\1", text).strip()
+
+
 def build_display_cues(
     cues: list[tuple[float, float, str]],
     *,
@@ -273,6 +284,7 @@ def build_display_cues(
         body = " ".join(body.splitlines())
         if terms:
             body = mark_terms(body, list(terms))
+        body = tidy_mark_spacing(body)
         if not body.strip():
             dropped_filler += 1
             continue
