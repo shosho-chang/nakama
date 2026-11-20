@@ -105,3 +105,28 @@ def test_wrap_line_avoids_splitting_measure_words() -> None:
 def test_wrap_line_keeps_traditional_words_whole() -> None:
     wrapped = wrap_line("這個怎麼辦 所以這個我們在釋出的時候還是要經過人工先看一次", 24)
     assert "釋\n出" not in wrapped
+
+
+def test_apply_fixes_matches_start_and_exact_original() -> None:
+    from shared.livestream_subtitles import FixError, apply_fixes
+
+    cues = [(1.0, 2.0, "像阿默應該會用到嘛"), (3.0, 4.0, "阿默也有做嘛")]
+    fixed = apply_fixes(
+        cues, [{"start": "00:00:03,000", "original": "阿默也有做嘛", "replacement": "阿莫也有做嘛"}]
+    )
+    assert fixed == [(1.0, 2.0, "像阿默應該會用到嘛"), (3.0, 4.0, "阿莫也有做嘛")]
+    import pytest
+
+    with pytest.raises(FixError):
+        apply_fixes(cues, [{"start": "00:00:03,000", "original": "不對", "replacement": "x"}])
+
+
+def test_mark_terms_every_occurrence_but_not_twice() -> None:
+    from shared.livestream_subtitles import mark_terms
+
+    terms = ["Agent Skill", "文字接龍"]
+    assert mark_terms("他只會做文字接龍", terms) == "他只會做「文字接龍」"
+    assert mark_terms("他只會做「文字接龍」", terms) == "他只會做「文字接龍」"
+    assert (
+        mark_terms("用 Agent Skill 跟 Agent Skills", terms) == "用 「Agent Skill」 跟 Agent Skills"
+    )

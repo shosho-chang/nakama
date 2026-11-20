@@ -47,6 +47,12 @@ def _parse_range(text: str) -> tuple[float, float]:
     return lo, hi
 
 
+def _read_terms(path: str) -> list[str]:
+    """一行一個術語；空行與 # 開頭的註解略過。"""
+    lines = Path(path).read_text(encoding="utf-8").splitlines()
+    return [ln.strip() for ln in lines if ln.strip() and not ln.lstrip().startswith("#")]
+
+
 def cmd_prepare(args: argparse.Namespace) -> int:
     src = Path(args.srt)
     text, stats = build_display_srt(
@@ -55,6 +61,8 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         end=args.end,
         drop_ranges=args.drop or [],
         max_line_chars=args.max_line_chars,
+        fixes=json.loads(Path(args.fixes).read_text(encoding="utf-8")) if args.fixes else (),
+        terms=_read_terms(args.terms) if args.terms else (),
     )
     out = Path(args.out)
     out.parent.mkdir(parents=True, exist_ok=True)
@@ -143,6 +151,10 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--end", type=float, default=None, help="剪接終點（原始錄影秒數）")
     p.add_argument("--drop", type=_parse_range, action="append", help="整段拿掉的範圍 a-b（秒）")
     p.add_argument("--max-line-chars", type=int, default=24)
+    p.add_argument(
+        "--fixes", help="修修確認過的人工勘誤 JSON（start／original／replacement／source）"
+    )
+    p.add_argument("--terms", help="每次出現都要加「」的術語清單（一行一個）")
     p.set_defaults(func=cmd_prepare)
 
     b = sub.add_parser("burn", help="剪頭尾＋燒字幕")

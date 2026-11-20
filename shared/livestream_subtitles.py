@@ -183,6 +183,58 @@ def wrap_line(text: str, max_chars: int) -> str:
     return "\n".join(p for p in pieces if p)
 
 
+class FixError(ValueError):
+    """人工勘誤對不到 release.srt 的 cue（時間或原文不符）。"""
+
+
+def _ts_seconds(ts: str) -> float:
+    h, m, rest = ts.strip().split(":")
+    sec, _, ms = rest.partition(",")
+    return int(h) * 3600 + int(m) * 60 + int(sec) + int(ms or 0) / 1000
+
+
+def apply_fixes(
+    cues: list[tuple[float, float, str]], fixes: list[dict]
+) -> list[tuple[float, float, str]]:
+    """套用修修確認過的人工勘誤（顯示層；release.srt 本體不動）。
+
+    每筆 ``{"start": "HH:MM:SS,mmm", "original": 完整原文, "replacement": 完整新文字,
+    "source": 依據}``。
+    以「開始時間＋原文逐字相同」對位，對不到就整批拒絕——寧可停下來，也不要改錯句。
+    """
+    out = list(cues)
+    for fix in fixes:
+        at = _ts_seconds(fix["start"])
+        hits = [
+            i for i, (s, _e, t) in enumerate(out) if abs(s - at) < 0.0005 and t == fix["original"]
+        ]
+        if len(hits) != 1:
+            raise FixError(f"人工勘誤對不到 cue：{fix['start']} {fix['original']!r}")
+        s, e, _t = out[hits[0]]
+        out[hits[0]] = (s, e, fix["replacement"])
+    return out
+
+
+def mark_terms(text: str, terms: list[str]) -> str:
+    """把術語包上「」（house style：術語每次出現都標）。已在《》「」裡的不重複包；
+    英文術語要在詞邊界上（Agent Skill 不會從 Agent Skills 中間吃掉）。長的術語先處理。"""
+    for term in sorted(terms, key=len, reverse=True):
+        pattern = re.escape(term)
+        if term[:1].isascii():
+            pattern = r"(?<![A-Za-z0-9])" + pattern
+        if term[-1:].isascii():
+            pattern += r"(?![A-Za-z0-9])"
+        protected = _protected_spans(text)
+        pieces, pos = [], 0
+        for m in re.finditer(pattern, text):
+            if any(s <= m.start() < e for s, e in protected):
+                continue  # 已經在《》「」裡
+            pieces.append(text[pos : m.start()] + "「" + m.group(0) + "」")
+            pos = m.end()
+        text = "".join(pieces) + text[pos:]
+    return text
+
+
 def build_display_cues(
     cues: list[tuple[float, float, str]],
     *,
@@ -190,11 +242,15 @@ def build_display_cues(
     end: float | None = None,
     drop_ranges: list[tuple[float, float]] = (),
     max_line_chars: int = 24,
+    fixes: list[dict] = (),
+    terms: list[str] = (),
     to_traditional=None,
 ) -> tuple[list[tuple[float, float, str]], DisplayStats]:
     if to_traditional is None:
         from shared.transcriber import _to_traditional as to_traditional
 
+    if fixes:
+        cues = apply_fixes(cues, list(fixes))
     dropped_ranges = dropped_annot = dropped_filler = outside = wrapped = 0
     out: list[tuple[float, float, str]] = []
     for s, e, text in cues:
@@ -215,6 +271,8 @@ def build_display_cues(
         body = _strip_fillers(body)
         body = space_han_latin(clean_punctuation(body))
         body = " ".join(body.splitlines())
+        if terms:
+            body = mark_terms(body, list(terms))
         if not body.strip():
             dropped_filler += 1
             continue
