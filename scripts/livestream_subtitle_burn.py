@@ -59,7 +59,7 @@ def cmd_prepare(args: argparse.Namespace) -> int:
         src.read_text(encoding="utf-8"),
         start=args.start,
         end=args.end,
-        drop_ranges=args.drop or [],
+        drop_ranges=(args.drop or []) + (args.cut or []),
         max_line_chars=args.max_line_chars,
         fixes=json.loads(Path(args.fixes).read_text(encoding="utf-8")) if args.fixes else (),
         terms=_read_terms(args.terms) if args.terms else (),
@@ -87,30 +87,41 @@ def burn_command(
     style: str = LIVESTREAM_SUB_STYLE,
     crf: int = 20,
     preset: str = "medium",
+    cuts: list[tuple[float, float]] = (),
 ) -> list[str]:
-    vf = f"subtitles={srt_name}:fontsdir='{_filter_path(fonts_dir)}':force_style='{style}'"
+    """``cuts``＝影片中間要剪掉的段落（原始錄影秒數，例如中場休息）。
+
+    字幕先燒在「剪掉之前」的時間軸上（display.srt 只做頭尾平移），再用 select 把那幾段
+    畫面和聲音一起拿掉——字幕跟畫面不會錯位。有 cut 時聲音必須重新編碼。
+    """
+    sub = f"subtitles={srt_name}:fontsdir='{_filter_path(fonts_dir)}':force_style='{style}'"
     cmd = ["ffmpeg", "-hide_banner", "-loglevel", "error", "-stats", "-y", "-ss", f"{start:.3f}"]
     if end is not None:
         cmd += ["-to", f"{end:.3f}"]
-    cmd += [
-        "-i",
-        str(video),
-        "-vf",
-        vf,
-        "-c:v",
-        "libx264",
-        "-crf",
-        str(crf),
-        "-preset",
-        preset,
-        "-pix_fmt",
-        "yuv420p",
-        "-c:a",
-        "copy",
-        "-movflags",
-        "+faststart",
-        str(out),
-    ]
+    cmd += ["-i", str(video)]
+    if cuts:
+        rel = [(a - start, b - start) for a, b in sorted(cuts)]
+        expr = "+".join(f"between(t,{a:.3f},{b:.3f})" for a, b in rel)
+        # 聲音：aselect 在這版 ffmpeg 不會丟 frame（2026-11-20 實測），改用 atrim 分段再 concat
+        keep, prev = [], 0.0
+        for a, b in rel:
+            keep.append((prev, a))
+            prev = b
+        keep.append((prev, None))
+        parts = [f"[0:a]asplit={len(keep)}" + "".join(f"[s{i}]" for i in range(len(keep)))]
+        for i, (a, b) in enumerate(keep):
+            trim = f"start={a:.3f}" + (f":end={b:.3f}" if b is not None else "")
+            parts.append(f"[s{i}]atrim={trim},asetpts=PTS-STARTPTS[k{i}]")
+        parts.append(
+            "".join(f"[k{i}]" for i in range(len(keep))) + f"concat=n={len(keep)}:v=0:a=1[a]"
+        )
+        graph = f"[0:v]{sub},select='not({expr})',setpts=N/FRAME_RATE/TB[v];" + ";".join(parts)
+        cmd += ["-filter_complex", graph, "-map", "[v]", "-map", "[a]"]
+    else:
+        cmd += ["-vf", sub]
+    cmd += ["-c:v", "libx264", "-crf", str(crf), "-preset", preset, "-pix_fmt", "yuv420p"]
+    cmd += ["-c:a", "aac", "-b:a", "160k"] if cuts else ["-c:a", "copy"]
+    cmd += ["-movflags", "+faststart", str(out)]
     return cmd
 
 
@@ -130,6 +141,7 @@ def cmd_burn(args: argparse.Namespace) -> int:
         fonts_dir=Path(args.fonts_dir),
         crf=args.crf,
         preset=args.preset,
+        cuts=[c for c in (args.cut or []) if c[0] >= args.start and (end is None or c[1] <= end)],
     )
     if shutil.which("ffmpeg") is None:
         print("找不到 ffmpeg", file=sys.stderr)
@@ -149,7 +161,15 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--out", required=True)
     p.add_argument("--start", type=float, default=0.0, help="剪接起點（原始錄影秒數）")
     p.add_argument("--end", type=float, default=None, help="剪接終點（原始錄影秒數）")
-    p.add_argument("--drop", type=_parse_range, action="append", help="整段拿掉的範圍 a-b（秒）")
+    p.add_argument(
+        "--drop", type=_parse_range, action="append", help="字幕整段拿掉的範圍 a-b（秒）"
+    )
+    p.add_argument(
+        "--cut",
+        type=_parse_range,
+        action="append",
+        help="影片中間要剪掉的範圍 a-b（秒；字幕同時拿掉）。burn 要給同一組 --cut",
+    )
     p.add_argument("--max-line-chars", type=int, default=24)
     p.add_argument(
         "--fixes", help="修修確認過的人工勘誤 JSON（start／original／replacement／source）"
@@ -163,6 +183,9 @@ def build_parser() -> argparse.ArgumentParser:
     b.add_argument("--out", required=True)
     b.add_argument("--start", type=float, default=0.0)
     b.add_argument("--end", type=float, default=None)
+    b.add_argument(
+        "--cut", type=_parse_range, action="append", help="影片中間要剪掉的範圍 a-b（原始秒數）"
+    )
     b.add_argument("--preview-seconds", type=float, default=None, help="只燒 start 起這麼多秒")
     b.add_argument("--fonts-dir", default=str(DEFAULT_FONTS_DIR))
     b.add_argument("--crf", type=int, default=20)

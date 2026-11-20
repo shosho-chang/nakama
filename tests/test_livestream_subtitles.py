@@ -138,3 +138,23 @@ def test_tidy_mark_spacing() -> None:
     assert (
         tidy_mark_spacing("就是 「Agent Skills」 跟《書》 好") == "就是「Agent Skills」跟《書》好"
     )
+
+
+def test_burn_command_with_cut_removes_segment_after_subtitles(tmp_path: Path) -> None:
+    cmd = burn.burn_command(
+        video=tmp_path / "v.mp4",
+        srt_name="display.srt",
+        start=597.3,
+        end=7647.3,
+        out=tmp_path / "o.mp4",
+        fonts_dir=Path("C:/f"),
+        cuts=[(5240.4, 5536.8)],
+    )
+    graph = cmd[cmd.index("-filter_complex") + 1]
+    # 字幕先燒、再剪：subtitles 在 select 前面；時間是相對剪接起點
+    assert graph.index("subtitles=") < graph.index("select=")
+    assert "between(t,4643.100,4939.500)" in graph
+    assert "atrim=start=0.000:end=4643.100" in graph
+    assert "atrim=start=4939.500," in graph
+    assert "concat=n=2:v=0:a=1[a]" in graph
+    assert cmd[cmd.index("-c:a") + 1] == "aac"
