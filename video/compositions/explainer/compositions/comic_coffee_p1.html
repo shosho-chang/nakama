@@ -1,0 +1,183 @@
+<!doctype html>
+<!-- 《財富階梯》咖啡段 頁 1：省咖啡錢與萬分之一法則（分鏡表 storyboards/wealth-coffee.md）
+     時間＝影片「20261112 財富階梯.mp4」的字幕（20261112 財富階梯.srt 第 213–225 句），本頁 0 秒＝影片 7:30.249。
+     蓋在修修聲音上的滿版畫面，字幕另外出，所以不放旁白框。 -->
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/figure.js"></script>
+    <script src="assets/kit/fx.js"></script>
+    <script src="assets/kit/comic.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>html, body { margin: 0; background: var(--white); overflow: hidden; } #root { background: var(--white); }</style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="comic_coffee_p1"
+      data-width="1920" data-height="1080" data-start="0" data-duration="25.8">
+      <!-- 音效：投硬幣＝瑪利歐吃金幣（修修 2026-11-20 從 3 個候選選第 1 版；硬幣掉進孔那一格 T.higher+0.3）、跳＝MARIO JUMP（跳上第 2、3 階） -->
+      <audio id="sfx-coin"  src="assets/sfx/mario_coin.wav" data-start="5.272" data-duration="1.0" data-track-index="10" data-volume="0.6"></audio>
+      <audio id="sfx-jump1" src="assets/sfx/mario_jump.mp3" data-start="9.95"  data-duration="1.0" data-track-index="11" data-volume="0.6" data-media-start="0.235"></audio>
+      <audio id="sfx-jump2" src="assets/sfx/mario_jump.mp3" data-start="12.92" data-duration="1.0" data-track-index="12" data-volume="0.6" data-media-start="0.235"></audio>
+    </div>
+    <script>
+      const P = EXK_COMIC.page(document.getElementById("root"), { fx: true, cells: {
+        a1: { x: 24,   y: 24,  w: 900,  h: 520, img: "assets/coffee/a1.png", iw: 1536, ih: 1024 },
+        a2: { x: 944,  y: 24,  w: 952,  h: 520, img: "assets/coffee/a2.png", iw: 1536, ih: 1024 },
+        a3: { x: 24,   y: 564, w: 1120, h: 492, img: "assets/coffee/a3.png", iw: 1536, ih: 1024 },
+        a4: { x: 1164, y: 564, w: 732,  h: 492 },
+      } });
+      const { tl, act, cells: C, cell, el } = P;
+      window.__timelines = window.__timelines || {};
+      window.__timelines["comic_coffee_p1"] = tl;
+      // 量出來的位置（背景圖座標）：a1 沙發坐墊；a3 三階的階面高度與左右範圍
+      const GEO = { seat1: 657, step: [{ y: 677, x0: 85, x1: 612 }, { y: 559, x0: 612, x1: 1010 }, { y: 442, x0: 1010, x1: 1460 }] };
+      // 字幕時間（本頁秒數）
+      const T = { a1: 0, chicken: 1.535, a2: 3.604, higher: 4.972, a3: 6.874, useful: 9.643, notThird: 12.613,
+                  a4: 14.782, rule: 15.816, net: 17.084, m300: 19.186, k300: 20.421, small: 23.324, out: 24.2, end: 25.793 };
+      const ink = (w, fill) => ({ fill: fill || "none", stroke: "#000", "stroke-width": w || 8, "stroke-linecap": "round", "stroke-linejoin": "round" });
+
+      // ── 運鏡（每格在那句開口前 0.3 秒開始推，開口時到位）──
+      P.cam("a1", 0, 0.001);
+      P.cam("a2", T.a2 - 0.3, 0.5); P.cam("a3", T.a3 - 0.3, 0.5); P.cam("a4", T.a4 - 0.3, 0.5);
+      P.camOut(T.out, 1.2);
+
+      // 道具：撲滿（中心在 0,0、身長約 2r）
+      function piggy(parent, r) {
+        const g = el("g", {}, parent), o = ink(r * 0.07);
+        el("path", Object.assign({}, o, { fill: "#fff", d: `M${-r * 0.55},${r * 0.55} l0,${r * 0.32} l${r * 0.24},0 l0,${-r * 0.3} M${r * 0.3},${r * 0.58} l0,${r * 0.3} l${r * 0.24},0 l0,${-r * 0.34}` }), g);
+        el("ellipse", Object.assign({}, o, { fill: "var(--orange)", cx: 0, cy: 0, rx: r, ry: r * 0.78 }), g);
+        el("path", Object.assign({}, o, { fill: "var(--orange)", d: `M${-r * 0.45},${-r * 0.62} l${-r * 0.08},${-r * 0.36} l${r * 0.34},${r * 0.2}` }), g);
+        el("ellipse", Object.assign({}, o, { fill: "#fff", cx: r * 0.98, cy: r * 0.06, rx: r * 0.2, ry: r * 0.26 }), g);
+        el("circle", { cx: r * 0.42, cy: -r * 0.22, r: r * 0.07, fill: "#000" }, g);
+        el("line", Object.assign({}, ink(r * 0.07), { x1: -r * 0.2, y1: -r * 0.66, x2: r * 0.16, y2: -r * 0.7 }), g);   // 投幣孔
+        el("path", Object.assign({}, ink(r * 0.06), { d: `M${-r},${-r * 0.05} c${-r * 0.25},${-r * 0.1} ${-r * 0.3},${r * 0.2} ${-r * 0.12},${r * 0.22}` }), g);
+        return g;
+      }
+      function coin(parent, r) {
+        const g = el("g", {}, parent);
+        el("circle", Object.assign(ink(r * 0.16, "#ffd36b"), { cx: 0, cy: 0, r }), g);
+        el("circle", Object.assign(ink(r * 0.1), { cx: 0, cy: 0, r: r * 0.62 }), g);
+        return g;
+      }
+      function cup(parent, s) {   // 外帶咖啡杯，杯底中心在 0,0
+        const g = el("g", {}, parent), o = ink(6 * s, "#fff");
+        el("path", Object.assign({}, o, { d: `M${-34 * s},${-120 * s} L${-26 * s},0 L${26 * s},0 L${34 * s},${-120 * s} Z` }), g);
+        el("path", Object.assign({}, ink(6 * s, "var(--orange)"), { d: `M${-31 * s},${-80 * s} L${-28 * s},${-40 * s} L${28 * s},${-40 * s} L${31 * s},${-80 * s} Z` }), g);
+        el("rect", Object.assign({}, o, { x: -40 * s, y: -136 * s, width: 80 * s, height: 18 * s, rx: 6 * s }), g);
+        return g;
+      }
+
+      // ── 格 1：沙發上看手機（坐墊以下裁掉），think 臉；講到「雞湯建議」點頭 ──
+      {
+        const seat = P.imgPt("a1", 0, GEO.seat1)[1], sc = 0.82, clip = document.createElement("div");
+        Object.assign(clip.style, { position: "absolute", left: 0, top: 0, width: C.a1.w + "px", height: seat + "px", overflow: "hidden", zIndex: 3 });
+        cell.a1.appendChild(clip);
+        const { wrap, f } = P.figure("a1", { scale: sc, x: C.a1.w * 0.5, y: seat + 196 * sc, face: "think", pose: "phone" }, clip);
+        // 手機：拿在手套前端，螢幕朝人（看得到背面＋一點螢幕光）
+        const s = P.svg("a1", 4), tip = f.joint("hRtip");
+        const holder = el("g", {}, s), ph = el("g", { transform: `translate(${tip[0] - 4} ${tip[1] + 14}) rotate(-8) scale(1.3)` }, holder);
+        el("rect", Object.assign(ink(5, "#2b2b2b"), { x: -22, y: -40, width: 44, height: 78, rx: 8 }), ph);
+        el("rect", { x: -16, y: -33, width: 32, height: 62, rx: 4, fill: "#cfe8ff" }, ph);
+        const lines = el("g", {}, ph);
+        for (let i = 0; i < 6; i++) el("rect", { x: -12, y: -28 + i * 14, width: 24 - (i % 3) * 6, height: 5, fill: "#7a9cc0" }, lines);
+        for (let t = 0.4; t < T.a2; t += 0.7) act.fromTo(lines, { y: 6 }, { y: -8, duration: 0.25, ease: "power2.out", immediateRender: false }, t);
+        // 點頭（雞湯建議）
+        act.to([wrap, holder], { y: "+=8", duration: 0.12, yoyo: true, repeat: 3, ease: "sine.inOut" }, T.chicken + 0.2);
+      }
+
+      // ── 格 2：桌面特寫（物件插入，不入鏡人）。咖啡被推出畫面 → 硬幣從上面掉進撲滿 ──
+      //   手不入鏡：人偶的手臂只有頭寬的一半長，放大對準手時頭跟身體一定會進到這麼寬的格子（2026-11-20 試過），所以只拍物件
+      {
+        const s = P.svg("a2", 2), w = C.a2.w, h = C.a2.h, sp = P.svg("a2", 3);
+        const pig = piggy(s, 150); pig.setAttribute("transform", `translate(${w * 0.68} ${h * 0.6})`);
+        const slot = [w * 0.68, h * 0.6 - 150 * 0.68];
+        const cupG = el("g", {}, s); cup(cupG, 1.25); gsap.set(cupG, { x: w * 0.25, y: h * 0.86 });
+        // 推走：先被推得一晃（預備），再滑出左邊，後面拖速度線
+        const t0 = T.a2 + 0.35;
+        act.to(cupG, { rotation: 6, transformOrigin: "50% 100%", duration: 0.1 }, t0);
+        act.to(cupG, { x: -w * 0.2, rotation: -10, duration: 0.35, ease: "power2.in" }, t0 + 0.12);
+        EXK_FX.speedLines(tl, sp, w * 0.25 + 50, h * 0.86 - 90, Math.PI, t0 + 0.2, 0.3, { n: 3, len: 90, gap: 28, back: -40, w: 6 });
+        // 硬幣：從畫面上緣掉下來，立著掉進投幣孔，撲滿彈一下
+        const cn = coin(s, 30), drop = T.higher + 0.3;
+        gsap.set(cn, { x: slot[0], y: -60, scaleX: 0.3 });
+        act.to(cn, { y: slot[1] + 4, duration: 0.32, ease: "power2.in" }, drop - 0.32);
+        act.set(cn, { opacity: 0 }, drop + 0.02);
+        act.to(pig, { scaleY: 0.92, scaleX: 1.04, svgOrigin: `${w * 0.68} ${h * 0.6 + 150 * 0.78}`, duration: 0.07, yoyo: true, repeat: 1 }, drop);
+        // 叮的小閃光
+        const sparkle = el("g", { opacity: 0 }, sp);
+        [[-40, -30], [40, -36], [0, -60]].forEach(([dx, dy]) => el("path", Object.assign(ink(5, "#ffd36b"), { d: `M${slot[0] + dx},${slot[1] + dy - 14} l5,9 l9,5 l-9,5 l-5,9 l-5,-9 l-9,-5 l9,-5 Z` }), sparkle));
+        act.set(sparkle, { opacity: 1 }, drop); act.set(sparkle, { opacity: 0 }, drop + 0.4);
+      }
+
+      // ── 格 3：抱著撲滿爬階梯。第 1、2 階旁邊硬幣堆長高；跳上第 3 階後撲滿變小 ──
+      {
+        const s = P.svg("a3", 2), sc = 0.29;
+        const st = GEO.step.map((p) => ({ y: P.imgPt("a3", 0, p.y)[1], x0: P.imgPt("a3", p.x0, 0)[0], x1: P.imgPt("a3", p.x1, 0)[0] }));
+        // 階數標示：寫在每一階的正面
+        st.forEach((p, i) => {
+          const tx = el("text", { x: (p.x0 + p.x1) / 2, y: p.y + 96, "text-anchor": "middle", "font-size": 84, "font-weight": 900,
+            fill: "var(--ink)", "font-family": "var(--font)" }, s);
+          tx.textContent = i + 1;
+        });
+        // 硬幣堆（長高）：每階一堆，放在人的後面
+        const stack = (p, n, at, dur) => {
+          const g = el("g", {}, s), cx = p.x0 + (p.x1 - p.x0) * 0.25;
+          for (let i = 0; i < n; i++) {
+            const e = el("ellipse", Object.assign(ink(4, "#ffd36b"), { cx, cy: p.y - 8 - i * 11, rx: 30, ry: 8 }), g);
+            gsap.set(e, { opacity: 0 }); act.set(e, { opacity: 1 }, at + (dur * i) / n);
+          }
+        };
+        stack(st[0], 9, T.a3 + 0.4, 2.2);
+        stack(st[1], 12, T.useful + 0.7, 1.8);
+        // 人偶：側面、面向右，抱撲滿
+        const { wrap, f } = P.figure("a3", { scale: sc, x: 0, y: 0, view: "side", dir: 1, pose: "hug" });
+        const px = (p) => p.x0 + (p.x1 - p.x0) * 0.5;
+        gsap.set(wrap, { x: px(st[0]), y: st[0].y });
+        const pg = el("g", {}, wrap.appendChild(document.createElementNS(P.NS, "svg")));
+        const psvg = pg.ownerSVGElement; Object.assign(psvg.style, { position: "absolute", left: 0, top: 0, overflow: "visible" });
+        psvg.setAttribute("width", 1); psvg.setAttribute("height", 1);
+        const hand = f.joint("hR"), pig = piggy(pg, 30); pig.setAttribute("transform", `translate(${hand[0] + 6} ${hand[1] - 10})`);
+        const jumpTo = (p, at) => {
+          EXK_FX.squashJump(act, wrap, at, "0px 0px", { antic: 0.1, air: 0.42 });
+          act.to(wrap, { x: px(p), duration: 0.42, ease: "none" }, at + 0.1);
+          act.to(wrap, { y: p.y - 60, duration: 0.24, ease: "power2.out" }, at + 0.1);
+          act.to(wrap, { y: p.y, duration: 0.18, ease: "power2.in" }, at + 0.34);
+        };
+        jumpTo(st[1], T.useful + 0.2);
+        jumpTo(st[2], T.notThird + 0.2);
+        // 第 3 階：轉正面、困惑臉，撲滿縮小
+        f.view(act, "front", T.notThird + 0.9); f.face(act, "confused", T.notThird + 0.9);
+        act.to(pig, { scale: 0.45, transformOrigin: "50% 50%", duration: 0.4, ease: "back.in(2)" }, T.notThird + 1.0);
+        const sweat = el("path", Object.assign(ink(3, "#bfe3ff"), { d: "M0,0 c-8,12 -8,20 0,20 c8,0 8,-8 0,-20 Z" }), s);
+        gsap.set(sweat, { opacity: 0 });
+        act.set(sweat, { opacity: 1, x: px(st[2]) + 40, y: st[2].y - 600 * sc + 30 }, T.notThird + 1.3);
+        act.to(sweat, { y: "+=24", duration: 0.6, ease: "power1.in" }, T.notThird + 1.3);
+      }
+
+      // ── 格 4：概念格。大字「萬分之一法則」→ 300 萬鈔票堆 → 300 塊一枚硬幣 → 聳肩；強調「中」──
+      {
+        const s = P.svg("a4", 2), w = C.a4.w, h = C.a4.h;
+        P.bigText("a4", "萬分之一法則", 26, 18, 96, T.rule);
+        EXK_FX.shake(tl, C.a4.stage, T.rule, 7, 0.4);
+        // 鈔票堆
+        const bx = 120, by = h - 70, bills = el("g", {}, s); gsap.set(bills, { opacity: 0 });
+        for (let i = 0; i < 9; i++) {
+          el("rect", Object.assign(ink(5, "#cfe6c8"), { x: bx, y: by - (i + 1) * 30, width: 230, height: 28, rx: 4 }), bills);
+          el("rect", { x: bx + 96, y: by - (i + 1) * 30 + 4, width: 38, height: 20, fill: "var(--orange)" }, bills);
+        }
+        act.fromTo(bills, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 0.3, ease: "back.out(1.7)", immediateRender: false }, T.m300);
+        P.bigText("a4", "300 萬", bx + 34, by - 9 * 30 - 76, 60, T.m300);
+        const cn = coin(s, 22); gsap.set(cn, { opacity: 0, x: bx + 300, y: by - 18 });
+        act.fromTo(cn, { opacity: 0, scale: 0 }, { opacity: 1, scale: 1, duration: 0.25, ease: "back.out(2)", immediateRender: false }, T.k300);
+        P.bigText("a4", "300 塊", bx + 262, by - 104, 60, T.k300);
+        // 人偶：右下，半身，聳肩
+        const { f } = P.figure("a4", { scale: 0.55, x: w - 150, y: h + 120, face: "default" });
+        f.pose(act, "shrug", T.small + 0.1, 0.25); f.face(act, "laugh", T.small + 0.1);
+      }
+
+      P.finish(T.end, { stops: [] });
+    </script>
+  </body>
+</html>

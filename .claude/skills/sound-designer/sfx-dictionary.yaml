@@ -182,6 +182,16 @@ sounds:
     verified: true
     note: Super Mario Bros 1 and 2(JP)/Powerup.wav（瑪利歐吃蘑菇）
 
+  - file: Coin
+    when: 投硬幣、存錢、錢進來——硬幣掉進撲滿那一下（2026-11-20《財富階梯》咖啡段，3 個候選對照後修修選「第 1 版」）
+    polarity: 正面
+    length: 短
+    usage: 常用
+    verified: true
+    note: >-
+      Super Mario Bros 1 and 2(JP)/Coin.wav（瑪利歐吃金幣；Usual use/Coin.wav 是同一個檔）。
+      落選：Sound Effects Pack - #4/KA-CHING.mp3（收銀機）、Usual use/DING.mp3
+
 # UI 事件音效（Envato 來源，run_short_sfx.py 內建規則使用；與本字典並行）
 # ding / riser / impact / pop / swish → 見 SKILL Step 10 表，屬「機械層」，
 # 不需語意判斷，不進本字典。

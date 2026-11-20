@@ -1,0 +1,133 @@
+<!doctype html>
+<!-- 《財富階梯》咖啡段 頁 2：我還是買全家（分鏡表 storyboards/wealth-coffee.md）
+     時間＝影片「20261112 財富階梯.mp4」的字幕（第 226–234 句），本頁 0 秒＝影片 7:56.042，到 8:10.256（下一句開口）結束。
+     畫面不出現真實品牌（全家、星巴克只在聲音和字幕裡）。 -->
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/figure.js"></script>
+    <script src="assets/kit/fx.js"></script>
+    <script src="assets/kit/comic.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>html, body { margin: 0; background: var(--white); overflow: hidden; } #root { background: var(--white); }</style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="comic_coffee_p2"
+      data-width="1920" data-height="1080" data-start="0" data-duration="14.2">
+      <!-- 音效：走路＝Cartoon Run（走向咖啡店）、轉＝CARTOON SPIN（轉身回頭） -->
+      <audio id="sfx-walk" src="assets/sfx/cartoon_run.mp3"  data-start="6.4"  data-duration="2.6" data-track-index="11" data-volume="0.5" data-media-start="0.6"></audio>
+      <audio id="sfx-spin" src="assets/sfx/cartoon_spin.mp3" data-start="9.55" data-duration="1.2" data-track-index="12" data-volume="0.55" data-media-start="0.36"></audio>
+    </div>
+    <script>
+      const P = EXK_COMIC.page(document.getElementById("root"), { fx: true, cells: {
+        b1: { x: 24,   y: 24,  w: 560,  h: 520, img: "assets/coffee/b1.png", iw: 1024, ih: 1024 },
+        b2: { x: 604,  y: 24,  w: 620,  h: 520, img: "assets/coffee/b2.png", iw: 1024, ih: 1024 },
+        b3: { x: 1244, y: 24,  w: 652,  h: 520, img: "assets/coffee/b3.png", iw: 1024, ih: 1024 },
+        b4: { x: 24,   y: 564, w: 1100, h: 492, img: "assets/coffee/b4.png", iw: 1536, ih: 1024 },
+        b5: { x: 1144, y: 564, w: 752,  h: 492, img: "assets/coffee/b5.png", iw: 1536, ih: 1024 },
+      } });
+      const { tl, act, cells: C, cell, el } = P;
+      window.__timelines = window.__timelines || {};
+      window.__timelines["comic_coffee_p2"] = tl;
+      // 量出來的位置（背景圖座標）：b2 咖啡機出杯口；b3 人行道地平線、咖啡店門；b4 門把、地面
+      const GEO = { spout2: [826, 610], ground3: 908, door3: 600, handle4: [926, 560], ground4: 900 };
+      const T = { b1: 0, necessity: 0.634, meToo: 3.170, b2: 3.770, b3: 6.072, b4: 9.276, b5: 10.510, cheap: 11.678, recommend: 12.412, out: 12.95, end: 14.214 };
+      const ink = (w, fill) => ({ fill: fill || "none", stroke: "#000", "stroke-width": w || 8, "stroke-linecap": "round", "stroke-linejoin": "round" });
+
+      P.cam("b1", 0, 0.001);
+      P.cam("b2", T.b2 - 0.3, 0.5); P.cam("b3", T.b3 - 0.3, 0.5); P.cam("b4", T.b4 - 0.3, 0.5); P.cam("b5", T.b5 - 0.3, 0.5);
+      P.camOut(T.out, 1.1);
+
+      // 紙杯（便利商店咖啡）：杯底中心在 0,0
+      function paperCup(parent, s, hot) {
+        const g = el("g", {}, parent), o = ink(6 * s, "#fff");
+        el("path", Object.assign({}, o, { d: `M${-30 * s},${-96 * s} L${-23 * s},0 L${23 * s},0 L${30 * s},${-96 * s} Z` }), g);
+        el("path", Object.assign({}, ink(5 * s, "var(--orange)"), { d: `M${-27 * s},${-62 * s} L${-25 * s},${-34 * s} L${25 * s},${-34 * s} L${27 * s},${-62 * s} Z` }), g);
+        el("rect", Object.assign({}, o, { x: -35 * s, y: -110 * s, width: 70 * s, height: 16 * s, rx: 5 * s }), g);
+        if (hot) {
+          const st = el("g", {}, g);
+          [-14, 6].forEach((dx) => el("path", Object.assign(ink(4 * s), { d: `M${dx * s},${-122 * s} c${-10 * s},${-14 * s} ${10 * s},${-22 * s} 0,${-38 * s}` }), st));
+          return { g, steam: st };
+        }
+        return { g };
+      }
+      // 場景裡的小牌子（階數）
+      function plaque(k, text, x, y, size) {
+        const z = C[k].zoom, d = document.createElement("div");
+        d.textContent = text;
+        Object.assign(d.style, { position: "absolute", left: x + "px", top: y + "px", zIndex: 4, background: "var(--white)",
+          border: `${5 / z}px solid var(--ink)`, padding: ".15em .45em", fontWeight: 900, fontSize: size / z + "px", whiteSpace: "nowrap" });
+        cell[k].appendChild(d);
+        return d;
+      }
+
+      // ── 格 1：大特寫。雙手捧杯聞咖啡；「像我就是」舉起一隻手 ──
+      {
+        const sc = 1.15, { f } = P.figure("b1", { scale: sc, x: C.b1.w * 0.5, y: 330 + 364 * sc, face: "laugh", pose: "cupTwo" });
+        const s = P.svg("b1", 4), a = f.joint("hLtip"), b = f.joint("hRtip");
+        const c = paperCup(s, 1.15, true); c.g.setAttribute("transform", `translate(${(a[0] + b[0]) / 2} ${(a[1] + b[1]) / 2 + 60})`);
+        for (let t = 0.2; t < T.b2; t += 0.4) act.fromTo(c.steam, { y: 0, opacity: 1 }, { y: -10, opacity: 0.4, duration: 0.4, ease: "none", immediateRender: false }, t);
+        // 聞：頭往杯子靠一下
+        act.to(f.svg, { y: "+=10", duration: 0.25, yoyo: true, repeat: 1, ease: "sine.inOut" }, T.necessity + 0.3);
+        // 像我就是：畫面左邊那隻手舉高
+        f.tween(act, { ls: 125, le: 45, aL: 0 }, T.meToo, 0.2, "back.out(2)");
+      }
+
+      // ── 格 2：便利商店咖啡機前（3/4 側），拿起紙杯；牆上牌子「第 2 階」──
+      {
+        plaque("b2", "第 2 階", 24, 22, 44);
+        // 杯子放在咖啡機出杯口下（截圖量的格子座標）；人偶先擺成伸手的姿勢、讓手套前端對到杯子，再收回站姿
+        const cupAt = [534, 292], sc = 0.72;
+        const { f } = P.figure("b2", { scale: sc, x: 0, y: 0, view: "q3", dir: 1, pose: "reachR" });
+        f.aim("hRtip", cupAt[0] - 14, cupAt[1] - 40); f.set({ pose: "stand" });
+        const s = P.svg("b2", 4), c = paperCup(s, 0.6);
+        gsap.set(c.g, { x: cupAt[0], y: cupAt[1] });
+        f.pose(act, "reachR", T.b2 + 0.3, 0.4);
+        // 手到杯子的時候把杯子帶回來
+        const back = f.joint("hRtip");
+        act.to(c.g, { x: cupAt[0] - 150, y: cupAt[1] + 40, duration: 0.45, ease: "power2.inOut" }, T.b2 + 1.0);
+        f.tween(act, { rs: 40, re: -70 }, T.b2 + 1.0, 0.45);
+      }
+
+      // ── 格 3：人行道側面，大步走向咖啡店；門邊牌子「第 3 階」──
+      {
+        const gy = P.imgPt("b3", 0, GEO.ground3)[1], doorX = P.imgPt("b3", GEO.door3, 0)[0], sc = 0.33;
+        plaque("b3", "第 3 階", doorX - 150, gy - 270, 40);
+        const { wrap, f } = P.figure("b3", { scale: sc, x: 0, y: gy, view: "side", dir: 1 });
+        const x0 = 60, x1 = doorX - 30, at = T.b3 + 0.3, dur = 2.6;
+        gsap.set(wrap, { x: x0 });
+        act.fromTo(wrap, { x: x0 }, { x: x1, duration: dur, ease: "none", immediateRender: false }, at);
+        for (let t = at, i = 0; t < at + dur - 0.05; t += 0.22, i++) { f.pose(act, i % 2 ? "sideWalkB" : "sideWalkA", t, 0.11); f.jump(act, t, 6); }
+        f.pose(act, "stand", at + dur, 0.15);
+      }
+
+      // ── 格 4：咖啡店門口。背對鏡頭、手握門把 → 轉身回頭（determined 臉）；強調「中」──
+      {
+        const hd = P.imgPt("b4", GEO.handle4[0], GEO.handle4[1]), gy = P.imgPt("b4", 0, GEO.ground4)[1], sc = 0.84;
+        const { f } = P.figure("b4", { scale: sc, x: hd[0] - 150, y: gy, view: "back", pose: "reachR" });
+        const turn = T.b4 + 0.3;
+        f.pose(act, "stand", turn, 0.12);
+        f.view(act, "q3back", turn); f.view(act, "side", turn + 0.06, { dir: -1 }); f.view(act, "q3", turn + 0.12, { dir: -1 });
+        f.view(act, "front", turn + 0.18); f.face(act, "determined", turn + 0.18);
+        const sl = P.svg("b4", 2);
+        EXK_FX.speedLines(tl, sl, hd[0] - 150, gy - 380 * sc, 0, turn, 0.3, { n: 4, len: 120, gap: 40, back: 140, w: 7 });
+        EXK_FX.shake(tl, C.b4.stage, turn + 0.18, 7, 0.4);
+      }
+
+      // ── 格 5：兩手各拿一杯舉高；大字「買一送一」；「推薦給大家」晃杯子 ──
+      {
+        const sc = 1.05, { f } = P.figure("b5", { scale: sc, x: C.b5.w * 0.5, y: 300 + 364 * sc, pose: "cheers", face: "laugh" });
+        const s = P.svg("b5", 4), cups = ["hLtip", "hRtip"].map((j) => {
+          const p = f.joint(j), c = paperCup(s, 1.0); c.g.setAttribute("transform", `translate(${p[0]} ${p[1] + 40})`);
+          const w = el("g", {}, s); w.appendChild(c.g); return w;
+        });
+        P.bigText("b5", "買一送一", 24, 18, 88, T.b5 + 0.1);
+        act.to(cups, { rotation: 10, svgOrigin: `${C.b5.w * 0.5} 400`, duration: 0.12, yoyo: true, repeat: 3, ease: "sine.inOut" }, T.recommend + 0.1);
+      }
+
+      P.finish(T.end, { stops: [] });
+    </script>
+  </body>
+</html>

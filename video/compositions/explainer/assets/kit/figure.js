@@ -60,6 +60,18 @@
     sideWalkB: { ls: 22,  le: 0, rs: 24,  re: 0,   lh: -20, lk: -30, rh: -22, rk: 0, aL: 0, aR: 0 },
     // 托下巴想事情（配 face "think"）：畫面左邊那隻手（修修的右手）彎到下巴
     think:  { ls: -12, le: -158, rs: 10, re: 0,  lh: 2,  lk: 0,   rh: 2,  rk: 0,   aL: 1, aR: 0 },
+    // 拿手機看（正面）：畫面右邊那隻手彎到胸前，手機放在 hRtip
+    phone:  { ls: 10,  le: 0,  rs: 26, re: -118, lh: 2,  lk: 0,   rh: 2,  rk: 0,   aL: 0, aR: 1 },
+    // 雙手捧杯子（正面）：兩隻手彎到胸前、手套快碰在一起，杯子放兩手中間
+    cupTwo: { ls: 30,  le: -108, rs: 30, re: -108, lh: 2, lk: 0,  rh: 2,  rk: 0,   aL: 1, aR: 1 },
+    // 聳肩（正面）：手肘往外、前臂往上攤開
+    shrug:  { ls: 38,  le: 92, rs: 38,  re: 92,  lh: 2,  lk: 0,   rh: 2,  rk: 0,   aL: 0, aR: 0 },
+    // 兩手各拿一杯舉高（正面）
+    cheers: { ls: 96,  le: 58, rs: 96,  re: 58,  lh: 2,  lk: 0,   rh: 2,  rk: 0,   aL: 0, aR: 0 },
+    // 側面抱東西在胸前（配 view "side"）：負的角度＝往前
+    hug:    { ls: -35, le: -75, rs: -35, re: -75, lh: 2, lk: 0,  rh: 2,  rk: 0,   aL: 0, aR: 0 },
+    // 伸手往畫面右邊拿東西（q3／背面）
+    reachR: { ls: 10,  le: 0,  rs: 78,  re: -18, lh: 2,  lk: 0,   rh: 2,  rk: 0,   aL: 0, aR: 1 },
   };
   // 各角度的身體參數：w＝軀幹寬倍率、legX＝兩腿間距倍率、arms＝看得到幾隻手臂、shoe＝鞋型、off＝軀幹往後偏
   const VIEWS = {
