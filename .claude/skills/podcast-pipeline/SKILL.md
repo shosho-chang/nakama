@@ -81,6 +81,7 @@ consumer 已切換；缺少／stale／tampered receipt 一律 fail closed，不�
 | S5 MAJOR AUDIO | 所有 major-risk components 有 Faster＋Qwen evidence；衝突 retain Memo | 無普通人工 gate |
 | S6 RELEASE | release／ledger／manifest／handoff hash-bound，fresh replay byte-identical | 無普通人工 gate |
 | S7 RESOLVE | project/timeline 建立，字幕 handoff exact-copy | 非字幕 GUI requirement 不算 editorial gate |
+| S7I INTERVIEW BRIEF | Vault `NN-訪談簡介.md`＋`NN-intro講稿.md`（[§S7I](#s7i-訪談簡介寫-intro-的參考修修-2026-11-20)），時間碼／引句抽查過、講稿出處表逐筆核對 | 無；與 timeline 一起交給修修 |
 | S7E EDITORIAL MASTER | Intro/Outro 剪入且字幕已上 ST1 並逐句驗證（[§S7E Intro／Outro 字幕上軌](#s7e-introoutro-字幕上軌)）、完整節目人工剪輯、master media/SRT/receipt hash-bound | **Editorial Master approval** |
 | S7P FULL PACKAGING | 完整節目 title／thumbnail／description variants 已產生 | 可非阻塞 review；發布前必須核准 |
 | S8 HIGHLIGHTS | mining、validate、persona review、long shortlist 完成 | **Highlight shortlist review** |
@@ -406,6 +407,71 @@ Actual build exit 0 只代表 base timeline 建立成功；agent 必須把 base 
 此時 normalization／subtitle
 已完成，而使用者可放入自己錄好的 Intro／Outro，完整觀看並移除咳嗽、道歉、卡頓、中斷與不要的段落。
 使用者明確核准並鎖定後，才可建立 `podcast-editorial-master-v1` receipt 並開始任何 repurpose。
+
+### S7I 訪談簡介（寫 Intro 的參考，修修 2026-11-20）
+
+> 「在我做 intro 跟 outro 的字幕之前，你要先針對這個逐字稿出一個訪談的簡介，裡面講了些什麼事情，
+> 給我寫 intro 的參考。」
+
+**時機**：S7 actual build 成功、把 base timeline 交給修修的**同一輪**就做，不要問。修修要在錄 Intro
+**之前**拿到它，所以不可以等到 S7E 才做。這一步是語意工作，不碰 Resolve，可以和其他工作並行。
+
+**輸入**：只有 `<episode>\subtitle-release\memo-dual-audit-v1\release.srt`（正式字幕）。人名、書名、
+機構名的寫法可以對照本集前期 `report.md`，但**內容只能來自這集訪談實際講到的**。report 裡有、
+訪談裡沒講的事不可以寫進來；逐字稿不清楚的地方就照實標出來，不要猜（CLAUDE.md「嚴禁幻想」）。
+
+**做法**：派一個 subagent 讀完整份逐字稿（不可抽樣）起草。草稿回來後，orchestrator 自己挑 ≥10 個
+時間碼和引句，回到 `release.srt` 逐一核對：時間對、字對、說話的人對。核對不過的要先修好，才能交出去。
+
+**輸出**：寫到 Vault 本集前期資料夾
+`E:\Shosho LifeOS\AgentOutputs\interviews\<日期>-<來賓>\NN-訪談簡介.md`。資料夾和編號不要自己猜：
+用 `shared.vault_interviews.interview_dir(<episode_id>)` 找資料夾，再用
+`next_numbered_name(<dir>, "訪談簡介")` 取下一個編號。frontmatter 要記 `source`（release.srt 路徑）與 `source_sha256`。內容固定五節：
+
+1. 正式訪談起訖（扣掉開頭暖身與收工閒聊，附判斷依據）
+2. 來賓在這集怎麼介紹自己（每條附時間碼）
+3. 這集聊了什麼：照實際順序分 5–10 段，每段寫時間範圍、標題、摘要，以及 1–2 句逐字原話
+4. 適合放進 intro 的亮點（3–6 個，說明為什麼適合當鉤子）
+5. intro 可以帶到的事實（數字、年份、書名，各附時間碼；ASR 數字有疑慮的要標出來）
+
+這份簡介只放素材，不寫 intro 本文；本文是下一步的草稿。
+
+#### Intro 講稿草稿（修修 2026-11-20：「根據訪談簡介，參考我之前寫的文字寫一版 intro 講稿」）
+
+簡介核對完之後，**同一輪**接著寫，不要問。這份只是草稿：他會自己改寫後再錄音。
+錄完之後 S7E 照樣以**口說**為準，草稿不是講稿權威。
+
+- **風格範本**：讀他過去實際錄過的 intro，不要用模型預設的語氣。來源是 Vault `TaskNotes/Tasks/` 與
+  `TaskNotes/Archive/` 裡 `【Pod】*後製與上架*.md` 的 `## Intro` 段。2026-11-20 讀了 8 份：
+  Manny、李海碩、洪瀞、程世嘉、謝伯讓、Kelly Tsai、周慕姿、李惠貞。不要讀 `Journals/`。
+- **他的寫法**（從這 8 份歸納）：
+  - 第一段是固定開場套語，逐字照抄本集 TaskNote〈後製與上架〉裡的版本。
+  - 來賓段用「今天邀請到的來賓是＋〔關係或身分〕＋名字！」開頭，接著講他跟來賓的淵源，例如「一直以來都有在看他…」「我是 N 年前就…」。
+  - 再來是來賓最亮眼的經歷，口語、帶驚嘆，例如「這背景夠強了吧」「喔對，她今年才 25 歲喔」。
+  - 接著用「我們從…開始聊起…接著…最後…」照訪談順序帶過。
+  - 再加一句他自己的感受，例如「相見恨晚」「點頭如搗蒜」「聊得超級過癮」。
+  - 最後用「如果你〔TA 條件〕，這集節目一定會給你超多收穫／千萬別錯過喔」收尾。
+  - 書名一律用《》。來賓段約 400–600 字。
+- **只用正片講過的事**：每一句都要能回到 `release.srt`。只在暖身段講過的事（如果暖身可能剪掉）、
+  只出現在 report 的事、只在主持人提問裡出現而來賓沒證實的事，都不寫進正文：要嘛放進「可替換的句子」
+  並註明風險，要嘛放進「刻意沒寫的」。頭銜（院長、主任、教授）只寫逐字稿裡確實出現的。
+- **工商**：最近幾集來賓段後面常接一句工商（例如「節目到這裡先休息一下來個工商時間…」）。草稿不要
+  直接放進正文，列在「可替換的句子」裡讓他決定，因為每集推的東西不同。
+- **Outro 不寫**：TaskNote 裡已經有固定的 outro。
+- **驗收**：寫完後把正文每個事實列成「出處表」（草稿內容｜時間碼｜逐字稿原文），再用程式逐筆 grep
+  `release.srt` 核對，全部對上才交出去。
+- **輸出**：同一個資料夾，用 `next_numbered_name(<dir>, "intro講稿")` 取檔名。frontmatter 記
+  `kind: intro-draft`、`based_on`（簡介的 wikilink）、`source`、`source_sha256`。內容固定四段：
+  1. Intro 正文（含固定套語）
+  2. 可以替換或加上的句子
+  3. 刻意沒寫的（附原因）
+  4. 出處表
+- **也寫進 TaskNote**（修修 2026-11-20：「你把這個 intro 寫在我 Task 裡面有關這一集後製的那個檔案裡面」）：
+  - 檔案是 `E:\Shosho LifeOS\TaskNotes\Tasks\【Pod】<來賓>*- 後製與上架.md`。找不到、或找到不只一個，就停下來問他，不要自己建檔。
+  - 把正文的來賓段（固定套語之後的那幾段）插在 `## Intro` 的固定開場段之後、`## Outro` 之前。
+  - 固定開場、`## Outro`、frontmatter 都不動。可替換句、刻意沒寫的、出處表不放進 TaskNote，只留在 Vault 的 intro 講稿檔。
+  - `## Intro` 裡除了固定開場已經有別的文字（代表他已經自己寫了），就不要覆蓋，改成問他。
+  - 寫進去之後，TaskNote 就是他要改寫、要錄的講稿。S7E 仍然把它當唯讀參考，以口說為準。
 
 ### S7E Intro／Outro 字幕上軌
 
