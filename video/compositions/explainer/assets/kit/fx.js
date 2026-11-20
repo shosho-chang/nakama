@@ -154,5 +154,26 @@
     return land;
   }
 
-  window.EXK_FX = { drive, warp, shake, flash, focusLines, impactStar, ring, impactLines, speedLines, squashJump };
+
+  // ── 殘影（修修 2026-11-20 看過，漫畫不用；留著備查）：快速動作後面拖 n 個淡影子。做法＝再做 n 隻一樣的人偶，跑同一段動作、各晚 gap 秒，調淡、只在 [from, to] 出現 ──
+  //   make()        → { wrap, f }：做一隻人偶（跟本尊同參數）
+  //   perform(A, f, wrap, dt) ：把那段動作寫到時間軸 A 上，所有時間加 dt（本尊 dt=0 由呼叫端自己做）
+  //   時間都是劇情時間（寫在 act 上），所以殘影也跟著一拍二、頓格
+  function afterimages(act, make, perform, o) {
+    o = o || {};
+    const n = o.n || 3, gap = o.gap || 0.05, alpha = o.alpha || 0.35;
+    const ghosts = [];
+    for (let i = n; i >= 1; i--) {                       // 遠的先做，壓在下面
+      const g = make();
+      g.wrap.style.zIndex = 2;
+      act.set(g.wrap, { opacity: 0 }, 0);
+      perform(act, g.f, g.wrap, i * gap);
+      act.set(g.wrap, { opacity: alpha * (1 - i / (n + 1)) }, o.from + i * gap);
+      act.set(g.wrap, { opacity: 0 }, o.to + i * gap);
+      ghosts.push(g);
+    }
+    return ghosts;
+  }
+
+  window.EXK_FX = { drive, warp, shake, flash, focusLines, impactStar, ring, impactLines, speedLines, squashJump, afterimages };
 })();

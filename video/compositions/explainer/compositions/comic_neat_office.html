@@ -1,0 +1,143 @@
+<!doctype html>
+<!-- NEAT 書房段（分鏡表 storyboards/neat-office.md）——用 comic.js 模板寫的第一支：
+     這個檔只有「這一支」的東西：格子位置與背景、量出來的位置、每格的動作、強調。版面／運鏡／字卡／人偶／特效都在 assets/kit/。 -->
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/figure.js"></script>
+    <script src="assets/kit/fx.js"></script>
+    <script src="assets/kit/comic.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>html, body { margin: 0; background: var(--white); overflow: hidden; } #root { background: var(--white); }</style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="comic_neat_office"
+      data-width="1920" data-height="1080" data-start="0" data-duration="13.6">
+      <!-- 音效（修修 2026-11-20：偏好電玩／卡通音效；跳＝MARIO JUMP、衝擊＝瑪利歐踢烏龜、走路＝Cartoon Run；抖腳、轉筆、熱量計上升是我挑的，待修修聽）
+           data-media-start＝跳過音檔開頭的空白（量過），聲音才會跟動作同一格。秒數＝真實時間，跟下面 script 的 T／HIT 對齊：抖腳 T.p2+0.45、轉筆 T.p3+0.4、走路 T.p4+0.4／+2.1、上升 T.p5+0.6、衝頂 HIT、跳 HIT+頓格0.2 -->
+      <audio id="sfx-tap"   src="assets/sfx/cartoon_fast_tiptoes.mp3" data-start="3.05"  data-duration="1.27" data-track-index="11" data-volume="0.6" data-media-start="0.25"></audio>
+      <audio id="sfx-spin"  src="assets/sfx/cartoon_spin.mp3"         data-start="5.0"   data-duration="1.6"  data-track-index="12" data-volume="0.5" data-media-start="0.36"></audio>
+      <audio id="sfx-walk1" src="assets/sfx/cartoon_run.mp3"          data-start="6.8"   data-duration="1.4"  data-track-index="13" data-volume="0.55" data-media-start="0.6"></audio>
+      <audio id="sfx-walk2" src="assets/sfx/cartoon_run.mp3"          data-start="8.5"   data-duration="0.9"  data-track-index="14" data-volume="0.55" data-media-start="2"></audio>
+      <audio id="sfx-rise"  src="assets/sfx/mario_powerup.wav"        data-start="9.6"   data-duration="2.0"  data-track-index="15" data-volume="0.6"></audio>
+      <audio id="sfx-hit"   src="assets/sfx/mario_kick.wav"           data-start="10.95" data-duration="1.0"  data-track-index="16" data-volume="0.9"></audio>
+      <audio id="sfx-jump"  src="assets/sfx/mario_jump.mp3"           data-start="11.15" data-duration="1.2"  data-track-index="17" data-volume="0.7" data-media-start="0.235"></audio>
+    </div>
+    <script>
+      // ── 格子（分鏡表「位置／大小」）＋背景（tools/gen_panel.py 生，畫風參考 assets/explore/b/b1_hi.png）──
+      const P = EXK_COMIC.page(document.getElementById("root"), { fx: true, cells: {
+        p1: { x: 24,   y: 24,  w: 1100, h: 560, img: "assets/explore/c/c1.png", iw: 1536, ih: 1024 },
+        p2: { x: 1144, y: 24,  w: 752,  h: 560, img: "assets/explore/c/c2.png", iw: 1536, ih: 1024 },
+        p3: { x: 24,   y: 604, w: 452,  h: 452, img: "assets/explore/c/c3.png", iw: 1024, ih: 1024 },
+        p4: { x: 496,  y: 604, w: 880,  h: 452, img: "assets/explore/c/c4.png", iw: 1536, ih: 1024 },
+        p5: { x: 1396, y: 604, w: 500,  h: 452, img: "assets/explore/c/c5.png", iw: 1024, ih: 1024, flipX: true },
+      } });
+      const { tl, act, cells: C, cell, el } = P;
+      window.__timelines = window.__timelines || {};
+      window.__timelines["comic_neat_office"] = tl;   // comic.js 已註冊；這兩行讓渲染器的靜態檢查看得到
+      // 量出來的位置（背景圖座標）：p1 書桌後緣、p2 鞋底、p4 地板／書桌面／腳底、走路的三個 x
+      const GEO = { desk1: 718, shoe2: 860, floor4: 734, deskTop4: 525, feet4: 762, x4: [940, 380, 780] };
+      const T = { p1: 0, p2: 2.6, p3: 4.6, p4: 6.4, p5: 9.0, out: 11.9, end: 13.6 };
+      const ink = (w) => ({ fill: "none", stroke: "#000", "stroke-width": w || 11, "stroke-linecap": "round", "stroke-linejoin": "round" });
+
+      // ── 運鏡與旁白 ──
+      P.cam("p1", 0, 0.001); P.cam("p2", T.p2, 0.6); P.cam("p3", T.p3, 0.6); P.cam("p4", T.p4, 0.6); P.cam("p5", T.p5, 0.6);
+      P.camOut(T.out, 1.3);
+      P.cap("p1", "有些人整天沒運動，", { left: 18, top: 18 }, 0.3);
+      P.cap("p2", "光是抖腳、", { left: 16, top: 16 }, T.p2 + 0.4);
+      P.cap("p3", "轉筆、", { left: 14, top: 14 }, T.p3 + 0.4);
+      P.cap("p4", "走來走去——", { left: 14, top: 14 }, T.p4 + 0.4);
+
+      // ── 格 1：坐在書桌後只露上半身（書桌後緣以下裁掉），疲累臉，呼吸 ──
+      {
+        const desk = P.imgPt("p1", 0, GEO.desk1)[1], clip = document.createElement("div");
+        Object.assign(clip.style, { position: "absolute", left: 0, top: 0, width: C.p1.w + "px", height: desk + "px", overflow: "hidden", zIndex: 3 });
+        cell.p1.appendChild(clip);
+        const { f } = P.figure("p1", { scale: 1, x: C.p1.w * 0.5, y: desk - 150 + 364, face: "tired" }, clip);
+        act.fromTo(f.svg, { y: 0 }, { y: -5, duration: 0.9, ease: "sine.inOut", yoyo: true, repeat: 2 }, 0.2);
+      }
+      // ── 格 2：桌下特寫（放大的人偶對準腳），抖腳；強調「中」──
+      {
+        const gy = P.imgPt("p2", 0, GEO.shoe2)[1], Z = 5.2;
+        const { f } = P.figure("p2", { scale: Z, x: 0, y: 0, view: "side", dir: -1, lineWidth: 20 });
+        f.set({ vals: { lh: 7, rh: 7 } });
+        f.aim("fL", C.p2.w * 0.5, gy - 26 * Z);
+        for (let i = 0; i < 16; i++) {
+          const t = T.p2 + 0.45 + i * 0.11;
+          f.tween(act, { lh: 25, lk: -45 }, t, 0.055, "power1.out"); f.tween(act, { lh: 7, lk: 0 }, t + 0.055, 0.055, "power1.in");
+        }
+        const s = P.svg("p2", 4), j = f.joint("fL"), hx = j[0] - 30 * Z - 24, y = gy - 50;
+        [[hx, y - 70, hx - 46, y - 92], [hx - 8, y - 30, hx - 60, y - 30], [hx, y + 4, hx - 44, y + 18]].forEach((l) => {
+          const e = el("line", Object.assign({ x1: l[0], y1: l[1], x2: l[2], y2: l[3] }, ink(8)), s);
+          gsap.set(e, { opacity: 0 });
+          for (let i = 0; i < 8; i++) { tl.set(e, { opacity: 1 }, T.p2 + 0.5 + i * 0.22); tl.set(e, { opacity: 0 }, T.p2 + 0.61 + i * 0.22); }
+        });
+        EXK_FX.shake(tl, C.p2.stage, T.p2 + 0.45, 7, 0.4);
+      }
+      // ── 格 3：手的特寫（放大的人偶對準右手），筆繞手套前端轉 ──
+      {
+        const { f } = P.figure("p3", { scale: 4.2, x: 0, y: 0, lineWidth: 20 });
+        f.set({ vals: { rs: 62, re: -48, aR: 1 } });
+        f.aim("hR", C.p3.w * 0.5, C.p3.h * 0.58);
+        const tip = f.joint("hRtip"), s = P.svg("p3", 4);
+        const pr = el("g", {}, el("g", { transform: `translate(${tip[0]} ${tip[1]})` }, s));
+        el("rect", Object.assign(ink(9), { fill: "#fff", x: -110, y: -11, width: 220, height: 22, rx: 11 }), pr);
+        el("path", Object.assign(ink(9), { fill: "#000", d: "M110,-8 L140,0 L110,8 Z" }), pr);
+        el("rect", { x: -110, y: -7, width: 26, height: 14, fill: "var(--orange)" }, pr);
+        act.fromTo(pr, { rotation: -20, svgOrigin: "0 0" }, { rotation: 700, svgOrigin: "0 0", duration: 1.5, ease: "power1.inOut" }, T.p3 + 0.4);
+        const arc = (r, a0, a1) => `M${tip[0] + r * Math.cos(a0)},${tip[1] + r * Math.sin(a0)} A${r},${r} 0 0 1 ${tip[0] + r * Math.cos(a1)},${tip[1] + r * Math.sin(a1)}`;
+        [arc(160, -2.6, -1.6), arc(160, 0.4, 1.4)].forEach((d, i) => {
+          const a = el("path", Object.assign(ink(8), { d }), s); gsap.set(a, { opacity: 0 });
+          tl.to(a, { opacity: 1, duration: 0.15 }, T.p3 + 0.6 + i * 0.1); tl.to(a, { opacity: 0, duration: 0.3 }, T.p3 + 1.8);
+        });
+      }
+      // ── 格 4：側面走路，往左 → 轉身 → 往右（書桌 75cm、人 170cm 算身高）──
+      {
+        const feetY = P.imgPt("p4", 0, GEO.feet4)[1], sc = (GEO.floor4 - GEO.deskTop4) * 170 / 75 / 604 * C.p4.s;
+        const { wrap, f } = P.figure("p4", { scale: sc, x: 0, y: feetY, view: "side", dir: -1 });
+        const xs = GEO.x4.map((x) => P.imgPt("p4", x, 0)[0]);
+        const walk = (at, dur, x0, x1) => {
+          act.fromTo(wrap, { x: x0 }, { x: x1, duration: dur, ease: "none", immediateRender: false }, at);
+          for (let t = at, i = 0; t < at + dur - 0.05; t += 0.28, i++) { f.pose(act, i % 2 ? "sideWalkB" : "sideWalkA", t, 0.14); f.jump(act, t, 8); }
+          f.pose(act, "stand", at + dur, 0.15);
+        };
+        gsap.set(wrap, { x: xs[0] });
+        walk(T.p4 + 0.4, 1.4, xs[0], xs[1]);
+        f.view(act, "front", T.p4 + 1.9); f.view(act, "side", T.p4 + 2.05, { dir: 1 });
+        walk(T.p4 + 2.1, 0.9, xs[1], xs[2]);
+      }
+      // ── 格 5：熱量計 0 → 800 → 衝到 2000；強調「強」──
+      const HIT = T.p5 + 1.95;
+      {
+        const s = P.svg("p5", 2), tx = 400, top = 130, bot = 350, tw = 50, br = 46, w = C.p5.w, h = C.p5.h;
+        el("rect", Object.assign(ink(), { fill: "#fff", x: tx - tw / 2, y: top, width: tw, height: bot - top + 30, rx: tw / 2 }), s);
+        el("circle", Object.assign(ink(), { fill: "#fff", cx: tx, cy: bot + br * 0.9, r: br }), s);
+        el("circle", { cx: tx, cy: bot + br * 0.9, r: br - 10, fill: "var(--orange)" }, s);
+        const fill = el("rect", { x: tx - tw / 2 + 10, width: tw - 20, y: bot + 20, height: 0, fill: "var(--orange)" }, s);
+        for (let i = 0; i <= 10; i++) { const y = bot - (bot - top - 20) * i / 10; el("line", Object.assign(ink(6.6), { x1: tx + tw / 2 + 6, y1: y, x2: tx + tw / 2 + (i % 5 ? 22 : 40), y2: y }), s); }
+        const lvl = (p) => ({ y: bot + 20 - (bot - top) * p, height: (bot - top) * p });
+        act.to(fill, { attr: lvl(0.4), duration: 0.6, ease: "power2.out" }, T.p5 + 0.6);
+        act.to(fill, { attr: lvl(1.0), duration: 0.35, ease: "power3.in" }, HIT - 0.35);
+        P.bigText("p5", "一天 800 大卡", 16, 14, 64, T.p5 + 0.9);
+        // 人偶：預備 → 跳起（驚訝、張手）→ 落地壓扁（殘影試過，修修 2026-11-20 決定不要）
+        const { wrap, f } = P.figure("p5", { scale: 0.55, x: 170, y: h + 30 });
+        f.face(act, "surprised", HIT - 0.1); f.pose(act, "armsOut", HIT - 0.1, 0.07);
+        EXK_FX.squashJump(act, wrap, HIT - 0.1, "170px " + (h + 30) + "px", { antic: 0.1, air: 0.42 });
+        f.jump(act, HIT, 40);
+        // 撞到頂那一格：白閃＋震動＋集中線＋衝擊環／撞擊線＋字彈出（墊衝擊星）
+        const fxl = P.svg("p5", 4500);
+        EXK_FX.flash(tl, cell.p5, HIT, { cap: 0.55 });
+        EXK_FX.shake(tl, C.p5.stage, HIT, 16, 0.45);
+        EXK_FX.focusLines(tl, P.svg("p5", 1), w, h, 300, 210, HIT, { r0: 190, dur: 1.2 });
+        EXK_FX.ring(tl, fxl, tx, top, 110, HIT, { w: 9 });
+        EXK_FX.impactLines(tl, fxl, tx, top, 40, 95, HIT, { n: 7, a0: -Math.PI * 0.95, span: Math.PI * 0.9, w: 6 });
+        EXK_FX.impactStar(tl, P.svg("p5", 2), 126, 84, 92, HIT, { lw: 5 });
+        P.bigText("p5", "最高 2000！", 16, 62, 84, HIT);
+      }
+
+      P.finish(T.end, { stops: [[HIT, 0.2]] });
+    </script>
+  </body>
+</html>

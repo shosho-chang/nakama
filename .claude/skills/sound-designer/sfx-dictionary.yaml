@@ -127,6 +127,61 @@ sounds:
       所以 sound.json 的 ambient 只填 slug，t0/t1 由 script 讀 broll.json，
       對齊由結構保證、不靠人填。
 
+  # ── 漫畫／動畫的動作音（修修 2026-11-20：「我比較 prefer 音效都使用電玩的音效」）──
+  - file: MARIO JUMP
+    when: 跳躍（修修原話：「跳躍當然是 Mario Jump」）。人偶跳起來那一格
+    polarity: 中性
+    length: 短
+    usage: 常用
+    verified: true
+    note: 檔案在 Sound Effects Pack #3/MARIO JUMP.mp3；開頭約 0.24s 空白，疊的時候要跳過
+
+  - file: Kick
+    when: 衝擊（修修原話：「衝擊可能就是瑪利歐踢烏龜」）。漫畫強調「強」那一格
+    polarity: 中性
+    length: 短
+    usage: 常用
+    verified: true
+    note: >-
+      是 Super Mario Bros 1 and 2(JP)/Kick.wav，不是 Usual use/KICK.mp3（同名不同檔）。
+      2026-11-20 跟 Thwomp、Goomba Stomp 一起比過，修修選 Kick
+
+  - file: Cartoon Run Sound Effects
+    when: 走路（修修原話：「走路可以用 Cartoon Run，沒有問題」）
+    polarity: 中性
+    length: 長
+    usage: 常用
+    verified: true
+    note: 檔長 49s、開頭約 0.6s 空白；前 9.5s 是連續的跑步聲，只取走路那段的長度
+
+  # 下面四個：2026-11-20 每拍各做 3 個候選、剪成對照影片，修修聽完說「我覺得第一版比較好」
+  #   落選的（之後別再推薦給同一種動作）：
+  #   小動作＝Arrow Wobble、TIP TOE - CARTOON XYLOPHONE；轉＝Spinning Whistle Slide、ES Whip Whoosh 22；
+  #   上升＝瑪利歐 Vine、SLIDE UP；衝擊＝瑪利歐 Thwomp、Goomba Stomp
+  - file: FAST TIP TOES
+    when: 小而快、一直重複的身體動作——抖腳、敲手指、坐立不安
+    polarity: 中性
+    length: 短
+    usage: 常用
+    verified: true
+    note: Sound Effects Pack - #2/FAST TIP TOES.mp3；開頭約 0.25s 空白
+
+  - file: CARTOON SPIN
+    when: 東西在轉——轉筆、轉身、轉圈
+    polarity: 中性
+    length: 短
+    usage: 常用
+    verified: true
+    note: Sound Effects Pack - #2/CARTOON SPIN.mp3；開頭約 0.36s 空白
+
+  - file: Powerup
+    when: 數值往上升、集氣、變強——儀表／熱量計／分數往上衝的過程
+    polarity: 正面
+    length: 中
+    usage: 常用
+    verified: true
+    note: Super Mario Bros 1 and 2(JP)/Powerup.wav（瑪利歐吃蘑菇）
+
 # UI 事件音效（Envato 來源，run_short_sfx.py 內建規則使用；與本字典並行）
 # ding / riser / impact / pop / swish → 見 SKILL Step 10 表，屬「機械層」，
 # 不需語意判斷，不進本字典。
