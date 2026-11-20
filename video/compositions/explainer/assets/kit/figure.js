@@ -9,10 +9,14 @@
 //   f.view(tl, "side", at, { dir })    換角度：front / q3 / side / q3back / back；dir：-1 面向左、1 面向右
 //   f.face(tl, "laugh", at)            換表情（正面才有）：default laugh surprised think confused tired angry nervous determined
 //   f.set({ view, dir, face, pose })   立即設定（不經時間軸）
+//   f.joint("hR") / f.aim("fR", x, y)   關節位置／把某關節對準 (x, y)：特寫＝把人偶放大後對準部位，
+//                                       make 時給 lineWidth（畫面 px）讓線不要跟著放大
+//   f.tween(tl, { lk: -20 }, at, dur)   任意關節角度補間
 (function () {
   const NS = "http://www.w3.org/2000/svg";
   const C = { K: "#000", W: "#fff" };
-  const SW = 10;                          // 線寬
+  const SW0 = 10;                         // 線寬（scale 1）
+  let SW = SW0;                           // 目前畫的這隻用的線寬（draw() 開頭設定；特寫可另外指定）
   const HEAD_H = 240;                      // 頭頂到下巴
   const CHIN_Y = 4;                        // 下巴落點（稍微壓住領口）
   // 身體尺寸（scale 1，px；原點＝身體中線、下巴高度）——量自 turnaround_v1.png 正面 ×0.827
@@ -50,6 +54,10 @@
     // 另一隻手往後擺——幾乎伸直、略往外
     jogA:   { ls: 34,  le: -114, rs: 18, re: -6,   lh: 2,  lk: 0,   rh: 22, rk: -48, aL: 1, aR: 0 },
     jogB:   { ls: 18,  le: -6,   rs: 34, re: -114, lh: 22, lk: -48, rh: 2,  rk: 0,  aL: 0, aR: 1 },
+    // 側面走路（兩拍交替，配 view "side"）：側面兩腿的角度一前一後就是跨步；後腳膝蓋往後彎、腳跟離地。
+    // 手跟對側腳同向擺：前腳是左腳時，看得到的右手往前
+    sideWalkA: { ls: -22, le: 0, rs: -24, re: -20, lh: 22, lk: 0,   rh: 20,  rk: 30, aL: 0, aR: 0 },
+    sideWalkB: { ls: 22,  le: 0, rs: 24,  re: 0,   lh: -20, lk: -30, rh: -22, rk: 0, aL: 0, aR: 0 },
     // 托下巴想事情（配 face "think"）：畫面左邊那隻手（修修的右手）彎到下巴
     think:  { ls: -12, le: -158, rs: 10, re: 0,  lh: 2,  lk: 0,   rh: 2,  rk: 0,   aL: 1, aR: 0 },
   };
@@ -137,6 +145,8 @@
 
   function make(parent, opts) {
     const sc = opts.scale || 1;
+    // 特寫：形狀照比例放大，但線寬用 lineWidth（畫面上的 px）——等比放大五倍線會粗到變一團黑
+    const lineSW = opts.lineWidth ? opts.lineWidth / sc : SW0;
     const svg = el("svg", { width: 700 * sc, height: 900 * sc, viewBox: "-350 -620 700 900", overflow: "visible" });
     svg.style.position = "absolute";
     svg.style.left = (opts.x - 350 * sc) + "px";
@@ -173,6 +183,7 @@
     }
 
     function draw() {
+      SW = lineSW;
       const V = VIEWS[disc.view] || VIEWS.front;
       const P = solve(st, V);
       const oy = -P.ground + st.y;            // 腳落在 y=0（往上跳時 st.y 為負）
@@ -226,8 +237,33 @@
     draw();
     ready = true;
 
+    // 關節目前在 parent 座標的位置（特寫取景用）。name：hL hR（手腕）、hLtip hRtip（手套前端）、fL fR（腳踝）、
+    // eL eR kL kR hipL hipR shL shR、chin
+    function joint(name) {
+      const V = VIEWS[disc.view] || VIEWS.front, P = solve(st, V), H = headSpec();
+      const flip = H.dir !== 0 && H.dir !== disc.dir ? -1 : 1, oy = -P.ground + st.y;
+      let q;
+      if (name === "chin") q = [0, 0];
+      else if (name.endsWith("tip")) {
+        const s = name[1], h = P["h" + s], e = P["e" + s], L = Math.hypot(h[0] - e[0], h[1] - e[1]) || 1;
+        q = [h[0] + (h[0] - e[0]) / L * 28, h[1] + (h[1] - e[1]) / L * 28];
+      } else q = P[name];
+      const x0 = parseFloat(svg.style.left) + 350 * sc, y0 = parseFloat(svg.style.top) + 620 * sc;
+      return [x0 + q[0] * flip * sc, y0 + (q[1] + oy) * sc];
+    }
+
     const api = {
-      svg,
+      svg, joint,
+      // 把整隻人偶平移，讓某個關節落在 parent 的 (x, y)——特寫＝把人偶放大、對準那個部位，不另外畫一份手腳
+      aim(name, x, y) {
+        const j = joint(name);
+        svg.style.left = (parseFloat(svg.style.left) + x - j[0]) + "px";
+        svg.style.top = (parseFloat(svg.style.top) + y - j[1]) + "px";
+      },
+      // 任意關節角度補間（姿勢表以外的小動作：抖腳、手指敲桌）
+      tween(tl, vals, at, dur, ease) {
+        tl.to(st, Object.assign({}, vals, { duration: dur || 0.2, ease: ease || "power1.inOut", lazy: false }), at);
+      },
       pose(tl, name, at, dur) {
         tl.to(st, Object.assign({}, POSES[name], { duration: dur || 0.35, ease: "power2.inOut", lazy: false }), at);
       },
@@ -241,6 +277,7 @@
       face(tl, name, at) { tl.set(st, { face: name }, at); },
       set(o) {
         if (o.pose) Object.assign(st, POSES[o.pose]);
+        if (o.vals) Object.assign(st, o.vals);           // 姿勢表以外的角度（特寫取景用）
         ["view", "dir", "face"].forEach((k) => { if (o[k] !== undefined) st[k] = o[k]; });
       },
     };
