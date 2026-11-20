@@ -126,7 +126,11 @@ podcast 流程的前提（`.claude/skills/podcast-pipeline/SKILL.md` 的「Stand
   - 顯示層＋燒字幕：`scripts/livestream_subtitle_burn.py`（`shared/livestream_subtitles.py`）。剪接點 597.3–7647.3 s，
     中場休息幻覺段 5240–5537 s 整段拿掉，術語清單 `refs/terms.txt`。
   - 參考資料：投影片在 Downloads 最新一份（修修之後會放固定資料夾）→ 複製到 `<錄影資料夾>/refs/`。
-  - 輸出：`<錄影資料夾>/burn/2026-11-19-AI-Agent-字幕版-v1.mp4`。等修修看片＋回答 14 個待確認字詞 → `--fixes` 重燒定稿。
+  - 輸出：`<錄影資料夾>/burn/2026-11-19-AI-Agent-字幕版-v3.mp4`（22 處人工勘誤、剪掉中場休息，1:52:34）。
+- **S3 完成（2026-11-20）**：介紹文（4 段＋30 條章節）修修核准；播放器章節 freedom-fleet #24；
+  lesson 379（section 378）已上線，一般會員帳號實測看得到。**第一場直播全程跑完。**
+- 流程寫成 skill：`.claude/skills/livestream-course/`。
+- 剩下：S4（Slack 叫 Sanji 一句話觸發）；課程網址改帶日期（目前是「直播錄影」的拼音）；投影片固定資料夾位置待修修定。
 
 ## 待辦
 
