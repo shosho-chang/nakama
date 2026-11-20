@@ -81,7 +81,10 @@ def find_source_audio(episode_dir: Path) -> Path:
 
 
 def decode_to_pcm_wav(source: Path, output_path: Path) -> Path:
-    """用本機 ffmpeg 把任何音檔（例如 Zoom 的 m4a）解成 24-bit PCM WAV。
+    """用本機 ffmpeg 把任何音檔（例如 Zoom 的 m4a）解成 16-bit PCM WAV。
+
+    用 16-bit 而不是 24-bit：ffmpeg 寫 24-bit 雙聲道會用 WAVE_FORMAT_EXTENSIBLE 檔頭，
+    Python 3.11 的 ``wave`` 讀不了（CI 2026-11-20 抓到）；來源是有損的 AAC，16-bit 不損失什麼。
 
     不重新取樣、不改聲道數、不加任何濾鏡——時間軸與原始錄影一致，
     只是把容器／編碼換成 Memo 與 V2 handoff 讀得了的 PCM WAV。
@@ -101,7 +104,7 @@ def decode_to_pcm_wav(source: Path, output_path: Path) -> Path:
         "0:a:0",
         "-vn",
         "-c:a",
-        "pcm_s24le",
+        "pcm_s16le",
         str(tmp),
     ]
     try:

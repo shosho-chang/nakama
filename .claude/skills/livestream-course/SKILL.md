@@ -51,7 +51,7 @@ description: >
 $env:PYTHONUTF8=1
 E:\nakama\.venv-v2\Scripts\python.exe scripts\run_audio_prep.py "<episode>" --audio "<episode>\audio*.m4a" --local-decode
 ```
-產出 `normalized.wav`（24-bit PCM，時間軸＝原始錄影）＋ `normalized-handoff.v1.json`。2 小時約 5 秒。
+產出 `normalized.wav`（16-bit PCM，時間軸＝原始錄影）＋ `normalized-handoff.v1.json`。2 小時約 5 秒。
 
 ## 2. Memo 辨識＋辨識／斷句稽核（S3）
 

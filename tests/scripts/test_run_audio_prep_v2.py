@@ -96,7 +96,8 @@ def test_local_decode_writes_pcm_wav_and_v2_handoff_without_auphonic(
 
     assert normalized == episode / "normalized.wav"
     with wave.open(str(normalized), "rb") as wav:
-        assert wav.getsampwidth() == 3
+        assert wav.getsampwidth() == 2
+        assert wav.getcomptype() == "NONE"
         assert wav.getnchannels() == 2
         assert wav.getframerate() == 48_000
     result = VerifiedNormalizedAudioHandoffAdapter(
