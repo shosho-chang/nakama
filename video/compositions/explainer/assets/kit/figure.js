@@ -11,7 +11,7 @@
 //   f.set({ view, dir, face, pose })   立即設定（不經時間軸）
 //   f.joint("hR") / f.aim("fR", x, y)   關節位置／把某關節對準 (x, y)：特寫＝把人偶放大後對準部位，
 //                                       make 時給 lineWidth（畫面 px）讓線不要跟著放大
-//   f.tween(tl, { lk: -20 }, at, dur)   任意關節角度補間
+//   f.tween(tl, { lk: -20 }, at, dur)   任意關節角度補間；ht＝低頭角度（q3／side／q3back 才有效），例：{ ht: 16 }
 (function () {
   const NS = "http://www.w3.org/2000/svg";
   const C = { K: "#000", W: "#fff" };
@@ -60,8 +60,9 @@
     sideWalkB: { ls: 22,  le: 0, rs: 24,  re: 0,   lh: -20, lk: -30, rh: -22, rk: 0, aL: 0, aR: 0 },
     // 托下巴想事情（配 face "think"）：畫面左邊那隻手（修修的右手）彎到下巴
     think:  { ls: -12, le: -158, rs: 10, re: 0,  lh: 2,  lk: 0,   rh: 2,  rk: 0,   aL: 1, aR: 0 },
-    // 拿手機看（正面）：畫面右邊那隻手彎到胸前，手機放在 hRtip
-    phone:  { ls: 10,  le: 0,  rs: 26, re: -118, lh: 2,  lk: 0,   rh: 2,  rk: 0,   aL: 0, aR: 1 },
+    // 低頭看手機（配 view "side"＋ht 低頭）：手肘垂在身側、前臂往前斜上，手機在胸口前、螢幕朝臉
+    //   （2026-11-21 修修：正面舉手機、螢幕朝觀眾不自然——一般人看手機螢幕朝自己，旁人只看到側邊跟光）
+    phone:  { ls: 10,  le: 0,  rs: -15, re: -115, lh: 2, lk: 0,  rh: 2,  rk: 0,   aL: 0, aR: 1 },
     // 雙手捧杯子（正面）：兩隻手彎到胸前、手套快碰在一起，杯子放兩手中間
     cupTwo: { ls: 30,  le: -108, rs: 30, re: -108, lh: 2, lk: 0,  rh: 2,  rk: 0,   aL: 1, aR: 1 },
     // 聳肩（正面）：手肘往外、前臂往上攤開
@@ -174,7 +175,7 @@
       gFrontArm = el("g", {}, flipG), gHead = el("g", {}, flipG);
     const head = el("image", {}, gHead);
 
-    const vals = Object.assign({ y: 0 }, POSES.stand);
+    const vals = Object.assign({ y: 0, ht: 0 }, POSES.stand);   // ht＝低頭角度（側面類才有；正面頭是 logo 不轉）
     const st = {};
     const disc = { view: opts.view || "front", dir: opts.dir || -1, face: opts.face || "default" };
     let ready = false;
@@ -245,6 +246,9 @@
       head.setAttribute("width", f1(H.w * k)); head.setAttribute("height", f1(H.h * k));
       head.setAttribute("x", f1(-H.chinX * k + (V.arms === 1 ? -V.off : 0)));
       head.setAttribute("y", f1(CHIN_Y - H.chinY * k));
+      // 低頭：繞脖子轉，臉朝哪邊就往哪邊低（正面 dir 0 不轉）
+      const hx = V.arms === 1 ? -V.off : 0;
+      gHead.setAttribute("transform", st.ht && H.dir ? `rotate(${f1(st.ht * H.dir)} ${f1(hx)} ${f1(CHIN_Y - 14)})` : "");
     }
     draw();
     ready = true;
@@ -297,5 +301,22 @@
     return api;
   }
 
-  window.EXK_FIGURE = { make, POSES: Object.keys(POSES), VIEWS: Object.keys(VIEWS), FACES: ["default"].concat(Object.keys(FACES)) };
+  // 只畫一隻手臂＋手套（同一套線條、手套形狀），給「人在畫面外、只有手入鏡」的鏡頭用（過肩、主觀鏡頭）。
+  //   pts＝[起點, 手肘, 手腕]（parent 座標）；o.scale＝手套放大倍率；o.lineWidth＝畫面上的線寬；o.inward＝拇指朝哪側（1／-1）
+  //   o.sleeve＝true 時從起點畫袖口。手套前端位置回傳（拿東西對位用）
+  function arm(parent, pts, o) {
+    o = o || {};
+    const k = o.scale || 1, old = SW, g = el("g", { transform: `scale(${k})` }, parent);
+    SW = (o.lineWidth || SW0 * k) / k;
+    const [a, b, c] = pts.map((p) => [p[0] / k, p[1] / k]);
+    tube(g, a, b, b);
+    if (o.sleeve) sleeve(g, a, b);
+    tube(g, b, b, c);
+    mitten(g, b, c, o.inward || 1);
+    SW = old;
+    const L = Math.hypot(c[0] - b[0], c[1] - b[1]) || 1;
+    return { g, tip: [(c[0] + (c[0] - b[0]) / L * 28) * k, (c[1] + (c[1] - b[1]) / L * 28) * k] };
+  }
+
+  window.EXK_FIGURE = { make, arm, POSES: Object.keys(POSES), VIEWS: Object.keys(VIEWS), FACES: ["default"].concat(Object.keys(FACES)) };
 })();

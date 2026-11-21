@@ -18,14 +18,14 @@
       data-width="1920" data-height="1080" data-start="0" data-duration="14.2">
       <!-- 音效：走路＝Cartoon Run（走向咖啡店）、轉＝CARTOON SPIN（轉身回頭） -->
       <audio id="sfx-walk" src="assets/sfx/cartoon_run.mp3"  data-start="6.4"  data-duration="2.6" data-track-index="11" data-volume="0.5" data-media-start="0.6"></audio>
-      <audio id="sfx-spin" src="assets/sfx/cartoon_spin.mp3" data-start="9.55" data-duration="1.2" data-track-index="12" data-volume="0.55" data-media-start="0.36"></audio>
+      <audio id="sfx-spin" src="assets/sfx/cartoon_spin.mp3" data-start="9.60" data-duration="1.2" data-track-index="12" data-volume="0.55" data-media-start="0.36"></audio>
     </div>
     <script>
       const P = EXK_COMIC.page(document.getElementById("root"), { fx: true, cells: {
         b1: { x: 24,   y: 24,  w: 560,  h: 520, img: "assets/coffee/b1.png", iw: 1024, ih: 1024 },
         b2: { x: 604,  y: 24,  w: 620,  h: 520, img: "assets/coffee/b2.png", iw: 1024, ih: 1024 },
-        b3: { x: 1244, y: 24,  w: 652,  h: 520, img: "assets/coffee/b3.png", iw: 1024, ih: 1024 },
-        b4: { x: 24,   y: 564, w: 1100, h: 492, img: "assets/coffee/b4.png", iw: 1536, ih: 1024 },
+        b3: { x: 1244, y: 24,  w: 652,  h: 520, img: "assets/coffee/b3_low.png", iw: 1024, ih: 1024 },
+        b4: { x: 24,   y: 564, w: 1100, h: 492, img: "assets/coffee/b4_reverse.png", iw: 1536, ih: 1024 },
         b5: { x: 1144, y: 564, w: 752,  h: 492, img: "assets/coffee/b5.png", iw: 1536, ih: 1024 },
       } });
       const { tl, act, cells: C, cell, el } = P;
@@ -91,29 +91,50 @@
         f.tween(act, { rs: 40, re: -70 }, T.b2 + 1.0, 0.45);
       }
 
-      // ── 格 3：人行道側面，大步走向咖啡店；門邊牌子「第 3 階」──
+      // ── 格 3：仰角（2026-11-21 照 shot-list.md 改）——鏡頭貼近地面往上拍：地平線壓到最下面、咖啡店往上高起、他襯著天空，
+      //   大步走向店門＝「毫不猶豫」（Luma：低角度＝有力量、理直氣壯）。背景 b3_low.png；門邊牌子「第 3 階」
       {
-        const gy = P.imgPt("b3", 0, GEO.ground3)[1], doorX = P.imgPt("b3", GEO.door3, 0)[0], sc = 0.33;
-        plaque("b3", "第 3 階", doorX - 150, gy - 270, 40);
+        const gy = P.imgPt("b3", 0, 872)[1], sc = 0.5;
+        plaque("b3", "第 3 階", P.imgPt("b3", 790, 0)[0], P.imgPt("b3", 0, 455)[1], 40);
         const { wrap, f } = P.figure("b3", { scale: sc, x: 0, y: gy, view: "side", dir: 1 });
-        const x0 = 60, x1 = doorX - 30, at = T.b3 + 0.3, dur = 2.6;
+        const x0 = 20, x1 = P.imgPt("b3", 420, 0)[0], at = T.b3 + 0.3, dur = 2.6;
         gsap.set(wrap, { x: x0 });
         act.fromTo(wrap, { x: x0 }, { x: x1, duration: dur, ease: "none", immediateRender: false }, at);
-        for (let t = at, i = 0; t < at + dur - 0.05; t += 0.22, i++) { f.pose(act, i % 2 ? "sideWalkB" : "sideWalkA", t, 0.11); f.jump(act, t, 6); }
+        for (let t = at, i = 0; t < at + dur - 0.05; t += 0.22, i++) { f.pose(act, i % 2 ? "sideWalkB" : "sideWalkA", t, 0.11); f.jump(act, t, 8); }
         f.pose(act, "stand", at + dur, 0.15);
       }
 
-      // ── 格 4：咖啡店門口。背對鏡頭、手握門把 → 轉身回頭（determined 臉）；強調「中」──
+      // ── 格 4：反拍（2026-11-21 照 shot-list.md 改）——從咖啡店裡隔著玻璃門往外拍：他站在門外、手伸向門把，
+      //   下定決心（determined 臉）→ 轉身、背對我們走掉。前景是店裡的吧台和盆栽（背景圖裡），玻璃反光蓋在他身上。強調「中」
       {
-        const hd = P.imgPt("b4", GEO.handle4[0], GEO.handle4[1]), gy = P.imgPt("b4", 0, GEO.ground4)[1], sc = 0.84;
-        const { f } = P.figure("b4", { scale: sc, x: hd[0] - 150, y: gy, view: "back", pose: "reachR" });
-        const turn = T.b4 + 0.3;
+        const W = C.b4.w, H = C.b4.h;
+        // 玻璃門的玻璃（背景圖座標 x 595–940、y 140–830）→ 格子座標；人偶只畫在玻璃範圍內（門框在他前面）
+        const g0 = P.imgPt("b4", 595, 140), g1 = P.imgPt("b4", 940, 830), sc = 0.72;
+        const pane = document.createElement("div");
+        Object.assign(pane.style, { position: "absolute", left: 0, top: 0, width: W + "px", height: H + "px", zIndex: 3,
+          clipPath: `inset(${Math.max(0, g0[1])}px ${W - g1[0]}px ${H - g1[1]}px ${g0[0]}px)` });
+        cell.b4.appendChild(pane);
+        const cx = (g0[0] + g1[0]) / 2 - 20, feet = P.imgPt("b4", 0, 815)[1];
+        const { wrap, f } = P.figure("b4", { scale: sc, x: cx, y: feet, view: "front", pose: "reachR" }, pane);
+        // 玻璃：淡淡的一層＋兩道斜的反光，蓋在他身上
+        const gl = P.svg("b4", 5);
+        el("rect", { x: g0[0], y: Math.max(0, g0[1]), width: g1[0] - g0[0], height: g1[1] - Math.max(0, g0[1]), fill: "#fff", opacity: 0.1 }, gl);
+        [[0.18, 0.1], [0.32, 0.05]].forEach(([fx, wv]) => {
+          const x = g0[0] + (g1[0] - g0[0]) * fx, ww = (g1[0] - g0[0]) * wv;
+          el("path", { d: `M${x},${g1[1]} L${x + ww},${g1[1]} L${x + ww + 160},${Math.max(0, g0[1])} L${x + 160},${Math.max(0, g0[1])} Z`, fill: "#fff", opacity: 0.22 }, gl);
+        });
+        const decide = T.b4 + 0.15, turn = T.b4 + 0.35;
+        f.face(act, "determined", decide);
         f.pose(act, "stand", turn, 0.12);
-        f.view(act, "q3back", turn); f.view(act, "side", turn + 0.06, { dir: -1 }); f.view(act, "q3", turn + 0.12, { dir: -1 });
-        f.view(act, "front", turn + 0.18); f.face(act, "determined", turn + 0.18);
-        const sl = P.svg("b4", 2);
-        EXK_FX.speedLines(tl, sl, hd[0] - 150, gy - 380 * sc, 0, turn, 0.3, { n: 4, len: 120, gap: 40, back: 140, w: 7 });
+        f.view(act, "q3", turn, { dir: -1 }); f.view(act, "side", turn + 0.06, { dir: -1 }); f.view(act, "q3back", turn + 0.12, { dir: -1 });
+        f.view(act, "back", turn + 0.18);
+        const sl = P.svg("b4", 4);
+        EXK_FX.speedLines(tl, sl, cx, feet - 380 * sc, 0, turn, 0.3, { n: 4, len: 120, gap: 40, back: 140, w: 7 });
         EXK_FX.shake(tl, C.b4.stage, turn + 0.18, 7, 0.4);
+        // 走掉：越走越遠（變小、往上），一邊走一邊上下晃
+        //   （下一格 T.b5−0.3 就開始切，只剩約 0.6 秒：一轉完就走、0.45 秒內走遠）
+        act.to(wrap, { scale: 0.7, y: -50, transformOrigin: `${cx}px ${feet}px`, duration: 0.45, ease: "power1.out" }, turn + 0.2);
+        for (let t = turn + 0.2, i = 0; t < turn + 0.65; t += 0.15, i++) f.jump(act, t, 6);
       }
 
       // ── 格 5：兩手各拿一杯舉高；大字「買一送一」；「推薦給大家」晃杯子 ──
