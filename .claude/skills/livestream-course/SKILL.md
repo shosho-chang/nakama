@@ -194,8 +194,11 @@ cd E:\freedom-fleet-runtime
   活動標題取 `.livestream.json` 的 `title`。
 ```powershell
 .venv\Scripts\python -m fleet.course create-lesson --guid <guid> --section-title "<章節標題>" `
-  --intro-file "<episode>\refs\intro.html" --chapters "<episode>\refs\chapters.json"
+  --intro-file "<episode>\refs\intro.html" --chapters "<episode>\refs\chapters.json" `
+  --slug <YYYY-MM-DD>-livestream
 ```
+- 單元網址 `--slug`：主題直播 `<日期>-livestream`、讀書會 `<日期>-book-club`（日期＝錄影資料夾名開頭）。
+  不給會變成標題「直播錄影」的拼音。背景模式由程式自動帶。
 建出**草稿**章節＋單元（會員看不到）。`--chapters-display` 預設 `strip`（章節列在播放器下方）。章節 `start` 要小於
 Bunny 回報的片長，否則 create-lesson 會拒絕。修修用管理員身分看過、核准後：
 ```powershell
