@@ -10,6 +10,11 @@
 4. 執行：開 Zoom（freedom-fleet ``fleet.events zoom``）→ 用 Slack 官方的排程訊息
    （``chat.scheduleMessage``）在開會前 :data:`REMIND_BEFORE_MIN` 分鐘到提醒頻道貼提醒。
    Zoom 開好後若排程失敗，流程保留；再回「確認」只補排提醒，不會重開 Zoom。
+5. 行事曆寫好後，在修修的 Obsidian 建一個跟事件連動的 Task（見 :func:`_create_task`）。
+
+**行事曆與 Task 的落地對象**（修修 2026-11-23）：正確邏輯是「會議邀請誰，就寫進那個人的
+行事曆與 Obsidian」。目前只有修修需要，所以行事曆、Task 都只建修修的；其他與會者只收到
+Google 邀請信與 Slack 提醒。日後要擴充，從 :func:`execute` 的行事曆／Task 兩步著手。
 
 提醒頻道：env ``SANJI_MEETING_CHANNEL``，預設 #freedom-fleet。
 """
@@ -160,8 +165,9 @@ def build_card(state: dict) -> str:
             f"提醒：{remind_line}",
             _attendee_line(),
             *cal.card_lines(state.get("calendar"), state.get("force_calendar", False)),
+            "Task：會在修修的 Obsidian 建一個跟行事曆連動的 Task",
             "",
-            "沒問題就回「確認」，我去開 Zoom、寫進修修的 Google 行事曆；要改就直接說；"
+            "沒問題就回「確認」，我去開 Zoom、寫進修修的 Google 行事曆和 Obsidian；要改就直接說；"
             "不開了就回「取消」。",
         ]
     )
@@ -247,6 +253,59 @@ def continue_flow(state: dict, text: str, user_id: str) -> HandlerResponse:
     return _card(state)
 
 
+# ── Obsidian Task ───────────────────────────────────────────────────────
+
+
+def _write_task(title: str, start: datetime, end: datetime, event: dict, zoom_url: str) -> str:
+    """把會議寫成修修 Obsidian 的連動 Task（`TaskNotes/Tasks/`），回相對路徑。
+
+    與 Nami ``create_calendar_event`` 同一套寫法（``plan[]`` 帶 calendar_event_id、category
+    work），差別只有 body 放 Zoom 連結。撞名時**不覆蓋**：vault 已有同名 task（進行中或已歸檔）
+    就改用帶日期的標題（例如固定每週開的「週會」），連日期標題也撞就丟錯，由呼叫端提醒手動補。
+    """
+    from gateway.handlers import nami  # lazy：nami 會載入 agent SDK，測試與其他流程不必付這個成本
+    from shared.google_calendar import CalendarEvent
+
+    task_title = title
+    taken = nami.find_task_by_title(title) or nami.find_task_by_title(title, nami.ARCHIVE_DIR)
+    if taken:
+        task_title = f"{title} {start:%Y-%m-%d}"  # 會議當天，看檔名就知道是哪一場
+        if nami.find_task_by_title(task_title) or nami.find_task_by_title(
+            task_title, nami.ARCHIVE_DIR
+        ):
+            raise RuntimeError(f"vault 已有同名 Task「{task_title}」，沒有覆蓋")
+    rel = f"{nami.TASK_DIR}/{nami._task_basename(task_title)}.md"
+    nami.write_calendar_linked_task(
+        rel,
+        CalendarEvent(
+            id=event["id"],
+            title=task_title,
+            start=start.isoformat(),
+            end=end.isoformat(),
+            html_link=event.get("link", ""),
+        ),
+        "work",
+        None,
+        body=f"Zoom：{zoom_url}",
+    )
+    return rel
+
+
+def _create_task(m: dict, zoom_url: str, calendar: dict) -> dict:
+    """行事曆寫好後建 Task。回 ``{"ok", "path", "error"}``；失敗不丟例外（只在成功訊息提醒）。"""
+    if not calendar.get("ok"):
+        return {"ok": False, "path": "", "error": "行事曆沒寫進去，沒有事件可以連動"}
+    span = _span(m)
+    if span is None:
+        return {"ok": False, "path": "", "error": "沒有明確的起訖時間"}
+    try:
+        path = _write_task(m["title"], span[0], span[1], calendar, zoom_url)
+        return {"ok": True, "path": path, "error": ""}
+    except Exception as e:
+        logger.warning(f"internal_meeting task failed: {e}", exc_info=True)
+        return {"ok": False, "path": "", "error": str(e)[:150]}
+
+
 # ── 執行 ────────────────────────────────────────────────────────────────
 
 
@@ -310,6 +369,10 @@ def execute(state: dict, user_id: str) -> HandlerResponse:
                 key=f"sanji-meeting-{progress['zoom']['id']}",
                 attendees=[a["email"] for a in attendees()],
             )
+
+        if "task" not in progress and "calendar" in progress:
+            step = "建 Obsidian Task"
+            progress["task"] = _create_task(m, progress["zoom"]["join_url"], progress["calendar"])
     except Exception as e:
         logger.error(f"internal_meeting failed at {step!r} user={user_id}: {e}", exc_info=True)
         lines = [f"會議還沒處理完，卡在「{step}」：{e}"]
@@ -342,6 +405,11 @@ def execute(state: dict, user_id: str) -> HandlerResponse:
         )
     elif added:
         lines.append(f"行事曆：沒寫進去（{added.get('error')}），請手動加。")
+    task = progress.get("task") or {}
+    if task.get("ok"):
+        lines.append(f"Task：已建在修修的 Obsidian（{task['path']}），跟行事曆事件連動。")
+    elif task:
+        lines.append(f"Task：沒建成（{task.get('error')}），請手動補。")
     if progress.get("zoom_stale"):
         lines.append("注意：Zoom 是用改之前的時間／主題開的，記得到 Zoom 後台手動調整。")
     return HandlerResponse(text="\n".join(lines))
