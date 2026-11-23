@@ -89,21 +89,24 @@
   `<episode>\scratch\`。
 - **Bash** 只能用 `E:\nakama\.venv-v2\Scripts\python.exe` 跑這些 script：
   `run_audio_prep`、`podcast_subtitle_v2_evidence`、`podcast_subtitle_v2_simple_step7`、`podcast_subtitle_release`、
-  `livestream_relisten`、`livestream_subtitle_burn`、`livestream_slides_text`（都在 `scripts\`）。
+  `livestream_relisten`、`livestream_subtitle_burn`、`livestream_slides_text`、`livestream_tools`（都在 `scripts\`）。
   另外可用 `ffprobe`／`ffmpeg`，但路徑只能在 episode 內。
 - 指令裡**不能有** `;` `&` `|` `<` `>`、反引號、`$(`；一次一個指令。SKILL 裡 PowerShell 的反引號續行要寫成一行。
   `audio*.m4a`、`video*.mp4` 這類萬用字元先用 Glob 找到實際檔名再填。
-- 鐵則 5 的 `$env:PYTHONUTF8=1`／`PYTHONUTF8=1` 前綴不是白名單裡的指令，背景模式**不加**，直接以
-  `E:\nakama\.venv-v2\Scripts\python.exe` 開頭。若因此印中文炸 `UnicodeEncodeError`，回 `failed`（不要自己找替代寫法）。
-- **沒有** git、pip、`python -c`、其他程式。SKILL 與 runbook 裡要用小段 python 才做得到的動作：
-  - 讀大檔（SRT 分段讀、取 cue 時間）→ 用 Read（offset／limit）與 Grep；
-  - 寫 JSON（稽核、仲裁、`fixes.json`、`chapters.json`）→ 用 Write 寫 UTF-8 嚴格 JSON（不能有重複 key）；
-    驗證交給下一個白名單指令（例 `merge-official` 會載入稽核檔、`apply-official-arbitration` 會載入仲裁檔），
-    它報錯就照錯誤訊息改檔重跑；
-  - 白名單內真的做不到的 → 回 `failed`。已知一處：SKILL §2（runbook S3）的 recognition／cue worker audit 要填
-    `review_manifest_sha256`（review JSON 檔的 SHA-256），而且要 canonical bytes（排序 key、緊湊、結尾無換行）；
-    白名單內沒有算 SHA-256 的工具，`prepare-recognition`／`prepare-cues` 也不會印出這個值。
-    SKILL §2 說的「手動跑一次 timing QC」同樣要 python，改成 Read 讀 SRT 自己檢查。
+- 環境已設好 UTF-8，指令前不要加前綴（鐵則 5 的 `$env:PYTHONUTF8=1`／`PYTHONUTF8=1` 在背景模式不用），
+  直接以 `E:\nakama\.venv-v2\Scripts\python.exe` 開頭。
+- **沒有** git、pip、`python -c`、其他程式。SKILL 與 runbook 裡要用小段 python 做的動作，改成：
+  - 讀大檔（SRT 分段讀、取 cue 時間）→ Read（offset／limit）與 Grep；
+  - 算檔案 SHA-256（例：S3 worker audit 的 `review_manifest_sha256`＝review JSON 檔的 SHA-256）→
+    `scripts\livestream_tools.py sha256 "<檔案>"`，印出 hex；
+  - 寫 JSON → 用 Write 寫 UTF-8 嚴格 JSON（不能有重複 key）。要求 canonical bytes 的檔（S3 的 recognition／cue
+    worker audit、S4 稽核 A／B）寫完再跑
+    `scripts\livestream_tools.py canonical-json "<檔案>" --episode "<episode>"`，就地改成排序 key、緊湊、
+    結尾無換行，並印出新的 SHA-256；檔案必須在 episode 內；
+  - timing QC（SKILL §2）→ `scripts\livestream_tools.py timing-qc "<SRT>" --wav "<episode>\normalized.wav"`，
+    印 JSON 摘要（零／負長度、重疊、超出音檔、格式壞掉的 cue）；有問題 exit 1，照摘要決定要不要 repair；
+  - 最後的驗證交給下一個白名單指令（`accept-recognition`／`accept-cues` 載入 worker audit、`merge-official`
+    載入稽核檔、`apply-official-arbitration` 載入仲裁檔），它報錯就照錯誤訊息改檔重跑。
 - **被擋時不要換寫法繞過**（不要改用別的程式、拆指令、包一層），直接 `status: failed`，`message` 寫被擋的指令與擋的原因。
 - 派 subagent（稽核 A／B、仲裁 C）時，把本節的限制與 `<episode>\scratch\` 路徑寫進 brief。
 - 長指令（Memo 辨識、雙 ASR、燒字幕）用夠長的 timeout，或背景執行並等它完成再往下；不要沒等完就讀結果。

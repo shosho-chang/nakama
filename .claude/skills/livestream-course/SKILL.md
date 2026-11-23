@@ -87,7 +87,15 @@ E:\nakama\.venv-v2\Scripts\python.exe scripts\run_audio_prep.py "<episode>" --au
 - 2 小時直播 Memo 約 5 分鐘。`--prompt` 在 `--max-context 0` 下無作用，不用調。
 - **中場休息會出現靜音幻覺**（「(看畫面)」連發、「在這裏我們可以看到一座古老的建築物」、字幕組套話）。
   這不是 catastrophic：時間軸完好、休息前後辨識正常。記下 cue 範圍，S4 brief 叫稽核不要處理它，燒字幕時整段拿掉。
-- recognition／cue audit worker 用 Sonnet 就夠（純結構檢查）；先手動跑一次 timing QC（zero／負長度／重疊／最後一句超出音檔）決定要不要 repair。
+- recognition／cue audit worker 用 Sonnet 就夠（純結構檢查）。先跑一次 timing QC 決定要不要 repair：
+  ```powershell
+  E:\nakama\.venv-v2\Scripts\python.exe scripts\livestream_tools.py timing-qc "<Memo SRT>" --wav "<episode>\normalized.wav"
+  ```
+  印 JSON 摘要（零／負長度、重疊、最後一句超出音檔、格式壞掉的 cue），有問題 exit 1。
+- worker audit 的 `review_manifest_sha256`＝review JSON 檔的 SHA-256，用
+  `scripts\livestream_tools.py sha256 "<review JSON>"` 取得；worker 寫完 audit JSON 後跑
+  `scripts\livestream_tools.py canonical-json "<audit JSON>" --episode "<episode>"` 改成 canonical bytes
+  （runbook 要求：排序 key、緊湊、結尾無換行）。不必另寫 python。
 
 ## 3. 全文稽核、仲裁、雙 ASR、finalize（S4–S6）
 
