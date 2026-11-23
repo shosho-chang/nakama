@@ -30,6 +30,17 @@
 | D8 | Bunny Stream API 金鑰放本機 `E:\freedom-fleet-runtime\.env` 的 `BUNNY_STREAM_API_KEY`（修修自己貼，已確認有設定） | 修修原話 |
 | D9 | 授權用 SSH 到 VPS 做唯讀查詢 | 修修原話 |
 
+### S4 的決策（2026-11-20 起）
+
+| # | 決策 | 出處 |
+|---|---|---|
+| D10 | 指令入口採**做法二＋護欄**：私訊 Sanji 一句話 → freedom-fleet 在桌機背景用 Claude Agent SDK 照 `livestream-course` skill 跑（工作目錄 `E:\nakama`） | 修修 2026-11-20 選 |
+| D11 | 護欄＝白名單（hook）：只能寫 episode 資料夾與 `recording\術語表.md`；Bash 只能用 `.venv-v2` 的 python 跑 7 支 script（`run_audio_prep`、`podcast_subtitle_v2_evidence`、`podcast_subtitle_v2_simple_step7`、`podcast_subtitle_release`、`livestream_relisten`、`livestream_subtitle_burn`、`livestream_slides_text`），另可 ffprobe／ffmpeg（路徑限 episode 內）；指令不能有 `; & \| < >`、反引號、`$(`；沒有 git、pip、`python -c` | S4 設計 |
+| D12 | 關卡改成**結束這一輪＋resume**：Claude 回 structured output（`ask`／`artifacts_ready`／`failed`），程式私訊修修；他回覆後用同一對話接回（prompt「修修回覆：<原文>」）。關卡兩個：字詞（查遍無解才問）、審核包（剪接點＋介紹文＋章節＋90 秒試片） | S4 設計；規則在 `.claude/skills/livestream-course/references/unattended.md` |
+| D13 | 上傳 Bunny、建草稿由固定程式在關卡 2 核准、Claude 回 `artifacts_ready` 後做；**上線**由固定程式在修修說「可以上線」時做。Claude 不碰發布 | S4 設計 |
+| D14 | MVP：建成草稿之後**不接受改稿** | S4 設計 |
+| D15 | `E:\nakama` 每次背景執行前先 `git pull --ff-only`，讓背景 Claude 讀到最新的 skill 與 script | S4 設計 |
+
 ## 社群站上的實際結構（2026-11-19 SSH 唯讀查詢）
 
 - 「直播錄影」課程（space 21）裡，**每場直播是一個章節（`course_section`）**，標題格式
@@ -131,6 +142,14 @@ podcast 流程的前提（`.claude/skills/podcast-pipeline/SKILL.md` 的「Stand
   lesson 379（section 378）已上線，一般會員帳號實測看得到。**第一場直播全程跑完。**
 - 流程寫成 skill：`.claude/skills/livestream-course/`。
 - 剩下：S4（Slack 叫 Sanji 一句話觸發）；課程網址改帶日期（目前是「直播錄影」的拼音）；投影片固定資料夾位置待修修定。
+- **S4 實作中**（D10–D15）：
+  - nakama（`feat/livestream-s4`）：投影片抽字改成白名單內的 `scripts/livestream_slides_text.py`；SKILL 補上
+    「介紹文與章節」一節（`refs\chapters.json`、`create-lesson --chapters`）與「背景模式」一節；背景規則寫在
+    `references/unattended.md`；`gateway/handlers/sanji.py` docstring 註明私訊經 `preempt_dm` →
+    `fleet.minutes.tracker dm` → `fleet.livestream.queue`。
+  - freedom-fleet：`fleet.livestream.queue`、背景 Agent SDK 執行、白名單 hook、上傳／建課／上線（另一條線）。
+  - 待解：S3 的 recognition／cue worker audit 要填 review JSON 的 SHA-256（canonical bytes），白名單內沒有工具算得出來
+    （見 `unattended.md` 第 5 節）。
 
 ## 待辦
 

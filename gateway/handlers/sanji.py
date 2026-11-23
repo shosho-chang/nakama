@@ -14,6 +14,9 @@ facade 依 MODEL_SANJI env 自動把 Sanji 路到 Grok（見 shared/llm_router.p
 
 私訊另外先問 freedom-fleet（``preempt_dm``）：會議紀錄送審中，核准人（曉宣）回「核准」或說要改哪裡；
 有行動項目的人回「1 做完了」「待辦」——這些由 freedom-fleet 記錄，Sanji 只轉回覆。
+私訊「直播做成字幕版」（直播錄影 → 字幕版課程）也走同一條 ``preempt_dm``：
+``fleet.minutes.tracker dm`` 會先轉給 ``fleet.livestream.queue``，由 freedom-fleet 在桌機背景
+照 ``livestream-course`` skill 跑（見 ``docs/plans/2026-11-19-livestream-to-course.md`` S4）。
 """
 
 from __future__ import annotations
