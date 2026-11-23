@@ -141,8 +141,14 @@ podcast 流程的前提（`.claude/skills/podcast-pipeline/SKILL.md` 的「Stand
 - **S3 完成（2026-11-20）**：介紹文（4 段＋30 條章節）修修核准；播放器章節 freedom-fleet #24；
   lesson 379（section 378）已上線，一般會員帳號實測看得到。**第一場直播全程跑完。**
 - 流程寫成 skill：`.claude/skills/livestream-course/`。
-- 剩下：S4（Slack 叫 Sanji 一句話觸發）；課程網址改帶日期（目前是「直播錄影」的拼音）；投影片固定資料夾位置待修修定。
-- **S4 實作中**（D10–D15）：
+- 剩下：投影片固定資料夾位置待修修定；S4 用真實直播從 Slack 端到端跑一次（等下一場直播）。
+- **S4 已上線（2026-11-23）**（D10–D15）：nakama #1436、freedom-fleet #25；真 SDK 煙霧測試白名單 6 項全過
+  （含 subagent 的 `python -c` 被擋、resume 記得前文）。VPS 已部署、桌機排程 12:40 起輪詢。
+  尚待第一次真實執行確認：排程器是否允許背景程式脫離（看 `logs\local_jobs.log` 有無 breakaway 警告）、
+  預估時間係數 1.5 用實測更新。
+- **課程網址改帶日期（2026-11-23）**：freedom-fleet #26，建課指定 `<日期>-livestream`／`<日期>-book-club`；
+  lesson 379 已從 `zhi-bo-lu-ying` 改成 `2026-11-19-livestream`，修修確認正常。
+- S4 實作紀錄：
   - nakama（`feat/livestream-s4`）：投影片抽字改成白名單內的 `scripts/livestream_slides_text.py`；SKILL 補上
     「介紹文與章節」一節（`refs\chapters.json`、`create-lesson --chapters`）與「背景模式」一節；背景規則寫在
     `references/unattended.md`；`gateway/handlers/sanji.py` docstring 註明私訊經 `preempt_dm` →
