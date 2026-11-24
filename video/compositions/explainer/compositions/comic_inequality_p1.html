@@ -1,0 +1,229 @@
+<!doctype html>
+<!-- 《不平等優勢》成功人士的基本款 頁 1（分鏡表 storyboards/inequality-basics.md）——冷測頁
+     時間＝影片「20261119 不平等優勢.mp4」的字幕（同名 .srt 第 68–80 句），本頁 0 秒＝影片 1:50.276（110.276 秒）。
+     蓋在修修聲音上的滿版畫面，字幕另外出，所以不放旁白框。 -->
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/figure.js"></script>
+    <script src="assets/kit/fx.js"></script>
+    <script src="assets/kit/comic.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>html, body { margin: 0; background: var(--white); overflow: hidden; } #root { background: var(--white); }</style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="comic_inequality_p1"
+      data-width="1920" data-height="1080" data-start="0" data-duration="20.437">
+      <!-- 音效（秒數＝真實時間）：打字＝FAST TIP TOES（小而快的重複動作，開頭 0.253 秒空白用 data-media-start 跳過，
+           檔長 1.27 秒、打字 2.3 秒，所以接兩次）；集氣＝瑪利歐 Powerup；強（柱子撞到頂）＝瑪利歐 Kick。
+           天平砸下、鬧鐘響、翻書：修修 2026-11-21 決定這次不加 -->
+      <audio id="sfx-type1" src="assets/sfx/cartoon_fast_tiptoes.mp3" data-start="10.85" data-duration="1.02" data-track-index="10" data-volume="0.5" data-media-start="0.253"></audio>
+      <audio id="sfx-type2" src="assets/sfx/cartoon_fast_tiptoes.mp3" data-start="11.87" data-duration="1.02" data-track-index="11" data-volume="0.5" data-media-start="0.253"></audio>
+      <audio id="sfx-rise"  src="assets/sfx/mario_powerup.wav" data-start="16.80" data-duration="0.95" data-track-index="12" data-volume="0.55"></audio>
+      <audio id="sfx-hit"   src="assets/sfx/mario_kick.wav" data-start="18.936" data-duration="1.0" data-track-index="13" data-volume="0.9"></audio>
+    </div>
+    <script>
+      const P = EXK_COMIC.page(document.getElementById("root"), { fx: true, cells: {
+        c1: { x: 24,   y: 24,  w: 500, h: 520 },
+        c2: { x: 544,  y: 24,  w: 820, h: 520, img: "assets/scenes/inequality/c2_room.png", iw: 1536, ih: 1024 },
+        c3: { x: 1384, y: 24,  w: 512, h: 520, img: "assets/scenes/inequality/c3_nightstand.png", iw: 1024, ih: 1024 },
+        c4: { x: 24,   y: 564, w: 480, h: 492, img: "assets/scenes/inequality/c2_room.png", iw: 1536, ih: 1024 },
+        c5: { x: 524,  y: 564, w: 600, h: 492, img: "assets/scenes/inequality/c5_desk.png", iw: 1536, ih: 1024 },
+        c6: { x: 1144, y: 564, w: 752, h: 492, img: "assets/scenes/inequality/c6_sky.png", iw: 1536, ih: 1024 },
+      } });
+      const { tl, act, cells: C, cell, el } = P;
+      window.__timelines = window.__timelines || {};
+      window.__timelines["comic_inequality_p1"] = tl;
+      // 字幕時間（本頁秒數＝影片秒數 − 110.276）
+      const T = { c1: 0, unfair: 1.293, c2: 3.379, fair: 5.005, those: 6.840, c3: 7.925, c4: 9.426, c5: 10.719, must: 12.221,
+                  c6: 13.389, rate: 14.682, own: 16.725, ua: 18.936, out: 19.55, end: 20.437 };
+      // 頓格：Unfair Advantage 那一拍停 STOP 秒；之後的角色動作寫 A(真實秒)
+      const STOP = 0.15, A = (t) => (t > T.ua ? t - STOP : t);
+      const ink = (w, fill) => ({ fill: fill || "none", stroke: "#000", "stroke-width": w || 8, "stroke-linecap": "round", "stroke-linejoin": "round" });
+      const CREAM = "#f6efe4";
+      const txt = (parent, x, y, s, size, anchor, fill) => {
+        const t = el("text", { x, y, "text-anchor": anchor || "middle", "font-size": size, "font-weight": 900, fill: fill || "var(--ink)", "font-family": "var(--font)" }, parent);
+        t.textContent = s; return t;
+      };
+      const propSvg = (wrap) => {           // 跟著人偶一起動的道具層
+        const s = document.createElementNS(P.NS, "svg"); wrap.appendChild(s);
+        Object.assign(s.style, { position: "absolute", left: 0, top: 0, overflow: "visible" }); s.setAttribute("width", 1); s.setAttribute("height", 1);
+        return s;
+      };
+
+      // ── 運鏡：每格在那句開口前推到位；格 3、4 是快剪 ──
+      P.cam("c1", 0, 0.001);
+      P.cam("c2", T.c2 - 0.3, 0.45); P.cam("c3", T.c3 - 0.22, 0.3); P.cam("c4", T.c4 - 0.22, 0.3);
+      P.cam("c5", T.c5 - 0.25, 0.4); P.cam("c6", T.c6 - 0.3, 0.45);
+      P.camOut(T.out, 0.85);
+
+      // ── 格 1：特寫・插入。天平：「不公平的」那一拍右盤重重砸下（中：晃一下）──
+      {
+        el("rect", { x: 0, y: 0, width: C.c1.w, height: C.c1.h, fill: CREAM }, P.svg("c1", 1));
+        const s = P.svg("c1", 2), cx = 250, py = 150, L = 160, drop = 110, TH = 20;
+        // 底座＋柱子
+        el("path", Object.assign(ink(9, "#c9a46a"), { d: `M${cx - 110},420 L${cx + 110},420 L${cx + 70},382 L${cx - 70},382 Z` }), s);
+        el("rect", Object.assign(ink(9, "#c9a46a"), { x: cx - 14, y: py, width: 28, height: 236 }), s);
+        // 秤盤（繩子＋盤子＋砝碼）：掛點在 (0,0)
+        const pan = (heavy) => {
+          const g = el("g", {}, s);
+          el("line", Object.assign(ink(5), { x1: 0, y1: 0, x2: -62, y2: drop }), g);
+          el("line", Object.assign(ink(5), { x1: 0, y1: 0, x2: 62, y2: drop }), g);
+          el("path", Object.assign(ink(8, "#d9dde2"), { d: `M-82,${drop} L82,${drop} C70,${drop + 34} -70,${drop + 34} -82,${drop} Z` }), g);
+          if (heavy) el("rect", Object.assign(ink(8, "#3b3b3b"), { x: -46, y: drop - 70, width: 92, height: 72, rx: 4 }), g);
+          else el("rect", Object.assign(ink(7, "#ffd36b"), { x: -16, y: drop - 26, width: 32, height: 28, rx: 3 }), g);
+          return g;
+        };
+        const beam = el("g", {}, s);
+        el("rect", Object.assign(ink(9, "#c9a46a"), { x: cx - L - 12, y: py - 10, width: 2 * L + 24, height: 20, rx: 6 }), beam);
+        const pl = pan(false), pr = pan(true);
+        el("circle", Object.assign(ink(8, "var(--orange)"), { cx, cy: py, r: 18 }), s);
+        gsap.set(pl, { x: cx - L, y: py }); gsap.set(pr, { x: cx + L, y: py });
+        // 砸下：樑轉 TH 度，盤子跟著端點走（盤子保持垂直＝掛著）
+        const r = (TH * Math.PI) / 180, at = T.unfair + 0.05, d = 0.2;
+        act.to(beam, { rotation: TH, svgOrigin: `${cx} ${py}`, duration: d, ease: "power3.in" }, at);
+        act.to(pr, { x: cx + L * Math.cos(r), y: py + L * Math.sin(r), duration: d, ease: "power3.in" }, at);
+        act.to(pl, { x: cx - L * Math.cos(r), y: py - L * Math.sin(r), duration: d, ease: "power3.in" }, at);
+        EXK_FX.shake(tl, cell.c1, at + d, 7, 0.35);
+      }
+
+      // ── 格 2：遠景・建立鏡頭。一人房間，他站左邊；「fair play」那拍握拳打氣、堅定臉，大字彈出 ──
+      {
+        const [x, y] = P.imgPt("c2", 300, 770);
+        const { f } = P.figure("c2", { scale: 0.42, x, y, face: "default" });
+        f.pose(act, "cheers", T.fair + 0.05, 0.2); f.face(act, "determined", T.fair + 0.05);
+        P.bigText("c2", "fair play", 300, 70, 104, T.fair + 0.1);
+      }
+
+      // ── 格 3：大特寫・插入・俯角。床頭櫃上的鬧鐘停在 5:00，響起來快抖、兩側冒響聲線 ──
+      {
+        const s = P.svg("c3", 2), cx = 256, cy = 250, R = 150;
+        const clock = el("g", {}, s);
+        // 鈴＋腳（畫在鐘面後面）
+        [-1, 1].forEach((k) => {
+          el("path", Object.assign(ink(9, "var(--orange)"), { d: `M${cx + k * 60},${cy - R - 2} A62,62 0 0 ${k > 0 ? 1 : 0} ${cx + k * 150},${cy - R + 70} Z` }), clock);
+          el("line", Object.assign(ink(11), { x1: cx + k * 95, y1: cy + R - 20, x2: cx + k * 120, y2: cy + R + 30 }), clock);
+        });
+        el("line", Object.assign(ink(9), { x1: cx, y1: cy - R, x2: cx, y2: cy - R - 26 }), clock);
+        el("circle", Object.assign(ink(12, "var(--orange)"), { cx, cy, r: R }), clock);
+        el("circle", Object.assign(ink(6, "#fff8ec"), { cx, cy, r: R - 24 }), clock);
+        for (let i = 0; i < 12; i++) {
+          const a = (i * Math.PI) / 6, r1 = R - 40, r2 = i % 3 ? R - 52 : R - 64;
+          el("line", Object.assign(ink(i % 3 ? 5 : 8), { x1: cx + Math.sin(a) * r1, y1: cy - Math.cos(a) * r1, x2: cx + Math.sin(a) * r2, y2: cy - Math.cos(a) * r2 }), clock);
+        }
+        // 5:00：時針 150°、分針 0°
+        const h = (150 * Math.PI) / 180;
+        el("line", Object.assign(ink(13), { x1: cx, y1: cy, x2: cx + Math.sin(h) * 62, y2: cy - Math.cos(h) * 62 }), clock);
+        el("line", Object.assign(ink(9), { x1: cx, y1: cy, x2: cx, y2: cy - 98 }), clock);
+        el("circle", { cx, cy, r: 11, fill: "#000" }, clock);
+        // 響：每 1/15 秒左右換一次角度，響聲線兩組交替（逐格 set，seek 安全）
+        const rings = [0, 1].map((k) => {
+          const g = el("g", { opacity: 0 }, s);
+          [-1, 1].forEach((sd) => [0, 1, 2].forEach((i) => {
+            const a = (-50 + i * 30 + k * 8) * Math.PI / 180, r1 = R + 40, r2 = R + 80;
+            el("line", Object.assign(ink(8), { x1: cx + sd * Math.cos(a) * r1, y1: cy - 60 + Math.sin(a) * r1, x2: cx + sd * Math.cos(a) * r2, y2: cy - 60 + Math.sin(a) * r2 }), g);
+          }));
+          return g;
+        });
+        for (let t = T.c3 + 0.08, i = 0; t < T.c4 - 0.05; t += 1 / 15, i++) {
+          act.set(clock, { rotation: i % 2 ? 5 : -5, svgOrigin: `${cx} ${cy + R}` }, t);
+          act.set(rings[i % 2], { opacity: 1 }, t); act.set(rings[(i + 1) % 2], { opacity: 0 }, t);
+        }
+      }
+
+      // ── 格 4：中近景。背景沿用格 2 房間（放大到檯燈＋窗那一角、模糊）；他捧著書，翻一頁 ──
+      {
+        const [lx, ly] = P.imgPt("c4", 1200, 420);
+        gsap.set(C.c4.scene, { transformOrigin: "0 0", scale: 2.2, x: 140 - lx * 2.2, y: 170 - ly * 2.2, filter: "blur(4px)" });
+        const sc = 1.0, { wrap, f } = P.figure("c4", { scale: sc, x: 320, y: 650, pose: "cupTwo", face: "determined", lineWidth: 8 });
+        const ps = propSvg(wrap), hl = f.joint("hL"), hr = f.joint("hR");
+        const bx = (hl[0] + hr[0]) / 2, by = Math.min(hl[1], hr[1]) - 6, bw = 92, bh = 120;
+        const book = el("g", {}, ps);
+        el("path", Object.assign(ink(6, "var(--orange)"), { d: `M${bx - bw - 8},${by + 8} L${bx + bw + 8},${by + 8} L${bx + bw + 8},${by - bh + 2} L${bx - bw - 8},${by - bh + 2} Z` }), book);  // 封面
+        el("path", Object.assign(ink(5, "#fffaf0"), { d: `M${bx},${by} L${bx - bw},${by - 4} L${bx - bw},${by - bh} L${bx},${by - bh + 6} Z` }), book);
+        el("path", Object.assign(ink(5, "#fffaf0"), { d: `M${bx},${by} L${bx + bw},${by - 4} L${bx + bw},${by - bh} L${bx},${by - bh + 6} Z` }), book);
+        [0, 1, 2, 3].forEach((i) => {
+          const yy = by - bh + 28 + i * 20;
+          el("line", Object.assign(ink(3), { x1: bx - bw + 16, y1: yy, x2: bx - 14, y2: yy + 2, stroke: "#9a9a9a" }), book);
+          el("line", Object.assign(ink(3), { x1: bx + 14, y1: yy + 2, x2: bx + bw - 16, y2: yy, stroke: "#9a9a9a" }), book);
+        });
+        // 翻的那一頁：正反面都有字行（不然翻之前右頁、翻之後左頁會變空白）
+        const page = el("g", {}, book);
+        el("path", Object.assign(ink(5, "#fffaf0"), { d: `M${bx},${by} L${bx + bw},${by - 4} L${bx + bw},${by - bh} L${bx},${by - bh + 6} Z` }), page);
+        [0, 1, 2, 3].forEach((i) => { const yy = by - bh + 28 + i * 20; el("line", Object.assign(ink(3), { x1: bx + 14, y1: yy + 2, x2: bx + bw - 16, y2: yy, stroke: "#9a9a9a" }), page); });
+        act.to(page, { scaleX: -1, svgOrigin: `${bx} ${by}`, duration: 0.3, ease: "power1.inOut" }, T.c4 + 0.35);
+      }
+
+      // ── 格 5：中景・平視過肩。前景＝他的後腦＋肩（背面、放大、左邊切掉、壓暗），後面＝書桌上的螢幕；字一行一行打出來 ──
+      {
+        gsap.set(C.c5.scene, { x: -60 });
+        // 螢幕內框（從截圖量的格子座標）：x 211–582、y 99–293；字行要全部落在框內
+        const s = P.svg("c5", 2), X0 = 236, X1 = 560, Y0 = 122, DY = 28;
+        const lines = [0.82, 0.6, 0.9, 0.7, 0.5, 0.85];
+        lines.forEach((k, i) => {
+          const r = el("rect", { x: X0, y: Y0 + i * DY, width: 0, height: 12, rx: 3, fill: "#4a4a4a" }, s);
+          act.to(r, { attr: { width: (X1 - X0) * k }, duration: 0.24, ease: "none" }, T.c5 + 0.15 + i * 0.29);
+        });
+        const { wrap } = P.figure("c5", { scale: 1.3, x: 20, y: 860, view: "back", lineWidth: 12 });
+        wrap.style.zIndex = 20;
+        wrap.style.filter = "brightness(0.4)";     // 參考片的前景肩頭接近剪影
+      }
+
+      // ── 格 6：遠景・仰角・拉遠揭露。他站在矮台「基本款」→ 拉遠露出遠處的「成功」旗 → 集氣 → 橘柱衝上來把他頂高（強）──
+      {
+        const W = C.c6.w, H = C.c6.h, s = P.svg("c6", 2), sF = P.svg("c6", 4), sX = P.svg("c6", 6);
+        const bx = 70, bw = 190, btop = 300, bbot = 430, cx = bx + bw / 2;
+        // 遠處的「成功」旗：插在一朵雲上
+        const goal = el("g", {}, s);
+        el("path", Object.assign(ink(7, "#fff"), { d: "M560,150 c-18,-30 30,-48 50,-26 c14,-30 70,-26 76,6 c30,-4 40,30 14,40 l-130,0 c-26,-4 -28,-30 -10,-20 Z" }), goal);
+        el("line", Object.assign(ink(7), { x1: 630, y1: 150, x2: 630, y2: 30 }), goal);
+        el("path", Object.assign(ink(6, "var(--orange)"), { d: "M630,32 L720,52 L630,74 Z" }), goal);
+        txt(goal, 668, 62, "成功", 22, "middle", "#fff");
+        // 橘柱（藏在矮台裡，衝上來）
+        const PH = 140, pillar = el("g", {}, s);
+        el("rect", Object.assign(ink(9, "var(--orange)"), { x: cx - 52, y: btop, width: 104, height: bbot - btop }), pillar);
+        // 矮台「基本款」（蓋在柱子前面）：台上印前三格的鬧鐘、書、螢幕
+        const block = el("g", {}, s);
+        el("rect", Object.assign(ink(9, "#b9b9b4"), { x: bx, y: btop, width: bw, height: bbot - btop }), block);
+        txt(block, cx, btop + 50, "基本款", 40);
+        const iy = btop + 92;
+        el("circle", Object.assign(ink(4, "#fff8ec"), { cx: cx - 52, cy: iy, r: 14 }), block);
+        el("path", Object.assign(ink(4, "#fffaf0"), { d: `M${cx - 18},${iy + 10} L${cx},${iy + 13} L${cx + 18},${iy + 10} L${cx + 18},${iy - 12} L${cx},${iy - 9} L${cx - 18},${iy - 12} Z` }), block);
+        el("rect", Object.assign(ink(4, "#fff8ec"), { x: cx + 34, y: iy - 13, width: 36, height: 24 }), block);
+        // 人偶：正面全身站在台上
+        const { wrap, f } = P.figure("c6", { scale: 0.22, x: cx, y: btop, face: "default" });
+        wrap.style.zIndex = 5;
+        // 拉遠揭露：先放大 2 倍對準他，「提高成功的機率」拉回整格
+        const cam = (fx, fy, z) => ({ scale: z, x: Math.min(0, Math.max(W - W * z, W / 2 - fx * z)), y: Math.min(0, Math.max(H - H * z, H / 2 - fy * z)) });
+        gsap.set(cell.c6, Object.assign({ transformOrigin: "0 0" }, cam(cx, btop + 10, 1.5)));   // 1.5 倍：頭不出格、「基本款」字和台上圖示都在字幕區以上（預覽 v1 用 1.7 倍，圖示被字幕蓋住）
+        act.to(cell.c6, Object.assign({ duration: 0.9, ease: "power2.inOut" }, cam(W / 2, H / 2, 1)), T.rate + 0.1);
+        f.face(act, "surprised", T.rate + 0.7);
+        // 集氣：腳下橘光圈一圈圈往外、小光點往上飄
+        const glow = el("g", { opacity: 0 }, sF);
+        const rings = [0, 1, 2].map((i) => el("ellipse", { cx, cy: btop, rx: 20, ry: 6, fill: "none", stroke: "var(--orange)", "stroke-width": 6 }, glow));
+        act.set(glow, { opacity: 1 }, T.own + 0.1);
+        rings.forEach((r, i) => act.fromTo(r, { attr: { rx: 20, ry: 6 }, opacity: 1 }, { attr: { rx: 95, ry: 22 }, opacity: 0, duration: 0.7, repeat: 2, ease: "power1.out", immediateRender: false }, T.own + 0.1 + i * 0.23));
+        [-60, -20, 30, 65].forEach((dx, i) => {
+          const sp = el("circle", { cx: cx + dx, cy: btop, r: 6, fill: "var(--orange)", opacity: 0 }, glow);
+          act.fromTo(sp, { attr: { cy: btop }, opacity: 1 }, { attr: { cy: btop - 120 }, opacity: 0, duration: 0.8, repeat: 1, ease: "power1.out", immediateRender: false }, T.own + 0.2 + i * 0.18);
+        });
+        act.set(glow, { opacity: 0 }, T.ua - 0.15);
+        // 柱子衝上來、把他頂高；撞到頂＝強（頓格＋白閃＋震動＋集中線＋衝擊環＋大字墊衝擊星）
+        act.to(pillar, { y: -PH, duration: 0.18, ease: "power3.in" }, T.ua - 0.18);
+        act.to(wrap, { y: -PH, duration: 0.18, ease: "power3.in" }, T.ua - 0.18);
+        EXK_FX.squashJump(act, f.svg, T.ua - 0.28, "50% 68.9%", { antic: 0.1, air: 0.18 });
+        f.pose(act, "armsUp", A(T.ua + 0.2), 0.15); f.face(act, "laugh", A(T.ua + 0.2));
+        EXK_FX.flash(tl, cell.c6, T.ua, { cap: 0.55 });
+        EXK_FX.shake(tl, C.c6.scene, T.ua, 12, 0.45);
+        EXK_FX.focusLines(tl, sX, W, H, cx, btop - PH - 60, T.ua, { r0: 150, dur: 0.8 });
+        EXK_FX.ring(tl, sX, cx, btop - PH, 150, T.ua, { w: 10 });
+        EXK_FX.impactStar(tl, sX, 505, 325, 118, T.ua + 0.05, { n: 14 });     // 放在旗子下面，不擋「成功」
+        P.bigText("c6", "Unfair Advantage", 262, 300, 104, T.ua + 0.05);
+      }
+
+      P.finish(T.end, { stops: [[T.ua, STOP]] });
+    </script>
+  </body>
+</html>

@@ -93,3 +93,7 @@ cowork-outputs/
 # NOTE: anything here that a current Release depends on must be promoted into the repo —
 # see agents/brook/script_video/finished_cut_production/amendments/README.md
 .cache/
+
+# 漫畫生成背景圖、音效不進 git：放 E:\data\explainer-scenes、E:\data\explainer-sfx，用 junction 接到這裡（見 youtube-explainer skill「漫畫」）
+video/compositions/explainer/assets/scenes
+video/compositions/explainer/assets/sfx

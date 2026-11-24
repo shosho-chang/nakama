@@ -1,0 +1,93 @@
+<!doctype html>
+<!-- 第 5 類「解釋動畫」型態「面板」：一組屬性排成一張面板，講到哪個亮哪個。
+     原型：《財富階梯》「RPG 角色面板」（錢只是面板上的一個數值）。每一列在講到的那句出現、量表填滿；
+     正在講的那一列是橘色，講過的回黑。量表長度不代表數值——稿上沒有數字就全部一樣長（gauge:false 可拿掉）。
+     底板、碎片、標題、出處、進退場在 assets/kit/。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"spec","type":"string","label":"內容 JSON（見 youtube-explainer skill 的「面板」）","default":"{\"layout\":\"full\",\"title\":\"角色面板\",\"source\":\"\",\"show_sec\":10.966,\"panel_at\":0.7,\"rows\":[{\"text\":\"金錢\",\"at\":1.84},{\"text\":\"經驗值\",\"at\":5.57},{\"text\":\"技能值\",\"at\":6.13},{\"text\":\"體力值\",\"at\":6.83},{\"text\":\"人際關係值\",\"at\":7.53},{\"text\":\"⋯⋯\",\"at\":8.4,\"gauge\":false}],\"rest_at\":9.3}"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/explainer-kit.js"></script>
+    <script src="assets/kit/sprites.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      .wrap { position: absolute; left: 0; right: 0; top: 110px; bottom: 0; display: flex; align-items: center;
+        justify-content: center; }
+      /* 面板：白底、黑色粗框（RPG 狀態視窗），不加圓角陰影 */
+      .panel { background: var(--white); border: 8px solid var(--ink); padding: 40px 56px;
+        display: flex; flex-direction: column; gap: 22px; }
+      .prow { display: grid; grid-template-columns: 330px auto; column-gap: 40px; align-items: center; height: 60px; }
+      .plabel { font-size: 52px; white-space: nowrap; }
+      .gauge { display: flex; gap: 8px; }
+      .seg { width: 56px; height: 40px; background: var(--track); }
+      .seg.on { background: var(--ink); }
+      /* 帶角色（spec.character）：角色站左邊、面板靠右 */
+      .with-hero .wrap { justify-content: flex-end; }
+      .with-hero .seg { width: 46px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="panel"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60"></div>
+    <script>
+      const spec = JSON.parse(EXK.vars().spec || "{}");
+      const ctx = EXK.frame("panel", spec);
+      const { tl, stage } = ctx;
+      const wrap = EXK.el("div", "wrap", stage);
+      const panel = EXK.el("div", "panel", wrap);
+      tl.fromTo(panel, { opacity: 0, scale: 0.9 }, { opacity: 1, scale: 1, duration: 0.3, ease: EXK.LAND }, spec.panel_at ?? 0.7);
+      const SEGS = 10;
+      // 角色（選用，sprites.js）：從左邊走進來、原地走；row.icon＝講到那一列時頭上冒出的圖示
+      const ch = spec.character;
+      const hero = ch ? EXK_SPRITES.hero(ctx, Object.assign({ left: 180, top: 326, enter_at: spec.panel_at ?? 0.7 }, ch)) : null;
+      if (hero) document.getElementById("root").classList.add("with-hero");
+      const steps = [];
+      (spec.rows || []).forEach((r) => {
+        const row = EXK.el("div", "prow", panel);
+        const lab = EXK.el("div", "plabel", row, r.text);
+        EXK.land(tl, lab, r.at, { x: -30, y: 0 });
+        const parts = [lab];
+        if (r.gauge !== false) {
+          const g = EXK.el("div", "gauge", row);
+          const segs = [];
+          for (let i = 0; i < SEGS; i++) segs.push(EXK.el("div", "seg", g));
+          tl.fromTo(g, { opacity: 0 }, { opacity: 1, duration: 0.1 }, r.at);
+          // 一格一格填滿（填的當下就是橘的）
+          tl.to(segs, { backgroundColor: EXK.ORANGE, duration: 0.06, stagger: 0.025 }, r.at + 0.05);
+          parts.push(segs);
+        }
+        if (hero && r.icon) hero.pop(r.icon, r.at);
+        steps.push([r.at, parts]);
+      });
+      if (spec.rest_at != null) steps.push([spec.rest_at, null]);
+      steps.sort((a, b) => a[0] - b[0]);
+      // 正在講的那一列：字橘、量表橘；講過的：字黑、量表黑
+      let prev = null;
+      steps.forEach(([t, parts]) => {
+        if (prev) {
+          tl.to(prev[0], { color: EXK.INK, duration: 0.14 }, t);
+          if (prev[1]) tl.to(prev[1], { backgroundColor: EXK.INK, duration: 0.14 }, t + 0.001);
+        }
+        if (parts) tl.to(parts[0], { color: EXK.ORANGE, duration: 0.14 }, t);
+        prev = parts;
+      });
+      // 面板收起來（例：「外表是看不出來」）／彈回來整組亮起（例：「但每一個都超級重要」——整組算一個重點）
+      if (spec.panel_out_at != null) {
+        tl.to(panel, { scaleY: 0, transformOrigin: "50% 0%", duration: 0.24, ease: EXK.EXIT }, spec.panel_out_at);
+      }
+      if (spec.panel_back_at != null) {
+        const t = spec.panel_back_at;
+        tl.fromTo(panel, { scaleY: 0 }, { scaleY: 1, transformOrigin: "50% 0%", duration: 0.32, ease: EXK.LAND, immediateRender: false }, t);
+        tl.to(panel, { borderColor: EXK.ORANGE, duration: 0.14 }, t);
+        panel.querySelectorAll(".seg").forEach((sg) => tl.to(sg, { backgroundColor: EXK.ORANGE, duration: 0.14 }, t + 0.1));
+        if (hero) hero.hop(t + 0.1);
+      }
+      if (hero) hero.walk();
+      EXK.end(ctx);
+    </script>
+  </body>
+</html>

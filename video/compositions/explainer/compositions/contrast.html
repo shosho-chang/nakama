@@ -1,0 +1,81 @@
+<!doctype html>
+<!-- 第 5 類「解釋動畫」型態「對比」：兩組東西左右對照（每欄一個標題＋一句說明＋幾個項目）。
+     原型：《財富階梯》「第 1–3 階 vs 第 4–6 階的資產」。欄標題、項目在講到的那句出現；
+     正在講的那一個是橘色，講過的回黑。最後的重點（mark）把某一項再點亮一次，旁邊貼一張斜的黑牌。
+     底板、碎片、標題、出處、進退場在 assets/kit/。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"spec","type":"string","label":"內容 JSON（見 youtube-explainer skill 的「對比」）","default":"{\"layout\":\"full\",\"title\":\"各階家庭的資產\",\"source\":\"資料：《財富階梯》\",\"show_sec\":21.466,\"columns\":[{\"label\":\"第 1–3 階\",\"at\":0.7,\"items\":[{\"text\":\"現金\",\"at\":2.81},{\"text\":\"車子\",\"at\":3.35},{\"text\":\"自住房\",\"at\":4.16}]},{\"label\":\"第 4–6 階\",\"at\":5.07,\"sub\":\"生財資產比例高\",\"sub_at\":8.39,\"items\":[{\"text\":\"股票\",\"at\":11.61},{\"text\":\"債券\",\"at\":12.25},{\"text\":\"不動產\",\"at\":12.88},{\"text\":\"事業股權\",\"at\":14.41}]}],\"rest_at\":15.48,\"mark\":{\"column\":1,\"item\":3,\"at\":17.64,\"text\":\"第 6 階必備\"}}"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/explainer-kit.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      /* 標題下方：兩欄，中間一條黑色直線 */
+      .cols { position: absolute; left: 0; right: 0; top: 120px; bottom: 0; display: grid;
+        grid-template-columns: 1fr 6px 1fr; column-gap: 90px; }
+      .divider { background: var(--ink); transform-origin: 50% 0; }
+      .col { display: flex; flex-direction: column; }
+      .clabel { font-size: 72px; }
+      .csub { font-size: 40px; color: var(--ink-2); height: 40px; margin: 18px 0 30px; white-space: nowrap; }
+      .items { display: flex; flex-direction: column; gap: 18px; }
+      .item { position: relative; height: 96px; background: var(--white); font-size: 56px;
+        display: flex; align-items: center; padding-left: 36px; white-space: nowrap; }
+      /* 重點牌：黑底白字，斜貼在那一項的右上角（一個畫面只斜一張） */
+      .mark { position: absolute; right: -24px; top: -34px; background: var(--ink); color: var(--white);
+        font-size: 40px; padding: 12px 22px 14px; white-space: nowrap; transform: rotate(-4deg); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="contrast"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60"></div>
+    <script>
+      const spec = JSON.parse(EXK.vars().spec || "{}");
+      const ctx = EXK.frame("contrast", spec);
+      const { tl, stage } = ctx;
+      const cols = EXK.el("div", "cols", stage);
+      const cells = [];
+      const steps = [];
+      (spec.columns || []).slice(0, 2).forEach((c, ci) => {
+        if (ci === 1) {
+          const d = EXK.el("div", "divider", cols);
+          tl.fromTo(d, { scaleY: 0 }, { scaleY: 1, duration: 0.3, ease: EXK.SNAP }, c.at - 0.15);
+        }
+        const col = EXK.el("div", "col", cols);
+        const lab = EXK.el("div", "clabel", col, c.label);
+        EXK.land(tl, lab, c.at, { x: ci ? 30 : -30, y: 0 });
+        const sub = EXK.el("div", "csub", col, c.sub || "");
+        if (c.sub) tl.fromTo(sub, { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.22, ease: EXK.SNAP }, c.sub_at ?? c.at);
+        const items = EXK.el("div", "items", col);
+        cells[ci] = [];
+        // 換欄時上一欄講過的回黑
+        steps.push([c.at, null]);
+        (c.items || []).forEach((it) => {
+          const box = EXK.el("div", "item", items, it.text);
+          EXK.land(tl, box, it.at, { x: ci ? 40 : -40, y: 0 });
+          steps.push([it.at, box]);
+          cells[ci].push(box);
+        });
+      });
+      // 講到哪一項，那一項的底染橘；講過的回白（字一直是黑的）
+      if (spec.rest_at != null) steps.push([spec.rest_at, null]);
+      const m = spec.mark;
+      if (m && cells[m.column] && cells[m.column][m.item]) steps.push([m.at, cells[m.column][m.item]]);
+      steps.sort((a, b) => a[0] - b[0]);
+      let prev = null;
+      steps.forEach(([t, e]) => {
+        if (prev && prev !== e) tl.to(prev, { backgroundColor: "#fff", duration: 0.14 }, t);
+        if (e && e !== prev) tl.to(e, { backgroundColor: EXK.ORANGE, duration: 0.14 }, t);
+        prev = e;
+      });
+      if (m && m.text && cells[m.column] && cells[m.column][m.item]) {
+        const tag = EXK.el("div", "mark", cells[m.column][m.item], m.text);
+        tl.fromTo(tag, { opacity: 0, scale: 1.25, rotation: -9 }, { opacity: 1, scale: 1, rotation: -4, duration: 0.3, ease: EXK.LAND }, m.at);
+      }
+      EXK.end(ctx);
+    </script>
+  </body>
+</html>

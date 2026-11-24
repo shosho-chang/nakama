@@ -1,0 +1,59 @@
+<!doctype html>
+<!-- 第 5 類「解釋動畫」型態「算式」：把一個實際數字一步一步算給觀眾看（Ali 那種 $1,000 → −34% → $660）。
+     原型：《財富階梯》萬分之一法則「淨資產 300 萬 × 萬分之一 = 300 元」。一行一行在講到的那一刻貼上，
+     正在講的那一行是橘色、講過的回黑；最後一句的結論是一張斜貼的白色字牌。底板、碎片、標題、進退場在 assets/kit/。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"spec","type":"string","label":"內容 JSON（見 youtube-explainer skill 的「算式」）","default":"{\"layout\":\"overlay\",\"title\":\"萬分之一法則\",\"show_sec\":8.705,\"lines\":[{\"label\":\"淨資產\",\"label_at\":0.6,\"text\":\"300 萬\",\"at\":2.1},{\"text\":\"× 萬分之一\",\"at\":3.34},{\"rule\":true,\"at\":4.95},{\"label\":\"多付\",\"text\":\"＝ 300 元\",\"at\":5.27}],\"note\":{\"text\":\"對財富影響不大\",\"at\":6.24}}"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/explainer-kit.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      .eq { position: absolute; left: 0; right: 0; top: 110px; bottom: 0; display: flex; flex-direction: column;
+        justify-content: center; gap: 18px; }
+      .lab { font-size: 36px; color: var(--ink-2); margin-bottom: 10px; }
+      .txt { font-size: 120px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+      .op .txt { font-size: 96px; }
+      .rule { height: 6px; background: var(--ink); transform-origin: 0 50%; }
+      /* 結論：白色字牌斜貼（品牌：一個畫面只斜一張牌，±2–6°） */
+      .note { align-self: flex-start; margin-top: 8px; background: var(--white); font-size: 52px; padding: 18px 28px 20px;
+        transform: rotate(-3deg); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="equation"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60"></div>
+    <script>
+      const spec = JSON.parse(EXK.vars().spec || "{}");
+      const ctx = EXK.frame("equation", spec);
+      const { tl, stage } = ctx;
+      const eq = EXK.el("div", "eq", stage);
+      const steps = [];
+      (spec.lines || []).forEach((ln) => {
+        if (ln.rule) {
+          const r = EXK.el("div", "rule", eq);
+          tl.fromTo(r, { scaleX: 0 }, { scaleX: 1, duration: 0.22, ease: EXK.SNAP }, ln.at);
+          return;
+        }
+        const box = EXK.el("div", ln.label ? null : "op", eq);
+        if (ln.label) {
+          const lab = EXK.el("div", "lab", box, ln.label);
+          tl.fromTo(lab, { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.22, ease: EXK.SNAP }, ln.label_at ?? ln.at);
+        }
+        const txt = EXK.el("div", "txt", box, ln.text);
+        EXK.land(tl, txt, ln.at, { x: 40, y: 0 });
+        steps.push([ln.at, txt]);
+      });
+      EXK.focus(tl, steps);
+      if (spec.note) {
+        const n = EXK.el("div", "note", eq, spec.note.text);
+        tl.fromTo(n, { opacity: 0, scale: 1.25, rotation: -8 }, { opacity: 1, scale: 1, rotation: -3, duration: 0.3, ease: EXK.LAND }, spec.note.at);
+      }
+      EXK.end(ctx);
+    </script>
+  </body>
+</html>

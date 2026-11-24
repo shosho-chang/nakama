@@ -1,0 +1,40 @@
+<!doctype html>
+<!-- figure.js 檢查頁（不交件）：五個角度、九個表情、各姿勢一次排出來。
+     ?row=views|faces|poses 只看一排 -->
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/figure.js"></script>
+    <style>
+      html, body { margin: 0; background: #fff; }
+      .row { position: relative; width: 1920px; height: 420px; border-bottom: 1px solid #ddd; }
+      .lbl { position: absolute; font: 600 18px/1 sans-serif; color: #555; }
+    </style>
+  </head>
+  <body>
+    <script>
+      const tl = gsap.timeline({ paused: true });
+      function row(title, items, mk) {
+        const r = document.createElement("div"); r.className = "row"; document.body.appendChild(r);
+        const n = items.length, gap = 1920 / n;
+        items.forEach((it, i) => {
+          const x = gap * (i + 0.5);
+          const f = EXK_FIGURE.make(r, Object.assign({ scale: 0.62, x, y: 395 }, mk(it)));
+          const l = document.createElement("div"); l.className = "lbl"; l.textContent = it.label || it;
+          l.style.left = (x - 60) + "px"; l.style.top = "8px"; r.appendChild(l);
+        });
+      }
+      const q = new URLSearchParams(location.search).get("row");
+      if (!q || q === "views")
+        row("views", [{ v: "front", label: "front" }, { v: "q3", d: 1, label: "q3 →" }, { v: "side", d: -1, label: "side ←" },
+                      { v: "side", d: 1, label: "side →" }, { v: "q3back", d: -1, label: "q3back" }, { v: "back", label: "back" }],
+            (it) => ({ view: it.v, dir: it.d || -1 }));
+      if (!q || q === "faces")
+        row("faces", EXK_FIGURE.FACES.map((f) => ({ f, label: f })), (it) => ({ face: it.f, pose: it.f === "think" ? "think" : "stand" }));
+      if (!q || q === "poses")
+        row("poses", EXK_FIGURE.POSES.map((p) => ({ p, label: p })), (it) => ({ pose: it.p }));
+      window.__timelines = { sheet: tl };
+    </script>
+  </body>
+</html>
