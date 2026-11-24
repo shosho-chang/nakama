@@ -1,0 +1,190 @@
+<!doctype html>
+<!-- 《財富階梯》高收入段 頁 2：收入一斷就崩潰（分鏡表 storyboards/wealth-income.md）
+     時間＝影片「20261112 財富階梯.mp4」的字幕（20261112 財富階梯.srt 第 206–212 句），本頁 0 秒＝影片 7:13.366。
+     本頁結束（7:30.249）＝咖啡段頁 1（comic_coffee_p1）開始。 -->
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/figure.js"></script>
+    <script src="assets/kit/fx.js"></script>
+    <script src="assets/kit/comic.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>html, body { margin: 0; background: var(--white); overflow: hidden; } #root { background: var(--white); }</style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="comic_income_p2"
+      data-width="1920" data-height="1080" data-start="0" data-duration="16.883">
+      <!-- 音效：硬幣進桶＝瑪利歐 Coin（只響第一枚）、閃電打斷水管＝瑪利歐 Kick（本頁的「強」）、往上爬＝MARIO JUMP（每一跳）
+           格 9「倒塌」是新的一類，候選試聽完再加 -->
+      <audio id="sfx-coin"  src="assets/sfx/mario_coin.wav" data-start="0.36"  data-duration="1.0" data-track-index="10" data-volume="0.55"></audio>
+      <audio id="sfx-hit"   src="assets/sfx/mario_kick.wav" data-start="7.20"  data-duration="1.0" data-track-index="11" data-volume="0.9"></audio>
+      <audio id="sfx-jump1" src="assets/sfx/mario_jump.mp3" data-start="14.40" data-duration="0.9" data-track-index="12" data-volume="0.5" data-media-start="0.235"></audio>
+      <audio id="sfx-jump2" src="assets/sfx/mario_jump.mp3" data-start="14.85" data-duration="0.9" data-track-index="13" data-volume="0.5" data-media-start="0.235"></audio>
+      <audio id="sfx-jump3" src="assets/sfx/mario_jump.mp3" data-start="15.30" data-duration="0.9" data-track-index="14" data-volume="0.5" data-media-start="0.235"></audio>
+      <audio id="sfx-jump4" src="assets/sfx/mario_jump.mp3" data-start="15.75" data-duration="0.9" data-track-index="15" data-volume="0.5" data-media-start="0.235"></audio>
+      <audio id="sfx-jump5" src="assets/sfx/mario_jump.mp3" data-start="16.20" data-duration="0.68" data-track-index="16" data-volume="0.5" data-media-start="0.235"></audio>
+    </div>
+    <script>
+      const P = EXK_COMIC.page(document.getElementById("root"), { fx: true, cells: {
+        c7:  { x: 24,  y: 24,  w: 620,  h: 520 },
+        c8:  { x: 664, y: 24,  w: 1232, h: 520 },
+        c9:  { x: 24,  y: 564, w: 880,  h: 492, img: "assets/income/c9_street.png", iw: 1536, ih: 1024 },
+        c10: { x: 924, y: 564, w: 972,  h: 492, img: "assets/income/c10_stairs.png", iw: 1536, ih: 1024 },
+      } });
+      const { tl, act, cells: C, cell, el } = P;
+      window.__timelines = window.__timelines || {};
+      window.__timelines["comic_income_p2"] = tl;
+      // 字幕時間（本頁秒數）。strike＝「收入一斷」閃電打中（頓格 STOP 秒）——之後的角色動作寫 A(真實秒)，才會跟字幕對齊
+      const T = { c7: 0, keep: 2.803, c8: 4.104, storm: 5.35, strike: 7.2, c9: 7.707, crash: 10.243,
+                  c10: 11.945, climb: 14.481, out: 15.65, end: 16.883 };
+      const STOP = 0.15, A = (t) => (t > T.strike ? t - STOP : t);
+      const ink = (w, fill) => ({ fill: fill || "none", stroke: "#000", "stroke-width": w || 8, "stroke-linecap": "round", "stroke-linejoin": "round" });
+      const CREAM = "#f6efe4";
+
+      P.cam("c7", 0, 0.001);
+      P.cam("c8", T.c8 - 0.3, 0.5); P.cam("c9", T.c9 - 0.3, 0.5); P.cam("c10", T.c10 - 0.3, 0.5);
+      P.camOut(T.out, 1.2);
+
+      function coin(parent, r) {
+        const g = el("g", {}, parent);
+        el("circle", Object.assign(ink(r * 0.16, "#ffd36b"), { cx: 0, cy: 0, r }), g);
+        el("circle", Object.assign(ink(r * 0.1), { cx: 0, cy: 0, r: r * 0.62 }), g);
+        return g;
+      }
+      // 水桶（桶口中心 cx,top；k＝大小）。回傳 back（桶內，畫在硬幣下面）、front（桶身，畫在硬幣上面）
+      function bucket(sBack, sFront, cx, top, k) {
+        const tw = 150 * k, bw = 112 * k, H = 230 * k, lw = 9 * Math.sqrt(k);
+        el("ellipse", Object.assign(ink(lw, "#5b6068"), { cx, cy: top, rx: tw, ry: 30 * k }), sBack);
+        const front = el("g", {}, sFront);
+        el("path", Object.assign(ink(lw, "#b7bcc2"), { d: `M${cx - tw},${top} L${cx - bw},${top + H} C${cx - bw},${top + H + 26 * k} ${cx + bw},${top + H + 26 * k} ${cx + bw},${top + H} L${cx + tw},${top} C${cx + tw},${top + 34 * k} ${cx - tw},${top + 34 * k} ${cx - tw},${top} Z` }), front);
+        [0.35, 0.7].forEach((q) => el("path", Object.assign(ink(lw * 0.6), { d: `M${cx - tw + (tw - bw) * q},${top + H * q} C${cx - tw * 0.6},${top + H * q + 26 * k} ${cx + tw * 0.6},${top + H * q + 26 * k} ${cx + tw - (tw - bw) * q},${top + H * q}` }), front));
+        // 底部破洞
+        el("path", Object.assign(ink(lw * 0.7, "#2b2b2b"), { d: `M${cx - 34 * k},${top + H + 6 * k} l10,-12 l12,8 l14,-10 l12,9 l16,-6 l4,16 c-20,10 -50,10 -68,-5 Z` }), front);
+        return { bottom: top + H + 14 * k };
+      }
+      // 一串硬幣：從 y0 掉到 y1（經過桶子時被桶身擋住，看起來像掉進去又從破洞漏出來）
+      function stream(parent, x, y0, y1, r, from, to, gap, dur) {
+        for (let t = from, i = 0; t < to; t += gap, i++) {
+          const c = coin(parent, r); gsap.set(c, { x: x + ((i * 37) % 11 - 5), y: y0, opacity: 0 });
+          act.set(c, { opacity: 1 }, t);
+          act.to(c, { y: y1, rotation: (i % 2 ? 1 : -1) * 90, duration: dur, ease: "none" }, t);
+        }
+      }
+
+      // ── 格 7：特寫・插入。硬幣一直掉進水桶，又從桶底的破洞漏出去 ──
+      {
+        const s0 = P.svg("c7", 1), sB = P.svg("c7", 2), sC = P.svg("c7", 3), sF = P.svg("c7", 4), w = C.c7.w, h = C.c7.h;
+        el("rect", { x: 0, y: 0, width: w, height: h, fill: CREAM }, s0);
+        bucket(sB, sF, w / 2, 150, 1.25);
+        stream(sC, w / 2, -50, h + 50, 30, T.c7 + 0.1, T.c8 + 0.3, 0.24, 0.9);
+      }
+
+      // ── 格 8：中景。拉遠：硬幣是從「收入」水管流下來的；烏雲飄來，閃電打斷水管，硬幣停了（強）──
+      {
+        const s0 = P.svg("c8", 1), sB = P.svg("c8", 2), sC = P.svg("c8", 3), sF = P.svg("c8", 4), sX = P.svg("c8", 6);
+        const w = C.c8.w, h = C.c8.h, bx = 860, btop = 232;
+        el("rect", { x: 0, y: 0, width: w, height: h, fill: CREAM }, s0);
+        el("line", Object.assign(ink(6), { x1: 0, y1: 440, x2: w, y2: 440, stroke: "#c9c1b3" }), s0);   // 地面線
+        const bk = bucket(sB, sF, bx, btop, 0.88);
+        // 水管：從畫面上緣下來，出口在桶子上方；斷點 BRK 以下那段在打中時掉下去
+        const BRK = 120, pipeTop = el("g", {}, sF), pipeLow = el("g", {}, sF);
+        el("rect", Object.assign(ink(9, "#9aa3ad"), { x: bx - 32, y: -20, width: 64, height: BRK + 20 }), pipeTop);
+        el("rect", Object.assign(ink(9, "#9aa3ad"), { x: bx - 32, y: BRK, width: 64, height: 60 }), pipeLow);
+        el("rect", Object.assign(ink(9, "#9aa3ad"), { x: bx - 42, y: BRK + 50, width: 84, height: 28, rx: 5 }), pipeLow);
+        const lab = el("text", { x: bx - 60, y: 100, "text-anchor": "end", "font-size": 56, "font-weight": 900, fill: "var(--ink)", "font-family": "var(--font)" }, sF);
+        lab.textContent = "收入";
+        // 硬幣流：打中之前一直流；打中後已經在空中的掉完就沒了
+        stream(sC, bx, BRK + 70, h + 40, 24, T.c8 - 0.4, T.strike, 0.16, 0.7);
+        // 烏雲
+        const cloud = el("g", {}, sX);
+        el("path", Object.assign(ink(8, "#6d7480"), { d: `M${bx + 70},74 c-14,-40 40,-56 58,-28 c14,-34 74,-30 80,8 c34,-6 46,34 18,44 l-142,0 c-30,-4 -32,-34 -14,-24 Z` }), cloud);
+        act.fromTo(cloud, { x: 420, opacity: 0 }, { x: 0, opacity: 1, duration: 0.8, ease: "power2.out", immediateRender: false }, T.storm);
+        // 閃電：從雲打到斷點
+        const bolt = el("path", Object.assign(ink(7, "#ffd36b"), { d: `M${bx + 110},92 L${bx + 40},${BRK - 4} L${bx + 66},${BRK - 10} L${bx + 4},${BRK + 30} L${bx + 86},${BRK - 26} L${bx + 60},${BRK - 20} L${bx + 126},92 Z`, opacity: 0 }), sX);
+        tl.set(bolt, { opacity: 1 }, T.strike - 2 / 30); tl.set(bolt, { opacity: 0 }, T.strike + 0.25);
+        // 打中：下半截水管轉一下掉出畫面；強＝頓格＋白閃＋震動＋撞擊線
+        act.to(pipeLow, { y: h, rotation: 35, svgOrigin: `${bx} ${BRK}`, duration: 0.5, ease: "power2.in" }, T.strike);
+        EXK_FX.flash(tl, cell.c8, T.strike, { cap: 0.55 });
+        EXK_FX.shake(tl, cell.c8, T.strike, 12, 0.45);
+        EXK_FX.impactLines(tl, sX, bx, BRK, 40, 95, T.strike, { n: 10, w: 7 });
+        // 人偶：左邊正面抬頭看水管；打中時嚇到
+        const { f } = P.figure("c8", { scale: 0.62, x: 360, y: 440, face: "default" });
+        f.face(act, "surprised", T.strike + 0.05); f.pose(act, "armsOut", T.strike + 0.05, 0.15);
+      }
+
+      // ── 格 9：遠景・荷蘭角。整格轉 -20°（背景放大到轉了不露邊）。他站在精品疊成的塔上，塔底一抽、整座往左倒 ──
+      //   ShotBench Dutch angle 實例：整個畫面一起斜、背景要有本來是直的線（街景的樓、路燈）
+      {
+        const w = C.c9.w, h = C.c9.h;
+        gsap.set(C.c9.scene, { scale: 1.6, transformOrigin: "50% 50%" });
+        gsap.set(cell.c9, { rotation: -20, transformOrigin: "50% 50%" });
+        const s = P.svg("c9", 2), base = 400, cx = 430, k = 0.78;
+        const tower = el("g", {}, s);                // 會倒的那一疊（不含最底下的行李箱）
+        // 行李箱（最底）
+        const suit = el("g", {}, s);
+        el("rect", Object.assign(ink(8, "#c98a4b"), { x: cx - 95 * k, y: base - 100 * k, width: 190 * k, height: 100 * k, rx: 10 }), suit);
+        el("path", Object.assign(ink(7), { d: `M${cx - 24},${base - 100 * k} l0,-14 l48,0 l0,14` }), suit);
+        // 紙袋兩個
+        [[cx - 32, "var(--orange)"], [cx + 32, "#3b3b3b"]].forEach(([x, c]) => {
+          el("path", Object.assign(ink(7), { d: `M${x - 14},${base - 167 * k} c0,-18 28,-18 28,0` }), tower);
+          el("path", Object.assign(ink(7, c), { d: `M${x - 33},${base - 100 * k} L${x - 31},${base - 167 * k} L${x + 31},${base - 167 * k} L${x + 33},${base - 100 * k} Z` }), tower);
+        });
+        // 餐盤＋餐蓋
+        el("ellipse", Object.assign(ink(7, "#fff"), { cx, cy: base - 172 * k, rx: 64, ry: 11 }), tower);
+        el("path", Object.assign(ink(7, "#e3e7eb"), { d: `M${cx - 46},${base - 175 * k} C${cx - 46},${base - 228 * k} ${cx + 46},${base - 228 * k} ${cx + 46},${base - 175 * k} Z` }), tower);
+        el("circle", Object.assign(ink(6, "#e3e7eb"), { cx, cy: base - 221 * k, r: 8 }), tower);
+        // 人偶站在餐蓋上
+        const { wrap, f } = P.figure("c9", { scale: 0.36, x: cx, y: base - 224 * k, face: "nervous" });
+        // 搖搖晃晃（繞塔底）
+        const org = `${cx} ${base - 100 * k}`;
+        [0, 1, 2, 3, 4, 5].forEach((i) => act.to([tower], { rotation: i % 2 ? 4 : -4, svgOrigin: org, duration: 0.4, ease: "sine.inOut" }, A(T.c9) + i * 0.4));
+        [0, 1, 2, 3, 4, 5].forEach((i) => act.to(wrap, { rotation: i % 2 ? 4 : -4, transformOrigin: `${cx}px ${base - 100 * k}px`, duration: 0.4, ease: "sine.inOut" }, A(T.c9) + i * 0.4));
+        // 崩潰：行李箱被抽走往右滑出 → 上面整疊往左倒、人摔下去
+        const t = A(T.crash);
+        act.to(suit, { x: 520, rotation: 15, svgOrigin: `${cx} ${base}`, duration: 0.35, ease: "power2.in" }, t - 0.1);
+        act.to(tower, { rotation: -80, y: 160, svgOrigin: `${cx - 50} ${base - 100 * k}`, duration: 0.55, ease: "power2.in" }, t);
+        act.to(wrap, { rotation: -100, x: -150, y: 150, transformOrigin: `${cx}px ${base - 224 * k}px`, duration: 0.6, ease: "power2.in" }, t + 0.05);
+        f.pose(act, "armsUp", t, 0.15); f.face(act, "surprised", t);
+        EXK_FX.shake(tl, cell.c9, T.crash + 0.55, 8, 0.4);
+      }
+
+      // ── 格 10：大遠景・仰角。巨大石階往上延伸到天空；他抱著撲滿，轉身一階一階往上跳（越來越小）──
+      {
+        const sc0 = 0.36;
+        // 量出來的位置（背景圖座標）：每一階頂邊的高度；中線從 (800,873) 斜到 (1040,267)
+        const YS = [700, 547, 453, 400, 365, 335], X = (y) => 800 + (873 - y) / (873 - 267) * 240;
+        const pts = YS.map((y) => P.imgPt("c10", X(y), y)), K = [1, 0.74, 0.6, 0.52, 0.47, 0.43];
+        const { wrap, f } = P.figure("c10", { scale: sc0, x: 0, y: 0, face: "default", pose: "cupTwo" });
+        gsap.set(wrap, { x: pts[0][0], y: pts[0][1] });
+        const psvg = document.createElementNS(P.NS, "svg"); wrap.appendChild(psvg);
+        Object.assign(psvg.style, { position: "absolute", left: 0, top: 0, overflow: "visible", zIndex: 5 }); psvg.setAttribute("width", 1); psvg.setAttribute("height", 1);
+        const hl = f.joint("hL"), hr = f.joint("hR");
+        const pig = el("g", { transform: `translate(${(hl[0] + hr[0]) / 2} ${(hl[1] + hr[1]) / 2 - 4})` }, psvg);
+        {
+          const r = 30, o = ink(r * 0.12);
+          el("ellipse", Object.assign({}, o, { fill: "var(--orange)", cx: 0, cy: 0, rx: r, ry: r * 0.78 }), pig);
+          el("path", Object.assign({}, o, { fill: "var(--orange)", d: `M${-r * 0.45},${-r * 0.62} l${-r * 0.08},${-r * 0.36} l${r * 0.34},${r * 0.2}` }), pig);
+          el("ellipse", Object.assign({}, o, { fill: "#fff", cx: r * 0.98, cy: r * 0.06, rx: r * 0.2, ry: r * 0.26 }), pig);
+          el("circle", { cx: r * 0.42, cy: -r * 0.22, r: r * 0.08, fill: "#000" }, pig);
+        }
+        f.face(act, "determined", A(T.c10 + 0.3));
+        // 轉身（背面看不到撲滿，抱在胸前）
+        const turn = A(T.climb - 0.35);
+        f.view(act, "back", turn); act.set(pig, { opacity: 0 }, turn);
+        // 一階一階往上跳，越遠越小
+        for (let i = 1; i < pts.length; i++) {
+          const at = A(T.climb - 0.08 + (i - 1) * 0.45), q = pts[i], p0 = pts[i - 1];
+          EXK_FX.squashJump(act, f.svg, at, "50% 68.9%", { antic: 0.08, air: 0.3 });
+          act.to(wrap, { x: q[0], duration: 0.3, ease: "none" }, at + 0.08);
+          act.to(wrap, { y: Math.min(q[1], p0[1]) - 40 * K[i], duration: 0.16, ease: "power2.out" }, at + 0.08);
+          act.to(wrap, { y: q[1], duration: 0.14, ease: "power2.in" }, at + 0.24);
+          act.to(wrap, { scale: K[i], transformOrigin: "0px 0px", duration: 0.3, ease: "none" }, at + 0.08);
+        }
+      }
+
+      P.finish(T.end, { stops: [[T.strike, STOP]] });
+    </script>
+  </body>
+</html>

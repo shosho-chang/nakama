@@ -33,6 +33,7 @@ def main():
     if not times:
         sys.exit("用法：comic_shots.py <頁面.html> <out.png> 秒數 …")
     rel = Path(comp).resolve().relative_to(ROOT).as_posix()
+    out.parent.mkdir(parents=True, exist_ok=True)   # 資料夾不存在時 Chrome 會靜默失敗、最後只看到 ffmpeg 報錯
     srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Handler, directory=str(ROOT)))
     threading.Thread(target=srv.serve_forever, daemon=True).start()
     port = srv.server_address[1]

@@ -3,6 +3,7 @@
 #   python -I tools/comic_preview.py --video <成品.mp4> --srt <成品.srt> --start <秒> --out <預覽.mp4> p1.mp4:25.793 p2.mp4:14.214
 #   每一頁寫「檔案:長度」（長度＝頁面 data-duration 以前、下一頁開始那一刻；就是頁面檔 T.end）
 #   --start＝第一頁 0 秒在成品影片的秒數（頁面檔開頭註解有寫）
+#   --fps＝成品影片的影格率（預設 30000/1001；舊的 23.976 影片給 24000/1001），跟漫畫頁渲染的 --fps 一樣
 # 混音：成品原聲＋漫畫頁裡的音效，normalize=0（不壓小原聲）再過 limiter。字幕用微軟正黑體，跟成品同位置。
 import sys, re, argparse, subprocess, tempfile, shutil
 sys.stdout.reconfigure(encoding="utf-8")   # Windows 主控台預設 cp1252，印中文會炸
@@ -49,12 +50,13 @@ def main():
     ap.add_argument("--srt", required=True)
     ap.add_argument("--start", type=float, required=True)
     ap.add_argument("--out", required=True)
+    ap.add_argument("--fps", default="30000/1001", help="成品影片的影格率（舊的 23.976 影片給 24000/1001）")
     ap.add_argument("pages", nargs="+")
     o = ap.parse_args()
     pages = [(Path(p.rsplit(":", 1)[0]).resolve(), float(p.rsplit(":", 1)[1])) for p in o.pages]
     total = sum(d for _, d in pages)
     with tempfile.TemporaryDirectory() as tmp:
-        ff("-ss", str(o.start), "-t", f"{total:.3f}", "-i", o.video, "-vf", "scale=1920:1080", "-r", "30",
+        ff("-ss", str(o.start), "-t", f"{total:.3f}", "-i", o.video, "-vf", "scale=1920:1080", "-r", o.fps,
            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-c:a", "aac", "-b:a", "192k", "src.mp4", cwd=tmp)
         cues = cut_srt(o.srt, o.start, total, Path(tmp) / "seg.srt")
         args, fl = [], ""
@@ -62,7 +64,7 @@ def main():
             args += ["-i", str(p)]
             fl += f"[{i}:v]trim=0:{d},setpts=PTS-STARTPTS[v{i}];[{i}:a]atrim=0:{d},asetpts=PTS-STARTPTS[a{i}];"
         ins = "".join(f"[v{i}][a{i}]" for i in range(len(pages)))
-        ff(*args, "-filter_complex", f"{fl}{ins}concat=n={len(pages)}:v=1:a=1[cv][ca];[cv]fps=30[v]", "-map", "[v]", "-map", "[ca]",
+        ff(*args, "-filter_complex", f"{fl}{ins}concat=n={len(pages)}:v=1:a=1[cv][ca];[cv]fps={o.fps}[v]", "-map", "[v]", "-map", "[ca]",
            "-c:v", "libx264", "-preset", "veryfast", "-crf", "18", "-c:a", "pcm_s16le", "comic.mov", cwd=tmp)
         ff("-i", "comic.mov", "-i", "src.mp4", "-filter_complex",
            f"[0:v]subtitles=seg.srt:force_style='{STYLE}'[v];[1:a][0:a]amix=inputs=2:normalize=0:duration=first,alimiter=limit=0.9[a]",
