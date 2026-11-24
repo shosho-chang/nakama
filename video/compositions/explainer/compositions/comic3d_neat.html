@@ -2,7 +2,7 @@
 <!-- 第 15 類 Avatar／多格漫畫 v2：3D 透視場景（修修 2026-11-18：「場景都是 2D 的，但我需要人物在 3D 的場景走動……
      走向是縱向的 Z 軸，人物大小就會改變」）。
      稿子同 comic_neat.html（修修 2023-02-10 NEAT 文章，台詞與數字全出自原文）。
-     場景：OpenAI Images API（chatgpt-image-latest）生的一點透視線稿（assets/comic3d/），消失點用 scratchpad 的 vp.py 自動量。
+     場景：OpenAI Images API（chatgpt-image-latest）生的一點透視線稿（assets/scenes/comic3d/），消失點用 scratchpad 的 vp.py 自動量。
      人物大小＝透視算出來的：腳踩在地板第 iy 列 → 身高 ≈ 1.08 ×（iy − 地平線 y）。往鏡頭走就變大、往裡走就變小。 -->
 <html lang="zh-Hant">
   <head>
@@ -48,10 +48,10 @@
       const M = 24, G = 20, W = 1920 - 2 * M, H = 1080 - 2 * M;
       const h1 = 611, w1 = (W - G) / 2, h2 = H - h1 - G, wS = Math.round(h2 * 1.5);
       const CELLS = {
-        run:      { x: M, y: M, w: w1, h: h1, bg: "assets/comic3d/run.png", vp: [768, 386] },
-        office:   { x: M + w1 + G, y: M, w: w1, h: h1, bg: "assets/comic3d/office.png", vp: [762, 338] },
+        run:      { x: M, y: M, w: w1, h: h1, bg: "assets/scenes/comic3d/run.png", vp: [768, 386] },
+        office:   { x: M + w1 + G, y: M, w: w1, h: h1, bg: "assets/scenes/comic3d/office.png", vp: [762, 338] },
         face:     { x: M, y: M + h1 + G, w: W - G - wS, h: h2 },
-        standing: { x: M + W - wS, y: M + h1 + G, w: wS, h: h2, bg: "assets/comic3d/standing.png", vp: [715, 386] },
+        standing: { x: M + W - wS, y: M + h1 + G, w: wS, h: h2, bg: "assets/scenes/comic3d/standing.png", vp: [715, 386] },
       };
       const cell = {};
       for (const k in CELLS) {

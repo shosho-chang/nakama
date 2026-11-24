@@ -1,6 +1,6 @@
 <!doctype html>
 <!-- 第 15 類 Avatar 的第一階段：多格漫畫（修修 2026-11-18：「先讓 2D 人偶在 2D 場景移動就好，以多格漫畫形式來做」）。
-     場景圖：ChatGPT ImageGen 生的「無人物」線稿背景（assets/comic/*.png）；人物一律用 figure.js 的線條修修疊上去，
+     場景圖：ChatGPT ImageGen 生的「無人物」線稿背景（assets/scenes/comic/*.png）；人物一律用 figure.js 的線條修修疊上去，
      logo 臉不交給生圖模型重畫。鏡頭：整頁漫畫當成一張大畫布，鏡頭逐格推近、平移，最後拉遠看整頁。
      這一版是格式 demo，格子內容是 Kling 測試包同一組三場景（書桌／健身房／廚房）；
      場景圖提示詞見 docs/research/2026-11-17-avatar-video-model-survey.md 的「多格漫畫」段。 -->
@@ -37,10 +37,10 @@
       // 版面：不等寬的四格（寬鏡頭、中景、特寫、寬鏡頭）
       const M = 24, G = 20;
       const CELLS = {
-        desk:    { x: M, y: M, w: 1150, h: 500, bg: "assets/comic/desk.png", label: "書桌", op: [0.5, 0.5] },
-        gym:     { x: M + 1150 + G, y: M, w: 1920 - 2 * M - 1150 - G, h: 500, bg: "assets/comic/gym.png", label: "健身房", op: [0.5, 0.5] },
+        desk:    { x: M, y: M, w: 1150, h: 500, bg: "assets/scenes/comic/desk.png", label: "書桌", op: [0.5, 0.5] },
+        gym:     { x: M + 1150 + G, y: M, w: 1920 - 2 * M - 1150 - G, h: 500, bg: "assets/scenes/comic/gym.png", label: "健身房", op: [0.5, 0.5] },
         face:    { x: M, y: M + 500 + G, w: 560, h: 1080 - 2 * M - 500 - G, bg: null },
-        kitchen: { x: M + 560 + G, y: M + 500 + G, w: 1920 - 2 * M - 560 - G, h: 1080 - 2 * M - 500 - G, bg: "assets/comic/kitchen.png", label: "廚房", op: [0.5, 0.75] },
+        kitchen: { x: M + 560 + G, y: M + 500 + G, w: 1920 - 2 * M - 560 - G, h: 1080 - 2 * M - 500 - G, bg: "assets/scenes/comic/kitchen.png", label: "廚房", op: [0.5, 0.75] },
       };
       const cell = {};
       for (const k in CELLS) {

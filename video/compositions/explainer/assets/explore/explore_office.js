@@ -1,6 +1,6 @@
 // NEAT 書房段：A／B 畫法比較（分鏡表 storyboards/neat-office.md）
 //   頁面在 #root 設 data-explore-mode="a" | "b"（渲染器會先跑外部 script，不能靠頁面裡的 inline 變數）
-//   A：背景＝每格各生一張（不含人）；C＝A 的做法，但背景用 B 的畫面當風格參考生（assets/explore/c/），人偶／腳／手／筆／熱量計＝程式畫、會動
+//   A：背景＝每格各生一張（不含人）；C＝A 的做法，但背景用 B 的畫面當風格參考生（assets/scenes/explore/c/），人偶／腳／手／筆／熱量計＝程式畫、會動
 //   B：整格連人一起生，動畫只有運鏡、緩推、文字
 (function () {
   const NS = "http://www.w3.org/2000/svg";
@@ -8,9 +8,9 @@
   const MODE = root.dataset.exploreMode;
   // 圖片路徑寫完整字串（渲染器靠掃字串找素材）
   const IMGS = {
-    a: { p1: "assets/explore/a/a1.png", p2: "assets/explore/a/a2.png", p3: "assets/explore/a/a3.png", p4: "assets/explore/a/a4.png", p5: null },
-    c: { p1: "assets/explore/c/c1.png", p2: "assets/explore/c/c2.png", p3: "assets/explore/c/c3.png", p4: "assets/explore/c/c4.png", p5: "assets/explore/c/c5.png" },
-    b: { p1: "assets/explore/b/b1_hi.png", p2: "assets/explore/b/b2_hi.png", p3: "assets/explore/b/b3_hi.png", p4: "assets/explore/b/b4_hi.png", p5: "assets/explore/b/b5_hi.png" },
+    a: { p1: "assets/scenes/explore/a/a1.png", p2: "assets/scenes/explore/a/a2.png", p3: "assets/scenes/explore/a/a3.png", p4: "assets/scenes/explore/a/a4.png", p5: null },
+    c: { p1: "assets/scenes/explore/c/c1.png", p2: "assets/scenes/explore/c/c2.png", p3: "assets/scenes/explore/c/c3.png", p4: "assets/scenes/explore/c/c4.png", p5: "assets/scenes/explore/c/c5.png" },
+    b: { p1: "assets/scenes/explore/b/b1_hi.png", p2: "assets/scenes/explore/b/b2_hi.png", p3: "assets/scenes/explore/b/b3_hi.png", p4: "assets/scenes/explore/b/b4_hi.png", p5: "assets/scenes/explore/b/b5_hi.png" },
   };
   const page = document.createElement("div"); page.id = "page"; root.appendChild(page);
   const tl = gsap.timeline({ paused: true });

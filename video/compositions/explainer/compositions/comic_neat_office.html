@@ -26,13 +26,13 @@
       <audio id="sfx-jump"  src="assets/sfx/mario_jump.mp3"           data-start="11.15" data-duration="1.2"  data-track-index="17" data-volume="0.7" data-media-start="0.235"></audio>
     </div>
     <script>
-      // ── 格子（分鏡表「位置／大小」）＋背景（tools/gen_panel.py 生，畫風參考 assets/explore/b/b1_hi.png）──
+      // ── 格子（分鏡表「位置／大小」）＋背景（tools/gen_panel.py 生，畫風參考 assets/scenes/explore/b/b1_hi.png）──
       const P = EXK_COMIC.page(document.getElementById("root"), { fx: true, cells: {
-        p1: { x: 24,   y: 24,  w: 1100, h: 560, img: "assets/explore/c/c1.png", iw: 1536, ih: 1024 },
-        p2: { x: 1144, y: 24,  w: 752,  h: 560, img: "assets/explore/c/c2.png", iw: 1536, ih: 1024 },
-        p3: { x: 24,   y: 604, w: 452,  h: 452, img: "assets/explore/c/c3.png", iw: 1024, ih: 1024 },
-        p4: { x: 496,  y: 604, w: 880,  h: 452, img: "assets/explore/c/c4.png", iw: 1536, ih: 1024 },
-        p5: { x: 1396, y: 604, w: 500,  h: 452, img: "assets/explore/c/c5.png", iw: 1024, ih: 1024, flipX: true },
+        p1: { x: 24,   y: 24,  w: 1100, h: 560, img: "assets/scenes/explore/c/c1.png", iw: 1536, ih: 1024 },
+        p2: { x: 1144, y: 24,  w: 752,  h: 560, img: "assets/scenes/explore/c/c2.png", iw: 1536, ih: 1024 },
+        p3: { x: 24,   y: 604, w: 452,  h: 452, img: "assets/scenes/explore/c/c3.png", iw: 1024, ih: 1024 },
+        p4: { x: 496,  y: 604, w: 880,  h: 452, img: "assets/scenes/explore/c/c4.png", iw: 1536, ih: 1024 },
+        p5: { x: 1396, y: 604, w: 500,  h: 452, img: "assets/scenes/explore/c/c5.png", iw: 1024, ih: 1024, flipX: true },
       } });
       const { tl, act, cells: C, cell, el } = P;
       window.__timelines = window.__timelines || {};

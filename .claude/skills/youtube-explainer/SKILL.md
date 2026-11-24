@@ -202,11 +202,16 @@ HyperFrames 不讀文字 prompt，它把一頁網頁（HTML＋GSAP）逐格渲�
      在分鏡表自檢寫明為什麼沒停滿 2 秒。
 2. **場景**：每格一張不含人的背景（`tools/gen_panel.py`），鏡頭（景別、角度、要留空給人偶的位置）寫在每格的 prompt。
    - **不用生的格子**：物件插入格、特寫用素色底（cream）就好；同一個場景換景別，沿用已經生的圖放大或打模糊；
-     沿用別段的圖要寫來源（例：高收入段格 6 沿用咖啡段 `assets/coffee/a3_high.png`）。
-   - **畫風參考**固定用 `assets/explore/b/b1_hi.png`（`FIDELITY=low`，只借畫風）——咖啡段、高收入段、冷測都是這張。要換畫風先問修修。
+     沿用別段的圖要寫來源（例：高收入段格 6 沿用咖啡段 `assets/scenes/coffee/a3_high.png`）。
+   - **畫風參考**固定用 `assets/scenes/explore/b/b1_hi.png`（`FIDELITY=low`，只借畫風）——咖啡段、高收入段、冷測都是這張。要換畫風先問修修。
    - **prompt 固定開頭**照抄 `storyboards/prompts/income/c1_tower.txt` 開頭到「no panel border.」那段（只借畫風、不准畫人、
      不准有字和商標），後面接「Scene: …」寫這格。沒寫這段，模型會畫出人或字。
-   - prompt 檔放 `storyboards/prompts/<段名>/<格>.txt`，圖放 `assets/<段名>/`（費用自動記在那裡的 `_cost_log.jsonl`）。
+   - prompt 檔放 `storyboards/prompts/<段名>/<格>.txt`（進 git），圖放 `assets/scenes/<段名>/`（費用自動記在那裡的 `_cost_log.jsonl`）。
+   - **生成的背景圖不進 git**（修修 2026-11-24：圖大多只用在那一段，放 git 會讓 repo 一直變大）。實體在 `E:\data\explainer-scenes\`，
+     專案裡的 `assets/scenes` 是指過去的 junction（已在 `.gitignore`）。新開的 worktree 沒有這個 junction，先在 cmd 建一次：
+     `mklink /J <worktree>\video\compositions\explainer\assets\scenes E:\data\explainer-scenes`
+     （從 Git Bash 跑要在前面加 `MSYS_NO_PATHCONV=1 cmd /c`）。沒接上時，漫畫頁那一格會整格變紅寫「缺背景圖」。
+   - 這些圖只有 `E:\data` 一份，git 不會幫忙備份。
    - 不要在 prompt 裡限制顏色和材質——第一版就是這樣變得很陽春。
    - 生圖不一定照 prompt 的方向（2026-11-21 格 10 寫「石階從左下往右上斜」，生出來是正對鏡頭往上延伸）。
      那格要傳達的事還做得到 → 改分鏡表配合背景（構圖、人偶動線），改的地方寫回分鏡表、交件時跟修修說；

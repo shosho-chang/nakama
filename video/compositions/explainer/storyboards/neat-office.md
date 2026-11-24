@@ -24,5 +24,5 @@
 
 畫法（2026-11-20 比較；修修看完後往 C 做）：
 - **A**：背景照每格的景別各生一張（不含人），人偶與道具（腳、手、筆、熱量計）用程式畫、會動。
-- **C**：A 的人偶，背景改用 B 的畫面當「只借畫風」參考生（`assets/explore/c/`）；特寫＝放大的人偶；動態用 `assets/kit/fx.js`。
+- **C**：A 的人偶，背景改用 B 的畫面當「只借畫風」參考生（`assets/scenes/explore/c/`）；特寫＝放大的人偶；動態用 `assets/kit/fx.js`。
 - **B**：整格連人一起生（參考圖＝`assets/character/turnaround_v1.png`＋`expressions_v1.png`），動畫只有運鏡、緩推、文字出場。

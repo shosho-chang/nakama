@@ -71,7 +71,7 @@ shot-list.md 的狀態：「做不到俯拍過肩……平視、看遠方的過�
 
 - 人偶：不用新姿勢（`cheers`、`cupTwo`、`armsUp`、`back` 都有）。格 5 背面放大＋壓暗。
 - 道具（程式畫）：天平、鬧鐘（5:00＋響聲線）、書（翻頁）、螢幕上的打字橫線、灰色矮台「基本款」、旗子「成功」、橘色柱子、集氣光。
-- 場景生圖（`FIDELITY=low`、借 `assets/explore/b/b1_hi.png` 畫風，跟高收入段一樣）：
+- 場景生圖（`FIDELITY=low`、借 `assets/scenes/explore/b/b1_hi.png` 畫風，跟高收入段一樣）：
   格 2 房間平視遠景（1536×1024）、格 3 床頭櫃俯角（1024×1024）、格 5 書桌＋螢幕平視（1536×1024，左 1/3 留空給前景的頭肩）、
   格 6 仰角天空平台（1536×1024）。4 張 × 約 US$0.06 ≈ US$0.25。
   格 1 素色底不生；格 4 沿用格 2 的房間圖放大、模糊。
@@ -80,7 +80,7 @@ shot-list.md 的狀態：「做不到俯拍過肩……平視、看遠方的過�
 
 ## 實作時改的地方（2026-11-21，交件時跟修修說）
 
-- 頁面：`compositions/comic_inequality_p1.html`；背景：`assets/inequality/`（prompt 在 `storyboards/prompts/inequality/`，4 張共 US$0.24）。
+- 頁面：`compositions/comic_inequality_p1.html`；背景：`assets/scenes/inequality/`（prompt 在 `storyboards/prompts/inequality/`，4 張共 US$0.24）。
 - 格 1：中強調的震動改動 `cell.c1`（stage）而不是 scene——這格沒有背景圖，scene 是空的，震 scene 看不到。
 - 格 5：生圖的書桌是站立桌、沒有椅子，跟格 2 房間裡「坐式書桌＋椅子」對不起來（連戲瑕疵，沒重生）。
   前景頭肩壓暗到 brightness 0.4（第一版 0.55 太淺，跟參考片的近剪影差太多）；頭往左移到被畫面左緣切掉約 1/4。

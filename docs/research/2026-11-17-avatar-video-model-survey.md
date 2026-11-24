@@ -120,7 +120,7 @@
 - 場景提示詞（三張同一個對話裡連續生，第二、三張說「exactly the same style and rules」維持一致）：
   > Flat 2D comic background illustration, thick clean black outlines, flat fills in white and light warm gray only, at most one small orange (#f57331) accent object, no shading, no gradients, no texture, no text, no people, no characters, no hands. Eye-level straight-on view, the floor occupies the bottom third of the image and the middle of the floor is left empty so a character can be placed standing there. Landscape 3:2. Scene: …
 - 產出 1536×1024 PNG，每張約 30–40 秒；三張（書桌、健身房、廚房）都一次到位，畫風和線條修修一致。
-- 取圖：頁面上的 `blob:` 圖用 JS 觸發下載，瀏覽器窗格會把檔案留在 `C:\Users\Shosho\Downloads\<uuid>.tmp`（內容就是 PNG），再複製到 `assets/comic/<場景>.png`。
+- 取圖：頁面上的 `blob:` 圖用 JS 觸發下載，瀏覽器窗格會把檔案留在 `C:\Users\Shosho\Downloads\<uuid>.tmp`（內容就是 PNG），再複製到 `assets/scenes/comic/<場景>.png`。
 - demo：`comic.html`，15 秒四格。鏡頭＝整頁當畫布逐格推近（`camTo`）、最後拉遠；格內背景慢慢放大，放大中心設在人物腳下，腳不會在地板上滑。人物站位用 `imgPt(格子, 圖上 x, 圖上 y)` 從場景圖座標換算。特寫格用集中線＋汗滴表現費力（logo 表情本身不動）。
 - 第一支照稿 demo（2026-11-18，修修：「參考我過去的文章先產生一個腳本，把它變成四格漫畫的分鏡，然後把人物放進去動」）：`comic_neat.html`，稿子取自 2023-02-10〈不用運動輕鬆減肥……〉（`E:\nakama\data\brook\shosho-posts-raw\activate-neat-to-burn-more-fat.md`），台詞與數字全部出自原文。四格＝跑步只燒 625 大卡／愛動的人一天 800～2000 大卡／這叫 NEAT／站著工作。新生兩張場景：河濱跑道 `run.png`、站立辦公桌 `standing.png`。
 - 漫畫元件：對白泡泡（修修自己講）、旁白方框、橘色大數字（白描邊）、汗滴、集中線；figure.js 新增 `jogA`／`jogB` 兩拍跑步姿勢。
@@ -131,7 +131,7 @@
 
 修修：「這場景都是 2D 的，但我需要人物在 3D 的場景走動，所以是靜態的圖片，但是是 3D 的場景……走向是縱向的 Z 軸，人物大小就會改變」；並要求「改走 API，然後你看看要花多少 credit」。
 
-- 生圖改走 OpenAI Images API（`E:\nakama\.env` 的 `OPENAI_API_KEY`），直接寫檔、不跳視窗。腳本：scratchpad `comic/gen_scene.py`；每次呼叫寫一行到 `assets/comic3d/_cost_log.jsonl`。
+- 生圖改走 OpenAI Images API（`E:\nakama\.env` 的 `OPENAI_API_KEY`），直接寫檔、不跳視窗。腳本：scratchpad `comic/gen_scene.py`；每次呼叫寫一行到 `assets/scenes/comic3d/_cost_log.jsonl`。
 - 價格（developers.openai.com/api/docs/pricing，2026-11-18 查，每 1M tokens）：chatgpt-image-latest／gpt-image-1.5 文字輸入 $5、圖片輸出 $32、文字輸出 $10；gpt-image-2／2.5／2.6 圖片輸出 $30；gpt-image-1-mini 圖片輸出 $8。頁面沒有「每張」價，按回應的 usage 算。
 - 實測：chatgpt-image-latest、medium、1536×1024，每張約 250 輸入 token、1,568 圖片 token＋約 400 文字 token → **約 US$0.055／張**，12–15 秒。這次 4 張（跑道試一次＋跑道、書房、開放辦公室）合計約 US$0.22。
 - 提示詞要求一點透視、鏡頭在眼睛高度、地平線約 40%、地板從畫面下緣一路收到消失點、地板中間淨空——三張都一次到位。

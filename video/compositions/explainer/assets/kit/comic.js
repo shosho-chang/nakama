@@ -53,6 +53,14 @@
           left: (c.w - c.iw * s) / 2 + "px", top: (c.h - c.ih * s) / 2 + "px" });
         if (c.flipX) img.style.transform = "scaleX(-1)";
         c.s = s; sc.appendChild(img);
+        // 背景圖不在 git（E:\data\explainer-scenes，經 assets/scenes junction 接進來）：讀不到時整格標紅，不要默默變空白
+        img.onerror = () => {
+          const m = document.createElement("div");
+          m.textContent = "缺背景圖：" + c.img + "（assets/scenes 有沒有接到 E:\\data\\explainer-scenes？）";
+          Object.assign(m.style, { position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "24px", textAlign: "center", background: "#e0533d", color: "#fff", font: "900 28px sans-serif" });
+          sc.appendChild(m); console.error(m.textContent);
+        };
       }
       c.zoom = Math.min(1920 / c.w, 1080 / c.h) * 0.94;
       pageEl.appendChild(d); cell[k] = stage;
