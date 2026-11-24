@@ -211,6 +211,7 @@ HyperFrames 不讀文字 prompt，它把一頁網頁（HTML＋GSAP）逐格渲�
      專案裡的 `assets/scenes` 是指過去的 junction（已在 `.gitignore`）。新開的 worktree 沒有這個 junction，先在 cmd 建一次：
      `mklink /J <worktree>\video\compositions\explainer\assets\scenes E:\data\explainer-scenes`
      （從 Git Bash 跑要在前面加 `MSYS_NO_PATHCONV=1 cmd /c`）。沒接上時，漫畫頁那一格會整格變紅寫「缺背景圖」。
+     音效也一樣不進 git（第 5 點），同一次把 `assets\sfx` 也接上。
    - 這些圖只有 `E:\data` 一份，git 不會幫忙備份。
    - 不要在 prompt 裡限制顏色和材質——第一版就是這樣變得很陽春。
    - 生圖不一定照 prompt 的方向（2026-11-21 格 10 寫「石階從左下往右上斜」，生出來是正對鏡頭往上延伸）。
@@ -258,7 +259,11 @@ HyperFrames 不讀文字 prompt，它把一頁網頁（HTML＋GSAP）逐格渲�
    - 要配、但歸不進任何一類的動作才找新音效：挑 3 個候選、剪成同一段畫面的對照影片給修修聽，他選定後把那一類加進字典和這張表。
      以後同類動作就不用再問。
    - 字典記了落選的候選，同一類動作別再推薦。
-   - 檔案從 `F:\Project Files\Assets\SFX` 複製進 `assets/sfx/`，在頁面 HTML 直接寫 `<audio data-start data-duration data-track-index data-volume>`
+   - **音效檔不進 git**（nakama 是公開 repo，音效授權不明——瑪利歐音效很可能是任天堂的，修修 2026-11-24）。
+     實體在 `E:\data\explainer-sfx\`，專案的 `assets/sfx` 是指過去的 junction（已在 `.gitignore`），新 worktree 建法同第 2 點：
+     `mklink /J <worktree>\video\compositions\explainer\assets\sfx E:\data\explainer-sfx`。
+     沒接上時渲染會直接失敗：`Render blocked … audio_processing_failed`（`source_not_found`）。
+   - 檔案從 `F:\Project Files\Assets\SFX` 複製進 `assets/sfx/`（＝`E:\data\explainer-sfx\`），在頁面 HTML 直接寫 `<audio data-start data-duration data-track-index data-volume>`
      ——**渲染器只讀靜態 HTML**，用 JS 加的 `<audio>` 不會混進影片。
    - 量每個檔開頭的空白（`silencedetect`），用 `data-media-start` 跳過，聲音才會跟動作在同一格；渲完再用 `silencedetect` 對一次時間。
    - 秒數是真實時間：頓格之後的事件要加上停格秒數。
