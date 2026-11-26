@@ -5,6 +5,7 @@
 軌道（修修 2026-11-16 選「用這個預設」）：
 - V1／A1：原始錄影照初剪剪點（`rough_cut.json`），套畫面搬移（書封、重點條列 → 臉讓到左 1/3）。
 - V2：疊加素材；同一時間已經有一張的，往 V3、V4……放。
+- A2：素材自己帶聲音的（漫畫的音效，收據 `audio: true`），聲音放 A2；同一時間已經有的往 A3……放。
 - 章節卡（插入類）：在插入點把整條時間軸往後推 `insert_sec`（1.7 秒）；卡本身 2 秒放在 V2，
   最後 0.3 秒疊在下一段錄影上（章節卡收據）。插入的地方 V1／A1 是空的（第一版安靜，規格 §3.4）。
 - 字幕：每一句照插入往後推，寫成 `transcript.<版本>.srt` 放上字幕軌。
@@ -57,6 +58,7 @@ class Overlay:
     length: float
     media: Path
     layout: str | None = None  # 滿版 full／右側欄 overlay（版面由 Director 選的分類才有）
+    audio: bool = False  # 素材自己帶聲音（漫畫的音效）
 
 
 @dataclass
@@ -90,7 +92,8 @@ def load_layout(episode: Path, plan: Mapping[str, Any]) -> Layout:
         else:
             out.overlays.append(
                 Overlay(row_id, receipt["category"], float(receipt["start_sec"]),
-                        float(receipt["duration_sec"]), media, receipt.get("layout"))
+                        float(receipt["duration_sec"]), media, receipt.get("layout"),
+                        bool(receipt.get("audio")))
             )  # fmt: skip
     out.inserts.sort(key=lambda i: i.at)
     out.overlays.sort(key=lambda o: o.start)
@@ -180,6 +183,21 @@ def placements(layout: Layout) -> list[Placement]:
         (frames(shift(o.start, layout.inserts)), frames(o.length), o.row_id, o.media)
         for o in layout.overlays
     ]
+    return _stack(items)
+
+
+def audio_placements(layout: Layout) -> list[Placement]:
+    """自己帶聲音的素材（漫畫音效）放哪一條音軌：從 A2 開始（A1 是原始錄影），重疊就往上。"""
+    return _stack(
+        [
+            (frames(shift(o.start, layout.inserts)), frames(o.length), o.row_id, o.media)
+            for o in layout.overlays
+            if o.audio
+        ]
+    )
+
+
+def _stack(items: list[tuple[int, int, str, Path]]) -> list[Placement]:
     busy: dict[int, list[tuple[int, int]]] = {}
     out = []
     for record, length, row_id, media in sorted(items):
@@ -251,6 +269,18 @@ def build(resolve: Any, episode: Path, name: str = DEFAULT_NAME) -> dict[str, An
         }])  # fmt: skip
         if not ok or not all(ok):
             raise tl.TimelineError(f"{p.row_id} 放不上 V{p.track}")
+    sounds = audio_placements(layout)
+    for track in range(2, max((p.track for p in sounds), default=1) + 1):
+        while timeline.GetTrackCount("audio") < track:
+            timeline.AddTrack("audio", "stereo")
+    for p in sounds:
+        media = tl._find_or_import(pool, p.media)
+        ok = pool.AppendToTimeline([{
+            "mediaPoolItem": media, "startFrame": 0, "endFrame": p.length,
+            "recordFrame": start + p.record, "trackIndex": p.track, "mediaType": 2,
+        }])  # fmt: skip
+        if not ok or not all(ok):
+            raise tl.TimelineError(f"{p.row_id} 的聲音放不上 A{p.track}")
     move_list = moves(layout)
     fps = float(FPS)
     pairs = [(m, rf.anchor_for(timeline, m, fps)) for m in move_list]
@@ -263,6 +293,7 @@ def build(resolve: Any, episode: Path, name: str = DEFAULT_NAME) -> dict[str, An
         "inserts": len(layout.inserts),
         "overlays": len(layout.overlays),
         "tracks": max((p.track for p in placed), default=1),
+        "audio_clips": len(sounds),
         "moves": len(move_list),
         "clips_reframed": touched,
         "subtitles": str(srt.name),
@@ -285,7 +316,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"插入 {len(layout.inserts)} 張、疊加 {len(layout.overlays)} 張；"
             f"V1 切成 {len(v1_pieces(cut, layout.inserts))} 段；"
             f"用到 V2–V{max((p.track for p in placed), default=1)}；"
-            f"畫面搬移 {len(moves(layout))} 次"
+            f"畫面搬移 {len(moves(layout))} 次；"
+            f"帶聲音的素材 {len(audio_placements(layout))} 張"
         )
         for line in layout.skipped:
             print(f"  略過 {line}")

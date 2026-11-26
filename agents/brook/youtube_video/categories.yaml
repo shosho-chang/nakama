@@ -78,12 +78,13 @@ categories:
     when: 要解釋數字、比例、變化、算式、對照的段落（如六個階層）；比喻情境用漫畫
     dp: >-
       圖表：DP 選圖表（橫條、直條、圓環、點陣、圓餅、大數字、折線、刻度、算式、對比）、寫規格檔，
-      程式檢查版面後渲（visuals/explainer.py）；漫畫：照分鏡表手做。skill youtube-explainer
+      程式檢查版面後渲（visuals/explainer.py）；漫畫：照分鏡表手做、修修看過預覽後，
+      規格檔寫要接哪幾頁，同一支程式接頁、帶音效交件（只能選滿版）。skill youtube-explainer
     kind: overlay
     layout: either
     required: [description, dp_instruction]
-    # partial：圖表會自動渲；漫畫還要手做
-    readiness: partial
+    # 圖表、漫畫都能交件（漫畫頁本身還是照分鏡表手做）
+    readiness: ready
     auto: false
     density: true
     covers: true
