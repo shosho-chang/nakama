@@ -1,0 +1,123 @@
+<!doctype html>
+<!-- 第 5 類「解釋動畫」圖表「折線」：數量隨時間怎麼變（存錢、複利、成長）。1–2 條線。
+     線從 at 開始一路畫到 until（照講的速度），畫完在終點冒出點＋數值；正在講的那條橘色，講過的回黑。
+     只畫一條底線＋幾個刻度，不畫格線、不畫 y 軸——要觀眾看的數字直接標在點上（marks、終點）。
+     數字一律來自稿；要「實算」的線（例：複利）由程式照稿上的假設算好再填 points，不心算。
+     不綁任何一集：內容全部從 spec 來（欄位見 youtube-explainer skill「圖表：折線」）。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"spec","type":"string","label":"內容 JSON（見 youtube-explainer skill「圖表：折線」）","default":"{\"layout\":\"full\",\"title\":\"範例標題\",\"show_sec\":7,\"x\":{\"ticks\":[0,5,10],\"unit\":\" 年\"},\"y\":{\"unit\":\" 萬\"},\"series\":[{\"points\":[[0,0],[5,40],[10,100]],\"at\":1,\"until\":4,\"end_label\":true}]}"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/explainer-kit.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      .plot { position: absolute; left: 0; right: 0; top: 120px; bottom: 0; }
+      .plot svg { position: absolute; left: 0; top: 0; overflow: visible; }
+      .tick, .ptxt, .sname { position: absolute; white-space: nowrap; font-variant-numeric: tabular-nums; }
+      .tick { color: var(--ink-2); transform: translateX(-50%); }
+      .ptxt { transform: translate(-50%, -100%); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="line"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60"></div>
+    <script>
+      const NS = "http://www.w3.org/2000/svg";
+      const spec = JSON.parse(EXK.vars().spec || "{}");
+      const ctx = EXK.frame("line", spec);
+      const { tl, stage, full } = ctx;
+      const series = (spec.series || []).slice(0, 2);
+      const X = spec.x || {}, Y = spec.y || {};
+      const allPts = series.flatMap((s) => s.points);
+      const xMin = X.min ?? Math.min(...allPts.map((p) => p[0])), xMax = X.max ?? Math.max(...allPts.map((p) => p[0]));
+      const yMax = Y.max ?? Math.max(...allPts.map((p) => p[1]));
+
+      // 畫圖區：滿版 1500×500（左右留給終點數值）、側欄 560×440
+      const PW = full ? 1440 : 520, PH = full ? 470 : 400, OX = full ? 60 : 40, OY = 70;
+      const tickPx = full ? 40 : 32, valPx = full ? 64 : 48;
+      const plot = EXK.el("div", "plot", stage);
+      const svg = document.createElementNS(NS, "svg");
+      svg.setAttribute("width", PW + 2 * OX); svg.setAttribute("height", OY + PH + 10);
+      plot.appendChild(svg);
+      const px = (x) => OX + ((x - xMin) / (xMax - xMin || 1)) * PW;
+      const py = (y) => OY + PH - (y / (yMax || 1)) * PH;
+
+      // 底線＋刻度
+      const base = document.createElementNS(NS, "line");
+      base.setAttribute("x1", OX); base.setAttribute("x2", OX + PW);
+      base.setAttribute("y1", OY + PH); base.setAttribute("y2", OY + PH);
+      base.setAttribute("stroke", "#000"); base.setAttribute("stroke-width", 6);
+      svg.appendChild(base);
+      const t0 = Math.min(...series.map((s) => s.at)) - 0.4;
+      tl.fromTo(base, { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 1, duration: 0.3, ease: EXK.SNAP }, t0);
+      (X.ticks || []).forEach((v, i) => {
+        const e = EXK.el("div", "tick", plot, (X.labels && X.labels[i]) || EXK.num(v) + (X.unit || ""));
+        e.style.left = px(v) + "px"; e.style.top = (OY + PH + 18) + "px"; e.style.fontSize = tickPx + "px";
+        tl.fromTo(e, { opacity: 0 }, { opacity: 1, duration: 0.2 }, t0 + 0.15);
+      });
+
+      const fmtY = (y, d) => (Y.prefix || "") + EXK.num(y, d ?? Y.digits ?? 0) + (Y.unit || "");
+      // 數值標在點的上方；靠右邊（後 1/4）的點改成靠右對齊，字往左長，不跑出畫面
+      const label = (x, y, text, at, cls, size) => {
+        const e = EXK.el("div", cls || "ptxt", plot, text);
+        e.style.left = px(x) + "px"; e.style.top = (py(y) - 22) + "px"; e.style.fontSize = (size || valPx) + "px";
+        // 用 GSAP 的 xPercent 設對齊（land 只動 x／y，不會蓋掉）
+        if ((x - xMin) / (xMax - xMin || 1) > 0.75) { gsap.set(e, { xPercent: -100, yPercent: -100 }); e.style.left = (px(x) + (full ? 20 : 14)) + "px"; }
+        EXK.land(tl, e, at, { y: 20 });
+        return e;
+      };
+      const lines = [], ends = [], endTxt = [];
+      series.forEach((s) => {
+        const path = document.createElementNS(NS, "path");
+        path.setAttribute("d", s.points.map((p, i) => (i ? "L" : "M") + px(p[0]) + " " + py(p[1])).join(" "));
+        path.setAttribute("fill", "none"); path.setAttribute("stroke", "#000");
+        path.setAttribute("stroke-width", full ? 12 : 9); path.setAttribute("stroke-linejoin", "miter");
+        svg.appendChild(path);
+        const L = path.getTotalLength();
+        path.setAttribute("stroke-dasharray", `${L} ${L}`);
+        const until = s.until ?? s.at + 1.5;
+        tl.fromTo(path, { attr: { "stroke-dashoffset": L } }, { attr: { "stroke-dashoffset": 0 }, duration: Math.max(0.3, until - s.at), ease: "none" }, s.at);
+        // 終點：方點＋數值
+        const [ex, ey] = s.points[s.points.length - 1];
+        const dot = document.createElementNS(NS, "rect");
+        const ds = full ? 30 : 22;
+        dot.setAttribute("x", px(ex) - ds / 2); dot.setAttribute("y", py(ey) - ds / 2);
+        dot.setAttribute("width", ds); dot.setAttribute("height", ds); dot.setAttribute("fill", "#000");
+        svg.appendChild(dot);
+        tl.fromTo(dot, { scale: 0, transformOrigin: "50% 50%" }, { scale: 1, duration: 0.3, ease: EXK.LAND }, until);
+        const et = s.end_label === false ? null : label(ex, ey, s.end_text || fmtY(ey, s.digits), until);
+        if (s.name) {
+          // 兩條線時，線名標在終點數值上方
+          const nm = label(ex, ey, s.name, until, "ptxt", tickPx);
+          nm.style.top = (py(ey) - 22 - valPx - 8) + "px";
+        }
+        lines.push(path); ends.push(dot); endTxt.push(et);
+      });
+      // 中途要標的點：{series, x, y, text, at}
+      (spec.marks || []).forEach((m) => label(m.x, m.y, m.text || fmtY(m.y), m.at));
+
+      const steps = series.map((s, i) => [s.at, i]);
+      if (spec.rest_at != null) steps.push([spec.rest_at, null]);
+      steps.sort((a, b) => a[0] - b[0]);
+      let prev = null;
+      steps.forEach(([t, i]) => {
+        if (prev != null && prev !== i) {
+          tl.to(lines[prev], { attr: { stroke: "#000" }, duration: 0.14 }, t);
+          tl.to(ends[prev], { attr: { fill: "#000" }, duration: 0.14 }, t);
+          if (endTxt[prev]) tl.to(endTxt[prev], { color: EXK.INK, duration: 0.14 }, t);
+        }
+        if (i != null && i !== prev) {
+          tl.to(lines[i], { attr: { stroke: EXK.ORANGE }, duration: 0.14 }, t);
+          tl.to(ends[i], { attr: { fill: EXK.ORANGE }, duration: 0.14 }, t);
+          if (endTxt[i]) tl.to(endTxt[i], { color: EXK.ORANGE, duration: 0.14 }, t);
+        }
+        prev = i;
+      });
+      EXK.end(ctx);
+    </script>
+  </body>
+</html>

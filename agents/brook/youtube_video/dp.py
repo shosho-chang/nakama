@@ -40,6 +40,7 @@ RENDERERS = {
     "doc_highlight": "agents.brook.youtube_video.visuals.doc_highlight",
     "quote_card": "agents.brook.youtube_video.visuals.quote_card",
     "side_bullets": "agents.brook.youtube_video.visuals.side_bullets",
+    "explainer": "agents.brook.youtube_video.visuals.explainer",
 }
 REPORT_FILE = "dp_report.json"
 

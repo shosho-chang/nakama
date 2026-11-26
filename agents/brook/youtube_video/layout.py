@@ -56,6 +56,7 @@ class Overlay:
     start: float  # v1 秒數
     length: float
     media: Path
+    layout: str | None = None  # 滿版 full／右側欄 overlay（版面由 Director 選的分類才有）
 
 
 @dataclass
@@ -89,7 +90,7 @@ def load_layout(episode: Path, plan: Mapping[str, Any]) -> Layout:
         else:
             out.overlays.append(
                 Overlay(row_id, receipt["category"], float(receipt["start_sec"]),
-                        float(receipt["duration_sec"]), media)
+                        float(receipt["duration_sec"]), media, receipt.get("layout"))
             )  # fmt: skip
     out.inserts.sort(key=lambda i: i.at)
     out.overlays.sort(key=lambda o: o.start)
@@ -191,10 +192,10 @@ def placements(layout: Layout) -> list[Placement]:
 
 
 def moves(layout: Layout) -> list[rf.Move]:
-    """書封、重點條列：臉讓到另一側（畫面搬移），時間換算到新一版。"""
+    """書封、重點條列、側欄版的解釋動畫：臉讓到另一側（畫面搬移），時間換算到新一版。"""
     result = []
     for o in layout.overlays:
-        kind = rf.OVERLAY_MOVES.get(o.category)
+        kind = rf.overlay_move(o.category, o.layout)
         if kind:
             start = shift(o.start, layout.inserts)
             result.append(rf.Move(kind, round(start, 3), round(start + o.length, 3)))

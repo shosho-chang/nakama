@@ -1,0 +1,66 @@
+<!doctype html>
+<!-- 第 5 類「解釋動畫」圖表「大數字」：一個數字本身就很驚人（年齡中位數 62 歲、超過 7,000 人）。
+     上面一行講「這是什麼的數字」，講到那個數字時數字跳出來（橘色、很大），下面一行補一句說明。
+     不綁任何一集：內容全部從 spec 來（欄位見 youtube-explainer skill「圖表：大數字」）。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"spec","type":"string","label":"內容 JSON（見 youtube-explainer skill「圖表：大數字」）","default":"{\"layout\":\"full\",\"title\":\"範例標題\",\"show_sec\":6,\"label\":\"範例說明\",\"label_at\":0.8,\"value\":1234,\"suffix\":\" 個\",\"at\":1.6,\"desc\":\"範例補充\",\"desc_at\":3}"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/explainer-kit.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      .body { position: absolute; left: 0; right: 0; top: 120px; bottom: 0; display: flex; flex-direction: column;
+        justify-content: center; align-items: center; gap: 26px; }
+      .side .body, .body.side { align-items: flex-start; }
+      .slabel, .sdesc { white-space: nowrap; }
+      .slabel { font-size: 64px; }
+      .sdesc { font-size: 52px; color: var(--ink-2); }
+      .side .slabel { font-size: 44px; }
+      .side .sdesc { font-size: 40px; }
+      .num { display: flex; align-items: baseline; gap: 0.12em; white-space: nowrap; color: var(--orange); line-height: 0.9;
+        margin-bottom: 0.1em; }   /* 逗號、小數點的尾巴往下掉，下面那行說明要讓開 */
+      .num .v { font-variant-numeric: tabular-nums; }
+      .num .small { font-size: 0.32em; color: var(--ink); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="stat"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60"></div>
+    <script>
+      const spec = JSON.parse(EXK.vars().spec || "{}");
+      const ctx = EXK.frame("stat", spec);
+      const { tl, stage, full } = ctx;
+      const wrap = EXK.el("div", "body" + (full ? "" : " side"), stage);
+
+      const lab = spec.label ? EXK.el("div", "slabel", wrap, spec.label) : null;
+      const num = EXK.el("div", "num", wrap);
+      // before＝數字前的小字（「超過」「約」）；prefix＝數字前的單位（NT$）；suffix＝單位（萬、歲、人）
+      if (spec.before) EXK.el("span", "small", num, spec.before);
+      const v = EXK.el("span", "v", num);
+      if (spec.suffix) EXK.el("span", "small", num, spec.suffix.trim());
+      const desc = spec.desc ? EXK.el("div", "sdesc", wrap, spec.desc) : null;
+
+      // 數字盡量大：滿版 300px、側欄 200px，放不下就縮到剛好
+      const room = full ? 1620 : 640;
+      let px = full ? 300 : 200;
+      num.style.fontSize = px + "px";
+      v.textContent = (spec.prefix || "") + EXK.num(spec.value, spec.digits || 0);
+      if (num.offsetWidth > room) { px = Math.floor(px * room / num.offsetWidth); num.style.fontSize = px + "px"; }
+      // 上下兩行說明太長也縮到剛好（不換行）
+      [lab, desc].forEach((e) => {
+        if (e && e.offsetWidth > room) e.style.fontSize = Math.floor(parseFloat(getComputedStyle(e).fontSize) * room / e.offsetWidth) + "px";
+      });
+
+      if (lab) EXK.land(tl, lab, spec.label_at ?? spec.at - 0.6, { x: full ? 0 : -20, y: full ? 24 : 0 });
+      tl.fromTo(num, { opacity: 0, scale: 0.8 }, { opacity: 1, scale: 1, duration: 0.32, ease: EXK.LAND }, spec.at);
+      // 數字從 0 跳上去（大數字 0.9 秒，小數字快一點）
+      EXK.count(tl, v, spec.value, spec.at, spec.value >= 100 ? 0.9 : 0.6, spec.digits || 0, "", spec.prefix);
+      if (desc) tl.fromTo(desc, { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.22, ease: EXK.SNAP }, spec.desc_at ?? spec.at + 1);
+      EXK.end(ctx);
+    </script>
+  </body>
+</html>

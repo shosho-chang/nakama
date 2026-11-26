@@ -1,0 +1,116 @@
+<!doctype html>
+<!-- 第 5 類「解釋動畫」圖表「圓環」：一小部分佔整體多少（一個百分比），環中間寫大數字。
+     1–3 個環並排（側欄最多 2 個上下排）；每個環在講到那個數字的那一句畫出來，數字跟弧一起跳；
+     正在講的那一個是橘色，講過的回黑。比例照實畫——1% 的弧就是很細，靠中間的大字撐。
+     不綁任何一集：內容全部從 spec 來（欄位見 youtube-explainer skill「圖表：圓環」）。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"spec","type":"string","label":"內容 JSON（見 youtube-explainer skill「圖表：圓環」）","default":"{\"layout\":\"full\",\"title\":\"範例標題\",\"source\":\"資料：範例\",\"show_sec\":7,\"items\":[{\"label\":\"範例說明\",\"value\":25,\"at\":1.2}]}"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/explainer-kit.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      .rings { position: absolute; left: 0; right: 0; top: 120px; bottom: 0; display: flex;
+        justify-content: center; align-items: center; }
+      .side .rings, .rings.side { flex-direction: column; }
+      .ring { position: relative; display: flex; flex-direction: column; align-items: center; }
+      .ring svg { display: block; }
+      .center { position: absolute; left: 0; right: 0; display: flex; align-items: center; justify-content: center;
+        white-space: nowrap; font-variant-numeric: tabular-nums; }
+      .rlabel { white-space: nowrap; text-align: center; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="donut"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60"></div>
+    <script>
+      const NS = "http://www.w3.org/2000/svg";
+      const spec = JSON.parse(EXK.vars().spec || "{}");
+      const ctx = EXK.frame("donut", spec);
+      const { tl, stage, full } = ctx;
+      const items = (spec.items || []).slice(0, full ? 3 : 2);
+      const n = Math.max(1, items.length);
+
+      // 尺寸跟著個數走：滿版 1 個 500、2 個 440、3 個 380；側欄 1 個 440、2 個 250（上下排）
+      const D = full ? [500, 440, 380][n - 1] : [440, 250][n - 1];
+      const SW = Math.round(D * 0.16);                 // 環的粗細
+      const numPx = Math.round(D * (n === 1 ? 0.3 : 0.27));
+      const labPx = full ? (n === 1 ? 56 : 48) : (n === 1 ? 44 : 40);
+      const wrap = EXK.el("div", "rings" + (full ? "" : " side"), stage);
+      wrap.style.gap = full ? (n === 1 ? 0 : 110) + "px" : "28px";
+
+      const arcs = [], nums = [];
+      items.forEach((it) => {
+        // value＋total（例：4／400）→ 百分比；只給 value 就當百分比
+        const pct = it.total ? (it.value / it.total) * 100 : it.value;
+        const ring = EXK.el("div", "ring", wrap);
+        const box = EXK.el("div", null, ring);
+        box.style.position = "relative";
+        const svg = document.createElementNS(NS, "svg");
+        svg.setAttribute("width", D); svg.setAttribute("height", D);
+        svg.setAttribute("viewBox", `0 0 ${D} ${D}`);
+        box.appendChild(svg);
+        const r = (D - SW) / 2, C = 2 * Math.PI * r;
+        const mk = (color) => {
+          const c = document.createElementNS(NS, "circle");
+          c.setAttribute("cx", D / 2); c.setAttribute("cy", D / 2); c.setAttribute("r", r);
+          c.setAttribute("fill", "none"); c.setAttribute("stroke", color); c.setAttribute("stroke-width", SW);
+          c.setAttribute("transform", `rotate(-90 ${D / 2} ${D / 2})`);   // 從 12 點鐘方向開始
+          svg.appendChild(c);
+          return c;
+        };
+        const track = mk("#fff");
+        const arc = mk(EXK.INK);
+        arc.setAttribute("stroke-dasharray", `${C} ${C}`);
+        arc.setAttribute("stroke-dashoffset", C);
+        const num = EXK.el("div", "center", box);
+        num.style.top = "0"; num.style.height = D + "px"; num.style.fontSize = numPx + "px";
+        const lab = EXK.el("div", "rlabel", ring, it.label || "");
+        lab.style.fontSize = labPx + "px";
+        lab.style.marginTop = (full ? 34 : 18) + "px";
+
+        // 中間的字要塞進內圈（留 12% 邊）：先用最後會顯示的字量寬度，太寬就縮
+        const digits = it.digits ?? (pct < 1 && pct > 0 ? 1 : 0);
+        const finalText = it.center || EXK.num(pct, digits) + "%";
+        const probe = EXK.el("div", "center", document.getElementById("root"), finalText);
+        probe.style.cssText = "position:absolute;left:auto;right:auto;display:inline-block;visibility:hidden;font-size:" + numPx + "px";
+        const room = (D - 2 * SW) * 0.88;
+        if (probe.offsetWidth > room) num.style.fontSize = Math.floor(numPx * room / probe.offsetWidth) + "px";
+        probe.remove();
+
+        const ratio = Math.max(0, Math.min(1, pct / 100));
+        const grow = 0.45 + 0.6 * ratio;
+        // 環先「啪」地出現（白色軌道），弧從 12 點鐘順時針畫出來，數字一起跳
+        tl.fromTo(box, { scale: 0.7, opacity: 0 }, { scale: 1, opacity: 1, duration: 0.3, ease: EXK.LAND }, it.at - 0.25);
+        tl.fromTo(arc, { attr: { "stroke-dashoffset": C } }, { attr: { "stroke-dashoffset": C * (1 - ratio) }, duration: grow, ease: EXK.SNAP }, it.at);
+        tl.fromTo(num, { opacity: 0 }, { opacity: 1, duration: 0.1 }, it.at);
+        if (it.center) { num.textContent = it.center; }   // 中間要寫別的字（例：「1/100」）就用 center
+        else EXK.count(tl, num, pct, it.at, grow, digits, "%");
+        tl.fromTo(lab, { opacity: 0, y: 16 }, { opacity: 1, y: 0, duration: 0.22, ease: EXK.SNAP }, it.label_at ?? it.at);
+        arcs.push(arc); nums.push(num);
+      });
+
+      // 講到哪一個亮哪一個（弧＋數字染橘），講過的回黑；rest_at 全部回黑
+      const steps = items.map((it, i) => [it.at, i]);
+      if (spec.rest_at != null) steps.push([spec.rest_at, null]);
+      steps.sort((a, b) => a[0] - b[0]);
+      let prev = null;
+      steps.forEach(([t, i]) => {
+        if (prev != null && prev !== i) {
+          tl.to(arcs[prev], { attr: { stroke: EXK.INK }, duration: 0.14 }, t);
+          tl.to(nums[prev], { color: EXK.INK, duration: 0.14 }, t);
+        }
+        if (i != null && i !== prev) {
+          tl.to(arcs[i], { attr: { stroke: EXK.ORANGE }, duration: 0.14 }, t);
+          tl.to(nums[i], { color: EXK.ORANGE, duration: 0.14 }, t);
+        }
+        prev = i;
+      });
+      EXK.end(ctx);
+    </script>
+  </body>
+</html>
