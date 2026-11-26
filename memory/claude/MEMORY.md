@@ -1,5 +1,6 @@
 # Memory Index
 
+- [問修修之前先自己查到底](feedback_resolve_before_asking_shosho.md) — **subagent 的「待確認清單」不要直接轉給修修**（2026-11-20 直播字幕 14 處，13 處我自己查得到）：先 web search、查 repo 記憶、翻聊天室／投影片／前後文、截音檔重聽，只問真的只有他知道的；人馬筆記本＝Centaur 筆記系統、克朗＝LLM 比喻
 - [feedback_design_iteration_converge.md](feedback_design_iteration_converge.md) — **跟修修調視覺設計：每輪只動他點名的那一處，不疊零件；越改越糟就退回他說過好的版本**（2026-11-15 書封五輪越改越糟）；ImageGen 不守品牌規則、會重畫真人，不拿來發想品牌元件
 - [reference_book_cover_sources.md](reference_book_cover_sources.md) — 書封先找本機書庫 `data/books/<書名>/cover.jpg`；該集封面成品在 `E:\data\AgentOutput\<date>-...-cover\`；博客來／城邦 CDN／Kobo 擋下載
 - [feedback_content_design_uses_shosho_universe.md](feedback_content_design_uses_shosho_universe.md) — **內容設計（影片字卡、畫面元件）一律用 claude.ai 上的「張修修的不正常宇宙 Design System」**（修修 2026-11-15）：品牌手冊 Brand In Use 頁是原型；長精華的紙卡＋手繪橘線是舊系統、之後會改套新元件；Bridge 網頁仍是 docs/design-system.md
