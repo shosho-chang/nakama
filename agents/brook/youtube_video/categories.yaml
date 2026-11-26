@@ -231,8 +231,8 @@ categories:
   - id: punch_in
     number: 17
     name: 推近（punch-in）
-    when: 露出來的跳接剪點（規格 §3.6）
-    dp: A-roll 放大，剪點前後空白約 3–4 frame（暫定）
+    when: 露出來的跳接剪點（只在段落交界），滿版 B-roll、第二機都不適用時才用（規格 §3.6 第三選擇）
+    dp: 剪點上 A-roll 直接放大（硬切、不緩動），剪點前後空白約 3–4 frame（暫定）
     kind: overlay
     layout: none
     required: []
