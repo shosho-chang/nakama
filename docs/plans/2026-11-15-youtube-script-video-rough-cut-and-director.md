@@ -164,7 +164,7 @@
 | 3 | 人物彈入 | 講到人名 → 照片去背 → 動畫跳入。照片來源規則見 §3.8 | 已做好：`video/compositions/person_pop`、skill `youtube-person`（2026-11-15 定版：比例照《財富階梯》剪輯夥伴的版本，人物臉跟主持人一樣大；從下方跳出、縱向 motion blur；左右兩側） |
 | 4 | 書封 | 講到書名時由 Director 判斷要不要出現，**不限次數**。修修：「把書封只能出現一次這個限制拿掉好了」 | 已做好：`video/compositions/book_cover_frame`、skill `youtube-book-cover`（2026-11-15 定版：書封＋粗細有變化的細橘框、兩角同時畫框；只做疊加、固定在右側） |
 | 5 | 解釋動畫 | 較長的解釋段落（如六個階層），Director 寫 prompt，DP 用 HyperFrames 做 | 部分：`bigstat`、`concept_card` |
-| 6 | Stock footage | Director 寫描述，DP 找素材 | 待查證 |
+| 6 | Stock footage | Director 寫描述，DP 找素材。修修 2026-11-26：「只做滿版」、「原始素材直接上 Resolve」、「下載下來的素材要移動到該專案的 folder 裡面」 | 已做好：skill `youtube-stock`、`visuals/stock.py`（DP 上 Envato 抓 16:9、搬進 `<episode>/assets/stock/`、寫規格檔列每一鏡的原檔／取用秒數；不渲染，鋪時間軸時原檔一鏡一鏡放 V2、只放畫面） |
 | 7 | 論文／文件 highlighter | 截圖＋螢光筆逐步劃 | 已做好：`video/compositions/doc_highlight`、skill `youtube-doc-highlight`（2026-11-16 定版：修修過去成片「截圖＋黃 highlight 隨旁白移動」配方，品牌冷灰滿版、白紙文件疊在左上右下 p24 碎片上、鏡頭推近到劃的地方；劃的位置用 PDF 文字層自動找，DP 寫 `visual_sources/<row_id>.json`） |
 | 8 | 金句卡 | 整句原話＋出處 | 已做好：`video/compositions/quote_dim`、skill `youtube-quote-card`（2026-11-16 定版：錄影壓暗、白色大字逐行滑入、橘色出處，右下角探進品牌手冊 p24 碎片；停留 4–9 秒，不插入時間。舊 `quote_card` 是長精華紙卡，不用） |
 | 9 | 修修自己的素材 | 修修提供 | 不需製作 |

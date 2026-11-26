@@ -5,6 +5,8 @@
 軌道（修修 2026-11-16 選「用這個預設」）：
 - V1／A1：原始錄影照初剪剪點（`rough_cut.json`），套畫面搬移（書封、重點條列 → 臉讓到左 1/3）。
 - V2：疊加素材；同一時間已經有一張的，往 V3、V4……放。
+- Stock（第 6 類）：收據列出每一鏡用哪個原檔、從第幾秒取多長；原檔照鏡頭一鏡一鏡放 V2，
+  只放畫面不放聲音（修修 2026-11-26：「原始素材直接上 Resolve」）。
 - A2：素材自己帶聲音的（漫畫的音效，收據 `audio: true`），聲音放 A2；同一時間已經有的往 A3……放。
 - 章節卡（插入類）：在插入點把整條時間軸往後推 `insert_sec`（1.7 秒）；卡本身 2 秒放在 V2，
   最後 0.3 秒疊在下一段錄影上（章節卡收據）。插入的地方 V1／A1 是空的（第一版安靜，規格 §3.4）。
@@ -25,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import sys
 from collections.abc import Mapping, Sequence
@@ -59,6 +62,8 @@ class Overlay:
     media: Path
     layout: str | None = None  # 滿版 full／右側欄 overlay（版面由 Director 選的分類才有）
     audio: bool = False  # 素材自己帶聲音（漫畫的音效）
+    src_in: float = 0.0  # 從原檔第幾秒開始取（stock 原檔；渲好的素材都是 0）
+    src_fps: float | None = None  # 原檔格率（stock；None＝跟時間軸一樣）
 
 
 @dataclass
@@ -77,10 +82,13 @@ def load_layout(episode: Path, plan: Mapping[str, Any]) -> Layout:
         if receipt is None:
             continue  # dp_report.json 之類
         row_id = receipt["row_id"]
-        media = path.with_name(receipt["media"])
         if row_id not in rows:
             out.skipped.append(f"{row_id}：規劃表已經沒有這一列")
             continue
+        if receipt.get("shots"):
+            out.overlays.extend(_stock_shots(Path(episode), receipt, out.skipped))
+            continue
+        media = path.with_name(receipt["media"])
         if not media.is_file():
             out.skipped.append(f"{row_id}：素材檔不見了 {media.name}")
             continue
@@ -98,6 +106,24 @@ def load_layout(episode: Path, plan: Mapping[str, Any]) -> Layout:
     out.inserts.sort(key=lambda i: i.at)
     out.overlays.sort(key=lambda o: o.start)
     return out
+
+
+def _stock_shots(episode: Path, receipt: Mapping[str, Any], skipped: list[str]) -> list[Overlay]:
+    """Stock 收據 → 每一鏡一個疊加：原檔在集數資料夾裡，從 src_in 取 frames 格。"""
+    row_id = receipt["row_id"]
+    shots = receipt["shots"]
+    missing = [s["file"] for s in shots if not (episode / s["file"]).is_file()]
+    if missing:
+        skipped.append(f"{row_id}：原檔不見了 {'、'.join(missing)}")
+        return []
+    start = float(receipt["start_sec"])
+    fps = float(FPS)
+    return [
+        Overlay(row_id, receipt["category"], start + s["offset_frames"] / fps, s["frames"] / fps,
+                episode / s["file"], receipt.get("layout"), False, float(s["src_in"]),
+                float(s["src_fps"]))
+        for s in shots
+    ]  # fmt: skip
 
 
 def frames(seconds: float) -> int:
@@ -172,6 +198,8 @@ class Placement:
     track: int  # 2、3……
     record: int  # 新一版第幾格
     length: int  # 幾格
+    src_in: int = 0  # 從素材第幾格開始取（素材自己的格率）
+    src_fps: float | None = None  # 素材格率跟時間軸不同時（stock 原檔）才有
 
 
 def placements(layout: Layout) -> list[Placement]:
@@ -179,11 +207,16 @@ def placements(layout: Layout) -> list[Placement]:
     items = [
         (frames(shift(i.at, layout.inserts, include_at=False)), frames(i.length), i.row_id, i.media)
         for i in layout.inserts
-    ] + [
-        (frames(shift(o.start, layout.inserts)), frames(o.length), o.row_id, o.media)
-        for o in layout.overlays
-    ]
+    ] + [_overlay_item(o, layout.inserts) for o in layout.overlays]
     return _stack(items)
+
+
+def _overlay_item(o: Overlay, inserts: Sequence[Insert]) -> tuple:
+    record, length = frames(shift(o.start, inserts)), frames(o.length)
+    if o.src_fps is None:
+        return (record, length, o.row_id, o.media)
+    # 原檔格率可能是 25／24……：取用起點換成原檔自己的格數；取幾格放上去時再算（source_frames）
+    return (record, length, o.row_id, o.media, round(o.src_in * o.src_fps), o.src_fps)
 
 
 def audio_placements(layout: Layout) -> list[Placement]:
@@ -197,16 +230,38 @@ def audio_placements(layout: Layout) -> list[Placement]:
     )
 
 
-def _stack(items: list[tuple[int, int, str, Path]]) -> list[Placement]:
+def _stack(items: list[tuple]) -> list[Placement]:
+    """items：(record, length, row_id, media[, src_in, src_fps])。"""
     busy: dict[int, list[tuple[int, int]]] = {}
     out = []
-    for record, length, row_id, media in sorted(items):
+    for record, length, row_id, media, *src in sorted(items, key=lambda t: t[:3]):
         track = 2
         while any(record < e and s < record + length for s, e in busy.get(track, [])):
             track += 1
         busy.setdefault(track, []).append((record, record + length))
-        out.append(Placement(row_id, media, track, record, length))
+        out.append(Placement(row_id, media, track, record, length, *src))
     return out
+
+
+def conformed_frames(source: int, src_fps: float) -> int:
+    """原檔取 N 格放上 29.97 的時間軸，Resolve 實際蓋住幾格：換算後**無條件捨去**。
+
+    2026-11-26 在 Resolve 實測五個點都吻合：25 fps 取 43／50 格 → 51／59 格、
+    24 fps 取 28 格 → 34 格。
+    """
+    return math.floor(source * float(FPS) / src_fps + 1e-6)
+
+
+def source_frames(timeline_frames: int, src_fps: float) -> int:
+    """要蓋住時間軸 N 格，原檔取幾格：放上去**不超過 N 格**的最多格數。
+
+    不超過 → 不會壓到下一鏡或下一列；取最多 → 最多短一格（格率差越小越準，同格率剛好）。
+    每放一鏡讀回實際結束格、下一鏡從那裡接，短掉的那格由下一鏡補回，只有一列最後一鏡可能早一格結束。
+    """
+    source = math.floor((timeline_frames + 1) * src_fps / float(FPS)) + 1
+    while source > 0 and conformed_frames(source, src_fps) > timeline_frames:
+        source -= 1
+    return source
 
 
 def moves(layout: Layout) -> list[rf.Move]:
@@ -261,14 +316,21 @@ def build(resolve: Any, episode: Path, name: str = DEFAULT_NAME) -> dict[str, An
     for track in range(2, max((p.track for p in placed), default=1) + 1):
         while timeline.GetTrackCount("video") < track:
             timeline.AddTrack("video")
+    ends: dict[tuple[str, int], int] = {}  # stock：這一列在這一軌上一鏡實際結束在第幾格
     for p in placed:
         media = tl._find_or_import(pool, p.media)
+        record, src_len = p.record, p.length
+        if p.src_fps is not None:
+            record = ends.get((p.row_id, p.track), p.record)
+            src_len = source_frames(p.record + p.length - record, p.src_fps)
         ok = pool.AppendToTimeline([{
-            "mediaPoolItem": media, "startFrame": 0, "endFrame": p.length,
-            "recordFrame": start + p.record, "trackIndex": p.track, "mediaType": 1,
+            "mediaPoolItem": media, "startFrame": p.src_in, "endFrame": p.src_in + src_len,
+            "recordFrame": start + record, "trackIndex": p.track, "mediaType": 1,
         }])  # fmt: skip
         if not ok or not all(ok):
             raise tl.TimelineError(f"{p.row_id} 放不上 V{p.track}")
+        if p.src_fps is not None:
+            ends[(p.row_id, p.track)] = int(ok[0].GetEnd()) - start
     sounds = audio_placements(layout)
     for track in range(2, max((p.track for p in sounds), default=1) + 1):
         while timeline.GetTrackCount("audio") < track:
