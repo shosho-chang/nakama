@@ -670,7 +670,19 @@ def expected_format_policy(stage: StageName) -> dict[str, JsonValue]:
     ]
     stage_instruction = {
         "director": "author_semantic_events_from_current_context",
-        "dp": "implement_current_events_using_only_catalog_references",
+        # 「only catalog references」是修修從 2026 年中反覆推翻過十幾次的那條規則。
+        # 它逼 DP 從既有目錄硬挑，而目錄裡每一支都是為**別的句子**買的，於是 DP
+        # 只能靠表面關鍵字硬湊：「同學欺負我」配到女孩坐空教室（那支是為「老師當著
+        # 同學的面誤會我」買的）、「效忠家庭的連結感」配到沙發對談（那支是為「我老婆
+        # 幫我接話」買的）。2026-09-17 一支長片就抓到兩次。
+        #
+        # 決定性的證據：這一集的 `acquisitions/` 只有 punch-L03 與 punch-L04，
+        # **punch-L02 從來沒跑過自己的採購**，它那 31 支目錄整份都是另外兩支買剩的。
+        # DP 不管怎麼挑都會挑到「為別句話買的」，因為它沒有別的東西可挑。
+        #
+        # 規則改成：意圖說了算，目錄只是起點。沒有一支配得上就去取得新素材——
+        # 不是退而求其次。
+        "dp": "acquire_or_select_assets_that_serve_each_event_intent",
         "visual_review": "judge_each_final_rendered_component_from_inspection_bytes",
     }[stage]
     return {
@@ -708,7 +720,14 @@ def expected_format_policy(stage: StageName) -> dict[str, JsonValue]:
             "meaningful_visual_gap_max_sec": LONG_MAX_NONSTRUCTURAL_VISUAL_GAP_SEC,
             "stock_min_distinct_asset_backed_events": LONG_MIN_DISTINCT_STOCK_VIDEO_EVENTS,
             "stock_native_landscape": True,
-            "dp_catalog_references_only": True,
+            #: 每一支素材都必須扣得回它自己那個 event 的意圖。**拿為別句話買的素材
+            #: 來湊，是退件等級的錯**，不是可接受的折衷——這條取代了寫死的
+            #: `dp_catalog_references_only`（見上方 stage_instruction 的血淚）。
+            "asset_must_serve_its_own_event_intent": True,
+            #: 目錄裡沒有配得上的，正確動作是去取得新素材再回來引用，不是硬挑一支。
+            #: 收件端仍然要求 asset_ref 存在於素材庫（provenance 不放寬），所以
+            #: 「先取得、再引用」是唯一走得通的路，也是本來就該走的路。
+            "acquire_when_catalog_cannot_serve_intent": True,
             "single_paper_family": True,
             "orange_allowed": False,
             "ink_allowed": False,
