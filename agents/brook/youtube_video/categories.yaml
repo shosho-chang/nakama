@@ -165,7 +165,7 @@ categories:
     kind: overlay
     layout: either
     required: [dp_instruction]
-    readiness: unverified
+    readiness: ready  # 2026-11-17 做好（skill youtube-others-clip、visuals/others_clip.py）
     auto: false
     density: true
     covers: true

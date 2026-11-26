@@ -85,6 +85,7 @@
           {% if r.origin == 'auto' %}<span class="lb lb-info">自動</span>{% elif r.origin == 'manual' %}<span class="lb lb-info">新增</span>{% endif %}
           {% for flag, label in item.flags %}<span class="lb {% if flag == 'awaiting_material' %}lb-warn{% else %}lb-info{% endif %}">{{ label }}</span>{% endfor %}
         </div>
+        {% if r.category == 'others_clip' %}<a class="vp-clips" href="/bridge/video-plan/{{ episode|urlencode }}/clips/{{ r.id }}">挑片段、標起訖</a>{% endif %}
       </div>
 
       <div class="vp-fields">

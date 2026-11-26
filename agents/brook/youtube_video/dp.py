@@ -42,6 +42,7 @@ RENDERERS = {
     "side_bullets": "agents.brook.youtube_video.visuals.side_bullets",
     "explainer": "agents.brook.youtube_video.visuals.explainer",
     "stock": "agents.brook.youtube_video.visuals.stock",  # 不渲染：檢查規格檔、寫收據
+    "others_clip": "agents.brook.youtube_video.visuals.others_clip",
 }
 REPORT_FILE = "dp_report.json"
 # 不渲染、只寫收據的分類（stock：原檔直接上 Resolve）——報告寫 delivered，不寫 rendered
