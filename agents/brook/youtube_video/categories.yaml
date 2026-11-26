@@ -93,11 +93,14 @@ categories:
     number: 6
     name: Stock footage
     when: 適合用實拍素材加強的段落
-    dp: Director 寫描述，DP 找素材
+    dp: >-
+      Director 寫描述，DP 上 Envato 抓 16:9 實拍、搬進集數資料夾 assets/stock/、寫規格檔（每鏡用哪個檔、
+      從第幾秒取多長，單鏡 ≤3 秒），程式檢查後原檔直接鋪上 Resolve（visuals/stock.py）；skill youtube-stock
     kind: overlay
-    layout: either
+    # 修修 2026-11-26：「只做滿版」「原始素材直接上 Resolve」
+    layout: full
     required: [dp_instruction]
-    readiness: unverified
+    readiness: ready
     auto: false
     density: true
     covers: true
