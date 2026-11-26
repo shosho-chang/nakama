@@ -1,0 +1,85 @@
+<!doctype html>
+<!-- 第 5 類「解釋動畫」圖表「點陣」：「百裡挑一」「每 N 個有 1 個」——一格一格排出整體，只亮其中幾格。
+     不用讀數字也懂比例多小。適合很小的比例或整數比；超過約 20% 或比例不是整數時改用圓環。
+     點陣先整片長出來，講到那個數字的那一句，被挑中的格子變橘、彈一下；旁邊的字在講到時出現。
+     不綁任何一集：內容全部從 spec 來（欄位見 youtube-explainer skill「圖表：點陣」）。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"spec","type":"string","label":"內容 JSON（見 youtube-explainer skill「圖表：點陣」）","default":"{\"layout\":\"full\",\"title\":\"範例標題\",\"show_sec\":7,\"total\":100,\"lit\":3,\"dots_at\":0.8,\"lit_at\":2.5,\"lines\":[{\"text\":\"範例說明\",\"at\":1},{\"text\":\"3 個\",\"at\":2.5,\"big\":true}],\"note\":\"每 1 格＝1 個\"}"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/explainer-kit.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      .body { position: absolute; left: 0; right: 0; top: 120px; bottom: 0; display: flex; align-items: center; justify-content: center; gap: 90px; }
+      .side .body, .body.side { flex-direction: column; align-items: flex-start; justify-content: center; gap: 30px; }
+      .grid { display: grid; flex: none; }
+      .dot { background: var(--white); }
+      .text { display: flex; flex-direction: column; gap: 22px; }
+      .line { white-space: nowrap; font-size: 56px; }
+      .line.big { font-size: 120px; color: var(--orange); font-variant-numeric: tabular-nums; }
+      .side .line { font-size: 44px; }
+      .side .line.big { font-size: 96px; }
+      .note { font-size: 36px; color: var(--ink-2); white-space: nowrap; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="dots"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60"></div>
+    <script>
+      const spec = JSON.parse(EXK.vars().spec || "{}");
+      const ctx = EXK.frame("dots", spec);
+      const { tl, stage, full } = ctx;
+      const total = Math.max(1, Math.min(200, spec.total ?? 100));
+      const lit = Math.max(0, Math.min(total, spec.lit ?? 1));
+      if ((spec.total ?? 100) > 200) console.warn("點陣最多 200 格：數字更大就換算（每 1 格＝幾個），寫在 note");
+
+      // 格數 ≤100 排 10 欄，再多排 20 欄；格子大小讓整片塞進可用的框
+      const cols = total <= 100 ? 10 : 20, rows = Math.ceil(total / cols);
+      const boxW = full ? 720 : 640, boxH = full ? 600 : 430;
+      const pitch = Math.floor(Math.min(boxW / cols, boxH / rows));
+      const gapPx = Math.max(4, Math.round(pitch * 0.16));
+      const wrap = EXK.el("div", "body" + (full ? "" : " side"), stage);
+      const grid = EXK.el("div", "grid", wrap);
+      grid.style.gridTemplateColumns = `repeat(${cols}, ${pitch - gapPx}px)`;
+      grid.style.gridAutoRows = (pitch - gapPx) + "px";
+      grid.style.gap = gapPx + "px";
+
+      // 亮哪幾格：spec.pick 給格子編號（0 起算）；沒給就從第一格開始亮
+      const pick = new Set(spec.pick || Array.from({ length: lit }, (_, i) => i));
+      const dots = [];
+      for (let i = 0; i < total; i++) dots.push(EXK.el("div", "dot", grid));
+
+      // 整片從左上往右下一波長出來（0.5 秒內全部到位）
+      const at0 = spec.dots_at ?? 0.6;
+      dots.forEach((d, i) => {
+        const k = (i % cols) + Math.floor(i / cols);
+        const t = at0 + 0.5 * k / (cols + rows - 2 || 1);
+        tl.fromTo(d, { scale: 0 }, { scale: 1, duration: 0.18, ease: EXK.SNAP }, t);
+      });
+      // 被挑中的格子變橘、彈一下
+      const litAt = spec.lit_at ?? at0 + 1;
+      dots.forEach((d, i) => {
+        if (!pick.has(i)) return;
+        tl.to(d, { backgroundColor: EXK.ORANGE, duration: 0.14 }, litAt);
+        tl.fromTo(d, { scale: 1.5 }, { scale: 1, duration: 0.32, ease: EXK.LAND }, litAt);
+      });
+
+      // 旁邊（側欄是下面）的字：每一行在講到的那一句出現；big＝那個關鍵數字，橘色大字
+      const text = EXK.el("div", "text", wrap);
+      (spec.lines || []).forEach((ln) => {
+        const e = EXK.el("div", "line" + (ln.big ? " big" : ""), text, ln.text);
+        EXK.land(tl, e, ln.at, { x: full ? 30 : 0, y: full ? 0 : 20 });
+      });
+      if (spec.note) {
+        // 換算說明（例：「每 1 格＝4 人」）——數字很大時一定要寫，觀眾才不會以為真的只有 100 個
+        const nt = EXK.el("div", "note", text, spec.note);
+        tl.fromTo(nt, { opacity: 0 }, { opacity: 1, duration: 0.2 }, spec.note_at ?? at0 + 0.6);
+      }
+      EXK.end(ctx);
+    </script>
+  </body>
+</html>

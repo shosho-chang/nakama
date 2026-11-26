@@ -118,7 +118,7 @@ def test_add_director_rows(tmp_path):
         ({"category": "concept_title", "start_cue": 99, "onscreen_text": "x"}, "不存在"),
         ({"category": "concept_title", "start_cue": 3, "end_cue": 2, "onscreen_text": "x"}, "之前"),
         ({"category": "concept_title", "start_cue": 1}, "必填"),
-        ({"category": "stock", "start_cue": 1, "dp_instruction": "城市夜景"}, "版面"),
+        ({"category": "others_clip", "start_cue": 1, "dp_instruction": "城市夜景"}, "版面"),
     ],
 )
 def test_bad_director_rows_are_refused(tmp_path, row, message):

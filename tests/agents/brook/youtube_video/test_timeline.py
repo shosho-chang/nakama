@@ -113,3 +113,40 @@ def test_extra_frames_are_trimmed_from_end_frame(tmp_path):
     ends = [b - e for (_, b), e in zip(cut.segments, errors)]
     info = tl.clip_infos("c", cut, 0, ends)[1]
     assert (info["startFrame"], info["endFrame"], info["recordFrame"]) == (100, 1933, 30)
+
+
+class _Project:
+    def __init__(self, name):
+        self.name = name
+
+    def GetName(self):
+        return self.name
+
+    def GetSetting(self, key):
+        return "29.97"
+
+
+class _Manager:
+    def __init__(self, current):
+        self.current, self.loaded = _Project(current), []
+
+    def GetCurrentProject(self):
+        return self.current
+
+    def LoadProject(self, name):
+        self.loaded.append(name)
+        self.current = _Project(name)
+        return self.current
+
+
+@pytest.mark.parametrize(
+    "current, loads, waits", [("ep", [], []), ("other", ["ep"], [tl.SETTLE_SEC])]
+)
+def test_switching_projects_waits_for_resolve_to_settle(monkeypatch, current, loads, waits):
+    # 2026-11-26：切換專案後馬上匯入，Resolve 整個當掉（兩次）
+    slept = []
+    monkeypatch.setattr(tl.time, "sleep", slept.append)
+    manager = _Manager(current)
+    resolve = type("R", (), {"GetProjectManager": lambda self: manager})()
+    assert tl._open_project(resolve, "ep").GetName() == "ep"
+    assert (manager.loaded, slept) == (loads, waits)

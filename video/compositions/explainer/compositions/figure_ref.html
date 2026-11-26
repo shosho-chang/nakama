@@ -1,0 +1,37 @@
+<!doctype html>
+<!-- 線條修修的「參考圖」產生頁（給生成影片模型當角色參考，第 15 類 Avatar）。不是動畫、不交件。
+     用法：figure_ref.html?pose=stand&scale=1.6&w=1024&h=1280
+     pose：figure.js 的姿勢名；face=1 只出 logo 臉特寫。 -->
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/figure.js"></script>
+    <style>
+      html, body { margin: 0; background: #fff; overflow: hidden; }
+      #stage { position: relative; }
+      .face { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); height: 86%; }
+    </style>
+  </head>
+  <body>
+    <div id="stage"></div>
+    <script>
+      const q = new URLSearchParams(location.search);
+      const W = +(q.get("w") || 1024), H = +(q.get("h") || 1280);
+      const stage = document.getElementById("stage");
+      stage.style.width = W + "px"; stage.style.height = H + "px";
+      if (q.get("face") === "1") {
+        const img = document.createElement("img");
+        img.src = "assets/brand/shosho_face_filled.png"; img.className = "face";
+        stage.appendChild(img);
+      } else {
+        const sc = +(q.get("scale") || 1.6);
+        // 腳落在畫面底部往上 6%
+        const f = EXK_FIGURE.make(stage, { style: "line", scale: sc, x: W / 2, y: H * 0.94 });
+        const tl = gsap.timeline({ paused: true });
+        f.pose(tl, q.get("pose") || "stand", 0, 0.01);
+        tl.seek(1);
+      }
+    </script>
+  </body>
+</html>

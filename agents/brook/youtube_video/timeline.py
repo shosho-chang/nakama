@@ -27,6 +27,7 @@ import argparse
 import json
 import os
 import sys
+import time
 from collections.abc import Sequence
 from dataclasses import dataclass
 from fractions import Fraction
@@ -38,6 +39,7 @@ ROUGH_CUT_FILE = "rough_cut.json"
 SRT_FILE = "transcript.srt"
 FPS = Fraction(30000, 1001)
 V1_NAME = "v1 初剪"
+SETTLE_SEC = 15  # 切換專案後等 Resolve 整理完再動作（見 _open_project）
 # 字幕樣式模板必須是 29.97 的時間軸：DRT 自帶幀率，匯入後改不動
 # （podcast 的 subtitle-template.drt 是 30，YouTube 錄影是 29.97，不能共用）
 DEFAULT_TEMPLATE = Path(r"E:\nakama\data\resolve\subtitle-template-2997.drt")
@@ -193,9 +195,19 @@ def _open_project(resolve: Any, name: str) -> Any:
 
     幀率只能在全新、還沒匯入任何東西的專案設；之後 Resolve 就鎖住——SetSetting 回 True，
     存檔重開又變回原值（2026-11-16 實測）。
+
+    從別的專案切過來、而且這個專案已經有時間軸時，Resolve 載入後還在背景整理（時間軸、調色
+    gallery），這時馬上匯入檔案會讓 Resolve 整個當掉——2026-11-26 兩次當機紀錄都是切換後約 1 秒
+    崩潰；先等 SETTLE_SEC 再動作就沒事。本來就開著這個專案則不切換、不等。
     """
     pm = resolve.GetProjectManager()
-    project = pm.LoadProject(name)
+    current = pm.GetCurrentProject()
+    if current is not None and current.GetName() == name:
+        project = current
+    else:
+        project = pm.LoadProject(name)
+        if project is not None:
+            time.sleep(SETTLE_SEC)
     if project is None:
         project = pm.CreateProject(name)
         if project is None:

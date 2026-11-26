@@ -1,0 +1,524 @@
+<!doctype html>
+<html lang="zh-Hant"><head><meta charset="utf-8">
+<title>書籍封面編輯器</title>
+<style>
+:root{
+  --accent:#F37425;
+  --sho-bg:oklch(0.988 0.003 80);--sho-bg-2:oklch(0.967 0.003 80);
+  --sho-line:oklch(0.875 0.003 80);--sho-line-2:oklch(0.820 0.003 80);
+  --sho-muted:oklch(0.550 0.005 80);--sho-text-2:oklch(0.360 0.005 80);
+  --sho-text:oklch(0.200 0.005 80);--sho-ink:oklch(0.100 0.005 80);
+  --sho-accent:oklch(0.71 0.135 41);
+  --skew:polygon(0% 0%,100% 3.5%,100% 100%,0% 98.8%);
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:LS,"Noto Sans TC","Microsoft JhengHei",sans-serif;background:var(--sho-bg);color:var(--sho-text);
+  -webkit-font-smoothing:antialiased}
+body.render{background:#000;width:1280px;height:720px;overflow:hidden}
+
+/* ── 封面本體（編輯與出圖同一份） ── */
+#cv{position:relative;width:1280px;height:720px;overflow:hidden;background:#0c0c0e;color:#fff;
+  transform-origin:0 0}
+#bg{position:absolute;inset:-24px;background-size:cover;background-position:center}
+#warm{position:absolute;inset:0;background:#6b3a12;mix-blend-mode:multiply}
+#shade{position:absolute;inset:0;background:linear-gradient(20deg,rgba(0,0,0,.55) 0%,rgba(0,0,0,0) 55%)}
+.layer{position:absolute}
+#book{perspective:1600px}
+#book .deco{position:absolute;inset:0}
+#book .deco > i{position:absolute;display:block;background:var(--accent)}
+#book .deco > i.ol{background:transparent;border:solid var(--accent)}
+#book .deco > i.sk{clip-path:var(--skew)}
+#book .b{position:absolute;inset:0;transform-style:preserve-3d}
+#book .b img{display:block;width:100%;height:100%;box-shadow:0 34px 70px rgba(0,0,0,.6)}
+#book .spine{position:absolute;top:0;left:0;height:100%;width:26px;transform-origin:left center;
+  transform:rotateY(90deg);background:linear-gradient(90deg,#cfcac0,#f1eee8 40%,#d8d3c9)}
+#person{transform-origin:center top}
+#person.glow{filter:drop-shadow(0 0 36px rgba(243,116,37,.5)) drop-shadow(0 0 90px rgba(243,116,37,.3))}
+#text{font-weight:800;white-space:nowrap;transform-origin:0 50%;
+  text-shadow:0 2px 4px rgba(0,0,0,.55),0 8px 30px rgba(0,0,0,.65)}
+#text .lead{display:block;line-height:1.1;letter-spacing:.02em}
+#text .main{display:block;line-height:1.08;letter-spacing:.01em}
+#text .hl{display:inline-block;background:var(--accent);padding:.04em .16em 0;clip-path:var(--skew);
+  text-shadow:none;margin-left:.04em}
+#text .en{display:block;font-weight:700;letter-spacing:.03em;line-height:1.15;margin-top:.25em}
+#logo{filter:drop-shadow(0 2px 8px rgba(0,0,0,.5))}
+.bar{position:absolute;left:0;right:0;height:14px;background:var(--accent)}
+.bar.t{top:0}.bar.b{bottom:0}
+
+/* ── 編輯介面 ── */
+.app{display:grid;grid-template-columns:minmax(0,1fr) 340px;gap:32px;padding:24px 32px;align-items:start}
+/* 預覽與控制面板分開捲動（修修 2026-11-12：滑到下面調整時看不到左邊的圖）：
+   預覽固定在視窗內，只有右欄自己捲 */
+.view{position:sticky;top:24px}
+.panel{max-height:calc(100vh - 48px);overflow-y:auto;overscroll-behavior:contain;padding-right:10px}
+@media (max-width:900px){
+  .app{grid-template-columns:minmax(0,1fr);padding:0 16px 24px;gap:16px}
+  .view{top:0;z-index:2;background:var(--sho-bg);padding-top:12px}
+  .panel{max-height:none;overflow:visible;padding-right:0}
+}
+body.render .app{display:block;padding:0}
+body.render .view{position:static}
+body.render .panel,body.render .stage-meta{display:none}
+.stage{position:relative;width:100%;aspect-ratio:16/9;overflow:hidden;cursor:grab;touch-action:none;
+  border:1px solid var(--sho-line)}
+body.render .stage{border:0;width:1280px;height:720px;aspect-ratio:auto;cursor:default}
+.stage.dragging{cursor:grabbing}
+.sel{outline:2px dashed var(--accent);outline-offset:4px}
+body.render .sel{outline:0}
+.stage-meta{display:flex;justify-content:space-between;gap:16px;margin-top:12px;font-size:12px;
+  color:var(--sho-muted);font-variant-numeric:tabular-nums}
+.panel{font-size:14px}
+.grp{font-size:11px;font-weight:700;letter-spacing:.14em;color:var(--sho-muted);margin:24px 0 8px}
+.grp:first-child{margin-top:0}
+.tabs{display:flex;gap:16px;border-bottom:1px solid var(--sho-line)}
+.tab{border:0;border-bottom:2px solid transparent;background:transparent;color:var(--sho-muted);
+  font:inherit;font-weight:700;padding:6px 0;cursor:pointer;margin-bottom:-1px}
+.tab[aria-pressed="true"]{border-bottom-color:var(--sho-accent);color:var(--sho-accent)}
+.tabs.frames{flex-wrap:wrap;gap:4px 14px}
+.row{display:grid;grid-template-columns:72px 1fr;gap:8px;align-items:center;padding:8px 0;
+  border-top:1px solid var(--sho-line)}
+.row label{font-size:12px;color:var(--sho-text-2)}
+.row input[type=text]{font:inherit;border:0;border-bottom:1px solid var(--sho-line-2);background:transparent;
+  padding:4px 0;color:var(--sho-ink)}
+.row input[type=text]:focus{outline:0;border-bottom-color:var(--sho-accent)}
+.row input[type=range]{width:100%;accent-color:var(--sho-accent)}
+.thumbs{display:grid;grid-template-columns:repeat(4,1fr);gap:6px}
+.thumbs button{border:0;padding:0;background:var(--sho-bg-2);cursor:pointer;aspect-ratio:1;overflow:hidden;
+  border-bottom:2px solid transparent}
+.thumbs button[aria-pressed="true"]{border-bottom-color:var(--sho-accent)}
+.thumbs img{width:100%;height:100%;object-fit:cover;object-position:top;display:block}
+.thumbs.wide{grid-template-columns:repeat(3,1fr)}.thumbs.wide button{aspect-ratio:16/10}
+.thumbs.wide img{object-position:center}
+.toggles{display:flex;flex-wrap:wrap;gap:16px;padding:8px 0;border-top:1px solid var(--sho-line)}
+.toggles label{display:flex;gap:6px;align-items:center;font-size:13px;cursor:pointer}
+.toggles input{accent-color:var(--sho-accent)}
+.save{width:100%;margin-top:24px;border:0;background:var(--sho-ink);color:#fff;font:inherit;font-weight:700;
+  padding:12px;cursor:pointer;border-radius:4px}
+.save:disabled{opacity:.5;cursor:wait}
+.result{margin-top:16px;display:grid;gap:8px}
+.result img{width:100%;display:block;border:1px solid var(--sho-line)}
+.result img.small{width:160px}
+.result p{font-size:12px;color:var(--sho-muted)}
+:focus-visible{outline:2px solid var(--sho-accent);outline-offset:2px}
+.pk{padding:10px 0;border-top:1px solid var(--sho-line)}
+.pk:last-child{border-bottom:1px solid var(--sho-line)}
+.pk-title{display:flex;gap:8px;font-size:13.5px;font-weight:700;color:var(--sho-ink);line-height:1.5}
+.pk-title .rk{font-size:10.5px;font-weight:800;letter-spacing:.14em;color:var(--sho-muted);padding-top:3px;
+  font-variant-numeric:tabular-nums}
+.pk.on .pk-title{color:var(--sho-accent)}
+.pk-opts{display:flex;flex-direction:column;gap:2px;margin:6px 0 0 22px}
+.pk-opt{border:0;background:transparent;text-align:left;font:inherit;font-size:13px;color:var(--sho-text-2);
+  padding:4px 0;cursor:pointer;border-bottom:1px solid transparent;line-height:1.4}
+.pk-opt b{color:var(--sho-accent);font-weight:700}
+.pk-opt small{display:block;font-size:11.5px;color:var(--sho-muted)}
+.pk-opt[aria-pressed="true"]{color:var(--sho-ink);border-bottom-color:var(--sho-accent)}
+#bigtexts{display:flex;flex-direction:column}
+#bigtexts .pk-opt{padding:8px 0;border-top:1px solid var(--sho-line);border-bottom:0}
+#bigtexts .pk-opt[aria-pressed="true"]{color:var(--sho-accent);font-weight:700}
+/* 上架標題紀錄：可編輯、A/B 勾選（最多 3）、已上頻道標記 */
+.trk-status{font-weight:400;letter-spacing:0;margin-left:8px;color:var(--sho-muted);font-variant-numeric:tabular-nums}
+.trk-status.err{color:var(--sho-danger)}
+.trk{padding:10px 0;border-top:1px solid var(--sho-line)}
+.trk:last-child{border-bottom:1px solid var(--sho-line)}
+.trk.ab .trk-text{color:var(--sho-ink);font-weight:700}
+.trk-text{display:block;width:100%;resize:none;overflow:hidden;font:inherit;font-size:14px;line-height:1.55;
+  color:var(--sho-text-2);border:0;border-bottom:1px solid transparent;background:transparent;padding:2px 0}
+.trk-text:focus{outline:0;border-bottom-color:var(--sho-accent)}
+.trk-meta{display:flex;align-items:center;gap:14px;margin-top:6px;font-size:12px;color:var(--sho-text-2)}
+.trk-meta label{display:flex;align-items:center;gap:5px;cursor:pointer}
+.trk-meta input{accent-color:var(--sho-accent)}
+.trk-meta input:disabled + span{color:var(--sho-line-2)}
+.trk-date{color:var(--sho-ok);font-variant-numeric:tabular-nums}
+.trk-orig{font-size:11.5px;color:var(--sho-muted);margin-top:4px}
+.trk-del{margin-left:auto;border:0;background:transparent;color:var(--sho-muted);font-size:16px;cursor:pointer;
+  width:24px;height:24px;border-radius:50%}
+.trk-del:hover{color:var(--sho-danger)}
+.add-title{margin-top:8px;border:0;background:transparent;color:var(--sho-accent);font:inherit;font-weight:700;
+  font-size:13px;cursor:pointer;padding:4px 0}
+</style></head>
+<body>
+<div class="app">
+  <div class="view">
+    <div class="stage" id="stage">
+      <div id="cv">
+        <div id="bg"></div><div id="warm"></div><div id="shade"></div>
+        <div class="layer" id="book" data-role="book">
+          <div class="deco"></div>
+          <div class="b"><img alt="書封"><div class="spine"></div></div>
+        </div>
+        <img class="layer" id="person" data-role="person" alt="修修">
+        <div class="layer" id="text" data-role="text">
+          <span class="lead"></span><span class="main"></span><span class="en"></span>
+        </div>
+        <img class="layer" id="logo" data-role="logo" alt="頻道標誌">
+        <div class="bar t"></div><div class="bar b"></div>
+      </div>
+    </div>
+    <div class="stage-meta"><span id="meta"></span><span>拖曳移動・滾輪縮放</span></div>
+  </div>
+
+  <aside class="panel">
+    <div class="grp">圖層</div>
+    <div class="tabs" role="group">
+      <button class="tab" data-sel="person" aria-pressed="true">修修</button>
+      <button class="tab" data-sel="book" aria-pressed="false">書封</button>
+      <button class="tab" data-sel="text" aria-pressed="false">大字</button>
+      <button class="tab" data-sel="logo" aria-pressed="false">Logo</button>
+    </div>
+
+    <div class="grp">標題 <span id="trk-status" class="trk-status" role="status"></span></div>
+    <div class="row"><label for="v-url">影片網址</label><input type="text" id="v-url" placeholder="https://youtu.be/…"></div>
+    <div id="titles"></div>
+    <button class="add-title" id="add-title" type="button">＋ 標題</button>
+
+    <div id="pkg-sec" hidden>
+      <div class="grp">大字候選</div>
+      <div id="bigtexts"></div>
+    </div>
+
+    <div class="grp">大字</div>
+    <div class="row"><label for="t-lead">上行</label><input type="text" id="t-lead" data-k="text.lead"></div>
+    <div class="row"><label for="t-main">主標</label><input type="text" id="t-main" data-k="text.main"></div>
+    <div class="row"><label for="t-hl">橘框詞</label><input type="text" id="t-hl" data-k="text.hl"></div>
+    <div class="row"><label for="t-en">英文行</label><input type="text" id="t-en" data-k="text.en"></div>
+
+    <div class="grp">修修的臉</div>
+    <div class="thumbs" id="cutouts"></div>
+
+    <div class="grp">背景</div>
+    <div class="thumbs wide" id="bgs"></div>
+    <div class="row"><label for="r-bri">亮度</label><input type="range" id="r-bri" min="0.15" max="0.9" step="0.01" data-k="bg.brightness"></div>
+    <div class="row"><label for="r-warm">暖色</label><input type="range" id="r-warm" min="0" max="0.8" step="0.01" data-k="bg.warm"></div>
+    <div class="row"><label for="r-blur">模糊</label><input type="range" id="r-blur" min="0" max="8" step="0.5" data-k="bg.blur"></div>
+    <div class="row"><label for="r-rot">大字斜度</label><input type="range" id="r-rot" min="-15" max="15" step="0.5" data-k="text.rot"></div>
+    <div class="row"><label for="r-tilt">書封角度</label><input type="range" id="r-tilt" min="-30" max="30" step="1" data-k="book.tilt"></div>
+
+    <div class="grp">書封外框</div>
+    <div class="tabs frames" role="group">
+      <button class="tab" data-frame="skew">斜切框</button>
+      <button class="tab" data-frame="burst">爆裂碎片</button>
+      <button class="tab" data-frame="offset">錯位色塊</button>
+      <button class="tab" data-frame="double">雙層框</button>
+      <button class="tab" data-frame="steps">階梯</button>
+      <button class="tab" data-frame="brackets">角框</button>
+      <button class="tab" data-frame="none">無</button>
+    </div>
+
+    <div class="toggles">
+      <label><input type="checkbox" data-k="person.glow">人物光暈</label>
+      <label><input type="checkbox" data-k="person.flip">左右翻轉</label>
+      <label><input type="checkbox" data-k="logo.on">Logo</label>
+      <label><input type="checkbox" data-k="bars">上下橘條</label>
+    </div>
+
+    <button class="save" id="save">存檔並出圖</button>
+    <div class="result" id="result"></div>
+  </aside>
+</div>
+
+<script>
+const BOOT = /*__BOOT__*/null;
+const S = BOOT.spec;
+const FONTDIR = "C:/Users/Shosho/AppData/Local/Microsoft/Windows/Fonts";
+const COVER_DEFAULT = "E:/nakama/data/books/財富階梯/cover.jpg";
+const LOGO = "E:/data/podcast thumbnail props/channel_logo_white.png";
+const asset = p => "/asset?p=" + encodeURIComponent(p);
+if (BOOT.render) document.body.classList.add("render");
+
+// 品牌字 LINE Seed TW（系統字型資料夾，經 /asset 提供；出圖不靠系統字型名稱）
+const fontLoads = [["LINESeedTW_TTF_0.ttf", "800"], ["LINESeedTW_TTF.ttf", "700"], ["LINESeedTW_TTF_Rg.ttf", "400"]]
+  .map(([f, w]) => { const ff = new FontFace("LS", `url(${asset(FONTDIR + "/" + f)})`, {weight: w});
+    document.fonts.add(ff); return ff.load(); });
+
+const $ = s => document.querySelector(s);
+const get = k => k.split(".").reduce((o, p) => o[p], S);
+const set = (k, v) => { const ps = k.split("."); const last = ps.pop(); ps.reduce((o, p) => o[p], S)[last] = v; };
+if (!S.book.src) S.book.src = COVER_DEFAULT;
+if (!S.person.src) S.person.src = BOOT.lists.cutouts[0] || "";
+if (!S.bg.src) S.bg.src = BOOT.lists.backgrounds[0] || "";
+
+let coverAspect = 1545 / 1999;
+const coverImg = $("#book img");
+coverImg.onload = () => { coverAspect = coverImg.naturalWidth / coverImg.naturalHeight; draw(); };
+
+function draw() {
+  // 背景
+  $("#bg").style.backgroundImage = `url("${asset(S.bg.src)}")`;
+  $("#bg").style.filter = `grayscale(${S.bg.grayscale}) brightness(${S.bg.brightness}) contrast(1.12) blur(${S.bg.blur}px)`;
+  $("#warm").style.opacity = S.bg.warm;
+  // 書封（中心點＋高）
+  const bh = S.book.h, bw = bh * coverAspect;
+  const book = $("#book");
+  Object.assign(book.style, {left: (S.book.cx - bw / 2) + "px", top: (S.book.cy - bh / 2) + "px",
+    width: bw + "px", height: bh + "px"});
+  if (coverImg.getAttribute("data-src") !== S.book.src) { coverImg.src = asset(S.book.src); coverImg.setAttribute("data-src", S.book.src); }
+  book.querySelector(".b").style.transform = `rotateY(${S.book.tilt}deg)`;
+  drawFrame(book.querySelector(".deco"), bw, bh, S.book.frame === false ? "none" : (S.book.frame_style || "skew"));
+  // 人物（中心 x、頂 y、高）
+  const p = $("#person");
+  if (p.getAttribute("data-src") !== S.person.src) { p.src = asset(S.person.src); p.setAttribute("data-src", S.person.src); }
+  const pw = p.naturalWidth ? S.person.h * p.naturalWidth / p.naturalHeight : 0;
+  Object.assign(p.style, {height: S.person.h + "px", left: (S.person.cx - pw / 2) + "px", top: S.person.top + "px",
+    transform: S.person.flip ? "scaleX(-1)" : ""});
+  p.classList.toggle("glow", !!S.person.glow);
+  // 大字
+  const t = $("#text"), sz = S.text.size;
+  Object.assign(t.style, {left: S.text.x + "px", top: S.text.y + "px",
+    transform: `rotate(${S.text.rot || 0}deg)`});
+  t.querySelector(".lead").textContent = S.text.lead;
+  t.querySelector(".lead").style.fontSize = sz * 0.46 + "px";
+  t.querySelector(".lead").style.display = S.text.lead ? "" : "none";
+  const main = t.querySelector(".main"); main.style.fontSize = sz + "px";
+  const m = S.text.main, hl = S.text.hl, i = hl ? m.indexOf(hl) : -1;
+  main.textContent = "";
+  if (i >= 0) {
+    main.append(m.slice(0, i));
+    const b = document.createElement("b"); b.className = "hl"; b.textContent = hl; main.append(b);
+    main.append(m.slice(i + hl.length));
+  } else main.textContent = m;
+  const en = t.querySelector(".en"); en.textContent = S.text.en; en.style.fontSize = sz * 0.24 + "px";
+  en.style.display = S.text.en ? "" : "none";
+  // logo、橘條
+  const lg = $("#logo");
+  if (!lg.getAttribute("src")) lg.src = asset(LOGO);
+  Object.assign(lg.style, {left: S.logo.x + "px", top: S.logo.y + "px", height: S.logo.h + "px",
+    display: S.logo.on ? "" : "none"});
+  document.querySelectorAll(".bar").forEach(b => b.style.display = S.bars ? "" : "none");
+  // 選取框與數值
+  document.querySelectorAll(".layer").forEach(l => l.classList.toggle("sel", l.dataset.role === sel && !BOOT.render));
+  const mm = {person: `修修 x${Math.round(S.person.cx)} y${Math.round(S.person.top)} 高${Math.round(S.person.h)}`,
+    book: `書封 x${Math.round(S.book.cx)} y${Math.round(S.book.cy)} 高${Math.round(S.book.h)}`,
+    text: `大字 x${Math.round(S.text.x)} y${Math.round(S.text.y)} 字級${Math.round(S.text.size)}`,
+    logo: `Logo x${Math.round(S.logo.x)} y${Math.round(S.logo.y)} 高${Math.round(S.logo.h)}`};
+  $("#meta").textContent = mm[sel];
+}
+$("#person").onload = draw;
+
+// 書封外框：全部是品牌橘 #F37425 的純幾何（品牌書 p15 斜切四邊形、p22 框＋碎片），座標以書封寬高為比例。
+// 每片：[left, top, width, height, rotate°, class]，class 空＝實心、"ol"＝外框線、"sk"＝斜切
+const FRAMES = {
+  skew: (w, h, u) => [   // 斜切框＋碎片（原版）
+    [-u * 1.5, -u * .9, w + u * 2.2, h + u * 1.9, 0, "ol sk", u * .17],
+    [-u * 2.4, h * .06, h * .05, h * .15, -14], [-u * 2.6, h * .27, h * .035, h * .09, 9],
+    [w + u * .9, h * .72, h * .05, h * .14, 12], [w + u * 1.3, h * .92, h * .03, h * .08, -8]],
+  offset: (w, h, u) => [ // 實心斜切色塊墊在書後，往右下錯開
+    [u * .9, u * .9, w + u * .4, h + u * .3, 0, "sk"]],
+  double: (w, h, u) => [ // 兩層細框往左上疊，像一階一階往上
+    [-u * .7, -u * .7, w + u * 1.4, h + u * 1.4, 0, "ol sk", u * .09],
+    [-u * 1.6, -u * 1.6, w + u * 3.2, h + u * 3.2, 0, "ol sk", u * .09]],
+  steps: (w, h, u) => {  // 書右側露出三階實心階梯，越往右越高（呼應「階梯」）
+    // 三階各佔一欄、互不重疊（2026-11-12 第一版三塊疊在一起，最高那塊把另外兩階蓋掉）
+    const s = u * .95;
+    return [[w * .6, h * .58, w * .4 + s, h * .42 + u, 0, ""],
+            [w + s, h * .36, s, h * .64 + u, 0, ""],
+            [w + s * 2, h * .14, s, h * .86 + u, 0, ""]];
+  },
+  brackets: (w, h, u) => {  // 左上、右下兩個 L 形角框（取景框）
+    const t = u * .28, a = w * .32;
+    return [[-u, -u, a, t, 0, ""], [-u, -u, t, a, 0, ""],
+            [w + u - a, h + u - t, a, t, 0, ""], [w + u - t, h + u - a, t, a, 0, ""]];
+  },
+  burst: (w, h, u) => [  // 框＋左右兩側爆開的碎片（品牌書 p22 引用字卡）
+    [-u * 1.2, -u * 1.2, w + u * 2.4, h + u * 2.4, 0, "ol sk", u * .2],
+    [-u * 2.6, h * .05, h * .05, h * .16, -16], [-u * 3.2, h * .24, h * .03, h * .10, 11],
+    [-u * 2.4, h * .40, h * .04, h * .07, -6], [-u * 3.0, h * .78, h * .035, h * .12, 14],
+    [w + u * 1.6, h * .10, h * .04, h * .13, 13], [w + u * 2.3, h * .30, h * .03, h * .08, -10],
+    [w + u * 1.5, h * .66, h * .05, h * .15, 9], [w + u * 2.4, h * .88, h * .03, h * .07, -12]],
+  none: () => [],
+};
+function drawFrame(box, w, h, style) {
+  box.innerHTML = "";
+  for (const [x, y, ww, hh, r, cls = "", bwid] of (FRAMES[style] || FRAMES.skew)(w, h, h * .07)) {
+    const el = document.createElement("i");
+    if (cls) el.className = cls;
+    Object.assign(el.style, {left: x + "px", top: y + "px", width: ww + "px", height: hh + "px",
+      transform: r ? `rotate(${r}deg)` : "", borderWidth: bwid ? bwid + "px" : ""});
+    box.append(el);
+  }
+}
+
+// 舞台縮放：編輯畫面等比縮小 1280×720
+const stage = $("#stage"), cv = $("#cv");
+let scale = 1;
+function fit() { if (BOOT.render) return; scale = stage.clientWidth / 1280; cv.style.transform = `scale(${scale})`; }
+new ResizeObserver(fit).observe(stage); fit();
+
+// 圖層選取、拖曳、滾輪
+let sel = "person";
+document.querySelectorAll(".tab").forEach(b => b.onclick = () => {
+  sel = b.dataset.sel;
+  document.querySelectorAll(".tab").forEach(x => x.setAttribute("aria-pressed", x === b ? "true" : "false"));
+  draw();
+});
+const POS = {person: ["person.cx", "person.top"], book: ["book.cx", "book.cy"], text: ["text.x", "text.y"], logo: ["logo.x", "logo.y"]};
+const SIZE = {person: "person.h", book: "book.h", text: "text.size", logo: "logo.h"};
+let drag = null;
+stage.addEventListener("pointerdown", e => {
+  if (BOOT.render) return;
+  const [kx, ky] = POS[sel];
+  drag = {x0: e.clientX, y0: e.clientY, vx: get(kx), vy: get(ky)};
+  stage.setPointerCapture(e.pointerId); stage.classList.add("dragging");
+});
+stage.addEventListener("pointermove", e => {
+  if (!drag) return;
+  const [kx, ky] = POS[sel];
+  set(kx, drag.vx + (e.clientX - drag.x0) / scale);
+  set(ky, drag.vy + (e.clientY - drag.y0) / scale);
+  draw();
+});
+const endDrag = () => { drag = null; stage.classList.remove("dragging"); };
+stage.addEventListener("pointerup", endDrag); stage.addEventListener("pointercancel", endDrag);
+stage.addEventListener("wheel", e => {
+  if (BOOT.render) return;
+  e.preventDefault();
+  const k = SIZE[sel], f = e.deltaY < 0 ? 1.03 : 1 / 1.03;
+  set(k, get(k) * f); draw();
+}, {passive: false});
+
+// 表單 ↔ 配方
+document.querySelectorAll("[data-k]").forEach(el => {
+  const k = el.dataset.k;
+  if (el.type === "checkbox") { el.checked = !!get(k); el.onchange = () => { set(k, el.checked); draw(); }; }
+  else { el.value = get(k); el.oninput = () => { set(k, el.type === "range" ? +el.value : el.value); draw(); }; }
+});
+function thumbs(box, list, key) {
+  box.innerHTML = "";
+  for (const src of list) {
+    const b = document.createElement("button");
+    b.setAttribute("aria-pressed", get(key) === src ? "true" : "false");
+    b.title = src.split("/").slice(-2).join("/");
+    const im = document.createElement("img"); im.src = "/thumb?p=" + encodeURIComponent(src); im.alt = b.title;
+    b.append(im);
+    b.onclick = () => { set(key, src); box.querySelectorAll("button").forEach(x => x.setAttribute("aria-pressed", x === b ? "true" : "false")); draw(); };
+    box.append(b);
+  }
+}
+// 標題與大字是兩個獨立選擇（修修 2026-11-12：「標題是標題，大字是大字，不需要連動」）。
+// 點標題只改上架標題（title.txt），不碰封面；點大字只改封面上的字，不碰標題。
+function pkgs() {
+  const P = BOOT.packaging || {titles: [], options: []};
+  if (!P.options.length) return;
+  $("#pkg-sec").hidden = false;
+
+  // 同一組大字可能配給好幾條標題，這裡只列一次
+  const seen = new Set(), bbox = $("#bigtexts"); bbox.innerHTML = "";
+  for (const o of P.options) {
+    const key = `${o.lead}|${o.main}|${o.hl}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const b = document.createElement("button"); b.className = "pk-opt"; b.type = "button";
+    const cur = S.text.lead === o.lead && S.text.main === o.main && S.text.hl === o.hl;
+    b.setAttribute("aria-pressed", cur ? "true" : "false");
+    const i = o.main.indexOf(o.hl);
+    const main = i >= 0 ? `${esc(o.main.slice(0, i))}<b>${esc(o.hl)}</b>${esc(o.main.slice(i + o.hl.length))}` : esc(o.main);
+    b.innerHTML = (o.lead ? esc(o.lead) + "／" : "") + main;
+    b.onclick = () => {
+      Object.assign(S.text, {lead: o.lead, main: o.main, hl: o.hl});
+      S.bigtext_id = o.id;
+      for (const k of ["text.lead", "text.main", "text.hl"]) document.querySelector(`[data-k="${k}"]`).value = get(k);
+      pkgs(); draw();
+    };
+    bbox.append(b);
+  }
+}
+// ── 上架標題紀錄（修修 2026-11-12）：微調文字、勾 A/B（最多 3）、標記已上頻道，自動存檔 ──
+const T = BOOT.tracking || {video_url: "", titles: []};
+const AB_MAX = BOOT.ab_max || 3;
+let trkTimer = null;
+function trkSave(delay = 600) {
+  clearTimeout(trkTimer);
+  $("#trk-status").textContent = "…"; $("#trk-status").classList.remove("err");
+  trkTimer = setTimeout(async () => {
+    try {
+      const r = await fetch("/tracking", {method: "POST", body: JSON.stringify(T)});
+      const j = await r.json();
+      if (!r.ok) throw new Error(j.error);
+      for (const t of j.titles) { const o = T.titles.find(x => x.id === t.id); if (o) Object.assign(o, t); }
+      const d = new Date(j.saved_at);
+      $("#trk-status").textContent = `已記錄 ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+      trkRender(false);
+    } catch (err) { $("#trk-status").textContent = err.message; $("#trk-status").classList.add("err"); }
+  }, delay);
+}
+function fitArea(el) { el.style.height = "auto"; el.style.height = el.scrollHeight + "px"; }
+function md(iso) { if (!iso) return ""; const d = new Date(iso); return `${d.getMonth() + 1}/${d.getDate()} 上頻道`; }
+function trkRender(full = true) {
+  // 「已上頻道」就是有參加 A/B 測試（修修 2026-11-12），只有這一個勾選，最多 AB_MAX 條
+  const box = $("#titles"), pubCount = T.titles.filter(t => t.published).length;
+  if (!full) {   // 只更新勾選狀態與日期，不重建（避免打字中游標跳走）
+    box.querySelectorAll(".trk").forEach(row => {
+      const t = T.titles.find(x => x.id === row.dataset.id); if (!t) return;
+      row.classList.toggle("ab", !!t.published);
+      row.querySelector(".trk-pub").disabled = !t.published && pubCount >= AB_MAX;
+      row.querySelector(".trk-date").textContent = md(t.published_at);
+    });
+    return;
+  }
+  box.innerHTML = "";
+  for (const t of T.titles) {
+    const row = document.createElement("div"); row.className = "trk" + (t.published ? " ab" : ""); row.dataset.id = t.id;
+    const ta = document.createElement("textarea"); ta.className = "trk-text"; ta.rows = 1; ta.value = t.text;
+    ta.setAttribute("aria-label", "標題");
+    ta.oninput = () => { t.text = ta.value; fitArea(ta); trkSave(900); };
+    const meta = document.createElement("div"); meta.className = "trk-meta";
+    meta.innerHTML = `<label><input type="checkbox" class="trk-pub"><span>已上頻道</span></label><span class="trk-date"></span>`;
+    const pub = meta.querySelector(".trk-pub");
+    pub.checked = !!t.published; pub.disabled = !t.published && pubCount >= AB_MAX;
+    meta.querySelector(".trk-date").textContent = md(t.published_at);
+    pub.onchange = () => {
+      t.published = t.ab = pub.checked; if (!pub.checked) t.published_at = null;
+      trkRender(false); trkSave(0);
+    };
+    if (t.source === "custom") {
+      const del = document.createElement("button"); del.className = "trk-del"; del.type = "button";
+      del.textContent = "×"; del.setAttribute("aria-label", "刪除這條標題");
+      del.onclick = () => { T.titles.splice(T.titles.indexOf(t), 1); trkRender(); trkSave(0); };
+      meta.append(del);
+    }
+    row.append(ta, meta);
+    if (t.original_text && t.text !== t.original_text) {
+      const o = document.createElement("div"); o.className = "trk-orig"; o.textContent = "原：" + t.original_text;
+      row.append(o);
+    }
+    box.append(row);
+    requestAnimationFrame(() => fitArea(ta));
+  }
+}
+$("#v-url").value = T.video_url || "";
+$("#v-url").oninput = () => { T.video_url = $("#v-url").value.trim(); trkSave(900); };
+$("#add-title").onclick = () => {
+  const id = "c" + Date.now().toString(36);
+  T.titles.push({id, text: "", original_text: "", source: "custom", ab: false, published: false,
+                 published_at: null, edited_at: null});
+  trkRender(); $(`.trk[data-id="${id}"] textarea`).focus();
+};
+if (!BOOT.render) trkRender();
+
+function frameTabs() {
+  const cur = S.book.frame === false ? "none" : (S.book.frame_style || "skew");
+  document.querySelectorAll("[data-frame]").forEach(b => {
+    b.setAttribute("aria-pressed", b.dataset.frame === cur ? "true" : "false");
+    b.onclick = () => { S.book.frame_style = b.dataset.frame; S.book.frame = b.dataset.frame !== "none"; frameTabs(); draw(); };
+  });
+}
+frameTabs();
+function esc(s) { return String(s).replace(/[&<>"]/g, c => ({"&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"}[c])); }
+pkgs();
+thumbs($("#cutouts"), BOOT.lists.cutouts, "person.src");
+thumbs($("#bgs"), BOOT.lists.backgrounds, "bg.src");
+
+$("#save").onclick = async () => {
+  const btn = $("#save"); btn.disabled = true; btn.textContent = "出圖中…";
+  try {
+    const r = await fetch("/save", {method: "POST", body: JSON.stringify(S)});
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error);
+    const v = Date.now();
+    $("#result").innerHTML = `<img src="/cover.png?v=${v}" alt="成品"><img class="small" src="/cover-320.png?v=${v}" alt="320×180"><p>${j.png}</p>`;
+  } catch (err) { $("#result").innerHTML = `<p>出圖失敗：${err.message}</p>`; }
+  btn.disabled = false; btn.textContent = "存檔並出圖";
+};
+document.fonts.ready.then(draw);
+draw();
+</script>
+</body></html>

@@ -1,0 +1,29 @@
+<!doctype html>
+<!-- NEAT 書房段，畫法 B（比較實驗；分鏡表 storyboards/neat-office.md，程式 assets/explore/explore_office.js） -->
+<html lang="zh-Hant">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/figure.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      html, body { margin: 0; background: var(--white); overflow: hidden; }
+      #root { background: var(--white); }
+      #page { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; transform-origin: 0 0; }
+      .cell { position: absolute; overflow: hidden; background: var(--white); outline: 7px solid var(--ink); outline-offset: -3px; }
+      .cell .scene { position: absolute; inset: 0; }
+      .cell .bg { position: absolute; }
+      .ink { position: absolute; inset: 0; pointer-events: none; overflow: visible; }
+      .fig { position: absolute; left: 0; top: 0; width: 0; height: 0; z-index: 3; }
+      .cap { position: absolute; z-index: 5002; background: var(--white); border-style: solid; border-color: var(--ink);
+        padding: .45em .7em; line-height: 1.4; white-space: nowrap; }
+      .big { position: absolute; z-index: 5002; line-height: 1.1; color: var(--orange); white-space: nowrap; paint-order: stroke fill; font-weight: 900; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="explore_office_b" data-explore-mode="b"
+      data-width="1920" data-height="1080" data-start="0" data-duration="13.6"></div>
+    <script src="assets/explore/explore_office.js"></script>
+  </body>
+</html>

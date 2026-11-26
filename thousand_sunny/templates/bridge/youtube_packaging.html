@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bridge · YouTube 封面 · {{ episode }}</title>
+<script src="/static/shosho/theme.js?v={{ asset_version }}"></script>
+<link rel="stylesheet" href="/static/shosho/tokens.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-pages.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/youtube-cover.css?v={{ asset_version }}">
+<link rel="stylesheet" href="/static/shosho/bridge-youtube-packaging.css?v={{ asset_version }}">
+</head>
+<body class="sho bridge-page bridge-page--scroll">
+{% from "_chassis_nav.html" import chassis_nav %}
+{{ chassis_nav(nav_active='packaging') }}
+
+{% from "_breadcrumb.html" import breadcrumb %}
+{{ breadcrumb([
+  {"label": "PACKAGING · GATE", "href": "/bridge/packaging", "is_current": false},
+  {"label": episode, "href": none, "is_current": true},
+]) }}
+
+<section class="page-header page-header--split">
+  <div>
+    <div class="nk-caps">/bridge/youtube-packaging · 封面 × 上架標題</div>
+    <h1 class="page-title">{{ episode }}</h1>
+  </div>
+</section>
+
+<main class="ytp">
+  <div class="ytp-view">
+    <div class="ytp-stage" id="stage"><div id="cover"></div></div>
+    <div class="ytp-meta"><span id="meta"></span><span id="render-state" role="status"></span></div>
+    <div class="ytp-result" id="result" hidden>
+      <img id="result-full" alt="出圖成品">
+      <img id="result-small" class="small" alt="YouTube 格線大小">
+    </div>
+  </div>
+
+  <aside class="ytp-panel" aria-label="封面與標題">
+    <div class="ytp-grp">圖層</div>
+    <div class="ytp-tabs" role="group" aria-label="選擇圖層">
+      <button class="ytp-tab" type="button" data-sel="person" aria-pressed="true">修修</button>
+      <button class="ytp-tab" type="button" data-sel="feature" aria-pressed="false">主圖</button>
+      <button class="ytp-tab" type="button" data-sel="text" aria-pressed="false">大字</button>
+    </div>
+
+    <div class="ytp-grp">大字</div>
+    <div class="ytp-row"><label for="t-lead">上行</label><input type="text" id="t-lead" data-k="text.lead" maxlength="40"></div>
+    <div class="ytp-row"><label for="t-main">主標</label><input type="text" id="t-main" data-k="text.main" maxlength="40"></div>
+    <div class="ytp-row"><label for="t-hl">橘框詞</label><input type="text" id="t-hl" data-k="text.hl" maxlength="40"></div>
+    <div class="ytp-row"><label for="r-rot">大字斜度</label><input type="range" id="r-rot" min="-15" max="15" step="0.5" data-k="text.rot"></div>
+    <div id="bigtexts" class="ytp-opts"></div>
+
+    <div class="ytp-grp">標題 <span id="trk-status" class="ytp-trk-status" role="status"></span></div>
+    <div class="ytp-row"><label for="v-url">影片網址</label><input type="text" id="v-url" placeholder="https://youtu.be/…"></div>
+    <div id="titles"></div>
+    <button class="ytp-add" id="add-title" type="button">＋ 標題</button>
+
+    <div class="ytp-grp">修修的臉</div>
+    <div class="ytp-thumbs" id="cutouts"></div>
+
+    <div class="ytp-grp">主圖</div>
+    <div class="ytp-thumbs wide" id="features"></div>
+    <div class="ytp-row"><label for="r-tilt">主圖角度</label><input type="range" id="r-tilt" min="-30" max="30" step="1" data-k="feature.tilt"></div>
+    <div class="ytp-tabs ytp-frames" role="group" aria-label="主圖外框" id="frames"></div>
+
+    <div class="ytp-grp">背景</div>
+    <div class="ytp-thumbs wide" id="bgs"></div>
+    <div class="ytp-row"><label for="r-bri">亮度</label><input type="range" id="r-bri" min="0.15" max="0.9" step="0.01" data-k="bg.brightness"></div>
+    <div class="ytp-row"><label for="r-warm">暖色</label><input type="range" id="r-warm" min="0" max="0.8" step="0.01" data-k="bg.warm"></div>
+    <div class="ytp-row"><label for="r-blur">模糊</label><input type="range" id="r-blur" min="0" max="8" step="0.5" data-k="bg.blur"></div>
+
+    <div class="ytp-toggles">
+      <label><input type="checkbox" data-k="person.glow">人物光暈</label>
+      <label><input type="checkbox" data-k="person.flip">左右翻轉</label>
+      <label><input type="checkbox" data-k="bars">上下橘條</label>
+    </div>
+
+    <button class="ytp-save" id="save" type="button">存配方並出圖</button>
+  </aside>
+</main>
+
+<script type="application/json" id="yt-boot">{{ boot_json | safe }}</script>
+<script src="/static/shosho/youtube-cover.js?v={{ asset_version }}"></script>
+<script src="/static/shosho/bridge-youtube-packaging.js?v={{ asset_version }}"></script>
+</body>
+</html>

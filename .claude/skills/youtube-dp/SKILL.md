@@ -14,7 +14,7 @@ description: >
 規格：`docs/plans/2026-11-15-youtube-script-video-rough-cut-and-director.md` §1（第 6 步 DP）、§3.8、§4.4–4.5。
 每一類怎麼做、規則與檢查在各自的 skill：`youtube-chapter-card`、`youtube-section-title`、`youtube-concept-title`、
 `youtube-person`、`youtube-book-cover`、`youtube-doc-highlight`、`youtube-quote-card`、`youtube-side-bullets`、
-`youtube-others-clip`，
+`youtube-stock`、`youtube-others-clip`，
 畫面搬移在 `youtube-reframe`。本 skill 只管順序與交接。
 
 ## 流程

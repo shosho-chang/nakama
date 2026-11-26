@@ -202,9 +202,11 @@ def _sync_estimate_to_plan(fm: dict[str, Any]) -> None:
     """Keep ``預估🍅`` in step with the scheduled ``plan[]`` (修修 option 1): the
     task-level estimate follows the total pomodoros committed to the calendar, so the
     task page (reads ``預估🍅``) and the dashboard / daily bullet (read the plan sum)
-    never diverge. Called by the plan-mutating scheduling writes only — NOT by
-    timeEntries / body saves (those must not touch the estimate). No-op when there is
-    no plan yet (a bare estimate stands until the task is actually scheduled)."""
+    never diverge. Called by EVERY plan-mutating scheduling write — adds/upserts AND
+    removals / relocations (取消這天的安排、取消排程、搬移) — but NOT by timeEntries /
+    body saves (those must not touch the estimate). No-op when the plan is empty (a
+    bare estimate stands until the task is scheduled, and stays as the last estimate
+    when the final entry is removed)."""
     plan = _plan_list(fm)
     if plan:
         fm["預估🍅"] = sum(int(e.get("pomodoros") or 0) for e in plan)
@@ -854,6 +856,7 @@ def reschedule_task_block(
     if not replaced:
         entries.append(new_entry)
     fm["plan"] = entries
+    _sync_estimate_to_plan(fm)  # 修修 option 1: 預估🍅 follows the schedule
 
     fm["scheduled"] = scheduled
     fm["scheduled_end"] = scheduled_end
@@ -908,6 +911,7 @@ def unschedule_task_block(
     if block_day is not None:
         entries = _plan_list(fm)
         fm["plan"] = [e for e in entries if not (_entry_date(e) == block_day and not e.get("done"))]
+        _sync_estimate_to_plan(fm)  # 修修 option 1: 預估🍅 follows the schedule
     for k in ("scheduled", "scheduled_end", "calendar_event_id"):
         fm.pop(k, None)
     _write_task(path, fm, body)
@@ -941,6 +945,9 @@ def remove_plan_entry(
         return False
 
     fm["plan"] = new_entries
+    # 修修 2026-11-17: removing a day is a plan-mutating scheduling write too — without
+    # this, 取消這天的安排 left 預估🍅 at the old (larger) sum.
+    _sync_estimate_to_plan(fm)
     _write_task(path, fm, body)
     return True
 

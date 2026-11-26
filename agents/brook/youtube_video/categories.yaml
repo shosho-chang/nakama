@@ -75,12 +75,16 @@ categories:
   - id: explainer
     number: 5
     name: 解釋動畫
-    when: 較長的解釋段落（如六個階層）
-    dp: Director 寫 prompt，DP 用 HyperFrames 做（bigstat、concept_card）
+    when: 要解釋數字、比例、變化、算式、對照的段落（如六個階層）；比喻情境用漫畫
+    dp: >-
+      圖表：DP 選圖表（橫條、直條、圓環、點陣、圓餅、大數字、折線、刻度、算式、對比）、寫規格檔，
+      程式檢查版面後渲（visuals/explainer.py）；漫畫：照分鏡表手做、修修看過預覽後，
+      規格檔寫要接哪幾頁，同一支程式接頁、帶音效交件（只能選滿版）。skill youtube-explainer
     kind: overlay
     layout: either
     required: [description, dp_instruction]
-    readiness: partial
+    # 圖表、漫畫都能交件（漫畫頁本身還是照分鏡表手做）
+    readiness: ready
     auto: false
     density: true
     covers: true
@@ -89,11 +93,14 @@ categories:
     number: 6
     name: Stock footage
     when: 適合用實拍素材加強的段落
-    dp: Director 寫描述，DP 找素材
+    dp: >-
+      Director 寫描述，DP 上 Envato 抓 16:9 實拍、搬進集數資料夾 assets/stock/、寫規格檔（每鏡用哪個檔、
+      從第幾秒取多長，單鏡 ≤3 秒），程式檢查後原檔直接鋪上 Resolve（visuals/stock.py）；skill youtube-stock
     kind: overlay
-    layout: either
+    # 修修 2026-11-26：「只做滿版」「原始素材直接上 Resolve」
+    layout: full
     required: [dp_instruction]
-    readiness: unverified
+    readiness: ready
     auto: false
     density: true
     covers: true
@@ -158,7 +165,7 @@ categories:
     kind: overlay
     layout: either
     required: [dp_instruction]
-    readiness: unverified
+    readiness: ready  # 2026-11-17 做好（skill youtube-others-clip、visuals/others_clip.py）
     auto: false
     density: true
     covers: true

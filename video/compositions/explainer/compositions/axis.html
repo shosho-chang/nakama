@@ -1,0 +1,132 @@
+<!doctype html>
+<!-- 第 5 類「解釋動畫」圖表「刻度」：一條軸上標幾個點——等級、門檻、年份、年齡（「一把尺」「時間軸」）。
+     軸先畫出來，每個刻度在講到的那一句出現（上面名稱、下面數字）；pointer 是一個橘色箭頭，指出「你在這／重點在這」。
+     正在講的那個刻度橘色，講過的回黑。滿版是橫的，側欄是直的（上到下）。
+     不綁任何一集：內容全部從 spec 來（欄位見 youtube-explainer skill「圖表：刻度」）。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"spec","type":"string","label":"內容 JSON（見 youtube-explainer skill「圖表：刻度」）","default":"{\"layout\":\"full\",\"title\":\"範例標題\",\"show_sec\":8,\"axis_at\":0.6,\"points\":[{\"label\":\"第一\",\"sub\":\"0\",\"at\":1},{\"label\":\"第二\",\"sub\":\"10\",\"at\":2},{\"label\":\"第三\",\"sub\":\"20\",\"at\":3}],\"pointer\":{\"index\":1,\"at\":4.5,\"text\":\"重點\"}}"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/explainer-kit.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      .area { position: absolute; left: 0; right: 0; top: 120px; bottom: 0; }
+      .rule { position: absolute; background: var(--ink); }
+      .tk { position: absolute; background: var(--ink); }
+      .pl, .ps, .ptr { position: absolute; white-space: nowrap; }
+      .ps { color: var(--ink-2); font-variant-numeric: tabular-nums; }
+      .ptr { color: var(--orange); display: flex; align-items: center; gap: 10px; }
+      .arrow { width: 0; height: 0; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="axis"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60"></div>
+    <script>
+      const spec = JSON.parse(EXK.vars().spec || "{}");
+      const ctx = EXK.frame("axis", spec);
+      const { tl, stage, full } = ctx;
+      const pts = spec.points || [];
+      const n = Math.max(1, pts.length);
+      if (n > 8) console.warn("刻度超過 8 個：字會擠，Director 要拆");
+      const area = EXK.el("div", "area", stage);
+      const axisAt = spec.axis_at ?? Math.max(0.5, (pts[0] ? pts[0].at : 1) - 0.4);
+
+      // 位置：有 pos 就照數值等比例（min/max），沒有就等距
+      const vals = pts.map((p) => p.pos);
+      const lin = vals.every((v) => typeof v === "number");
+      const vmin = spec.min ?? (lin ? Math.min(...vals) : 0), vmax = spec.max ?? (lin ? Math.max(...vals) : 1);
+      const frac = (p, i) => (lin ? (p.pos - vmin) / (vmax - vmin || 1) : n === 1 ? 0.5 : i / (n - 1));
+
+      const labPx = full ? (n <= 5 ? 52 : 44) : 40, subPx = full ? (n <= 5 ? 40 : 34) : 32;
+      const LEN = full ? 1380 : 560, T = 8;
+      const rule = EXK.el("div", "rule", area);
+      const pos = [];
+      if (full) {
+        // 橫軸：在內容區垂直置中；名稱在上、數字在下
+        const x0 = (1620 - LEN) / 2, y = 300;
+        rule.style.cssText += `left:${x0}px;top:${y - T / 2}px;width:${LEN}px;height:${T}px`;
+        tl.fromTo(rule, { scaleX: 0, transformOrigin: "0% 50%" }, { scaleX: 1, duration: 0.35, ease: EXK.SNAP }, axisAt);
+        pts.forEach((p, i) => pos.push([x0 + frac(p, i) * LEN, y]));
+      } else {
+        // 側欄：直軸在左，名稱與數字在右邊同一行
+        const x = 40, y0 = 40;
+        rule.style.cssText += `left:${x - T / 2}px;top:${y0}px;width:${T}px;height:${LEN}px`;
+        tl.fromTo(rule, { scaleY: 0, transformOrigin: "50% 0%" }, { scaleY: 1, duration: 0.35, ease: EXK.SNAP }, axisAt);
+        pts.forEach((p, i) => pos.push([x, y0 + frac(p, i) * LEN]));
+      }
+
+      const ticks = [], labs = [];
+      pts.forEach((p, i) => {
+        const [x, y] = pos[i];
+        const tk = EXK.el("div", "tk", area);
+        const L = full ? 48 : 40;
+        tk.style.cssText += full ? `left:${x - 4}px;top:${y - L / 2}px;width:8px;height:${L}px` : `left:${x - L / 2}px;top:${y - 4}px;width:${L}px;height:8px`;
+        const lab = EXK.el("div", "pl", area, p.label);
+        lab.style.fontSize = labPx + "px";
+        const sub = p.sub ? EXK.el("div", "ps", area, p.sub) : null;
+        if (sub) sub.style.fontSize = subPx + "px";
+        if (full) {
+          lab.style.left = x + "px"; lab.style.top = (y - L / 2 - 16) + "px"; gsap.set(lab, { xPercent: -50, yPercent: -100 });
+          if (sub) { sub.style.left = x + "px"; sub.style.top = (y + L / 2 + 16) + "px"; gsap.set(sub, { xPercent: -50 }); }
+        } else {
+          lab.style.left = (x + L / 2 + 24) + "px"; lab.style.top = y + "px"; gsap.set(lab, { yPercent: -50 });
+          if (sub) { sub.style.left = (x + L / 2 + 24) + "px"; sub.style.top = (y + labPx * 0.55 + 6) + "px"; }
+        }
+        tl.fromTo(tk, { scale: 0 }, { scale: 1, duration: 0.22, ease: EXK.LAND }, p.at);
+        EXK.land(tl, lab, p.at, { y: full ? -16 : 0, x: full ? 0 : -16 });
+        if (sub) tl.fromTo(sub, { opacity: 0 }, { opacity: 1, duration: 0.2 }, p.sub_at ?? p.at + 0.1);
+        ticks.push(tk); labs.push(lab);
+      });
+
+      // 指標：橘色三角形＋一行字，指著某一個刻度（或軸上任一位置 pos）
+      const P = spec.pointer;
+      if (P) {
+        const at = P.index != null ? pos[P.index] : null;
+        const [x, y] = at || (full ? [(1620 - LEN) / 2 + ((P.pos - vmin) / (vmax - vmin || 1)) * LEN, 300] : [40, 40 + ((P.pos - vmin) / (vmax - vmin || 1)) * LEN]);
+        const ptr = EXK.el("div", "ptr", area);
+        const arrow = EXK.el("div", "arrow", ptr);
+        const S = full ? 34 : 26;
+        const tx = EXK.el("span", null, ptr, P.text || "");
+        tx.style.fontSize = (full ? 48 : 40) + "px";
+        if (full) {
+          // 在刻度下方、數字更下面：三角形尖端朝上
+          ptr.style.flexDirection = "column";
+          arrow.style.cssText = `border-left:${S}px solid transparent;border-right:${S}px solid transparent;border-bottom:${S * 1.2}px solid var(--orange)`;
+          ptr.style.left = x + "px"; ptr.style.top = (y + 48 / 2 + 16 + subPx + 22) + "px"; gsap.set(ptr, { xPercent: -50 });
+          ptr.style.alignItems = "center";
+          // 文字太寬會跑出內容區：文字左右夾在 0–1620 內，三角形仍對準刻度
+          const w = tx.offsetWidth, shift = Math.min(0, 1620 - (x + w / 2)) + Math.max(0, w / 2 - x);
+          if (shift) tx.style.transform = `translateX(${shift}px)`;
+        } else {
+          // 側欄：在軸的左邊不夠放，改放在那一行最右邊，三角形尖端朝左
+          arrow.style.cssText = `border-top:${S}px solid transparent;border-bottom:${S}px solid transparent;border-right:${S * 1.2}px solid var(--orange)`;
+          ptr.style.right = "0px"; ptr.style.top = y + "px"; gsap.set(ptr, { yPercent: -50 });
+        }
+        EXK.land(tl, ptr, P.at, full ? { y: 30 } : { x: 30, y: 0 });
+      }
+
+      const steps = pts.map((p, i) => [p.at, i]);
+      if (P && P.index != null) steps.push([P.at, P.index]);
+      if (spec.rest_at != null) steps.push([spec.rest_at, null]);
+      steps.sort((a, b) => a[0] - b[0]);
+      let prev = null;
+      steps.forEach(([t, i]) => {
+        if (prev != null && prev !== i) {
+          tl.to(ticks[prev], { backgroundColor: EXK.INK, duration: 0.14 }, t);
+          tl.to(labs[prev], { color: EXK.INK, duration: 0.14 }, t);
+        }
+        if (i != null && i !== prev) {
+          tl.to(ticks[i], { backgroundColor: EXK.ORANGE, duration: 0.14 }, t);
+          tl.to(labs[i], { color: EXK.ORANGE, duration: 0.14 }, t);
+        }
+        prev = i;
+      });
+      EXK.end(ctx);
+    </script>
+  </body>
+</html>

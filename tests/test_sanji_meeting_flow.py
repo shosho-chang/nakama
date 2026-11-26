@@ -54,7 +54,21 @@ def ext(monkeypatch):
     monkeypatch.setenv("SANJI_SLACK_BOT_TOKEN", "xoxb-sanji")
     monkeypatch.delenv("SANJI_MEETING_CHANNEL", raising=False)
     gcal = sanji_fake_calendar.install(monkeypatch)
-    return types.SimpleNamespace(calls=calls, fail=fail, slack=slack_sdk, client=client, gcal=gcal)
+
+    tasks: list[dict] = []
+
+    def fake_write_task(title, start, end, event, zoom_url):
+        if "task" in fail:
+            raise fail["task"]
+        tasks.append(
+            {"title": title, "start": start, "end": end, "event": event, "zoom_url": zoom_url}
+        )
+        return f"TaskNotes/Tasks/{title}.md"
+
+    monkeypatch.setattr(sanji_meeting, "_write_task", fake_write_task)  # 不碰真的 vault
+    return types.SimpleNamespace(
+        calls=calls, fail=fail, slack=slack_sdk, client=client, gcal=gcal, tasks=tasks
+    )
 
 
 def _start(replies, text="@Sanji 開內部會議 明天早上 10 點 內部週會 1 小時"):
@@ -170,7 +184,7 @@ def test_revision_and_cancel(ext):
 
 def test_meeting_written_to_calendar(ext):
     resp = _start([_llm()])
-    assert "行事曆：這個時段沒有其他行程" in resp.text
+    assert "行事曆：修修這個時段沒有其他行程" in resp.text
     _cont(resp.continuation.state, "確認")
     created = ext.gcal.created[0]
     assert created["title"] == "內部週會"
@@ -185,7 +199,7 @@ def test_meeting_conflict_blocks_then_force(ext):
         )
     ]
     resp = _start([_llm()])
-    assert "行事曆衝突：09:30–10:30「客戶會議」" in resp.text
+    assert "修修的行事曆這個時段已經有：09:30–10:30「客戶會議」" in resp.text
     resp2, _ = _cont(resp.continuation.state, "確認")
     assert "先不排" in resp2.text and ext.calls == []
     resp3, _ = _cont(resp2.continuation.state, "照排")
@@ -221,3 +235,113 @@ def test_no_attendees_configured(ext, monkeypatch):
     _cont(resp.continuation.state, "確認")
     assert ext.gcal.created[0]["attendees"] is None
     assert ext.client.chat_scheduleMessage.call_args.kwargs["text"].startswith("⏰")
+
+
+# ── Obsidian Task（2026-11-23：行事曆寫好後，在修修的 Obsidian 建連動 Task）──────────
+
+
+def test_card_mentions_obsidian_task(ext):
+    resp = _start([_llm()])
+    assert "Task：會在修修的 Obsidian 建一個跟行事曆連動的 Task" in resp.text
+    assert ext.tasks == []  # 確認前什麼都不寫
+
+
+def test_confirm_creates_obsidian_task_linked_to_calendar_event(ext):
+    resp = _start([_llm()])
+    resp2, _ = _cont(resp.continuation.state, "確認")
+
+    assert len(ext.tasks) == 1
+    t = ext.tasks[0]
+    assert t["title"] == "內部週會"
+    assert t["start"] == datetime(2026, 11, 17, 10, 0, tzinfo=TZ)
+    assert t["end"] == datetime(2026, 11, 17, 11, 0, tzinfo=TZ)
+    assert t["event"]["id"] == "gcal-1"  # 連的是剛建好的那個行事曆事件
+    assert t["zoom_url"] == ZOOM_URL
+    assert "Task：已建在修修的 Obsidian（TaskNotes/Tasks/內部週會.md）" in resp2.text
+    assert resp2.continuation is None
+
+
+def test_task_failure_does_not_undo_zoom_or_calendar(ext):
+    ext.fail["task"] = RuntimeError("vault 掛了")
+    resp = _start([_llm()])
+    resp2, _ = _cont(resp.continuation.state, "確認")
+
+    assert len(ext.calls) == 1 and len(ext.gcal.created) == 1  # Zoom、行事曆照常完成
+    assert "Task：沒建成（vault 掛了），請手動補。" in resp2.text
+    assert ZOOM_URL in resp2.text and resp2.continuation is None
+
+
+def test_no_task_when_calendar_write_failed(ext):
+    ext.gcal.fail_add = RuntimeError("token 失效")
+    resp = _start([_llm()])
+    resp2, _ = _cont(resp.continuation.state, "確認")
+
+    assert ext.tasks == []  # 沒有事件 id 可連動，不建孤兒 Task
+    assert "Task：沒建成（行事曆沒寫進去，沒有事件可以連動）" in resp2.text
+
+
+def test_attendees_do_not_get_their_own_task(ext, monkeypatch):
+    """目前只有修修需要行事曆＋Obsidian；曉宣等與會者只收邀請信，不會多建 Task。"""
+    monkeypatch.setenv("SANJI_MEETING_ATTENDEES", "曉宣|xs@example.com|U123;小明|m@x.com|U456")
+    resp = _start([_llm()])
+    _cont(resp.continuation.state, "確認")
+    assert len(ext.tasks) == 1
+
+
+# ── _write_task 本身（撞名處理、寫入內容）──────────────────────────────────
+
+
+@pytest.fixture
+def vault(monkeypatch):
+    """假 vault：taken 是已存在的 Task 標題；寫入記在 written。"""
+    from gateway.handlers import nami
+
+    state = types.SimpleNamespace(taken=set(), written=[])
+
+    def fake_find(title, directory=nami.TASK_DIR):
+        return (f"{directory}/x.md", {"title": title}, "") if title in state.taken else None
+
+    monkeypatch.setattr(nami, "find_task_by_title", fake_find)
+    monkeypatch.setattr(
+        nami, "write_page", lambda rel, fm, body="": state.written.append((rel, fm, body))
+    )
+    monkeypatch.setattr(sanji_event, "_now", lambda: FIXED_NOW)
+    return state
+
+
+def _write(vault_state, title="內部週會"):
+    start = datetime(2026, 11, 17, 10, 0, tzinfo=TZ)
+    end = datetime(2026, 11, 17, 11, 0, tzinfo=TZ)
+    return sanji_meeting._write_task(
+        title, start, end, {"id": "gcal-1", "link": "https://calendar/x"}, ZOOM_URL
+    )
+
+
+def test_write_task_content(vault):
+    rel = _write(vault)
+
+    assert rel == "TaskNotes/Tasks/內部週會.md"
+    ((path, fm, body),) = vault.written
+    assert path == rel
+    assert fm["title"] == "內部週會" and fm["category"] == "work" and fm["status"] == "to-do"
+    entry = fm["plan"][0]
+    assert entry["calendar_event_id"] == "gcal-1"
+    assert entry["date"] == "2026-11-17"
+    assert entry["start"] == "2026-11-17T10:00:00+08:00"
+    assert entry["pomodoros"] == 2  # 60 分鐘 ÷ 30
+    assert body == f"Zoom：{ZOOM_URL}"
+
+
+def test_write_task_same_title_gets_dated_title_not_overwritten(vault):
+    vault.taken = {"內部週會"}  # 例如每週固定開的會，上一週的 Task 還在
+    rel = _write(vault)
+
+    assert rel == "TaskNotes/Tasks/內部週會 2026-11-17.md"  # 日期取「會議當天」
+    assert vault.written[0][1]["title"] == "內部週會 2026-11-17"
+
+
+def test_write_task_refuses_when_dated_title_also_taken(vault):
+    vault.taken = {"內部週會", "內部週會 2026-11-17"}
+    with pytest.raises(RuntimeError, match="已有同名 Task"):
+        _write(vault)
+    assert vault.written == []  # 寧可不建也不覆蓋

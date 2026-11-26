@@ -1,0 +1,122 @@
+<!doctype html>
+<!-- 第 5 類「解釋動畫」圖表「圓餅」：一個整體分成 2–4 塊，各佔多少。
+     （只講「一部分佔多少」用圓環；很小的整數比用點陣。）
+     有 total_at：整個圓先出現（＝整體），講到哪一塊那一塊切出來、變橘；沒有 total_at：一塊一塊長出來。
+     剩下沒講到的部分（給了 total 時自動算）用 rest_label 標。旁邊一列圖例：色塊＋名稱＋百分比。
+     不綁任何一集：內容全部從 spec 來（欄位見 youtube-explainer skill「圖表：圓餅」）。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"spec","type":"string","label":"內容 JSON（見 youtube-explainer skill「圖表：圓餅」）","default":"{\"layout\":\"full\",\"title\":\"範例標題\",\"show_sec\":8,\"parts\":[{\"label\":\"第一塊\",\"value\":50,\"at\":1},{\"label\":\"第二塊\",\"value\":30,\"at\":2.5},{\"label\":\"第三塊\",\"value\":20,\"at\":4}]}"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/explainer-kit.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      .body { position: absolute; left: 0; right: 0; top: 120px; bottom: 0; display: flex; align-items: center;
+        justify-content: center; gap: 110px; }
+      .body.side { flex-direction: column; align-items: flex-start; gap: 34px; }
+      .body svg { display: block; overflow: visible; flex: none; }
+      .legend { display: flex; flex-direction: column; gap: 26px; }
+      .lrow { display: flex; align-items: center; gap: 22px; white-space: nowrap; }
+      .sw { flex: none; }
+      .lpct { font-variant-numeric: tabular-nums; margin-left: 10px; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="pie"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60"></div>
+    <script>
+      const NS = "http://www.w3.org/2000/svg";
+      const spec = JSON.parse(EXK.vars().spec || "{}");
+      const ctx = EXK.frame("pie", spec);
+      const { tl, stage, full } = ctx;
+      let parts = (spec.parts || []).map((p) => Object.assign({}, p));
+      const sum = parts.reduce((a, p) => a + p.value, 0);
+      const total = spec.total ?? sum;
+      if (spec.total != null && total - sum > 1e-9) {
+        // 沒講到的剩餘部分（例：淨資產 5133 萬裡，「其他」＝5133−2959）
+        parts.push({ label: spec.rest_label || "其他", value: total - sum, rest: true,
+          at: spec.rest_part_at ?? Math.max(...parts.map((p) => p.at ?? 0)) });   // 預設跟最後講到的那一塊一起切出來
+      }
+      parts = parts.slice(0, 4);
+      if ((spec.parts || []).length > 4) console.warn("圓餅最多 4 塊：更多就是 Director 要拆，或改用橫條");
+
+      // 不同塊的顏色：黑、深灰、淺灰、白；正在講的那一塊染橘
+      const REST = ["#000", "#4d4a49", "#c9c8c4", "#fff"];
+      const D = full ? 540 : 380, R = D / 2;
+      const wrap = EXK.el("div", "body" + (full ? "" : " side"), stage);
+      const svg = document.createElementNS(NS, "svg");
+      svg.setAttribute("width", D); svg.setAttribute("height", D);
+      svg.setAttribute("viewBox", `${-R} ${-R} ${D} ${D}`);
+      wrap.appendChild(svg);
+      const legend = EXK.el("div", "legend", wrap);
+      const labPx = full ? 52 : 40;
+
+      // 整體：先出現一個完整的圓（total_at），之後每一塊切出來
+      if (spec.total_at != null) {
+        const whole = document.createElementNS(NS, "circle");
+        whole.setAttribute("r", R); whole.setAttribute("fill", "#000");
+        svg.appendChild(whole);
+        tl.fromTo(whole, { scale: 0.7, opacity: 0, transformOrigin: "50% 50%" }, { scale: 1, opacity: 1, duration: 0.3, ease: EXK.LAND }, spec.total_at);
+      }
+      const arc = (a0, a1) => {
+        const p = (a) => [R * Math.sin(a), -R * Math.cos(a)];   // 從 12 點鐘順時針
+        const [x0, y0] = p(a0), [x1, y1] = p(a1);
+        if (a1 - a0 >= 2 * Math.PI - 1e-6) return `M 0 ${-R} A ${R} ${R} 0 1 1 0 ${R} A ${R} ${R} 0 1 1 0 ${-R} Z`;
+        return `M 0 0 L ${x0} ${y0} A ${R} ${R} 0 ${a1 - a0 > Math.PI ? 1 : 0} 1 ${x1} ${y1} Z`;
+      };
+      let a = 0;
+      const slices = [], swatches = [], pcts = [];
+      parts.forEach((p, i) => {
+        const frac = p.value / total, a1 = a + frac * 2 * Math.PI;
+        const mid = (a + a1) / 2;
+        const path = document.createElementNS(NS, "path");
+        path.setAttribute("d", arc(a, a1));
+        path.setAttribute("fill", REST[i % 4]);
+        path.setAttribute("stroke", "#dddddb"); path.setAttribute("stroke-width", 6);   // 塊與塊之間一條底色縫
+        svg.appendChild(path);
+        const at = p.at ?? spec.total_at ?? 0.6;
+        // 切出來：沿著那一塊的中線往外推一點再回來
+        tl.fromTo(path, { opacity: 0 }, { opacity: 1, duration: 0.12 }, at);
+        tl.fromTo(path, { x: 0, y: 0 }, { x: 26 * Math.sin(mid), y: -26 * Math.cos(mid), duration: 0.22, ease: EXK.SNAP }, at);
+        tl.to(path, { x: 0, y: 0, duration: 0.3, ease: EXK.LAND }, at + 0.35);
+
+        const row = EXK.el("div", "lrow", legend);
+        const sw = EXK.el("div", "sw", row);
+        sw.style.cssText = `width:${labPx * 0.8}px;height:${labPx * 0.8}px;background:${REST[i % 4]}`;
+        const lab = EXK.el("span", null, row, p.label);
+        lab.style.fontSize = labPx + "px";
+        const pct = EXK.el("span", "lpct", row);
+        pct.style.fontSize = labPx + "px";
+        const pv = frac * 100;
+        pct.textContent = p.pct_text || EXK.num(pv, p.digits ?? (pv < 10 && pv % 1 ? 1 : 0)) + "%";
+        EXK.land(tl, row, at, { x: full ? 30 : 0, y: full ? 0 : 16 });
+        slices.push(path); swatches.push(sw); pcts.push(pct);
+        a = a1;
+      });
+
+      // 講到哪一塊那一塊（＋圖例色塊與百分比）染橘，講過的回原色；rest_at 全部回原色
+      const steps = parts.map((p, i) => [p.at ?? spec.total_at ?? 0.6, i]).filter(([t]) => t != null);
+      if (spec.rest_at != null) steps.push([spec.rest_at, null]);
+      steps.sort((x, y) => x[0] - y[0]);
+      let prev = null;
+      steps.forEach(([t, i]) => {
+        if (prev != null && prev !== i) {
+          tl.to(slices[prev], { attr: { fill: REST[prev % 4] }, duration: 0.14 }, t);
+          tl.to(swatches[prev], { backgroundColor: REST[prev % 4], duration: 0.14 }, t);
+          tl.to(pcts[prev], { color: EXK.INK, duration: 0.14 }, t);
+        }
+        if (i != null && i !== prev && !parts[i].rest) {
+          tl.to(slices[i], { attr: { fill: EXK.ORANGE }, duration: 0.14 }, t);
+          tl.to(swatches[i], { backgroundColor: EXK.ORANGE, duration: 0.14 }, t);
+          tl.to(pcts[i], { color: EXK.ORANGE, duration: 0.14 }, t);
+        }
+        prev = i;
+      });
+      EXK.end(ctx);
+    </script>
+  </body>
+</html>

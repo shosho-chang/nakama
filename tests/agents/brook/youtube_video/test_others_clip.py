@@ -134,3 +134,12 @@ def test_blocks_clip_whose_source_cuts_to_a_flash_shot(episode):
     plan, row = _row(episode)
     with pytest.raises(delivery.DeliveryError, match="0:10.30–0:13.00"):
         oc.deliver_row(episode, plan, row, runner=lambda a, c: None, cut_check=lambda p: [0.3])
+
+
+def test_others_clip_is_a_ready_category_with_a_dp_component():
+    # 元件做好了：規劃表不再標「待製作」，DP 總調度找得到它
+    from agents.brook.youtube_video import dp
+    from agents.brook.youtube_video.categories import load_categories
+
+    assert load_categories()["others_clip"].readiness == "ready"
+    assert dp.RENDERERS["others_clip"].endswith("visuals.others_clip")

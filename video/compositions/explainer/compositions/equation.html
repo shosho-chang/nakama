@@ -1,0 +1,109 @@
+<!doctype html>
+<!-- 第 5 類「解釋動畫」圖表「算式」：拿實際數字一步一步算給觀眾看（$1,000 → −34% → $660 那種）。
+     一行一行在講到的那一刻貼上；正在講的那一行橘色、講過的回黑；最後的結論是一張斜貼的白色字牌。
+     每一個數字都要來自稿；算出來的那一行要寫出算式（運算那一行），不跳步。
+     不綁任何一集：內容全部從 spec 來（欄位見 youtube-explainer skill「圖表：算式」）。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"spec","type":"string","label":"內容 JSON（見 youtube-explainer skill「圖表：算式」）","default":"{\"layout\":\"full\",\"title\":\"範例標題\",\"show_sec\":7,\"lines\":[{\"label\":\"範例\",\"text\":\"100\",\"at\":1},{\"text\":\"× 2\",\"at\":2},{\"rule\":true,\"at\":3},{\"label\":\"結果\",\"text\":\"＝ 200\",\"at\":3.3}],\"note\":{\"text\":\"範例結論\",\"at\":4.5}}"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/explainer-kit.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      /* 整組算式在內容區置中（跟大數字、圓環同一個重心）。
+         直式：運算符號在固定寬度的左欄，數字全部從同一條線開始；橫線之後的結果是主角（最大）。 */
+      .eq { position: absolute; left: 0; right: 0; top: 110px; bottom: 0; display: flex; flex-direction: column;
+        justify-content: center; align-items: center; }
+      .blk { display: flex; flex-direction: column; align-items: flex-start; }
+      .ln { display: flex; flex-direction: column; align-items: flex-start; }
+      .lab { color: var(--ink-2); white-space: nowrap; line-height: 1.1; }
+      .txt { display: flex; align-items: baseline; white-space: nowrap; line-height: 1.08; font-variant-numeric: tabular-nums; }
+      .op { flex: none; }
+      /* 橫線跟整組一樣寬（不拉滿整個畫面） */
+      .rule { align-self: stretch; height: 6px; background: var(--ink); transform-origin: 0 50%; }
+      /* 結論：白色字牌斜貼（品牌：一個畫面只斜一張牌，±2–6°），對齊數字那一欄 */
+      .note { background: var(--white); white-space: nowrap; transform: rotate(-3deg); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="equation"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60"></div>
+    <script>
+      const spec = JSON.parse(EXK.vars().spec || "{}");
+      const ctx = EXK.frame("equation", spec);
+      const { tl, stage, full } = ctx;
+      const eq = EXK.el("div", "eq", stage);
+      const blk = EXK.el("div", "blk", eq);
+      const lines = spec.lines || [];
+      if (lines.filter((l) => !l.rule).length > 5) console.warn("算式超過 5 行：放不下就是 Director 要拆");
+
+      // 字級（滿版／側欄）：step＝橫線前的每一行，res＝橫線後的結果；整組放不下（太寬或太高）就一起等比縮
+      const BASE = full ? { step: 100, res: 132, lab: 42, gap: 16, ruleGap: 22, note: 50 }
+                        : { step: 72, res: 92, lab: 30, gap: 12, ruleGap: 16, note: 38 };
+      const W = full ? 1620 : 640;
+      const OP = /^([×÷＋＝=+\-−－])\s+(.+)$/;   // 「× 0.0001」→ 運算符號＋數字
+      const labs = [], txts = [], ops = [], rules = [];
+      const steps = [];
+      let afterRule = false;
+      lines.forEach((ln) => {
+        if (ln.rule) {
+          const r = EXK.el("div", "rule", blk);
+          rules.push(r);
+          afterRule = true;
+          tl.fromTo(r, { scaleX: 0 }, { scaleX: 1, duration: 0.22, ease: EXK.SNAP }, ln.at);
+          return;
+        }
+        const box = EXK.el("div", "ln", blk);
+        if (ln.label) {
+          const lab = EXK.el("div", "lab", box, ln.label);
+          labs.push(lab);
+          tl.fromTo(lab, { opacity: 0, x: -20 }, { opacity: 1, x: 0, duration: 0.22, ease: EXK.SNAP }, ln.label_at ?? ln.at);
+        }
+        const txt = EXK.el("div", "txt", box);
+        const m = String(ln.text).match(OP);
+        ops.push(EXK.el("span", "op", txt, m ? m[1] : ""));
+        EXK.el("span", "val", txt, m ? m[2] : ln.text);
+        txts.push([txt, afterRule ? "res" : "step"]);
+        EXK.land(tl, txt, ln.at, { x: 40, y: 0 });
+        steps.push([ln.at, txt]);
+      });
+      let note = null;
+      if (spec.note) note = EXK.el("div", "note", blk, spec.note.text);
+
+      const apply = (k) => {
+        const px = (v) => Math.round(v * k) + "px";
+        blk.style.gap = px(BASE.gap);
+        labs.forEach((e) => { e.style.fontSize = px(BASE.lab); e.style.marginBottom = px(6); });
+        txts.forEach(([e, kind]) => (e.style.fontSize = px(BASE[kind])));
+        rules.forEach((e) => (e.style.margin = `${px(BASE.ruleGap - BASE.gap)} 0`));
+        // 符號欄：最寬的符號＋一點空隙，每一行同寬（結果那行字比較大也一樣），數字才對得齊
+        ops.forEach((e) => (e.style.width = "auto"));
+        const opW = Math.max(0, ...ops.filter((e) => e.textContent).map((e) => e.getBoundingClientRect().width));
+        const col = opW ? opW + BASE.step * k * 0.2 : 0;
+        ops.forEach((e) => (e.style.width = col + "px"));
+        labs.forEach((e) => (e.style.paddingLeft = col + "px"));
+        if (note) {
+          note.style.fontSize = px(BASE.note);
+          note.style.padding = `${px(16)} ${px(26)} ${px(18)}`;
+          note.style.margin = `${px(10)} 0 0 ${col}px`;
+        }
+      };
+      apply(1);
+      // 寬：整組不超過內容區（牌子斜 3° 多吃一點，留 4%）；高：整組不超過內容區
+      // （量高度時先靠上排：置中排的內容超出時，上面超出的那半 scrollHeight 量不到；斜的牌子上下多吃一點）
+      const widest = Math.max(1, blk.offsetWidth, note ? note.offsetWidth * 1.04 + parseFloat(note.style.marginLeft) : 0);
+      eq.style.justifyContent = "flex-start";
+      const k = Math.min(1, W / widest, eq.clientHeight / Math.max(1, eq.scrollHeight + 12 + (note ? note.offsetWidth * 0.06 : 0)));
+      eq.style.justifyContent = "";
+      if (k < 1) apply(k);
+
+      EXK.focus(tl, steps);
+      if (note) tl.fromTo(note, { opacity: 0, scale: 1.25, rotation: -8 }, { opacity: 1, scale: 1, rotation: -3, duration: 0.3, ease: EXK.LAND }, spec.note.at);
+      EXK.end(ctx);
+    </script>
+  </body>
+</html>

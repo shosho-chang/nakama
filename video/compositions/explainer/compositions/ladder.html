@@ -1,0 +1,76 @@
+<!doctype html>
+<!-- 第 5 類「解釋動畫」型態「階梯」：一層一層往上的等級（財富階梯、能力等級……），像素角色一階一階爬上去。
+     原型：《財富階梯》「六個財富階層」。講到第幾階，那一階從地面長出來（正在講的那一階是橘色，講過的回白），
+     角色跳上去；講到金額時金額出現；講到那一階的代表情境，角色頭上冒出那個圖示。
+     底板、碎片、標題、出處、進退場在 assets/kit/；角色與圖示在 assets/kit/sprites.js。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"spec","type":"string","label":"內容 JSON（見 youtube-explainer skill 的「階梯」）","default":"{\"layout\":\"full\",\"title\":\"六個財富階層\",\"source\":\"資料：《財富階梯》\",\"show_sec\":70.0,\"character\":{\"sprite\":\"shosho\",\"px\":7,\"pop_px\":9},\"enter_at\":0.6,\"tiers\":[{\"name\":\"月光族\",\"amount\":\"30 萬以下\",\"at\":1.94,\"amount_at\":7.44,\"icon\":\"coin\",\"icon_at\":9.18},{\"name\":\"雜貨店自由\",\"amount\":\"30–300 萬\",\"at\":12.05,\"amount_at\":14.18,\"icon\":\"cart\",\"icon_at\":16.57},{\"name\":\"餐廳自由\",\"amount\":\"300–3,000 萬\",\"at\":24.99,\"amount_at\":26.63,\"icon\":\"bowl\",\"icon_at\":29.17},{\"name\":\"旅行自由\",\"amount\":\"3,000 萬–3 億\",\"at\":37.73,\"amount_at\":39.9,\"icon\":\"plane\",\"icon_at\":43.3},{\"name\":\"住宅自由\",\"amount\":\"3–30 億\",\"at\":49.11,\"amount_at\":51.25,\"icon\":\"house\",\"icon_at\":53.26},{\"name\":\"影響力自由\",\"amount\":\"30 億以上\",\"at\":61.27,\"amount_at\":64.07,\"icon\":\"briefcase\",\"icon_at\":66.67}]}"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/explainer-kit.js"></script>
+    <script src="assets/kit/sprites.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      /* 內容區 1620×730：地面在最底下；左邊留一段地面給角色起步，右邊 6 階 */
+      .ground { position: absolute; left: 0; right: 0; bottom: -8px; height: 8px; background: var(--ink); }
+      .step { position: absolute; bottom: 0; background: var(--white); padding: 8px 0 0 18px; }
+      .sname { font-size: 34px; white-space: nowrap; }
+      .samt { font-size: 28px; color: var(--ink-2); white-space: nowrap; margin-top: 4px; font-variant-numeric: tabular-nums; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="ladder"
+      data-width="1920" data-height="1080" data-start="0" data-duration="120"></div>
+    <script>
+      const spec = JSON.parse(EXK.vars().spec || "{}");
+      const ctx = EXK.frame("ladder", spec);
+      const { tl, stage } = ctx;
+      const W = 1620, H = 730, M = 170, RISE = 75;
+      const tiers = spec.tiers || [];
+      const SW = (W - M) / Math.max(1, tiers.length);
+
+      const ground = EXK.el("div", "ground", stage);
+      tl.fromTo(ground, { scaleX: 0, transformOrigin: "0 50%" }, { scaleX: 1, duration: 0.3, ease: EXK.SNAP }, 0.45);
+
+      const ch = Object.assign({ sprite: "shosho", px: 7 }, spec.character || {});
+      const cw = 16 * ch.px, chh = 22 * ch.px;   // shosho 是 16×22 格
+      const spot = (k) => k === 0
+        ? { left: (M - cw) / 2, top: H - chh }
+        : { left: M + (k - 1) * SW + (SW - cw) / 2, top: H - RISE * k - chh };
+      const hero = EXK_SPRITES.hero(ctx, Object.assign({ ground: false, enter_at: spec.enter_at ?? 0.6 }, ch, spot(0)));
+
+      const steps = [];
+      const focus = [];
+      tiers.forEach((t, i) => {
+        const k = i + 1;
+        const st = EXK.el("div", "step", stage);
+        st.style.left = M + i * SW + "px";
+        st.style.width = SW + 1 + "px";              // +1 蓋掉相鄰兩階之間的縫
+        st.style.height = RISE * k + "px";
+        EXK.el("div", "sname", st, t.name);
+        const amt = EXK.el("div", "samt", st, t.amount || "");
+        // 這一階從地面長出來，角色跳上去
+        tl.fromTo(st, { scaleY: 0, transformOrigin: "50% 100%" }, { scaleY: 1, duration: 0.3, ease: EXK.LAND }, t.at);
+        const s = spot(k);
+        hero.jumpTo(t.at + 0.25, s.left, s.top);
+        if (t.amount) tl.fromTo(amt, { opacity: 0, x: -16 }, { opacity: 1, x: 0, duration: 0.22, ease: EXK.SNAP }, t.amount_at ?? t.at);
+        if (t.icon) hero.pop(t.icon, t.icon_at ?? t.at + 1);
+        focus.push([t.at, st]);
+        steps.push(st);
+      });
+      // 正在講的那一階染橘，講過的回白
+      let prev = null;
+      focus.forEach(([t, st]) => {
+        if (prev) tl.to(prev, { backgroundColor: "#fff", duration: 0.14 }, t);
+        tl.to(st, { backgroundColor: EXK.ORANGE, duration: 0.14 }, t);
+        prev = st;
+      });
+      hero.walk();
+      EXK.end(ctx);
+    </script>
+  </body>
+</html>

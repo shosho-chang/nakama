@@ -18,7 +18,7 @@ PLAN = {
         _row("a", "concept_title"),
         _row("b", "quote_card", None),
         _row("c", "quote_card", "rearrange"),
-        _row("d", "stock"),
+        _row("d", "meme"),
         _row("e", "own_material"),
         _row("f", "aroll"),
         _row("g", "book_cover"),

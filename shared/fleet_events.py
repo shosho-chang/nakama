@@ -128,11 +128,20 @@ def minutes_dm(user_id: str, text: str, *, in_flow: bool) -> str | None:
 
     是 → 回 Sanji 要回的話；不是、或 freedom-fleet 出錯 → None（照原本流程處理，不擋聊天）。
     """
+    return _minutes_check({"user": user_id, "text": text, "in_flow": in_flow, "where": "dm"})
+
+
+def minutes_mention(user_id: str, text: str) -> str | None:
+    """頻道裡 @Sanji 的話是不是行動項目「做完了」「待辦」（2026-11-17 修修裁決：提醒改發頻道）。"""
+    return _minutes_check({"user": user_id, "text": text, "where": "channel"})
+
+
+def _minutes_check(payload: dict) -> str | None:
     try:
         out = _call(
             "fleet.minutes.tracker",
             "dm",
-            {"user": user_id, "text": text, "in_flow": in_flow},
+            payload,
             timeout=MINUTES_DM_TIMEOUT_S,
             side_effect=True,
         )

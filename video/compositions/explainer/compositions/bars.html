@@ -1,0 +1,123 @@
+<!doctype html>
+<!-- 第 5 類「解釋動畫」圖表「橫條」：幾個數量並排比大小（百分比，或同一個單位的數量）。
+     每一條在講到那個數字的那一句長出來，數字跟長條一起跳；正在講的那一條是橘色，講過的回黑。
+     不綁任何一集：內容全部從 spec 來（欄位見 youtube-explainer skill「圖表：橫條」）。
+     底板、碎片、標題、出處、進退場在 assets/kit/。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"spec","type":"string","label":"內容 JSON（見 youtube-explainer skill「圖表：橫條」）","default":"{\"layout\":\"full\",\"title\":\"範例標題\",\"source\":\"資料：範例\",\"show_sec\":9,\"unit\":\"%\",\"items\":[{\"label\":\"項目一\",\"value\":72,\"at\":1.2},{\"label\":\"項目二\",\"value\":45,\"at\":2.6},{\"label\":\"項目三\",\"value\":12,\"at\":4}],\"rest_at\":5.6,\"mark\":{\"item\":2,\"at\":6.2,\"text\":\"重點\"}}"}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <script src="assets/kit/explainer-kit.js"></script>
+    <link rel="stylesheet" href="assets/kit/explainer-kit.css" />
+    <style>
+      /* 滿版：標題下方到安全框底，一列一條：標籤｜白色軌道｜數字 */
+      .rows { position: absolute; left: 0; right: 0; top: 120px; bottom: 0; display: flex; flex-direction: column;
+        justify-content: center; }
+      .row { display: grid; align-items: center; column-gap: 36px; }
+      .label { white-space: nowrap; }
+      .track { position: relative; background: var(--white); }
+      .fill { position: absolute; left: 0; top: 0; bottom: 0; width: 0; background: var(--ink); }
+      .val { position: relative; white-space: nowrap; font-variant-numeric: tabular-nums; }
+      /* 疊加（右側欄 640 寬）：上面一行「標籤……數字」，下面整寬的軌道——側欄窄，軌道不跟數字搶寬度 */
+      .side .row { grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; row-gap: 8px; align-items: end; }
+      .side .track { grid-column: 1 / -1; }
+      .side .mark { right: auto; left: 38%; }   /* 側欄的數字就在軌道右上方，牌子往中間貼才不壓到數字 */
+      /* 重點牌：黑底白字，斜貼在那一條軌道的右端（一個畫面只斜一張）；貼在軌道上，不會跑出安全框 */
+      .mark { position: absolute; right: 18px; top: 50%; margin-top: -33px; background: var(--ink); color: var(--white);
+        font-size: 40px; padding: 12px 22px 14px; white-space: nowrap; transform: rotate(-4deg); z-index: 1; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="bars"
+      data-width="1920" data-height="1080" data-start="0" data-duration="60"></div>
+    <script>
+      const spec = JSON.parse(EXK.vars().spec || "{}");
+      const ctx = EXK.frame("bars", spec);
+      const { tl, stage, full } = ctx;
+      const items = spec.items || [];
+      const n = Math.max(1, items.length);
+      if (n > 6) console.warn("橫條超過 6 條：放不下就是 Director 要拆");
+
+      // 刻度：百分比固定 0–100；其他單位以最大的那一條為滿（或 spec.max 指定）
+      const unit = spec.unit ?? "%";
+      const max = spec.max ?? (unit === "%" ? 100 : Math.max(...items.map((it) => it.value)));
+
+      // 尺寸跟著條數走：滿版內容區 1620×610、側欄 640×（784−標題）
+      const wrap = EXK.el("div", "rows" + (full ? "" : " side"), stage);
+      const area = full ? 610 : 640;
+      let valPx = full ? (n <= 4 ? 96 : 84) : (n <= 3 ? 88 : 72);
+      const labPx = full ? (n <= 4 ? 60 : 48) : 40;
+      let barPx = full ? Math.min(88, Math.round(valPx * 0.86)) : Math.round(valPx * 0.6);
+      let rowH = full ? valPx : valPx + 8 + barPx;
+      const gap = Math.max(14, Math.min(70, (area - rowH * n) / Math.max(1, n - 1)));
+      wrap.style.gap = gap + "px";
+
+      // 滿版的標籤欄寬＝最長標籤（量出來），上限 560；數字欄寬＝最寬的數字
+      const probe = EXK.el("div", "label", document.getElementById("root"));
+      probe.style.cssText = "position:absolute;visibility:hidden;font-size:" + labPx + "px";
+      const labW = Math.min(560, Math.max(...items.map((it) => { probe.textContent = it.label; return probe.offsetWidth; })));
+      const text = (it) => (it.prefix ?? spec.prefix ?? "") + EXK.num(it.value, it.digits ?? spec.digits ?? 0) + (it.suffix ?? unit);
+      probe.style.fontSize = valPx + "px";
+      let valW = Math.max(...items.map((it) => { probe.textContent = text(it); return probe.offsetWidth; }));
+      // 側欄：一行要放「最長標籤＋最寬數字」，放不下就把數字縮到剛好（下限 60px）
+      if (!full) {
+        probe.style.fontSize = labPx + "px";
+        const lw = Math.max(...items.map((it) => { probe.textContent = it.label; return probe.offsetWidth; }));
+        const room = 640 - 16 - lw;
+        if (valW > room) { valPx = Math.max(60, Math.floor(valPx * room / valW)); }
+      }
+      probe.remove();
+
+      const fills = [], vals = [], tracks = [];
+      items.forEach((it) => {
+        const row = EXK.el("div", "row", wrap);
+        if (full) row.style.gridTemplateColumns = labW + "px 1fr " + valW + "px";
+        const lab = EXK.el("div", "label", row, it.label);
+        lab.style.fontSize = labPx + "px";
+        const track = EXK.el("div", "track", row);
+        track.style.height = barPx + "px";
+        const fill = EXK.el("div", "fill", track);
+        const val = EXK.el("div", "val", row);
+        val.style.fontSize = valPx + "px";
+        if (!full) row.insertBefore(val, track);   // 側欄：標籤、數字同一行，軌道在下面
+
+        const ratio = Math.max(0, Math.min(1, it.value / max));
+        const grow = 0.38 + 0.5 * ratio;   // 越長長得越久，但不拖
+        EXK.land(tl, lab, it.at - 0.15, { x: -30, y: 0 });
+        tl.fromTo(track, { scaleX: 0, transformOrigin: "0 50%" }, { scaleX: 1, duration: 0.22, ease: EXK.SNAP }, it.at - 0.15);
+        tl.fromTo(fill, { width: "0%" }, { width: ratio * 100 + "%", duration: grow, ease: EXK.SNAP }, it.at);
+        tl.fromTo(val, { opacity: 0 }, { opacity: 1, duration: 0.1 }, it.at);
+        EXK.count(tl, val, it.value, it.at, grow, it.digits ?? spec.digits ?? 0, it.suffix ?? unit, it.prefix ?? spec.prefix);
+        fills.push(fill); vals.push(val); tracks.push(track);
+      });
+
+      // 講到哪一條亮哪一條（長條＋數字染橘），講過的回黑；rest_at 全部回黑；mark 把某一條再點亮＋斜貼重點牌
+      const steps = items.map((it, i) => [it.at, i]);
+      if (spec.rest_at != null) steps.push([spec.rest_at, null]);
+      const m = spec.mark;
+      if (m && fills[m.item]) steps.push([m.at, m.item]);
+      steps.sort((a, b) => a[0] - b[0]);
+      let prev = null;
+      steps.forEach(([t, i]) => {
+        if (prev != null && prev !== i) {
+          tl.to(fills[prev], { backgroundColor: EXK.INK, duration: 0.14 }, t);
+          tl.to(vals[prev], { color: EXK.INK, duration: 0.14 }, t);
+        }
+        if (i != null && i !== prev) {
+          tl.to(fills[i], { backgroundColor: EXK.ORANGE, duration: 0.14 }, t);
+          tl.to(vals[i], { color: EXK.ORANGE, duration: 0.14 }, t);
+        }
+        prev = i;
+      });
+      if (m && m.text && tracks[m.item]) {
+        const tag = EXK.el("div", "mark", tracks[m.item], m.text);
+        tl.fromTo(tag, { opacity: 0, scale: 1.25, rotation: -9 }, { opacity: 1, scale: 1, rotation: -4, duration: 0.3, ease: EXK.LAND }, m.at);
+      }
+      EXK.end(ctx);
+    </script>
+  </body>
+</html>

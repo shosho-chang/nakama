@@ -109,3 +109,21 @@ def test_load_layout_skips_rows_no_longer_in_the_plan(tmp_path):
     assert [o.row_id for o in layout.overlays] == ["keep"]
     assert [i.row_id for i in layout.inserts] == ["ch"] and layout.inserts[0].push == 1.7
     assert any("gone" in s for s in layout.skipped)
+
+
+def test_comic_sound_goes_to_audio_tracks_from_a2():
+    layout = ly.Layout(
+        inserts=[_insert(10.0)],
+        overlays=[
+            ly.Overlay("chart", "explainer", 2.0, 5.0, Path("chart.mov"), "full"),
+            ly.Overlay("comic", "explainer", 12.0, 20.0, Path("comic.mov"), "full", audio=True),
+            ly.Overlay("comic2", "explainer", 30.0, 6.0, Path("c2.mov"), "full", audio=True),
+        ],
+    )
+    sounds = {p.row_id: p for p in ly.audio_placements(layout)}
+    assert set(sounds) == {"comic", "comic2"}  # 沒帶聲音的不放音軌
+    assert sounds["comic"].track == 2 and sounds["comic"].record == ly.frames(13.7)
+    assert sounds["comic"].length == ly.frames(20.0)
+    assert sounds["comic2"].track == 3  # 跟 comic 重疊 → A3
+    video = {p.row_id: p for p in ly.placements(layout)}
+    assert video["comic"].record == sounds["comic"].record  # 畫面跟聲音同一格開始

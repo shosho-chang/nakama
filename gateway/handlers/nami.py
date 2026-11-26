@@ -42,6 +42,7 @@ from shared.memory_extractor import extract_in_background
 from shared.obsidian_writer import delete_page, list_files, read_page, write_page
 from shared.prompt_loader import load_prompt
 from shared.vault_rules import VaultRuleViolation, assert_nami_can_read, assert_nami_can_write
+from shared.weekly_writer import _sync_estimate_to_plan
 from shared.wikilink import strip_wikilink
 
 logger = get_logger("nakama.gateway.nami")
@@ -1795,18 +1796,7 @@ class NamiHandler(BaseHandler):
         self, title: str, directory: str = TASK_DIR
     ) -> tuple[str, dict, str] | None:
         """以 title 搜尋 task 檔案，回傳 (relative_path, frontmatter, body) 或 None。"""
-        title_lower = title.lower()
-        for f in list_files(directory):
-            rel = f"{directory}/{f.name}"
-            content = read_page(rel)
-            if not content:
-                continue
-            fm = _extract_frontmatter(content)
-            if _title_matches(title_lower, fm.get("title")):
-                parts = content.split("---", 2)
-                body = parts[2].strip() if len(parts) >= 3 else ""
-                return rel, fm, body
-        return None
+        return find_task_by_title(title, directory)
 
     def _find_task_by_calendar_id(self, event_id: str) -> tuple[str, dict, str] | None:
         """以 calendar_event_id 搜尋 task 檔案，回傳 (relative_path, frontmatter, body) 或 None。
@@ -2159,26 +2149,9 @@ class NamiHandler(BaseHandler):
         category: str = "work",
         project: str | None = None,
     ) -> None:
-        """建立 calendar-linked task。v3-D：排程寫進 per-entry ``plan[]``（date /
-        pomodoros / start / end / calendar_event_id），不再寫 task 層級的
-        scheduled 鏡像——與 Bridge 的多事件模型同一個來源（ADR-041 v3）。``category``
-        由 LLM 依事件內容判斷（只有 work 計入 🍅 統計），與 ``create_task`` 同源。"""
-        plan_entry = _event_to_plan_entry(event)
-        # 修修 2026-08-29 稽核：frontmatter 改由 render_task 產生（＝ Bridge 新增任務 /
-        # Nami create_task 用的同一個 renderer），這樣「{專案} - {任務}」的標題前綴與
-        # projects: [[…]] 的雙寫慣例才會跟其他路徑一致；原本手寫的 dict 沒有 projects
-        # 欄位，行事曆建的任務因此永遠歸不到專案。
-        from shared.lifeos_writer import render_task
-
-        frontmatter, _ = render_task(
-            project,
-            event.title,
-            estimated_pomodoros=int(plan_entry.get("pomodoros") or 0),
-            priority="normal",
-            category=category,
-        )
-        frontmatter["plan"] = [plan_entry]
-        write_page(rel_path, frontmatter, "")
+        """建立 calendar-linked task（實作見模組層級 :func:`write_calendar_linked_task`，
+        Sanji 開內部會議也共用同一份）。"""
+        write_calendar_linked_task(rel_path, event, category, project)
 
     def _tool_list_calendar_events(self, input_: dict) -> _ToolOutcome:
         range_ = input_.get("range", "today")
@@ -2342,6 +2315,7 @@ class NamiHandler(BaseHandler):
         if not matched:  # legacy task-level link OR bare `scheduled` → migrate into plan[] now
             plan.append(new_entry)
         fm["plan"] = _stringify_plan(plan)
+        _sync_estimate_to_plan(fm)  # event resized/moved → 預估🍅 follows the plan (Bridge rule)
         # retire the legacy task-level mirror (v3-D)
         for k in ("scheduled", "scheduled_end", "calendar_event_id"):
             fm.pop(k, None)
@@ -2403,6 +2377,7 @@ class NamiHandler(BaseHandler):
                     task_note = f"\n   📝 Task 一併刪除：{task_rel}"
             else:
                 fm["plan"] = _stringify_plan(remaining)
+                _sync_estimate_to_plan(fm)  # 預估🍅 follows the remaining plan (Bridge rule)
                 if legacy_match:  # retire the legacy task-level mirror (v3-D)
                     for k in ("scheduled", "scheduled_end", "calendar_event_id"):
                         fm.pop(k, None)
@@ -3421,6 +3396,54 @@ def _event_to_plan_entry(event: CalendarEvent) -> dict:
         "end": end_dt.isoformat(timespec="seconds"),
         "calendar_event_id": event.id,
     }
+
+
+def find_task_by_title(title: str, directory: str = TASK_DIR) -> tuple[str, dict, str] | None:
+    """以 title 搜尋 task 檔案，回傳 (relative_path, frontmatter, body) 或 None。
+
+    模組層級（原 ``NamiHandler._find_task_by_title`` 的本體）——Sanji 開內部會議建 Task 前
+    也要用它查撞名。"""
+    title_lower = title.lower()
+    for f in list_files(directory):
+        rel = f"{directory}/{f.name}"
+        content = read_page(rel)
+        if not content:
+            continue
+        fm = _extract_frontmatter(content)
+        if _title_matches(title_lower, fm.get("title")):
+            parts = content.split("---", 2)
+            body = parts[2].strip() if len(parts) >= 3 else ""
+            return rel, fm, body
+    return None
+
+
+def write_calendar_linked_task(
+    rel_path: str,
+    event: CalendarEvent,
+    category: str = "work",
+    project: str | None = None,
+    body: str = "",
+) -> None:
+    """建立 calendar-linked task。v3-D：排程寫進 per-entry ``plan[]``（date /
+    pomodoros / start / end / calendar_event_id），不再寫 task 層級的
+    scheduled 鏡像——與 Bridge 的多事件模型同一個來源（ADR-041 v3）。``category``
+    由 LLM 依事件內容判斷（只有 work 計入 🍅 統計），與 ``create_task`` 同源。"""
+    plan_entry = _event_to_plan_entry(event)
+    # 修修 2026-08-29 稽核：frontmatter 改由 render_task 產生（＝ Bridge 新增任務 /
+    # Nami create_task 用的同一個 renderer），這樣「{專案} - {任務}」的標題前綴與
+    # projects: [[…]] 的雙寫慣例才會跟其他路徑一致；原本手寫的 dict 沒有 projects
+    # 欄位，行事曆建的任務因此永遠歸不到專案。
+    from shared.lifeos_writer import render_task
+
+    frontmatter, _ = render_task(
+        project,
+        event.title,
+        estimated_pomodoros=int(plan_entry.get("pomodoros") or 0),
+        priority="normal",
+        category=category,
+    )
+    frontmatter["plan"] = [plan_entry]
+    write_page(rel_path, frontmatter, body)
 
 
 def _plan_entries(fm: dict) -> list[dict]:

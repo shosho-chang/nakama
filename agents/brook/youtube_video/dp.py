@@ -40,9 +40,13 @@ RENDERERS = {
     "doc_highlight": "agents.brook.youtube_video.visuals.doc_highlight",
     "quote_card": "agents.brook.youtube_video.visuals.quote_card",
     "side_bullets": "agents.brook.youtube_video.visuals.side_bullets",
+    "explainer": "agents.brook.youtube_video.visuals.explainer",
+    "stock": "agents.brook.youtube_video.visuals.stock",  # 不渲染：檢查規格檔、寫收據
     "others_clip": "agents.brook.youtube_video.visuals.others_clip",
 }
 REPORT_FILE = "dp_report.json"
+# 不渲染、只寫收據的分類（stock：原檔直接上 Resolve）——報告寫 delivered，不寫 rendered
+NOT_RENDERED = frozenset({"stock"})
 
 Deliver = Callable[..., tuple[dict[str, Any], bool]]
 
@@ -51,7 +55,7 @@ Deliver = Callable[..., tuple[dict[str, Any], bool]]
 class Outcome:
     row_id: str
     category: str
-    result: str  # rendered／reused／failed／pending_build／awaiting_material／not_needed
+    result: str  # rendered／delivered／reused／failed／pending_build／awaiting_material／not_needed
     message: str = ""
     seconds: float = 0.0
 
@@ -97,7 +101,8 @@ def build(
             started = time.monotonic()
             try:
                 _, rendered = deliver_for(cat_id)(episode, plan, row, force=force)
-                result, message = ("rendered" if rendered else "reused"), ""
+                done = "delivered" if cat_id in NOT_RENDERED else "rendered"
+                result, message = (done if rendered else "reused"), ""
             except delivery.DeliveryError as exc:
                 result, message = "failed", str(exc)
             except Exception as exc:  # 單列壞掉不能拖垮整集：記下來繼續
