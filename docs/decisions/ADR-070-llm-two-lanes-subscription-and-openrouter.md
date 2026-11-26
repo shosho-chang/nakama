@@ -192,8 +192,8 @@ exhausted / openrouter_* ──(resets_at 到了且探針成功 / 修修按「�
 | 呼叫點 | 改法 |
 |---|---|
 | `scripts/render_watcher.py` packaging job | **2026-11-14 修訂：撤銷，不改走 L1，整個背景派工刪除**（見〈修修裁決（2026-11-14）〉）。以下為原決定，只留作紀錄。<br>~~改用 SDK agentic 呼叫，**`model="opus"`**（D-f）。能不能真的拿到最新版，靠 D10 的 SDK 自動升級。呼叫類別是 `batch`。<br>• 環境：`cwd=job_dir`；`add_dirs` 包含 working episode、vault packaging、vault cutout，以及 repo root（skill 要執行 repo 裡的 script）；`setting_sources=[]`，避免桌機 `~/.claude/settings.json` 和 repo `.claude/settings.json` 的 allow 規則蓋掉限制（F16）；`permission_mode` 明確指定。<br>• 寫入限制：用 **`PreToolUse` hook** 擋掉 Write / Edit 對這些路徑以外的寫入。允許寫入的清單是：`job_dir`、working episode 的 packaging、vault packaging、vault cutouts；repo root 只能讀。<br>• 已知限制：透過 Bash 執行的 script 自己寫檔擋不住，最後防線是既有的成功驗證（`_validate_initial_packaging_outputs`，`render_watcher.py:570`），加上 prompt 規則。<br>• wall-clock 上限 4 小時（沿用 `timeout=14400`），用 `anyio.fail_after` 實作。<br>• 記錄 `AssistantMessage.model`。<br>• `tests/test_render_watcher.py:437-468` 改鎖新的 model。~~ |
-| `.../finished_cut_production/_codex_semantic.py` | 改用 SDK 呼叫：開放 Read 工具讓它讀 `packet.json`（`:720`），或把 packet 直接放進 prompt。搭配 `output_format`，schema 從 2020-12（`:830`）轉成 draft-07（U10），`max_turns` 至少 3。 |
-| `scripts/podcast_highlight_visual_orchestrator.py` | 改用 SDK agentic 呼叫。沿用現有的 resume 契約：session id 要一致（`:197-203`），改用 SDK 的 `resume` / `session_id`，並固定 `cwd`（resume 必須在同一個 cwd）。 |
+| `.../finished_cut_production/_codex_semantic.py` | **2026-11-14 修訂：撤銷，不改走 L1，開 Codex 的 runner 刪除**（見〈修修裁決（2026-11-14）：成片語意工作只交給當下的 agent〉）。以下為原決定，只留作紀錄。<br>~~改用 SDK 呼叫：開放 Read 工具讓它讀 `packet.json`（`:720`），或把 packet 直接放進 prompt。搭配 `output_format`，schema 從 2020-12（`:830`）轉成 draft-07（U10），`max_turns` 至少 3。~~ |
+| `scripts/podcast_highlight_visual_orchestrator.py` | **2026-11-14 修訂：整支刪除**（ADR-065 已停用的 visual DAG）。以下為原決定，只留作紀錄。<br>~~改用 SDK agentic 呼叫。沿用現有的 resume 契約：session id 要一致（`:197-203`），改用 SDK 的 `resume` / `session_id`，並固定 `cwd`（resume 必須在同一個 cwd）。~~ |
 | `scripts/dispatch_codex_playbook_audit.py` | 一次性腳本，在 D8 退役。 |
 
 ### D8　退役清單（D-g：沒用到的直接刪）
@@ -344,7 +344,18 @@ S5、S4 可以和 S1a–d 並行。S3 不依賴 S2，隨時可以做。S7 在 S1
 - **D7 第一列撤銷**：`scripts/render_watcher.py` 的 packaging job 不改走 L1，而是整段刪除（`pending_packaging_jobs`、`run_packaging_job`、`dispatch_packaging_agent`、`_codex_command` 與驗證 helper）。watcher 只剩存配方出圖。
 - **理由**：① 語意工作由當下執行的 agent 做，不在背景另開供應商（`feedback_semantic_work_runs_on_host_agent`）；② Highlight shortlist 一核准就在背景做 packaging，比 `podcast-pipeline` S8F 派工圖的順序早——長片 packaging 排在 timeline review 第二次「定稿」之後；③ 背景與對話兩條路會同時寫 `packages.json`，S8F 把它列為併發紅線。
 - **Bridge 行為不變**：shortlist 核准照樣在 `manifest.json` 標 `packaging.status=queued`；對話中的 agent 跑完 title-brainstorm／thumbnail-brainstorm、`packages.json` 出現該 cut 後，`/bridge/packaging` 自動顯示 ready（`thousand_sunny/routers/packaging.py` 既有邏輯）。
-- D7 其餘列（`_codex_semantic.py` 等）不受影響。
+- D7 其餘列（`_codex_semantic.py` 等）不受影響。（同日稍後撤銷，見下一節。）
+
+## 修修裁決（2026-11-14）：成片語意工作只交給當下的 agent
+
+修修原話：「為什麼現在還要跑 Codex？我現在明明都是在 Claude Code 的環境跑啊」、「把指定 codex 全部都拿掉，只交給當下的 agent」。
+
+- **D7 第二、三列撤銷**：`_codex_semantic.py` 不改走 L1；開 Codex 子行程的 `SubprocessCodexProcessRunner` 與 `_resolve_codex_executable` 刪除。`scripts/podcast_highlight_visual_orchestrator.py`（ADR-065 已停用）整支刪除。
+- **`run_finished_cut_production.py`**：`--semantic-worker` 只剩 `handoff`，也是預設。
+- **`build_production_application`** 沒指定 runner 時用 `UnassignedSemanticRunner`：不開任何子行程，該次 dispatch 直接記 failed（可 `retry-failed-dispatch`）。
+- **`finished_review_watcher.py`**：背景常駐只把 Bridge 的修改登錄成 command，不推進；推進由對話中的 agent 跑 `--host-agent`，語意 packet 走 handoff。Bridge 對 `registered` 狀態顯示「修改已登錄，等對話中的 agent 接手」。
+- `Codex*` 型別名稱（`CodexSemanticAdapter`、`CodexProcessResult` 等）是歷史遺留，這次不改名，避免 ledger 與測試大面積改動。
+- 不在本裁決範圍：`dispatch_codex_playbook_audit.py`（D8 已列一次性腳本退役）；carousel job 的 `--executor codex|claude_code`（只是記錄由哪個 host agent 認領，不派工）。
 
 ## S0 取證結果（2026-09-25）
 

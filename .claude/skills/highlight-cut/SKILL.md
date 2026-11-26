@@ -391,7 +391,7 @@ Director skill → DP skill → same-Director second-pass semantic audit → mat
 長片的 Director／DP／視覺審查／物化唯一路線是 ADR-066
 `run_finished_cut_production.py --semantic-worker handoff`，實跑手冊見 `longform-cut` skill
 「ADR-066 實跑手冊」。ADR-065 的 revision-scoped visual DAG（`podcast_highlight_visual_orchestrator.py`）
-已停用，本節舊原文移到 `docs/archive/2026-11-14-adr-065-skill-sections.md`，只供讀舊 receipt 對照。
+已刪除（2026-11-14），本節舊原文移到 `docs/archive/2026-11-14-adr-065-skill-sections.md`，只供讀舊 receipt 對照。
 
 ## Step 4 — 標題（長短片分流，修修 2026-07-26 二修裁決；ADR-054 D4/D13/D16）
 
