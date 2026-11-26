@@ -103,6 +103,43 @@
     ctx.tl.to(ctx.stage.children, { y: 40, opacity: 0, duration: 0.22, ease: EXIT, stagger: 0.02 }, ctx.OUT);
     if (ctx.src) ctx.tl.to(ctx.src, { opacity: 0, duration: 0.14 }, ctx.OUT);
     ctx.tl.to({}, { duration: Math.max(60, ctx.S + 1) }, 0);
+    check(ctx);
+  }
+
+  // 版面檢查（網址有 ?check 才跑；渲染不經過這裡）：等品牌字型載入、跳到快結束（全部元素都出來了），
+  // 量每一段字的位置——超出安全框、兩段字重疊都列出來，寫進 <pre id="exk-check">（tools/chart_check.py 讀）。
+  // 橫向用字的實際寬度，直向用元素的行框（line-height 1，不算字體上下留白）。
+  const SAFE = { full: [150, 90, 1770, 890], side: [1210, 80, 1850, 880] };
+  function check(ctx) {
+    let q = null;
+    try { q = new URLSearchParams(location.search); } catch (e) { return; }
+    if (!q.has("check")) return;
+    const t = Number(q.get("check")) || ctx.S - 0.7;
+    const texts = [...document.querySelectorAll("#root *")].map((e) => e.textContent).join("");
+    document.fonts.load('900 100px "Noto Sans TC Black"', texts).then(() => document.fonts.ready).then(() => {
+      ctx.tl.seek(t, false);
+      const [x0, y0, x1, y1] = ctx.full ? SAFE.full : SAFE.side;
+      const rects = [];
+      const walk = document.createTreeWalker(document.getElementById("root"), NodeFilter.SHOW_TEXT);
+      let n;
+      while ((n = walk.nextNode())) {
+        if (!n.textContent.trim()) continue;
+        const host = n.parentElement;
+        if (getComputedStyle(host).opacity === "0") continue;
+        const r = document.createRange(); r.selectNodeContents(n);
+        const b = r.getBoundingClientRect(), e = host.getBoundingClientRect();
+        if (!b.width) continue;
+        rects.push({ text: n.textContent.trim(), box: [b.left, e.top, b.right, e.bottom].map(Math.round) });
+      }
+      const outside = rects.filter(({ box: [l, tp, r, bt] }) => l < x0 || tp < y0 || r > x1 || bt > y1);
+      const overlap = [];
+      rects.forEach((a, i) => rects.slice(i + 1).forEach((c) => {
+        const [al, at, ar, ab] = a.box, [cl, ct, cr, cb] = c.box;
+        if (al < cr - 2 && cl < ar - 2 && at < cb - 2 && ct < ab - 2) overlap.push([a.text, c.text]);
+      }));
+      const pre = el("pre", null, document.body, JSON.stringify({ at: t, outside, overlap }));
+      pre.id = "exk-check";
+    });
   }
 
   // 啪地貼上（落地回彈）
@@ -123,12 +160,18 @@
   }
 
   // 數字跳動：from → to，落在指定格式（小數位）；跟長條同一條曲線
-  function count(tl, node, to, at, dur, digits, suffix) {
+  // 千分位：3000 → 3,000（大數字一律加，讀得快）
+  function num(x, digits) {
+    const [i, d] = Math.abs(x).toFixed(digits || 0).split(".");
+    return (x < 0 ? "-" : "") + i.replace(/\B(?=(\d{3})+(?!\d))/g, ",") + (d ? "." + d : "");
+  }
+  // prefix 給「NT$」這類放在數字前面的單位
+  function count(tl, node, to, at, dur, digits, suffix, prefix) {
     const o = { v: 0 };
-    const fmt = (x) => x.toFixed(digits || 0) + (suffix || "");
+    const fmt = (x) => (prefix || "") + num(x, digits) + (suffix || "");
     node.textContent = fmt(0);
     tl.to(o, { v: to, duration: dur, ease: SNAP, onUpdate: () => (node.textContent = fmt(o.v)) }, at);
   }
 
-  window.EXK = { vars, el, frame, end, land, focus, count, ORANGE, INK, SNAP, LAND, EXIT };
+  window.EXK = { vars, el, frame, end, land, focus, count, num, ORANGE, INK, SNAP, LAND, EXIT };
 })();

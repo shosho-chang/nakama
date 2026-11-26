@@ -53,6 +53,8 @@ KINDS: dict[str, tuple[float, float | None]] = {
 # 疊加畫面固定在哪一側 → 臉要讓到另一側。
 # 書封、重點條列固定在右側（youtube-book-cover、youtube-side-bullets）。
 OVERLAY_MOVES = {"book_cover": "left", "side_bullets": "left"}
+# 版面由 Director 選的分類：疊在右側欄（overlay）時臉讓到左邊；滿版蓋住整個畫面，不搬。
+LAYOUT_MOVES = {"explainer": {"overlay": "left"}}
 FACE_MODEL = Path(os.environ.get("FACE_LANDMARKER_MODEL", r"E:\data\models\face_landmarker.task"))
 IRIS_L, IRIS_R = 468, 473
 MIN_FACE_SAMPLES = 3
@@ -345,12 +347,18 @@ def connect_resolve():
 # ── 規劃表 → 搬移 ─────────────────────────────────────────────────────
 
 
+def overlay_move(category: str | None, layout: str | None) -> str | None:
+    """這張疊加畫面要不要把臉搬開、搬去哪一側。"""
+    fixed = OVERLAY_MOVES.get(category or "")
+    return fixed or LAYOUT_MOVES.get(category or "", {}).get(layout or "")
+
+
 def moves_for_receipts(episode_dir: Path) -> list[Move]:
     """依已交件的疊加畫面收據排出搬移（原始錄影的秒數；鋪時間軸時再換成 timeline 秒數）。"""
     moves = []
     for path in sorted((Path(episode_dir) / "visuals").glob("*.json")):
         receipt = json.loads(path.read_text(encoding="utf-8"))
-        kind = OVERLAY_MOVES.get(receipt.get("category"))
+        kind = overlay_move(receipt.get("category"), receipt.get("layout"))
         if kind:
             start = float(receipt["start_sec"])
             moves.append(Move(kind, start, start + float(receipt["duration_sec"])))
