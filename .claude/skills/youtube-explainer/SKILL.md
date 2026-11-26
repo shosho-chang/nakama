@@ -3,14 +3,16 @@ name: youtube-explainer
 description: >
   YouTube 照稿影片第 5 類「解釋動畫」：把一段論證做成品牌 infographic 圖表（橫條、直條、圓環、點陣、圓餅、
   大數字、折線、刻度、算式、對比），或用人偶漫畫演一段情境；講到哪裡畫到哪裡。Director 在規劃表寫「解說需求」
-  （要觀眾看出什麼、拍點、數字出處），DP 選圖表、寫圖表規格檔，程式檢查版面後渲染交件。
+  （要觀眾看出什麼、拍點、數字出處），DP 選圖表、寫圖表規格檔，程式檢查版面後渲染交件；
+  漫畫照分鏡表手做、修修看過預覽後，規格檔寫要接哪幾頁，同一支程式接頁、帶音效交件。
   Triggers: /youtube-explainer、「做解釋動畫」「這段做成圖表／動畫」。
   不用在：重點條列（youtube-side-bullets）、單一概念名詞（youtube-concept-title）、文件引用（youtube-doc-highlight）。
 ---
 
 # youtube-explainer — 解釋動畫
 
-**版本：v0.5（2026-11-25：圖表改成不分題材的品牌 infographic 包，十種，接上 DP 交件；面板、階梯改歸漫畫）**
+**版本：v0.6（2026-11-26：漫畫也接上 DP 交件——規格檔寫頁清單，逐頁渲、接起來、帶音效；見「漫畫」第 9 點）**
+（v0.5，2026-11-25：圖表改成不分題材的品牌 infographic 包，十種，接上 DP 交件；面板、階梯改歸漫畫）
 
 ## 為什麼是兩層，不是一句 prompt
 
@@ -305,6 +307,18 @@ HyperFrames 不讀文字 prompt，它把一頁網頁（HTML＋GSAP）逐格渲�
 8. **修修看預覽給回饋時**：不要只改他講的那一點就交。先逐格截圖找出「為什麼不對」（例：手機不自然＝螢幕朝觀眾、
    手被擋住、頭沒在看），一條一條列給他；畫不出來的鏡位找真實照片／電影畫面並排比，人偶做不到就換鏡位
    （過肩 → 主觀鏡頭），不要硬拼。最後把學到的寫回 `shot-list.md`（鏡位狀態）和這一節。
+9. **交件給 DP**（照稿影片的規劃表有這一列時；修修看過預覽、說可以之後才做）：
+   - 規劃表那一列：分類＝解釋動畫、**版面選滿版**（漫畫是白底滿版），字幕範圍＝漫畫蓋住的那幾句。
+   - 時間以**規劃表的字幕**（`visual_plan.json` 的 cues＝初剪時間軸）為準：第一頁 0 秒＝這一列第一句的開頭，
+     每頁的 `data-duration` 加起來要跟這一列蓋住的秒數差 0.5 秒以內。
+   - 規格檔 `<episode>/visual_sources/<row_id>.json` 只寫要接哪幾頁，照播放順序：
+     `{"chart": "comic", "pages": ["comic_<段>_p1", "comic_<段>_p2"]}`
+   - 之後跟圖表一樣：`python -m agents.brook.youtube_video.visuals.explainer "G:/Footages/<ep>" --row <id> --check` 檢查，
+     DP 總調度或 `--row <id>` 渲染交件。程式逐頁渲 mov、接成一支 `visuals/<row_id>.mov`（ProRes 4444＋音效 PCM），
+     收據標 `audio: true`；鋪時間軸時畫面放 V2 以上、音效放 A2 以上（A1 是原始錄影）。一頁 18 秒約渲 4 分多鐘。
+   - 背景圖、音效、共用積木（`assets/kit`、`character`、`heads`、`brand`、`vendor`）任何一個改了，收據對不上就會重渲。
+     worktree 沒接 `assets/scenes`／`assets/sfx` junction 時檢查會直接擋下、印出 mklink 指令（見第 2、5 點）。
+   - 漫畫不跑版面量測（字幕安全框那套是圖表用的）——驗收靠第 7 點的預覽。
 
 ## 做法（圖表）
 

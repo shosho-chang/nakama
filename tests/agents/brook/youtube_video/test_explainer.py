@@ -233,3 +233,101 @@ def test_dp_routes_explainer_rows_here():
         dict(plan["rows"][0], id="row-c", category="side_bullets"),
     ]
     assert [row["id"] for row in ex.approved_rows(plan)] == ["row-a"]
+
+
+# ── 漫畫 ────────────────────────────────────────────────────────────────
+
+PAGE = """<!doctype html><html><head>
+<script src="assets/kit/comic.js"></script></head><body>
+<div id="root" data-composition-id="{name}" data-start="0" data-duration="{dur}">
+<audio src="assets/sfx/jump.wav" data-start="1.0"></audio></div>
+<script>EXK_COMIC.page(root, {{ cells: {{ c1: {{ img: "assets/scenes/t/c1.png" }} }} }});</script>
+</body></html>"""
+
+
+@pytest.fixture
+def comic_dir(tmp_path, monkeypatch):
+    """假的漫畫資料夾：兩頁（6.0＋8.4 秒＝這一列的 14.4 秒）、背景圖、音效、積木。"""
+    root = tmp_path / "explainer"
+    for rel in ("assets/kit/comic.js", "assets/sfx/jump.wav", "assets/scenes/t/c1.png"):
+        (root / rel).parent.mkdir(parents=True, exist_ok=True)
+        (root / rel).write_bytes(rel.encode())
+    (root / "compositions").mkdir()
+    for name, dur in (("comic_t_p1", 6.0), ("comic_t_p2", 8.4)):
+        page = PAGE.format(name=name, dur=dur)
+        (root / "compositions" / f"{name}.html").write_text(page, encoding="utf-8")
+    monkeypatch.setattr(ex, "COMPOSITION_DIR", root)
+    return root
+
+
+COMIC_SPEC = {"chart": "comic", "pages": ["comic_t_p1", "comic_t_p2"]}
+
+
+def test_comic_pages_are_rendered_joined_and_carry_sound(tmp_path, comic_dir):
+    ep = tmp_path / "ep"
+    _write_spec(ep, COMIC_SPEC)
+    plan = _plan()
+    runner = FakeRunner()
+
+    def no_checker(chart, spec):
+        raise AssertionError("漫畫不量版面")
+
+    receipt, rendered = ex.deliver_row(ep, plan, plan["rows"][0], runner=runner, checker=no_checker)
+    assert rendered
+    p1, p2, join = runner.calls
+    assert p1[p1.index("-c") + 1] == "compositions/comic_t_p1.html"
+    assert p2[p2.index("-c") + 1] == "compositions/comic_t_p2.html"
+    assert p1[p1.index("--format") + 1] == "mov" and "--variables-file" not in p1
+    assert join[join.index("-f") + 1] == "concat" and join[join.index("-t") + 1] == "14.400"
+    assert join[join.index("-c:a") + 1] == "pcm_s16le"
+    media = delivery.asset_paths(ep, "row-a").media
+    assert media.is_file() and sorted(p.name for p in media.parent.iterdir()) == [
+        "row-a.json",
+        "row-a.mov",
+    ]  # 每頁的暫存檔、接檔清單都清掉
+    assert receipt["component"] == "explainer/comic" and receipt["audio"] is True
+    assert receipt["pages"] == COMIC_SPEC["pages"] and receipt["layout"] == "full"
+    assert receipt["start_sec"] == 100.0 and receipt["duration_sec"] == pytest.approx(14.4)
+    (overlay,) = lay.load_layout(ep, plan).overlays
+    assert overlay.audio and rf.moves_for_receipts(ep) == []  # 滿版：臉不用搬
+    # 沒改就沿用；換一張背景圖就重渲
+    _, again = ex.deliver_row(ep, plan, plan["rows"][0], runner=runner)
+    assert not again and len(runner.calls) == 3
+    (comic_dir / "assets/scenes/t/c1.png").write_bytes(b"new")
+    _, changed = ex.deliver_row(ep, plan, plan["rows"][0], runner=runner)
+    assert changed and len(runner.calls) == 6
+
+
+def test_comic_check_lists_the_pages(tmp_path, comic_dir):
+    _write_spec(tmp_path, COMIC_SPEC)
+    plan = _plan()
+    chart, spec, problems = ex.check_row(tmp_path, plan, plan["rows"][0])
+    assert chart == "comic" and problems == []
+    assert spec["layout"] == "full" and spec["show_sec"] == pytest.approx(14.4)
+
+
+@pytest.mark.parametrize(
+    ("spec", "layout", "message"),
+    [
+        (COMIC_SPEC, "overlay", "要選滿版"),
+        ({"chart": "comic"}, "full", "要有 pages"),
+        ({"chart": "comic", "pages": ["../bars"]}, "full", "comic 開頭"),
+        ({"chart": "comic", "pages": ["comic_t_p9"]}, "full", "找不到漫畫頁"),
+        ({"chart": "comic", "pages": ["comic_t_p1"]}, "full", r"加起來 6\.00 秒.*14\.40 秒"),
+    ],
+)
+def test_bad_comics_are_refused(tmp_path, comic_dir, spec, layout, message):
+    _write_spec(tmp_path, spec)
+    plan = _plan(layout=layout)
+    runner = FakeRunner()
+    with pytest.raises(ex.ExplainerError, match=message):
+        ex.deliver_row(tmp_path, plan, plan["rows"][0], runner=runner)
+    assert runner.calls == []
+
+
+def test_comic_without_linked_scenes_says_how_to_link(tmp_path, comic_dir):
+    (comic_dir / "assets/scenes/t/c1.png").unlink()
+    _write_spec(tmp_path, COMIC_SPEC)
+    plan = _plan()
+    with pytest.raises(ex.ExplainerError, match=r"assets/scenes/t/c1\.png.*mklink /J"):
+        ex.deliver_row(tmp_path, plan, plan["rows"][0], runner=FakeRunner())

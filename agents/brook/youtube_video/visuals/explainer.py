@@ -19,6 +19,14 @@
 
 做之前先用無頭 Chrome 開圖表、跳到最後量版面：字超出安全框、兩段字疊在一起就擋下來，不渲。
 
+漫畫（多格）也從這裡交件。漫畫頁照 skill youtube-explainer「漫畫」的步驟畫好、修修看過預覽之後，
+規格檔只寫要接哪幾頁：
+
+    {"chart": "comic", "pages": ["comic_coffee_p1", "comic_coffee_p2"]}
+
+每頁是 `compositions/<頁>.html`（第一頁 0 秒＝這一列第一句字幕的開頭）。逐頁渲成 mov、照順序接起來，
+頁面裡的音效（<audio>）一起帶進交件檔，鋪時間軸時放在 A2 以上。漫畫是白底滿版，規劃表要選滿版。
+
 用法：
 
     python -m agents.brook.youtube_video.visuals.explainer "G:/Footages/<ep>" --row <id> --check
@@ -80,6 +88,16 @@ CHARTS: dict[str, tuple[str | None, int, int, int, tuple[str, ...]]] = {
 # 沒有清單的圖表，頂層必填
 TOP_REQUIRED = {"dots": ("lit", "dots_at", "lit_at"), "stat": ("value", "at"), "line": ("x",)}
 TIME_KEY = re.compile(r"^(?:at|until|\w+_at)$")
+
+COMIC = "comic"
+COMIC_SLACK = 0.5  # 漫畫頁加起來的長度，跟這一列蓋住的秒數最多差多少
+# 漫畫頁共用的積木資料夾（assets/ 底下）：裡面任何檔案改了，漫畫都要重做。
+# 頁面直接引用的檔案（背景圖、音效）另外雜湊。
+COMIC_KIT_DIRS = ("kit", "character", "heads", "brand", "vendor")
+PAGE_NAME = re.compile(r"^comic[\w-]*$")
+ASSET_REF = re.compile(r"""["'](assets/[^"'\s]+)["']""")
+PAGE_DURATION = re.compile(r'data-duration="([\d.]+)"')
+PAGE_ID = re.compile(r'data-composition-id="([^"]+)"')
 
 Runner = Callable[[list[str], Path], None]
 Checker = Callable[[str, Mapping[str, Any]], dict[str, Any]]
@@ -207,7 +225,8 @@ def chart_spec(
     raw = load_spec(episode_dir, rid)
     chart = raw.get("chart")
     if chart not in CHARTS:
-        raise ExplainerError(f"{rid}: chart 要是 {'／'.join(CHARTS)} 其中一種，現在是 {chart!r}")
+        kinds = "／".join([*CHARTS, COMIC])
+        raise ExplainerError(f"{rid}: chart 要是 {kinds} 其中一種，現在是 {chart!r}")
     title = str(raw.get("title") or "").strip()
     if not title:
         raise ExplainerError(f"{rid}: 要有標題（title）")
@@ -377,12 +396,202 @@ def _render(
         vars_file.unlink(missing_ok=True)
 
 
+# ── 漫畫 ────────────────────────────────────────────────────────────────
+
+
+def is_comic(episode_dir: Path, row_id: str) -> bool:
+    path = spec_path(episode_dir, row_id)
+    if not path.is_file():
+        return False
+    try:
+        return json.loads(path.read_text(encoding="utf-8")).get("chart") == COMIC
+    except (ValueError, AttributeError):
+        return False  # 壞掉的規格交給 chart_spec 報錯
+
+
+def page_assets(html_text: str) -> list[str]:
+    """頁面直接引用的檔案（背景圖、音效、積木），不重複、照出現順序。"""
+    return list(dict.fromkeys(ASSET_REF.findall(html_text)))
+
+
+def comic_pages(
+    episode_dir: Path, plan: Mapping[str, Any], row: Mapping[str, Any]
+) -> tuple[list[tuple[str, float]], float, float]:
+    """規劃表那一列＋漫畫規格 → （[(頁, 秒數)…], 起點秒數, 總長）。"""
+    rid = row["id"]
+    if row.get("category") != CATEGORY:
+        raise ExplainerError(f"{rid}: 不是解釋動畫")
+    if row.get("layout") != "full":
+        raise ExplainerError(f"{rid}: 漫畫是白底滿版，規劃表這一列的版面要選滿版")
+    start, span = delivery.overlay_window(plan, row)
+    names = load_spec(episode_dir, rid).get("pages")
+    if not isinstance(names, list) or not names:
+        raise ExplainerError(f"{rid}: 漫畫規格要有 pages（漫畫頁清單，照播放順序）")
+    pages: list[tuple[str, float]] = []
+    missing: list[str] = []
+    for name in names:
+        if not isinstance(name, str) or not PAGE_NAME.match(name):
+            raise ExplainerError(
+                f"{rid}: 漫畫頁 {name!r} 要寫 compositions/ 裡 comic 開頭的頁名（不含 .html）"
+            )
+        path = chart_html(name)
+        if not path.is_file():
+            raise ExplainerError(f"{rid}: 找不到漫畫頁 {path}")
+        text = path.read_text(encoding="utf-8")
+        page_id = PAGE_ID.search(text)
+        if not page_id or page_id.group(1) != name:
+            raise ExplainerError(f"{rid}: {name}.html 的 data-composition-id 要跟頁名一樣")
+        duration = PAGE_DURATION.search(text)
+        if not duration:
+            raise ExplainerError(f"{rid}: {name}.html 沒有 data-duration（頁面長度）")
+        missing += [a for a in page_assets(text) if not (COMPOSITION_DIR / a).is_file()]
+        pages.append((name, float(duration.group(1))))
+    if missing:
+        hint = ""
+        if any(a.startswith(("assets/scenes/", "assets/sfx/")) for a in missing):
+            hint = (
+                "（背景圖、音效不在 git：這個 worktree 要先接 junction——"
+                r"mklink /J <worktree>\video\compositions\explainer\assets\scenes "
+                r"E:\data\explainer-scenes，assets\sfx 接 E:\data\explainer-sfx）"
+            )
+        listed = "、".join(dict.fromkeys(missing))
+        raise ExplainerError(f"{rid}: 漫畫頁用到的檔案不見了：{listed}{hint}")
+    total = round(sum(d for _, d in pages), 3)
+    if abs(total - span) > COMIC_SLACK:
+        raise ExplainerError(
+            f"{rid}: 漫畫頁加起來 {total:.2f} 秒，這一列蓋住 {span:.2f} 秒——"
+            f"差超過 {COMIC_SLACK:g} 秒，對一下字幕範圍或頁面長度（data-duration）"
+        )
+    return pages, start, total
+
+
+def comic_sha(names: list[str]) -> str:
+    """漫畫頁 HTML、頁面引用的每個檔案（背景圖、音效）、共用積木一起雜湊。"""
+    files: dict[str, Path] = {}
+    for name in names:
+        path = chart_html(name)
+        files[f"compositions/{name}.html"] = path
+        for ref in page_assets(path.read_text(encoding="utf-8")):
+            files[ref] = COMPOSITION_DIR / ref
+    for folder in COMIC_KIT_DIRS:
+        for path in sorted((COMPOSITION_DIR / "assets" / folder).rglob("*")):
+            if path.is_file() and "__pycache__" not in path.parts:
+                files[path.relative_to(COMPOSITION_DIR).as_posix()] = path
+    digest = hashlib.sha256()
+    for key in sorted(files):
+        digest.update(f"{key}:{delivery.file_sha(files[key])}\n".encode())
+    return digest.hexdigest()
+
+
+def _render_comic(
+    pages: list[tuple[str, float]], total: float, paths: delivery.AssetPaths, runner: Runner
+) -> None:
+    """逐頁渲 mov（ProRes 4444＋頁面音效），照順序接成一支、截到總長；聲音轉 PCM。"""
+    paths.media.parent.mkdir(parents=True, exist_ok=True)
+    stem = paths.media.stem
+    parts = [paths.media.with_name(f"{stem}.p{i}.mov") for i in range(1, len(pages) + 1)]
+    listing = paths.media.with_name(paths.media.stem + ".pages.txt")
+    try:
+        for (name, _), part in zip(pages, parts, strict=True):
+            runner(
+                [
+                    "npx",
+                    "--yes",
+                    HYPERFRAMES,
+                    "render",
+                    ".",
+                    "-c",
+                    f"compositions/{name}.html",
+                    "-o",
+                    str(part),
+                    "--format",
+                    "mov",
+                    "--fps",
+                    delivery.FPS,
+                    "-q",
+                    "standard",
+                    "--quiet",
+                    "--no-browser-gpu",
+                ],
+                COMPOSITION_DIR,
+            )
+        # concat 清單裡的路徑是相對於清單檔本身
+        listing.write_text("".join(f"file '{p.name}'\n" for p in parts), encoding="utf-8")
+        runner(
+            [
+                "ffmpeg",
+                "-v",
+                "error",
+                "-y",
+                "-f",
+                "concat",
+                "-safe",
+                "0",
+                "-i",
+                str(listing),
+                "-t",
+                f"{total:.3f}",
+                "-c:v",
+                "copy",
+                "-c:a",
+                "pcm_s16le",
+                str(paths.media),
+            ],
+            COMPOSITION_DIR,
+        )
+    finally:
+        for part in parts:
+            part.unlink(missing_ok=True)
+        listing.unlink(missing_ok=True)
+
+
+def deliver_comic(
+    episode_dir: Path,
+    plan: Mapping[str, Any],
+    row: Mapping[str, Any],
+    *,
+    force: bool = False,
+    runner: Runner = _hyperframes_render,
+) -> tuple[dict[str, Any], bool]:
+    """接漫畫頁、渲、寫收據。回傳（收據, 這次有沒有真的渲）。"""
+    pages, start, total = comic_pages(episode_dir, plan, row)
+    names = [name for name, _ in pages]
+    variables = {"pages": names}
+    comp_sha = comic_sha(names)
+    component = f"explainer/{COMIC}"
+    sha = delivery.inputs_sha(
+        category=CATEGORY, component=component, component_sha=comp_sha, variables=variables
+    )
+    paths = delivery.asset_paths(episode_dir, row["id"])
+    if not force and delivery.is_current(paths, sha):
+        return delivery.load_receipt(paths.receipt) or {}, False
+    _render_comic(pages, total, paths, runner)
+    receipt = delivery.write_receipt(
+        paths,
+        row=row,
+        component=component,
+        component_sha=comp_sha,
+        variables=variables,
+        start_sec=start,
+        duration_sec=total,
+        sha=sha,
+        extra={"chart": COMIC, "pages": names, "audio": True},
+    )
+    return receipt, True
+
+
+# ── 檢查與交件（圖表＋漫畫） ─────────────────────────────────────────────
+
+
 def check_row(
     episode_dir: Path,
     plan: Mapping[str, Any],
     row: Mapping[str, Any],
     checker: Checker = chrome_check,
 ) -> tuple[str, dict[str, Any], list[str]]:
+    if is_comic(episode_dir, row["id"]):  # 漫畫不量版面：修修看預覽驗過
+        pages, _, total = comic_pages(episode_dir, plan, row)
+        return COMIC, {"layout": "full", "show_sec": total, "pages": [n for n, _ in pages]}, []
     chart, spec, _, _ = chart_spec(episode_dir, plan, row)
     return chart, spec, layout_problems(checker(chart, spec))
 
@@ -396,7 +605,9 @@ def deliver_row(
     runner: Runner = _hyperframes_render,
     checker: Checker = chrome_check,
 ) -> tuple[dict[str, Any], bool]:
-    """檢查版面、渲一列並寫收據。回傳（收據, 這次有沒有真的渲）。"""
+    """檢查版面、渲一列並寫收據。回傳（收據, 這次有沒有真的渲）。漫畫走 deliver_comic。"""
+    if is_comic(episode_dir, row["id"]):
+        return deliver_comic(episode_dir, plan, row, force=force, runner=runner)
     chart, spec, start, seconds = chart_spec(episode_dir, plan, row)
     variables = {"spec": json.dumps(spec, ensure_ascii=False)}
     comp_sha = component_sha(chart)
