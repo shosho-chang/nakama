@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import pytest
@@ -137,7 +138,7 @@ def test_nudge_is_milder_than_the_book_cover_move():
         ({"image": "E:/naval.jpg"}, "assets/inset/ 裡"),
         ({"image": "assets/inset/../naval.jpg"}, "assets/inset/ 裡"),
         ({"image": "assets/inset/none.jpg"}, "要先搬進這一集的資料夾"),
-        ({"image": "assets/inset/clip.mp4"}, "要是圖檔"),
+        ({"image": "assets/inset/clip.mov"}, "要是圖檔"),
         ({"image": "assets/inset/tiny.jpg"}, "圖太小"),
         ({"image": "assets/inset/naval.jpg", "side": "top"}, "right 或 left"),
     ],
@@ -167,3 +168,62 @@ def test_both_categories_are_ready_and_share_the_component():
     for cat in ("old_video", "meme"):
         assert categories[cat].readiness == "ready"
         assert dp.RENDERERS[cat].endswith("visuals.inset")
+
+
+def _fake_frames(count: int, size=(480, 266), fps: float = 15.0):
+    def read(path, out_dir):
+        for i in range(count):
+            Image.new("RGB", size, (i * 9 % 255, 60, 90)).save(out_dir / f"f{i + 1:04d}.jpg")
+        return fps
+
+    return read
+
+
+def test_animated_meme_is_split_into_frames(ep):
+    (ep / "assets" / "inset" / "giphy.mp4").write_bytes(b"mp4")
+    row = _row("m1", "meme")
+    plan = _plan(row)
+    _spec(ep, "m1", {"image": "assets/inset/giphy.mp4", "source": "https://giphy.com/gifs/x"})
+    variables, *_ = inset.card_variables(ep, plan, row, _fake_frames(26))
+    frames = variables["frames"].split("\n")
+    assert len(frames) == 26 and all(f.startswith("data:image/jpeg;base64,") for f in frames)
+    assert (variables["image"], variables["fps"]) == ("", 15.0)
+    assert variables["ratio"] == round(480 / 266, 4)
+    receipt, rendered = inset.deliver_row(
+        ep, plan, row, runner=_fake_runner([]), frame_reader=_fake_frames(26)
+    )
+    assert rendered and receipt["variables"]["frames"] == "<26 frames>"
+
+
+def test_static_image_has_no_frames(ep):
+    row = _row("o1", "old_video")
+    _spec(ep, "o1", {"image": "assets/inset/naval.jpg"})
+    variables, *_ = inset.card_variables(ep, _plan(row), row)
+    assert (variables["frames"], variables["fps"]) == ("", 0)
+    assert inset.receipt_variables(variables)["frames"] == "<0 frames>"
+
+
+@pytest.mark.parametrize(
+    "reader, message",
+    [
+        (_fake_frames(26, size=(320, 180)), "寬至少要 480"),
+        (_fake_frames(inset.MAX_FRAMES + 1), "太長"),
+        (_fake_frames(0), "拆不出畫面"),
+    ],
+)
+def test_bad_animated_memes_are_refused(ep, reader, message):
+    (ep / "assets" / "inset" / "giphy.gif").write_bytes(b"gif")
+    row = _row("m1", "meme")
+    _spec(ep, "m1", {"image": "assets/inset/giphy.gif"})
+    with pytest.raises(delivery.DeliveryError, match=message):
+        inset.card_variables(ep, _plan(row), row, reader)
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="需要 ffmpeg")
+def test_real_gif_is_split_by_ffmpeg(tmp_path):
+    gif = tmp_path / "loop.gif"
+    colors = [(255, 0, 0), (0, 255, 0), (0, 0, 255)]
+    first, *rest = [Image.new("RGB", (480, 270), c) for c in colors]
+    first.save(gif, save_all=True, append_images=rest, duration=100, loop=0)
+    frames, fps, ratio = inset.animated_frames("m1", gif)
+    assert len(frames) == 3 and fps == pytest.approx(10.0) and ratio == round(480 / 270, 4)

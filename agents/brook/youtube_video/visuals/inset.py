@@ -14,6 +14,9 @@
 
 - 舊片導流：`image` 用修修頻道那支影片的縮圖（`https://i.ytimg.com/vi/<id>/maxresdefault.jpg`）。
 - 選填 `side`：`right`（預設）或 `left`——圖要放在臉的哪一側。
+- 梗圖可以是動圖（`.mp4`／`.gif`，修修 2026-11-27：「梗圖我之前是從這個網站下載的
+  https://giphy.com/」）：拆成一格一格的圖嵌進變數，元件依時間換格、在停留時間內循環。
+  Giphy 的檔多半只有 480 寬，所以動圖的門檻是寬至少 480（靜態圖是短邊至少 320）。
 
 時間：從這一列蓋住的第一句字幕開始，停留＝那幾句的總長，夾在 3–4 秒之間
 （臉讓開、退回各 0.5 秒，停太短畫面一直在動；2026-11-27 下限從 2 秒改 3 秒）。
@@ -32,6 +35,7 @@ import io
 import json
 import subprocess
 import sys
+import tempfile
 from collections.abc import Callable, Mapping
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -56,7 +60,10 @@ MIN_SEC = 3.0
 MAX_SEC = 4.0
 SIDES = ("right", "left")
 MIN_PIXELS = 320  # 圖的短邊至少這麼多，放大到小卡才不糊
+MIN_ANIM_WIDTH = 480  # 動圖（Giphy 多半就 480 寬）的寬至少這麼多
+MAX_FRAMES = 120  # 動圖最多嵌這麼多格（15 fps 約 8 秒），太長的梗不是梗
 MIME = {".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png", ".webp": "image/webp"}
+ANIMATED = (".mp4", ".gif")
 
 Runner = Callable[[list[str], Path], None]
 
@@ -89,8 +96,9 @@ def image_file(episode_dir: Path, row_id: str, name: object) -> Path:
     rel = PurePosixPath(name.replace("\\", "/"))
     if rel.is_absolute() or ":" in name or ".." in rel.parts or rel.parent != INSET_DIR:
         raise delivery.DeliveryError(f"{row_id}: {name} 不在 {INSET_DIR}/ 裡——{hint}")
-    if rel.suffix.lower() not in MIME:
-        raise delivery.DeliveryError(f"{row_id}: {name} 要是圖檔（{'、'.join(MIME)}）")
+    if rel.suffix.lower() not in (*MIME, *ANIMATED):
+        kinds = "、".join((*MIME, *ANIMATED))
+        raise delivery.DeliveryError(f"{row_id}: {name} 要是圖檔或動圖（{kinds}）")
     path = Path(episode_dir) / rel
     if not path.is_file():
         raise delivery.DeliveryError(f"{row_id}: 找不到 {path}——{hint}")
@@ -110,8 +118,58 @@ def image_ratio(row_id: str, data: bytes) -> float:
     return round(width / height, 4)
 
 
+def _ffmpeg_frames(path: Path, out_dir: Path) -> float:
+    """動圖拆成 JPEG 一格一格存進 out_dir，回傳每秒幾格。"""
+    probe = subprocess.run(
+        ["ffprobe", "-v", "error", "-select_streams", "v:0",
+         "-show_entries", "stream=r_frame_rate", "-of", "csv=p=0", str(path)],
+        capture_output=True, text=True, **quiet_kwargs(),
+    )  # fmt: skip
+    num, _, den = probe.stdout.strip().partition("/")
+    try:
+        fps = float(num) / float(den or 1)
+    except ValueError:
+        raise delivery.DeliveryError(f"{path.name}: 讀不到每秒幾格") from None
+    proc = subprocess.run(
+        ["ffmpeg", "-v", "error", "-i", str(path), "-fps_mode", "passthrough",
+         "-q:v", "2", str(out_dir / "f%04d.jpg")],
+        capture_output=True, text=True, **quiet_kwargs(),
+    )  # fmt: skip
+    if proc.returncode != 0:
+        raise delivery.DeliveryError(f"{path.name}: 拆格失敗：{proc.stderr[-300:]}")
+    return fps
+
+
+FrameReader = Callable[[Path, Path], float]
+
+
+def animated_frames(
+    row_id: str, path: Path, reader: FrameReader = _ffmpeg_frames
+) -> tuple[list[bytes], float, float]:
+    """動圖 → （每一格的 JPEG、每秒幾格、寬高比）。"""
+    with tempfile.TemporaryDirectory() as tmp:
+        fps = reader(path, Path(tmp))
+        frames = [f.read_bytes() for f in sorted(Path(tmp).glob("f*.jpg"))]
+    if not frames:
+        raise delivery.DeliveryError(f"{row_id}: {path.name} 拆不出畫面")
+    if len(frames) > MAX_FRAMES:
+        raise delivery.DeliveryError(
+            f"{row_id}: {path.name} 太長（{len(frames)} 格），最多 {MAX_FRAMES} 格"
+        )
+    with Image.open(io.BytesIO(frames[0])) as img:
+        width, height = img.size
+    if width < MIN_ANIM_WIDTH:
+        raise delivery.DeliveryError(
+            f"{row_id}: 動圖太小（{width}×{height}），寬至少要 {MIN_ANIM_WIDTH}"
+        )
+    return frames, round(fps, 3), round(width / height, 4)
+
+
 def card_variables(
-    episode_dir: Path, plan: Mapping[str, Any], row: Mapping[str, Any]
+    episode_dir: Path,
+    plan: Mapping[str, Any],
+    row: Mapping[str, Any],
+    frame_reader: FrameReader = _ffmpeg_frames,
 ) -> tuple[dict, float, float, Mapping[str, Any]]:
     category = row.get("category")
     if category not in TAGS:
@@ -125,16 +183,30 @@ def card_variables(
     if side not in SIDES:
         raise delivery.DeliveryError(f"{row['id']}: side 只能是 right 或 left")
     path = image_file(episode_dir, row["id"], spec.get("image"))
-    data = path.read_bytes()
+    # 圖嵌進變數：收據的雜湊跟著圖檔內容走，換圖就重渲
+    if path.suffix.lower() in ANIMATED:
+        frames, fps, ratio = animated_frames(row["id"], path, frame_reader)
+        image = ""
+        # 每格一個 data URI，換行分隔（base64 裡不會有換行）
+        frame_list = "\n".join(f"data:image/jpeg;base64,{_b64(f)}" for f in frames)
+    else:
+        data = path.read_bytes()
+        image = f"data:{MIME[path.suffix.lower()]};base64,{_b64(data)}"
+        ratio, frame_list, fps = image_ratio(row["id"], data), "", 0
     variables = {
-        # 圖嵌進變數：收據的雜湊跟著圖檔內容走，換圖就重渲
-        "image": f"data:{MIME[path.suffix.lower()]};base64,{base64.b64encode(data).decode()}",
-        "ratio": image_ratio(row["id"], data),
+        "image": image,
+        "frames": frame_list,
+        "fps": fps,
+        "ratio": ratio,
         "side": side,
         "tag": TAGS[category],
         "show_sec": seconds,
     }
     return variables, start, seconds, spec
+
+
+def _b64(data: bytes) -> str:
+    return base64.b64encode(data).decode()
 
 
 def _hyperframes_render(argv: list[str], cwd: Path) -> None:
@@ -185,6 +257,8 @@ def receipt_variables(variables: Mapping[str, Any]) -> dict[str, Any]:
     """收據不存整張圖（太大）；圖的內容已經算進 inputs_sha。"""
     slim = dict(variables)
     slim["image"] = f"<{len(variables['image'])} chars data URI>"
+    count = len(variables["frames"].split("\n")) if variables["frames"] else 0
+    slim["frames"] = f"<{count} frames>"
     return slim
 
 
@@ -195,9 +269,10 @@ def deliver_row(
     *,
     force: bool = False,
     runner: Runner = _hyperframes_render,
+    frame_reader: FrameReader = _ffmpeg_frames,
 ) -> tuple[dict[str, Any], bool]:
     """渲一列並寫收據。回傳（收據, 這次有沒有真的渲）。"""
-    variables, start, seconds, spec = card_variables(episode_dir, plan, row)
+    variables, start, seconds, spec = card_variables(episode_dir, plan, row, frame_reader)
     component_sha = delivery.file_sha(COMPOSITION_HTML)
     sha = delivery.inputs_sha(
         category=row["category"],

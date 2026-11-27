@@ -5,10 +5,15 @@
      - 跟書封分開：角落卡（圖最寬 720）放在上方角落，臉只輕輕讓一下（1.3 倍、臉到 40%；書封 1.4 倍、臉到 1/3）。
        修修 2026-11-27：原本 560、臉不動 → 手機上縮圖的字看不清，放大並讓臉。
      - 舊片導流在框左上多一塊橘色斜角字塊「延伸觀看」（同品牌標籤的斜角形狀）；梗圖不加。
-     - 過去成片（2024 四支）這兩類都是角落小卡、停 1–3 秒快進快出（docs/research/editing-grammar）。 -->
+     - 過去成片（2024 四支）這兩類都是角落小卡、停 1–3 秒快進快出（docs/research/editing-grammar）。
+     - 梗圖可以是動圖（修修 2026-11-27：以前從 Giphy 下載）：inset.py 拆成一格一格的 data URI
+       放進 frames（換行分隔），這裡疊成一疊 <img>，用 tl.set 依時間換格、停留期間循環——
+       全走 GSAP 時間軸，逐格 seek 渲染才對得上（不用 <video>：hyperframes 渲不可靠）。 -->
 <html lang="zh-Hant"
   data-composition-variables='[
     {"id":"image","type":"string","label":"圖（data URI 或相對路徑）","default":""},
+    {"id":"frames","type":"string","label":"動圖每一格的 data URI（換行分隔；空＝靜態圖）","default":""},
+    {"id":"fps","type":"number","label":"動圖每秒幾格","default":15},
     {"id":"ratio","type":"number","label":"圖的寬高比（寬÷高）","default":1.7778},
     {"id":"side","type":"string","label":"left|right","default":"right"},
     {"id":"tag","type":"string","label":"框左上的字塊（空＝不加）","default":""},
@@ -52,6 +57,7 @@
         mask-size: var(--band) var(--s1), var(--s2) var(--band), var(--band) var(--s3), var(--s4) var(--band); }
       #pic { position: absolute; inset: 0; }
       #pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+      #pic img.frame { position: absolute; inset: 0; opacity: 0; }
       /* 字塊：壓在框的左上角外側，斜角形狀同品牌標籤（第 11 類「影片來源」） */
       #tag { position: absolute; left: calc(-1 * (var(--gap) + var(--frame)));
         top: calc(-1 * (var(--gap) + var(--frame)) - 52px);
@@ -84,13 +90,31 @@
       const group = document.getElementById("group");
       group.style.setProperty("--bw", `${Math.round(bw)}px`);
       group.style.setProperty("--bh", `${Math.round(bw / ratio)}px`);
-      document.getElementById("img").src = v.image || "";
+      const frameSrcs = String(v.frames || "").split("\n").filter(Boolean);
+      const pic = document.getElementById("pic");
+      const frames = frameSrcs.map((src) => {
+        const el = document.createElement("img");
+        el.className = "frame"; el.alt = ""; el.src = src;
+        pic.appendChild(el);
+        return el;
+      });
+      if (frames.length) document.getElementById("img").remove();
+      else document.getElementById("img").src = v.image || "";
       const tag = document.getElementById("tag");
       const tagText = String(v.tag || "").trim();
       if (tagText) tag.textContent = tagText; else tag.remove();
 
       const tl = gsap.timeline();
       window.__timelines = window.__timelines || {};
+      // 動圖：每格 1/fps 秒，從 0 秒開始循環到停留結束
+      if (frames.length) {
+        const step = 1 / (Number(v.fps) > 0 ? Number(v.fps) : 15);
+        frames[0].style.opacity = 1;
+        for (let k = 1; k * step < showSec; k++) {
+          tl.set(frames[(k - 1) % frames.length], { opacity: 0 }, k * step);
+          tl.set(frames[k % frames.length], { opacity: 1 }, k * step);
+        }
+      }
       // 框：兩筆同時起筆各畫半圈（0.4s，比書封短：小卡快進快出）；圖在框畫到一半時拍上
       const fw = document.getElementById("frame-wrap");
       const half = fw.offsetWidth + fw.offsetHeight;

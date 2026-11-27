@@ -10,7 +10,7 @@ description: >
 
 # youtube-inset — 舊片導流（第 10 類）＋梗圖（第 13 類）
 
-**版本：v1.1（2026-11-27）**
+**版本：v1.2（2026-11-27）**
 
 YouTube 照稿影片的 DP 由一類一類的小 skill 組成（總調度與交接在 `youtube-dp`）。
 這兩類由 Director 提、修修在 Bridge 核准；本 skill 把**已經核准**的列補齊素材並渲出小卡。
@@ -25,6 +25,7 @@ YouTube 照稿影片的 DP 由一類一類的小 skill 組成（總調度與交�
 | 位置 | 上方角落（預設右側） | 過去成片 4/4 都是角落小卡、不蓋臉（`docs/research/editing-grammar/2026-07-18-shoshotw-editing-grammar.md` 第 1、9 條） |
 | 大小、搬移 | 圖寬 **720**（原本 560）；臉**輕移**到另一側（`nudge`：1.3 倍、臉到 40%／60%），幅度比書封（1.4 倍、1/3）小 | 2026-11-27「把人稍微移到側邊、挪出空間，然後把這個格子放大…調整的幅度或許就不用這麼大」→「直接做」（手機上 560 寬的縮圖字看不清） |
 | 停留 | 蓋住的字幕總長，夾在 **3–4 秒**（原本 2–4） | 同上：臉讓開、退回各 0.5 秒，停 2 秒會有一半時間在動 |
+| 梗圖來源 | **Giphy**（https://giphy.com/），可以是動圖：下載 **mp4**（比 gif 小），卡裡依原本的每秒格數循環播放 | 2026-11-27「梗圖我之前是從這個網站下載的 https://giphy.com/」→「直接做」 |
 | 存放 | 找到的圖**搬進這一集的資料夾** `<episode>/assets/inset/`，規格檔只收這裡的檔 | 同 stock：「下載下來的素材要移動到該專案的 folder 裡面」 |
 
 
@@ -46,8 +47,12 @@ YouTube 照稿影片的 DP 由一類一類的小 skill 組成（總調度與交�
 
 ### 梗圖
 
-- 梗圖從網路來源下載**要先問修修**（來源、檔名、大小）——梗圖、影劇截圖有版權顧慮，
+- 來源是 **Giphy**：`https://giphy.com/search/<英文關鍵字>`，挑跟那句話情緒對得上的反應梗
+  （例：「比起神人們，實在魯到不行」→ Wayne's World「We're not worthy」跪拜）。
+- 下載**要先問修修**（來源網址、檔名、大小）——梗圖、影劇片段有版權顧慮，
   沒有像 Envato 那樣的長期授權。修修自己提供的圖直接用。
+- 動圖抓 mp4：`https://media.giphy.com/media/<id>/giphy.mp4`（id 是 Giphy 網址最後那段），
+  存成 `<episode>/assets/inset/giphy-<看得懂的名字>.mp4`。尺寸、長度可以先用 `curl -sI` 看大小。
 - 負面清單同 stock：浮水印、AI 生成、跟那句話情緒相反的圖。
 
 ### 規格檔 `<episode>/visual_sources/<row_id>.json`
@@ -59,7 +64,8 @@ YouTube 照稿影片的 DP 由一類一類的小 skill 組成（總調度與交�
  "side": "right"}
 ```
 
-- `image` 必填，要在 `assets/inset/` 裡、是圖檔（jpg/png/webp）、短邊至少 320 px。
+- `image` 必填，要在 `assets/inset/` 裡：靜態圖（jpg/png/webp）短邊至少 320 px；
+  動圖（mp4/gif，只有梗圖會用到）寬至少 480 px、最多 120 格（15 fps 約 8 秒）。
 - `side` 選填：`right`（預設）或 `left`——臉偏右的畫面改放左；臉會讓到另一側。
 - `source`、`note` 會進收據，之後查來源、換圖用。
 
@@ -80,6 +86,8 @@ python -m agents.brook.youtube_video.dp "G:/Footages/<ep>" --category old_video 
   兩支都抓不到字幕、無法確認哪支講四大槓桿最詳細 → 待修修挑。
 - 梗圖 ra3769aeffa（「比起 Tech_Job 板或者股板上的神人們，實在魯到不行啊」）：規劃表要 PTT 神人 vs 魯蛇梗圖，
   來源待修修同意；測試先用 2024 舊片用過的海綿寶寶梗圖截圖當替身（檔名 `STANDIN-…`）。
+  2026-11-27 修修指定 Giphy → 換成 Wayne's World「We're not worthy」（480×266、15 fps、26 格、1.73 秒），
+  4 秒停留裡循環約兩輪；疊回錄影看過，會動、卡不蓋臉。
 
 - 2026-11-27 改版（卡 720、臉輕移、最短 3 秒）重渲兩列、疊回錄影：兩段眼睛都在 x≈0.52，
   1.2 倍下臉最多到 43%（不露黑邊的極限）→ 修修「試試看 1.3 倍」，臉到得了 40%。
@@ -91,4 +99,4 @@ python -m agents.brook.youtube_video.dp "G:/Footages/<ep>" --category old_video 
 
 ## 還沒做
 
-- 動態梗圖（GIF、影劇片段）：目前只收靜態圖。
+- 有聲的影劇片段（Giphy 的 Clips）：只收無聲動圖。
