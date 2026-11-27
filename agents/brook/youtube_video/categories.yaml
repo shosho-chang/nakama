@@ -148,11 +148,12 @@ categories:
     number: 10
     name: 自家舊片導流
     when: 提到自己做過的相關影片
-    dp: 舊片縮圖 inset
+    # 修修 2026-11-26 選 B：沿用書封細橘框的角落小卡，多一塊「延伸觀看」字塊（與梗圖共用元件）
+    dp: 修修頻道那支影片的縮圖搬進 assets/inset/、寫規格檔，角落小卡＋「延伸觀看」（skill youtube-inset）
     kind: overlay
     layout: overlay
     required: [dp_instruction]
-    readiness: unverified
+    readiness: ready
     auto: false
     density: true
     covers: true
@@ -187,11 +188,12 @@ categories:
     number: 13
     name: 梗圖
     when: 需要幽默感的地方
-    dp: 梗圖 inset
+    # 修修 2026-11-26 選 B：沿用書封細橘框的角落小卡（與舊片導流共用元件，不加字塊）
+    dp: 梗圖搬進 assets/inset/、寫規格檔，角落小卡（skill youtube-inset）
     kind: overlay
     layout: overlay
     required: [dp_instruction]
-    readiness: unverified
+    readiness: ready
     auto: false
     density: true
     covers: true
