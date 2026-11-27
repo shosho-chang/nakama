@@ -64,6 +64,7 @@ class Overlay:
     audio: bool = False  # 素材自己帶聲音（漫畫的音效）
     src_in: float = 0.0  # 從原檔第幾秒開始取（stock 原檔；渲好的素材都是 0）
     src_fps: float | None = None  # 原檔格率（stock；None＝跟時間軸一樣）
+    side: str | None = None  # 角落小卡放哪一側（舊片導流、梗圖）→ 臉讓到另一側
 
 
 @dataclass
@@ -101,7 +102,7 @@ def load_layout(episode: Path, plan: Mapping[str, Any]) -> Layout:
             out.overlays.append(
                 Overlay(row_id, receipt["category"], float(receipt["start_sec"]),
                         float(receipt["duration_sec"]), media, receipt.get("layout"),
-                        bool(receipt.get("audio")))
+                        bool(receipt.get("audio")), side=receipt.get("side"))
             )  # fmt: skip
     out.inserts.sort(key=lambda i: i.at)
     out.overlays.sort(key=lambda o: o.start)
@@ -265,10 +266,10 @@ def source_frames(timeline_frames: int, src_fps: float) -> int:
 
 
 def moves(layout: Layout) -> list[rf.Move]:
-    """書封、重點條列、側欄版的解釋動畫：臉讓到另一側（畫面搬移），時間換算到新一版。"""
+    """書封、重點條列、側欄版的解釋動畫、角落小卡：臉讓到另一側（畫面搬移），時間換算到新一版。"""
     result = []
     for o in layout.overlays:
-        kind = rf.overlay_move(o.category, o.layout)
+        kind = rf.overlay_move(o.category, o.layout, o.side)
         if kind:
             start = shift(o.start, layout.inserts)
             result.append(rf.Move(kind, round(start, 3), round(start + o.length, 3)))

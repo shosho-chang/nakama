@@ -8,8 +8,12 @@
 | push  | 1.3 倍 | 原地 | 推近 |
 | left  | 1.4 倍 | 畫面寬度 1/3 | 右側要放書封等畫面 |
 | right | 1.4 倍 | 畫面寬度 2/3 | 左側要放畫面 |
+| nudge_left  | 1.3 倍 | 畫面寬度 40% | 角落小卡（舊片導流、梗圖）放右上：臉輕輕讓一下 |
+| nudge_right | 1.3 倍 | 畫面寬度 60% | 角落小卡放左上 |
 
-（1.3 倍時臉最多只能移到 38%，到不了 1/3 線，所以左右移用 1.4 倍。）
+（1.3 倍時臉最多只能移到 38%，到不了 1/3 線，所以左右移用 1.4 倍。
+輕移是修修 2026-11-27 加的：幅度比書封小、看得出是讓一下。先試 1.2 倍（臉在畫面中間偏右時
+只到 43%），修修「試試看 1.3 倍」→ 1.3 倍，臉偏右一點也到得了 40%。）
 
 做法：Transform 的 Pivot 固定在畫面中心，只打 Size 與 Center 兩條關鍵影格——
 同一個片段上有好幾次搬移也不互相干擾。數學上等於「以眼睛為支點放大＋水平平移」，水平平移跟放大走同一條曲線，任何一格都不會露黑邊。
@@ -49,12 +53,16 @@ KINDS: dict[str, tuple[float, float | None]] = {
     "push": (1.3, None),
     "left": (1.4, 1 / 3),
     "right": (1.4, 2 / 3),
+    "nudge_left": (1.3, 0.4),
+    "nudge_right": (1.3, 0.6),
 }
 # 疊加畫面固定在哪一側 → 臉要讓到另一側。
 # 書封、重點條列固定在右側（youtube-book-cover、youtube-side-bullets）。
 OVERLAY_MOVES = {"book_cover": "left", "side_bullets": "left"}
 # 版面由 Director 選的分類：疊在右側欄（overlay）時臉讓到左邊；滿版蓋住整個畫面，不搬。
 LAYOUT_MOVES = {"explainer": {"overlay": "left"}}
+# 角落小卡（youtube-inset）放哪一側由 DP 的規格檔決定 → 臉輕輕讓到另一側。
+SIDE_MOVES = {cat: {"right": "nudge_left", "left": "nudge_right"} for cat in ("old_video", "meme")}
 FACE_MODEL = Path(os.environ.get("FACE_LANDMARKER_MODEL", r"E:\data\models\face_landmarker.task"))
 IRIS_L, IRIS_R = 468, 473
 MIN_FACE_SAMPLES = 3
@@ -347,10 +355,15 @@ def connect_resolve():
 # ── 規劃表 → 搬移 ─────────────────────────────────────────────────────
 
 
-def overlay_move(category: str | None, layout: str | None) -> str | None:
+def overlay_move(category: str | None, layout: str | None, side: str | None = None) -> str | None:
     """這張疊加畫面要不要把臉搬開、搬去哪一側。"""
-    fixed = OVERLAY_MOVES.get(category or "")
-    return fixed or LAYOUT_MOVES.get(category or "", {}).get(layout or "")
+    cat = category or ""
+    fixed = OVERLAY_MOVES.get(cat)
+    if fixed:
+        return fixed
+    if cat in SIDE_MOVES:
+        return SIDE_MOVES[cat].get(side or "right")
+    return LAYOUT_MOVES.get(cat, {}).get(layout or "")
 
 
 def moves_for_receipts(episode_dir: Path) -> list[Move]:
@@ -358,7 +371,7 @@ def moves_for_receipts(episode_dir: Path) -> list[Move]:
     moves = []
     for path in sorted((Path(episode_dir) / "visuals").glob("*.json")):
         receipt = json.loads(path.read_text(encoding="utf-8"))
-        kind = overlay_move(receipt.get("category"), receipt.get("layout"))
+        kind = overlay_move(receipt.get("category"), receipt.get("layout"), receipt.get("side"))
         if kind:
             start = float(receipt["start_sec"])
             moves.append(Move(kind, start, start + float(receipt["duration_sec"])))

@@ -1,0 +1,108 @@
+<!doctype html>
+<!-- 第 10 類「自家舊片導流」與第 13 類「梗圖」共用的小卡（YouTube 照稿影片）。
+     修修 2026-11-26：設計語言要跟現行元件一致 → 選 B：沿用第 4 類書封的「粗細有變化的細橘框」
+     （上下兩邊略斜的四邊形裁切，斜邊處線條漸細；兩角同時起筆畫框、圖在框畫到一半時拍上）。
+     - 跟書封分開：角落卡（圖最寬 720）放在上方角落，臉只輕輕讓一下（1.3 倍、臉到 40%；書封 1.4 倍、臉到 1/3）。
+       修修 2026-11-27：原本 560、臉不動 → 手機上縮圖的字看不清，放大並讓臉。
+     - 舊片導流在框左上多一塊橘色斜角字塊「延伸觀看」（同品牌標籤的斜角形狀）；梗圖不加。
+     - 過去成片（2024 四支）這兩類都是角落小卡、停 1–3 秒快進快出（docs/research/editing-grammar）。 -->
+<html lang="zh-Hant"
+  data-composition-variables='[
+    {"id":"image","type":"string","label":"圖（data URI 或相對路徑）","default":""},
+    {"id":"ratio","type":"number","label":"圖的寬高比（寬÷高）","default":1.7778},
+    {"id":"side","type":"string","label":"left|right","default":"right"},
+    {"id":"tag","type":"string","label":"框左上的字塊（空＝不加）","default":""},
+    {"id":"show_sec","type":"number","label":"停留秒數","default":3}
+  ]'>
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="assets/vendor/gsap-3.14.2.min.js"></script>
+    <style>
+      @font-face { font-family: "Noto Sans TC Black"; font-weight: 900; font-display: block;
+        src: url("assets/fonts/noto-sans-tc/NotoSansTC-Black.woff2") format("woff2"); }
+      :root { --orange: #f57331; --white: #fff; --gap: 20px; --frame: 8px;
+        /* 圖最大寬、最大高；離畫面上緣、側邊的距離 */
+        --max-w: 720px; --max-h: 480px; --top: 150px; --edge: 120px;
+        --skew: polygon(0% 0%, 100% 3.5%, 100% 100%, 0% 98.8%); }
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      html, body { width: 1920px; height: 1080px; overflow: hidden; background: transparent; }
+      #root { position: relative; width: 1920px; height: 1080px; overflow: hidden; }
+      #group { position: absolute; width: var(--bw); height: var(--bh); top: var(--top); }
+      .s-right #group { right: var(--edge); }
+      .s-left #group { left: var(--edge); }
+      #frame { position: absolute; inset: 0;
+        border: var(--frame) solid var(--orange); clip-path: var(--skew); }
+      /* 畫框（同書封）：--p＝每一筆已畫的長度。筆一 右上→右邊往下→底邊往左；筆二 左下→左邊往上→頂邊往右 */
+      #frame-wrap { position: absolute; inset: calc(-1 * (var(--gap) + var(--frame)));
+        --W: calc(var(--bw) + 2 * (var(--gap) + var(--frame)));
+        --H: calc(var(--bh) + 2 * (var(--gap) + var(--frame)));
+        --p: 0px; --band: var(--frame);
+        --s1: clamp(0px, var(--p), var(--H));
+        --s2: clamp(0px, calc(var(--p) - var(--H)), var(--W));
+        --s3: clamp(0px, var(--p), var(--H));
+        --s4: clamp(0px, calc(var(--p) - var(--H)), var(--W));
+        --m: linear-gradient(#000, #000);
+        -webkit-mask-image: var(--m), var(--m), var(--m), var(--m);
+        mask-image: var(--m), var(--m), var(--m), var(--m);
+        -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+        -webkit-mask-position: right top, right bottom, left bottom, left top;
+        mask-position: right top, right bottom, left bottom, left top;
+        -webkit-mask-size: var(--band) var(--s1), var(--s2) var(--band), var(--band) var(--s3), var(--s4) var(--band);
+        mask-size: var(--band) var(--s1), var(--s2) var(--band), var(--band) var(--s3), var(--s4) var(--band); }
+      #pic { position: absolute; inset: 0; }
+      #pic img { display: block; width: 100%; height: 100%; object-fit: cover; }
+      /* 字塊：壓在框的左上角外側，斜角形狀同品牌標籤（第 11 類「影片來源」） */
+      #tag { position: absolute; left: calc(-1 * (var(--gap) + var(--frame)));
+        top: calc(-1 * (var(--gap) + var(--frame)) - 52px);
+        font-family: "Noto Sans TC Black", "Noto Sans TC", sans-serif; font-weight: 900;
+        color: var(--white); background: var(--orange); font-size: 30px; line-height: 1;
+        padding: 11px 26px 11px 18px; white-space: nowrap;
+        clip-path: polygon(0% 0%, 100% 0%, 90% 100%, 0% 100%); }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-root="true" data-composition-id="inset_card"
+      data-width="1920" data-height="1080" data-start="0" data-duration="8">
+      <div id="group">
+        <div id="frame-wrap"><div id="frame"></div></div>
+        <div id="pic"><img id="img" alt="" /></div>
+        <div id="tag"></div>
+      </div>
+    </div>
+    <script>
+      const v = (window.__hyperframes && window.__hyperframes.getVariables()) || {};
+      const showSec = Number(v.show_sec ?? 3);
+      const ratio = Number(v.ratio) > 0 ? Number(v.ratio) : 16 / 9;
+      const root = document.getElementById("root");
+      root.classList.add(v.side === "left" ? "s-left" : "s-right");
+      // 以寬 720 為準；直的圖（寬高比小）改以高 480 為準
+      const css = getComputedStyle(document.documentElement);
+      const maxW = parseFloat(css.getPropertyValue("--max-w"));
+      const maxH = parseFloat(css.getPropertyValue("--max-h"));
+      const bw = Math.min(maxW, maxH * ratio);
+      const group = document.getElementById("group");
+      group.style.setProperty("--bw", `${Math.round(bw)}px`);
+      group.style.setProperty("--bh", `${Math.round(bw / ratio)}px`);
+      document.getElementById("img").src = v.image || "";
+      const tag = document.getElementById("tag");
+      const tagText = String(v.tag || "").trim();
+      if (tagText) tag.textContent = tagText; else tag.remove();
+
+      const tl = gsap.timeline();
+      window.__timelines = window.__timelines || {};
+      // 框：兩筆同時起筆各畫半圈（0.4s，比書封短：小卡快進快出）；圖在框畫到一半時拍上
+      const fw = document.getElementById("frame-wrap");
+      const half = fw.offsetWidth + fw.offsetHeight;
+      tl.fromTo(fw, { "--p": "0px" }, { "--p": `${half}px`, duration: 0.4, ease: "power2.inOut" }, 0);
+      tl.fromTo("#pic", { scale: 1.16, opacity: 0, y: 14 }, { scale: 1, opacity: 1, y: 0, duration: 0.24, ease: "back.out(1.7)" }, 0.16);
+      if (tagText) tl.fromTo(tag, { xPercent: -30, opacity: 0 }, { xPercent: 0, opacity: 1, duration: 0.2, ease: "power3.out" }, 0.34);
+      // 退場：圖縮走，框與字塊跟著淡掉
+      const out = Math.max(0.9, showSec - 0.25);
+      tl.to("#pic", { scale: 0.92, opacity: 0, duration: 0.14, ease: "power2.in" }, out + 0.04);
+      tl.to(fw, { opacity: 0, duration: 0.12 }, out + 0.08);
+      if (tagText) tl.to(tag, { opacity: 0, duration: 0.12 }, out + 0.04);
+      window.__timelines["inset_card"] = tl;
+    </script>
+  </body>
+</html>

@@ -226,9 +226,10 @@ def test_missing_required_follows_category(plan):
 
 
 def test_flags_derive_from_category_readiness(plan):
-    vp.update_row(plan, "title", {"category": "meme", "dp_instruction": "x"})
+    # 還沒有元件的分類（舊例 meme 2026-11-26 已做好，改用 Outro 轉場；它只由 ## Outro 自動產生，
+    # update_row 不讓手動改成它，所以直接拿一列來算標示）
+    assert vp.row_flags({"category": "outro_transition"}) == ["pending_build"]
     title = next(row for row in plan["rows"] if row["id"] == "title")
-    assert vp.row_flags(title) == ["pending_build"]
     vp.update_row(plan, "title", {"category": "own_material"})
     assert vp.row_flags(title) == ["awaiting_material"]
 
